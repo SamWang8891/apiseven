@@ -97,7 +97,7 @@ function Rows({ value, onChange, onJson }: { value: unknown; onChange: (v: unkno
     const emitted = valueOfRows(next);
     if (!deepEqual(emitted, value)) onChange(emitted);
   }
-  const edit = (id: number, patch: Partial<Omit<Row, 'id' | 'raw'>>) => update(rows.map((row) => (row.id === id ? edited(row, patch) : row)));
+  const edit = (id: number, patch: Partial<Omit<Row, 'id' | 'touched' | 'last'>>) => update(rows.map((row) => (row.id === id ? edited(row, patch) : row)));
   const move = (from: number, to: number) => {
     const next = [...rows];
     const [row] = next.splice(from, 1);

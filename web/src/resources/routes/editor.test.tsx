@@ -240,3 +240,61 @@ describe('what the Matching tab shows is what gets saved', () => {
     expect((await jsonEditor('Route')).textContent).toContain('"OR"');
   });
 });
+
+describe('fix round 1', () => {
+  it("a source chosen and left empty is gone after Save: the locked view says Service's upstream", async () => {
+    const { user, admin } = await openRoute(WEB_HOME, '#/routes/web-home?tab=upstream');
+    await settled();
+    await user.keyboard('e');
+    await user.click(main().getByRole('radio', { name: t('rt.up.source.existing') }));
+    expect(main().getByRole('radio', { name: t('rt.up.source.existing') })).toBeChecked();
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await screen.findByText(t('editor.locked'));
+    expect(writesOf(admin)).toEqual([]);
+    const proxy = main().getByText(t('rt.up.source'), { selector: 'label' }).closest('.ui-field');
+    expect(proxy).toHaveTextContent(t('rt.up.source.service'));
+    expect(main().queryByText(t('rt.up.upstream'), { selector: 'label' })).not.toBeInTheDocument();
+  });
+
+  it('a held condition never leaves the draft: discarded on a tab switch, the stored one is back and saved unchanged', async () => {
+    const route = { ...API_V1, id: 'cond', name: 'cond', vars: [['arg_a', '==', 'x'], ['arg_n', '>', 2], ['arg_z', '==', 'z']] };
+    const { user, admin } = await openRoute(route, '#/routes/cond?tab=matching');
+    await settled();
+    await user.keyboard('e');
+    const value = () => main().getByRole('textbox', { name: t('rt.vars.valueN', { n: 2 }) });
+    await user.clear(value());
+    await user.type(value(), 'abc');
+    await user.click(tab(t('rt.tab.general')));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.pending.title') });
+    expect(dialog).toHaveTextContent(t('rt.vars.held.notNumber', { n: 2, text: 'abc' }));
+    await user.click(within(dialog).getByRole('button', { name: t('editor.pending.discard') }));
+    await settled();
+    // Not dirty: nothing left the draft.
+    expect(main().queryByText(t('editor.unsaved'))).not.toBeInTheDocument();
+    await user.click(tab(t('rt.tab.matching')));
+    await settled();
+    expect(value()).toHaveValue('2');
+
+    await user.click(tab(t('rt.tab.general')));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('rt.general.desc') }), 'x');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.vars).toEqual(route.vars);
+  });
+
+  it('a stored URI APISIX accepts (no leading /) shows as it is, and other changes save', async () => {
+    const route = { ...SHOP, uri: 'wiki' };
+    const { user, admin } = await openRoute(route, '#/routes/shop?tab=matching');
+    await settled();
+    expect(within(main().getByRole('group', { name: t('rt.match.uris') })).getByText('wiki')).toBeInTheDocument();
+    expect(tab(t('rt.tab.matching'))).toHaveAccessibleName(t('rt.tab.matching'));
+    await user.keyboard('e');
+    await user.click(tab(t('rt.tab.general')));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('rt.general.desc') }), 'kept');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ uri: 'wiki', desc: 'kept' });
+  });
+});

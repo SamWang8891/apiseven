@@ -95,7 +95,7 @@ describe('VarsBuilder rows', () => {
     expect(h.value()).toEqual([['arg_id', 'in', ['a', 'b']]]);
   });
 
-  it('a numeric comparison emits a number; text that is not one is held, not emitted', async () => {
+  it('a numeric comparison emits a number; text that is not one is held, the last number staying in the value', async () => {
     const h = renderVars(undefined);
     await addRow(h.user);
     await h.user.type(variable(1), 'arg_age');
@@ -105,9 +105,40 @@ describe('VarsBuilder rows', () => {
 
     await h.user.clear(valueBox(1));
     await h.user.type(valueBox(1), 'abc');
-    expect(h.value()).toBeUndefined();
+    expect(h.value()).toEqual([['arg_age', '>', 18]]);
     expect(h.held()).toEqual([t('rt.vars.held.notNumber', { n: 1, text: 'abc' })]);
     expect(valueBox(1)).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  it('a number in a list falls back to JSON; adding "!" there keeps the numbers', async () => {
+    const h = renderVars([['post_arg.id', 'in', [1, 2]]]);
+    const box = await screen.findByRole('textbox', { name: t('rt.vars.json') });
+    expect(screen.queryByRole('combobox', { name: t('rt.vars.variableN', { n: 1 }) })).not.toBeInTheDocument();
+    await h.user.click(box);
+    await h.user.keyboard('{Control>}a{/Control}');
+    await h.user.paste('[["post_arg.id", "!", "in", [1, 2]]]');
+    expect(h.value()).toEqual([['post_arg.id', '!', 'in', [1, 2]]]);
+  });
+
+  it('ticking "not" on a `has` with a number keeps the number', async () => {
+    const h = renderVars([['post_arg.tags', 'has', 7]]);
+    await h.user.click(negate(1));
+    expect(h.value()).toEqual([['post_arg.tags', '!', 'has', 7]]);
+  });
+
+  it('a held middle row keeps its stored condition, in order; fixed, it replaces it', async () => {
+    const h = renderVars([['a', '==', '1'], ['b', '>', 2], ['c', '==', '3']]);
+    await h.user.clear(valueBox(2));
+    await h.user.type(valueBox(2), 'abc');
+    expect(h.held()).toEqual([t('rt.vars.held.notNumber', { n: 2, text: 'abc' })]);
+    expect(h.value()).toEqual([['a', '==', '1'], ['b', '>', 2], ['c', '==', '3']]);
+    await h.user.clear(variable(2));
+    expect(h.value()).toEqual([['a', '==', '1'], ['b', '>', 2], ['c', '==', '3']]);
+    await h.user.type(variable(2), 'b');
+    await h.user.clear(valueBox(2));
+    await h.user.type(valueBox(2), '5');
+    expect(h.held()).toEqual([]);
+    expect(h.value()).toEqual([['a', '==', '1'], ['b', '>', 5], ['c', '==', '3']]);
   });
 
   it('a number compared with == stays a number while the text is one', async () => {
@@ -162,8 +193,8 @@ describe('VarsBuilder rows', () => {
         t('ui.pending.tag', { field: t('rt.vars.valuesN', { n: 2 }), text: 'nope', reason: t('rt.issue.addr', { addr: 'nope' }) }),
       ]),
     );
-    // The held row is not in the value; the other keeps its condition.
-    expect(h.value()).toEqual([['c', 'ipmatch', ['10.0.0.1']]]);
+    // The held row keeps its last good condition in the value, in its place.
+    expect(h.value()).toEqual([['b', '>', 2], ['c', 'ipmatch', ['10.0.0.1']]]);
     await h.user.clear(valueBox(1));
     await h.user.type(valueBox(1), '3');
     expect(h.value()).toEqual([['b', '>', 3], ['c', 'ipmatch', ['10.0.0.1']]]);

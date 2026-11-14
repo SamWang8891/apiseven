@@ -11,6 +11,7 @@ import { Badge, Button, Checkbox, CodeEditor, Field, TagInput, useLocked } from 
 import type { TabProps } from '../registry';
 import { routeHosts } from '../resolve';
 import { Section } from '../Section';
+import { inheritLoading } from './inherit';
 import { readPair, writePair } from './pairs';
 import { addrProblem, hostProblem, METHODS, uriProblem } from './validate';
 import { VarsBuilder } from './VarsBuilder';
@@ -123,6 +124,7 @@ function Methods({ draft, setDraft, error }: { draft: Obj; setDraft: (d: Obj) =>
 export function MatchingTab({ draft, setDraft, issues, ctx }: TabProps) {
   const locked = useLocked();
   const inherited = routeHosts({ service_id: draft.service_id }, ctx);
+  const waiting = inheritLoading(draft, ctx).service;
   const service = ctx.services.find((s) => String(s.id) === String(draft.service_id));
   const filter = typeof draft.filter_func === 'string' ? draft.filter_func : '';
   const filterIssues = issuesUnder(issues, 'filter_func');
@@ -137,7 +139,7 @@ export function MatchingTab({ draft, setDraft, issues, ctx }: TabProps) {
           plural="hosts"
           label={t('rt.match.hosts')}
           help={t('rt.match.hostsHelp')}
-          empty={t('rt.match.anyHost')}
+          empty={waiting ? t('picker.loading') : t('rt.match.anyHost')}
           problem={hostProblem}
           note={{ values: inherited.hosts, text: t('rt.match.fromService', { name: service ? (typeof service.value.name === 'string' ? service.value.name : service.id) : '' }) }}
         />

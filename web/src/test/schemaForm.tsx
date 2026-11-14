@@ -60,7 +60,23 @@ export function renderSchemaForm(schema: Obj, initial: unknown, extra: Extra = {
   };
 }
 
-/** Every element that takes input (what a locked form must not contain). */
+/** Native inputs, editable text, and the kit's button-based controls (Checkbox, Segmented, Select, Switch, …) by their role. */
+const CONTROLS = [
+  'input',
+  'textarea',
+  'select',
+  '[contenteditable="true"]',
+  ...['checkbox', 'radio', 'combobox', 'switch', 'spinbutton', 'textbox', 'slider', 'listbox'].map((role) => `[role="${role}"]`),
+].join(', ');
+
+/**
+ * Every element that takes input (what a locked form must not contain): native inputs and
+ * contenteditable, and any control by role. A read-only one (aria-readonly, as a locked CodeMirror
+ * is) and one hidden from assistive tech don't count; a disabled one does, as a locked view must not
+ * show disabled controls either.
+ */
 export function editableControls(container: HTMLElement): Element[] {
-  return [...container.querySelectorAll('input, textarea, select, [contenteditable="true"]')];
+  return [...container.querySelectorAll(CONTROLS)].filter(
+    (el) => el.getAttribute('aria-readonly') !== 'true' && !el.hasAttribute('readonly') && !el.closest('[aria-hidden="true"]') && !el.matches('input[type="hidden"]'),
+  );
 }

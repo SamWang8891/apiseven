@@ -10,6 +10,7 @@ import { PluginsTab } from '../../plugins/PluginsTab';
 import { useLocked } from '../../ui';
 import type { TabProps } from '../registry';
 import { ResourcePicker } from '../ResourcePicker';
+import { inheritLoading } from './inherit';
 import './routes.css';
 
 const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String(v) : typeof v === 'string' && v !== '' ? v : undefined);
@@ -17,6 +18,7 @@ const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String
 export function RoutePluginsTab({ draft, setDraft, issues, ctx, saveAttempts }: TabProps) {
   const locked = useLocked();
   const configId = idOf(draft.plugin_config_id);
+  const waiting = inheritLoading(draft, ctx);
   return (
     <div className="ed-stack">
       {draft.script !== undefined && <p className="rt-note rt-note--warn">{t('rt.pl.scriptNote')}</p>}
@@ -43,6 +45,7 @@ export function RoutePluginsTab({ draft, setDraft, issues, ctx, saveAttempts }: 
         saveAttempts={saveAttempts}
         inherited={inheritedPlugins(draft, ctx)}
       />
+      {(waiting.service || waiting.pluginConfig) && <p className="rt-note">{t('rt.pl.inheritedLoading')}</p>}
     </div>
   );
 }

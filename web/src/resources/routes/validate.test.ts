@@ -34,9 +34,19 @@ describe('routeIssues', () => {
       expect(issues({ upstream_id: 'u1', uris: [] })).toEqual([{ path: 'uri', message: t('rt.issue.noUri') }]);
     });
 
-    it('each starts with /', () => {
-      expect(issues({ ...ok, uri: 'a/*' })).toEqual([{ path: 'uri', message: t('rt.issue.uriSlash', { uri: 'a/*' }) }]);
-      expect(issues({ upstream_id: 'u1', uris: ['/a', 'b'] })).toEqual([{ path: 'uris.1', message: t('rt.issue.uriSlash', { uri: 'b' }) }]);
+    it('a URI not starting with / is APISIX\'s to take: no issue (the URIs box refuses it as it is typed)', () => {
+      expect(issues({ ...ok, uri: 'a/*' })).toEqual([]);
+      expect(issues({ upstream_id: 'u1', uris: ['/a', 'b'] })).toEqual([]);
+    });
+
+    it('uri is at most 4096 characters; the schema sets no length for uris items', () => {
+      const long = `/${'a'.repeat(4096)}`;
+      expect(issues({ upstream_id: 'u1', uri: long })).toEqual([{ path: 'uri', message: t('rt.issue.uriLong') }]);
+      expect(issues({ upstream_id: 'u1', uris: ['/a', long] })).toEqual([]);
+    });
+
+    it('uris has no repeats', () => {
+      expect(issues({ upstream_id: 'u1', uris: ['/a', '/a'] })).toEqual([{ path: 'uris.1', message: t('rt.issue.twice', { value: '/a' }) }]);
     });
 
     it('uri and uris together, as APISIX refuses them', () => {
@@ -51,9 +61,17 @@ describe('routeIssues', () => {
       expect(issues({ ...ok, host: 'a', hosts: ['b'] })).toEqual([{ path: 'hosts', message: t('rt.issue.both', { single: 'host', plural: 'hosts' }) }]);
     });
 
-    it('address syntax: IPv4, IPv6, either with a CIDR suffix', () => {
+    it('address syntax: exactly the schema (ip_def: inet_pton for the addresses, its patterns for CIDR)', () => {
       expect(issues({ ...ok, remote_addr: '10.0.0.256' })).toEqual([{ path: 'remote_addr', message: t('rt.issue.addr', { addr: '10.0.0.256' }) }]);
       expect(issues({ ...ok, remote_addrs: ['10.0.0.0/33', 'fe80::1'] })).toEqual([{ path: 'remote_addrs.0', message: t('rt.issue.addr', { addr: '10.0.0.0/33' }) }]);
+      // The schema's IPv6/CIDR pattern takes any 1–3 digit prefix; only the box refuses /200 as it is typed.
+      for (const accepted of ['fe80::/200', '::/0', '2001:db8::/32', '10.0.0.0/8', '0.0.0.0/0', '::ffff:10.0.0.1']) {
+        expect(issues({ ...ok, remote_addr: accepted }), accepted).toEqual([]);
+      }
+      // The IPv4/CIDR pattern has no leading zeros in the prefix; inet_pton takes no zone id.
+      for (const refused of ['10.0.0.0/05', '01.2.3.4', 'fe80::1%eth0', '10.0.0.1/']) {
+        expect(issues({ ...ok, remote_addr: refused }), refused).toEqual([{ path: 'remote_addr', message: t('rt.issue.addr', { addr: refused }) }]);
+      }
     });
 
     it('a value listed twice', () => {
@@ -61,8 +79,9 @@ describe('routeIssues', () => {
     });
   });
 
-  it('methods APISIX does not know', () => {
+  it('methods APISIX does not know, or listed twice', () => {
     expect(issues({ ...ok, methods: ['GET', 'get'] })).toEqual([{ path: 'methods', message: t('rt.issue.method', { method: 'get' }) }]);
+    expect(issues({ ...ok, methods: ['GET', 'GET'] })).toEqual([{ path: 'methods', message: t('rt.issue.twice', { value: 'GET' }) }]);
   });
 
   it('priority is a whole number', () => {
@@ -164,13 +183,14 @@ describe('field checks the Matching tab uses', () => {
     for (const bad of ['a b', 'a/b', '**.a', 'a.*', 'ä.example', '']) expect(hostProblem(bad), bad).toBeDefined();
   });
 
-  it('uriProblem: starts with /', () => {
+  it('uriProblem (as typed): starts with /, at most 4096 characters', () => {
     expect(uriProblem('/a/*')).toBeUndefined();
-    expect(uriProblem('a')).toBeDefined();
+    expect(uriProblem('a')).toBe(t('rt.issue.uriSlash', { uri: 'a' }));
+    expect(uriProblem(`/${'a'.repeat(4096)}`)).toBe(t('rt.issue.uriLong'));
   });
 
-  it('addrProblem: IPv4, IPv6 and CIDR', () => {
+  it('addrProblem (as typed): IPv4, IPv6 and CIDR, an IPv6 prefix of at most 128', () => {
     for (const ok of ['1.2.3.4', '10.0.0.0/8', '0.0.0.0/0', '::', '::1', 'fe80::1', '2001:db8::/32', '::ffff:10.0.0.1', '1:2:3:4:5:6:7:8']) expect(addrProblem(ok), ok).toBeUndefined();
-    for (const bad of ['1.2.3', '256.1.1.1', '01.2.3.4x', '10.0.0.0/33', 'a.b.c.d', '1:2:3:4:5:6:7:8:9', ':::1', 'fe80::1::2', 'host']) expect(addrProblem(bad), bad).toBeDefined();
+    for (const bad of ['1.2.3', '256.1.1.1', '01.2.3.4x', '10.0.0.0/33', '10.0.0.0/05', 'fe80::/200', 'a.b.c.d', '1:2:3:4:5:6:7:8:9', ':::1', 'fe80::1::2', 'host']) expect(addrProblem(bad), bad).toBeDefined();
   });
 });

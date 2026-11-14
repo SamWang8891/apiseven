@@ -119,6 +119,58 @@ describe('Matching: hosts and URIs (one value → host/uri, several → hosts/ur
   });
 });
 
+describe('Matching: what APISIX accepts shows as it is; stricter checks apply to what is typed', () => {
+  it.each([
+    ['URIs', { uri: 'wiki' }, `${'URIs'} (${t('ui.required')})`, 'wiki', () => t('rt.issue.uriSlash', { uri: 'wiki' })],
+    ['client addresses', { uri: '/x', remote_addr: 'fe80::/200' }, 'Client addresses', 'fe80::/200', () => t('rt.issue.addr', { addr: 'fe80::/200' })],
+  ])('%s', async (_, stored, label, typed, reason) => {
+    const h = renderRouteTab(MatchingTab, { upstream_id: 'u1', ...stored }, { ctx: CTX });
+    // Stored: no issue, shown as a tag.
+    expect(screen.queryByText(reason())).not.toBeInTheDocument();
+    expect(screen.getByText(typed)).toBeInTheDocument();
+    // Typed: refused at entry, held.
+    await h.user.click(screen.getByRole('button', { name: t('ui.tags.remove', { tag: typed }) }));
+    await h.user.type(screen.getByRole('textbox', { name: label }), `${typed}{Enter}`);
+    expect(h.held()).toEqual([t('ui.pending.tag', { field: label.replace(/ \(.*\)$/, ''), text: typed, reason: reason() })]);
+  });
+
+  it('a long URI among several is shown and kept; typed, it is refused', async () => {
+    const long = `/${'a'.repeat(4096)}`;
+    const h = renderRouteTab(MatchingTab, { upstream_id: 'u1', uris: ['/x', long] }, { ctx: CTX });
+    expect(screen.queryByText(t('rt.issue.uriLong'))).not.toBeInTheDocument();
+    await h.user.click(screen.getByRole('button', { name: t('ui.tags.remove', { tag: long }) }));
+    await h.user.click(screen.getByRole('textbox', { name: `URIs (${t('ui.required')})` }));
+    await h.user.paste(long);
+    await h.user.keyboard('{Enter}');
+    expect(h.held()).toEqual([t('ui.pending.tag', { field: 'URIs', text: long, reason: t('rt.issue.uriLong') })]);
+  });
+});
+
+describe('locked views while a list is loading say so', () => {
+  const loading = ctxOf({ loaded: { services: false, pluginConfigs: false } });
+
+  it('hosts inherited from a service', () => {
+    renderRouteTab(MatchingTab, { uri: '/x', service_id: 's1' }, { locked: true, ctx: loading });
+    const hosts = screen.getByRole('group', { name: t('rt.match.hosts') });
+    expect(hosts).toHaveTextContent(t('picker.loading'));
+    expect(hosts).not.toHaveTextContent(t('rt.match.anyHost'));
+  });
+
+  it('inherited plugins', () => {
+    renderRouteTab(RoutePluginsTab, { uri: '/x', service_id: 's1', plugin_config_id: 'pc1' }, { locked: true, ctx: loading });
+    expect(screen.getByText(t('rt.pl.inheritedLoading'))).toBeInTheDocument();
+  });
+
+  it('the General overview', () => {
+    renderRouteTab(GeneralTab, { uri: '/x', service_id: 's1' }, { locked: true, ctx: loading });
+    const overview = screen.getByRole('region', { name: t('rt.overview') });
+    expect(overview).not.toHaveTextContent(t('rt.match.anyHost'));
+    expect(overview).not.toHaveTextContent(t('rt.overview.noPlugins'));
+    expect(overview).not.toHaveTextContent(t('rt.up.resolvesNone'));
+    expect(overview.textContent?.split(t('picker.loading')).length).toBeGreaterThanOrEqual(4);
+  });
+});
+
 describe('Matching: methods', () => {
   const box = (m: string) => screen.getByRole('checkbox', { name: m });
 
@@ -227,6 +279,45 @@ describe('Upstream: where requests go', () => {
     expect(line).toHaveTextContent('10.0.0.12:8080');
   });
 
+  it('Existing → Inline removes upstream_id, without asking', async () => {
+    const h = renderRouteTab(UpstreamTab, { uri: '/x', upstream_id: 'u1' }, { ctx: CTX });
+    await h.user.click(radio('inline'));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(radio('inline')).toBeChecked();
+    expect(h.value()).toEqual({ uri: '/x' });
+  });
+
+  it("Inline → Service's upstream asks before discarding the inline upstream, then removes it", async () => {
+    const h = renderRouteTab(UpstreamTab, { uri: '/x', service_id: 's1', upstream: { nodes: [{ host: 'h', port: 1, weight: 1 }] } }, { ctx: CTX });
+    await h.user.click(radio('service'));
+    const dialog = await screen.findByRole('alertdialog', { name: t('rt.up.discard.title') });
+    expect(h.changes).not.toHaveBeenCalled();
+    await h.user.click(within(dialog).getByRole('button', { name: t('rt.up.discard.confirm') }));
+    expect(h.value()).toEqual({ uri: '/x', service_id: 's1' });
+  });
+
+  it("Existing → Service's upstream asks too when a leftover inline upstream would go with it", async () => {
+    const h = renderRouteTab(UpstreamTab, { uri: '/x', service_id: 's1', upstream_id: 'u1', upstream: { nodes: [{ host: 'h', port: 1, weight: 1 }] } }, { ctx: CTX });
+    expect(radio('existing')).toBeChecked();
+    await h.user.click(radio('service'));
+    const dialog = await screen.findByRole('alertdialog', { name: t('rt.up.discard.title') });
+    expect(h.changes).not.toHaveBeenCalled();
+    await h.user.click(within(dialog).getByRole('button', { name: t('rt.up.discard.confirm') }));
+    expect(h.value()).toEqual({ uri: '/x', service_id: 's1' });
+  });
+
+  it('a source chosen but not filled in is forgotten when the editor locks: the locked view says what the draft does', async () => {
+    const h = renderRouteTab(UpstreamTab, { uri: '/x', service_id: 's1' }, { ctx: CTX });
+    await h.user.click(radio('existing'));
+    expect(radio('existing')).toBeChecked();
+    h.lock(true);
+    const proxy = screen.getByText(t('rt.up.source'), { selector: 'label' }).closest('.ui-field');
+    expect(proxy).toHaveTextContent(t('rt.up.source.service'));
+    expect(screen.queryByText(t('rt.up.upstream'))).not.toBeInTheDocument();
+    h.lock(false);
+    expect(radio('service')).toBeChecked();
+  });
+
   it('the service picker removes service_id when cleared', async () => {
     const h = renderRouteTab(UpstreamTab, { uri: '/x', service_id: 's1', upstream_id: 'u1' }, { ctx: CTX });
     await h.user.click(screen.getAllByRole('button', { name: t('ui.select.clear') })[0] as HTMLElement);
@@ -317,5 +408,20 @@ describe('General', () => {
     }
     expect(overview).toHaveTextContent('a.example');
     expect(overview).toHaveTextContent('web-pool');
+  });
+
+  it('a partial timeout reads as what is set, and what is not', () => {
+    renderRouteTab(GeneralTab, { uri: '/x', upstream_id: 'u1', timeout: { connect: 3 } }, { locked: true, ctx: CTX });
+    const overview = screen.getByRole('region', { name: t('rt.overview') });
+    expect(overview).not.toHaveTextContent('undefined');
+    expect(overview).toHaveTextContent(
+      t('rt.overview.timeouts', {
+        list: [
+          t('rt.overview.timeout', { name: t('rt.overview.t.connect'), value: 3 }),
+          t('rt.overview.timeoutMissing', { name: t('rt.overview.t.send') }),
+          t('rt.overview.timeoutMissing', { name: t('rt.overview.t.read') }),
+        ].join(', '),
+      }),
+    );
   });
 });

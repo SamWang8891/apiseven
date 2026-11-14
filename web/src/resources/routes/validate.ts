@@ -1,9 +1,12 @@
 // What APISIX 3.20 refuses in a route, checked in the browser so Save can say where: the `route`
 // schema in apisix/schema_def.lua (uri/uris, host pattern, remote address formats, methods enum,
-// timeout, filter_func, script, labels, and its anyOf/not rules) and check_conf in
+// timeout, filter_func, script, labels, uniqueItems, and its anyOf/not rules) and check_conf in
 // apisix/admin/routes.lua (host with hosts, remote_addr with remote_addrs, references that must
-// exist). Plus one APISIX accepts but that can never match: a URI not starting with `/`. Pure; the
-// registry composes it into the route's `validate`, with the inline upstream's and the plugins' checks.
+// exist). Nothing stricter: `routeIssues` runs on the whole draft, so a check APISIX doesn't make
+// would lock a stored route out of this editor. Advice that is stricter than APISIX (a URI must start
+// with /, an IPv6 prefix of at most 128) applies where a value is typed: uriProblem and addrProblem,
+// the Matching tab's tag boxes. Pure; the registry composes it into the route's `validate`, with the
+// inline upstream's and the plugins' checks.
 import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
 import type { Issue } from '../../editor/issues';
@@ -23,7 +26,12 @@ const HOST = /^\*$|^\*?[0-9a-zA-Z\-._[\]:]+$/;
 const OCTET = '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])';
 const IPV4 = new RegExp(`^${OCTET}(\\.${OCTET}){3}$`);
 const GROUP = /^[0-9a-fA-F]{1,4}$/;
+// ip_def's CIDR patterns, as schema_def.lua writes them: an IPv4 prefix of 0–32 without leading zeros,
+// and a loose IPv6 form (the source says so) with any 1–3 digit prefix.
+const IPV4_CIDR = new RegExp(`^${OCTET}(\\.${OCTET}){3}/([12]?[0-9]|3[0-2])$`);
+const IPV6_CIDR = /^([a-fA-F0-9]{0,4}:){1,8}(:[a-fA-F0-9]{0,4}){0,8}([a-fA-F0-9]{0,4})?\/[0-9]{1,3}$/;
 
+/** What inet_pton(AF_INET6) takes, as APISIX's jsonschema checks the `ipv6` format. */
 function isIPv6(text: string): boolean {
   let s = text;
   // A trailing IPv4 (::ffff:10.0.0.1) stands for the last two groups.
@@ -40,43 +48,54 @@ function isIPv6(text: string): boolean {
   return halves.length === 2 ? all.length <= 7 : all.length === 8;
 }
 
-/** ip_def in schema_def.lua: IPv4, IPv4/CIDR (0–32), IPv6, IPv6/CIDR (0–128). */
-function isAddress(text: string): boolean {
-  const [ip = '', prefix, ...rest] = text.split('/');
-  if (rest.length > 0) return false;
-  const v4 = IPV4.test(ip);
-  if (!v4 && !isIPv6(ip)) return false;
-  if (prefix === undefined) return true;
-  return /^[0-9]{1,3}$/.test(prefix) && Number(prefix) <= (v4 ? 32 : 128);
+/** remote_addr_def exactly: format ipv4 or ipv6 (inet_pton in APISIX), or one of ip_def's CIDR patterns. */
+function schemaAddress(text: string): boolean {
+  return IPV4.test(text) || isIPv6(text) || IPV4_CIDR.test(text) || IPV6_CIDR.test(text);
 }
 
-/** Why APISIX refuses this host, or undefined. */
+/** A sound address as typed: IPv4 or IPv6, either with a CIDR prefix that fits it (0–32, 0–128). */
+function soundAddress(text: string): boolean {
+  if (IPV4.test(text) || IPV4_CIDR.test(text)) return true;
+  const [ip = '', prefix, ...rest] = text.split('/');
+  if (rest.length > 0 || !isIPv6(ip)) return false;
+  return prefix === undefined || (/^(0|[1-9][0-9]{0,2})$/.test(prefix) && Number(prefix) <= 128);
+}
+
+/** Why APISIX refuses this host (host_def_pat), or undefined; the same as typed and as stored. */
 export function hostProblem(host: string): string | undefined {
   return HOST.test(host) ? undefined : t('rt.issue.host', { host });
 }
 
-/** Why this URI can't match, or undefined (APISIX takes any non-empty text, but request paths start with /). */
+/**
+ * Why a URI is refused as it is typed: it must start with / (APISIX takes any text, but request
+ * paths start with /, so it would never match) and fit the schema's 4096 characters.
+ */
 export function uriProblem(uri: string): string | undefined {
   if (!uri.startsWith('/')) return t('rt.issue.uriSlash', { uri });
   return uri.length > 4096 ? t('rt.issue.uriLong') : undefined;
 }
 
-/** Why APISIX refuses this client address, or undefined. */
+/** Why a client address is refused as it is typed: stricter than the schema's loose IPv6/CIDR pattern. */
 export function addrProblem(addr: string): string | undefined {
-  return isAddress(addr) ? undefined : t('rt.issue.addr', { addr });
+  return soundAddress(addr) ? undefined : t('rt.issue.addr', { addr });
 }
 
 type Add = (path: string, message: string) => void;
 
-/** One of a single/plural pair: both set, then each value (at `single`, or `plural.<i>`), and repeats. */
-function checkPair(draft: Obj, single: string, plural: string, problem: (v: string) => string | undefined, add: Add): string[] {
+type Problem = (v: string) => string | undefined;
+
+/**
+ * One of a single/plural pair: both set (check_conf / the schema's oneOf), then each value (at
+ * `single`, or `plural.<i>`), and repeats in the plural list (uniqueItems).
+ */
+function checkPair(draft: Obj, single: string, plural: string, problems: { single: Problem; item: Problem }, add: Add): string[] {
   if (draft[single] !== undefined && draft[plural] !== undefined) add(plural, t('rt.issue.both', { single, plural }));
   const values = readPair(draft, single, plural);
   const one = typeof draft[single] === 'string' && draft[single] !== '';
   const seen = new Set<string>();
   values.forEach((value, i) => {
     const path = one ? single : `${plural}.${i}`;
-    const message = problem(value) ?? (seen.has(value) ? t('rt.issue.twice', { value }) : undefined);
+    const message = (one ? problems.single : problems.item)(value) ?? (seen.has(value) ? t('rt.issue.twice', { value }) : undefined);
     seen.add(value);
     if (message) add(path, message);
   });
@@ -100,15 +119,20 @@ export function routeIssues(draft: Obj, env: ValidateEnv): Issue[] {
   const issues: Issue[] = [];
   const add: Add = (path, message) => issues.push({ path, message });
 
-  const uris = checkPair(draft, 'uri', 'uris', uriProblem, add);
+  // uri: a string of 1–4096 characters; uris: strings, no length set, no repeats.
+  const uriLength: Problem = (v) => (v.length > 4096 ? t('rt.issue.uriLong') : undefined);
+  const uris = checkPair(draft, 'uri', 'uris', { single: uriLength, item: () => undefined }, add);
   if (uris.length === 0) add('uri', t('rt.issue.noUri'));
-  checkPair(draft, 'host', 'hosts', hostProblem, add);
-  checkPair(draft, 'remote_addr', 'remote_addrs', addrProblem, add);
+  checkPair(draft, 'host', 'hosts', { single: hostProblem, item: hostProblem }, add);
+  const address: Problem = (v) => (schemaAddress(v) ? undefined : t('rt.issue.addr', { addr: v }));
+  checkPair(draft, 'remote_addr', 'remote_addrs', { single: address, item: address }, add);
 
   if (draft.methods !== undefined) {
     const methods: unknown[] = Array.isArray(draft.methods) ? draft.methods : [draft.methods];
     const bad = methods.find((m) => !(METHODS as readonly unknown[]).includes(m));
+    const twice = methods.find((m, i) => methods.indexOf(m) !== i);
     if (bad !== undefined) add('methods', t('rt.issue.method', { method: typeof bad === 'string' ? bad : JSON.stringify(bad) }));
+    else if (twice !== undefined) add('methods', t('rt.issue.twice', { value: typeof twice === 'string' ? twice : JSON.stringify(twice) }));
   }
   if (draft.vars !== undefined && !Array.isArray(draft.vars)) add('vars', t('rt.issue.vars'));
   const filter = draft.filter_func;

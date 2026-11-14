@@ -1,8 +1,8 @@
 // The route editor's Upstream tab: the service the route belongs to, then where its requests go —
 // the service's upstream, an upstream object, or one written inline — and a line saying what that
 // resolves to, so the effective target is always in view (inherited too). Choosing a source removes
-// the other source's key; leaving an inline upstream that holds anything asks first, since tabs are
-// remounted on every switch and nothing could bring it back.
+// the other source's key; a switch that removes an inline upstream holding anything asks first,
+// since tabs are remounted on every switch and nothing could bring it back.
 import { useId, useState } from 'react';
 import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
@@ -10,7 +10,7 @@ import { setPath, setPathRaw } from '../../editor/draft';
 import { issueAt, withinPath } from '../../editor/issues';
 import { t } from '../../i18n';
 import { UpstreamForm } from '../../upstream/UpstreamForm';
-import { Button, ConfirmDialog, Field, PendingScope, Segmented, useLocked } from '../../ui';
+import { Button, ConfirmDialog, Field, PendingScope, Segmented, useEditingState, useLocked } from '../../ui';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { TabProps } from '../registry';
 import { ResourcePicker } from '../ResourcePicker';
@@ -47,12 +47,14 @@ export function UpstreamTab({ draft, setDraft, ctx, issues, isNew }: TabProps) {
   const locked = useLocked();
   const serviceId = idOf(draft.service_id);
   const derived = sourceOf(draft);
-  // A choice the draft can't say yet (Existing before one is picked, Inline before a node is typed):
-  // view state, gone on a tab switch, when the draft decides again. Nothing is lost by that.
-  const [chosen, setChosen] = useState<UpstreamSource>();
+  // A choice the draft can't say yet (Existing before one is picked, Inline before a node is typed)
+  // belongs to this editing session: it starts over on Save and Discard, and the locked view never
+  // shows it, so the spec sheet always says what the draft proxies to.
+  const [chosen, setChosen] = useEditingState<UpstreamSource | undefined>(undefined);
+  const pick = locked ? undefined : chosen;
   let source: UpstreamSource;
   if (derived === 'existing' || derived === 'inline') source = derived;
-  else if (chosen === 'existing' || chosen === 'inline') source = chosen;
+  else if (pick === 'existing' || pick === 'inline') source = pick;
   else if (serviceId !== undefined) source = 'service';
   else source = isNew ? 'inline' : 'none';
 
@@ -69,7 +71,10 @@ export function UpstreamTab({ draft, setDraft, ctx, issues, isNew }: TabProps) {
   function choose(next: string) {
     const to = next as UpstreamSource;
     if (to === source) return;
-    if (source === 'inline' && (!isEmptyUpstream(draft.upstream) || inlineHeld)) setAsking(to);
+    // Any switch that removes an inline upstream holding something asks first: leaving Inline, and
+    // leaving Existing for the service's upstream while a leftover inline one is still there.
+    const drops = to !== 'inline' && isObj(draft.upstream) && (!isEmptyUpstream(draft.upstream) || (source === 'inline' && inlineHeld));
+    if (drops) setAsking(to);
     else apply(to);
   }
 

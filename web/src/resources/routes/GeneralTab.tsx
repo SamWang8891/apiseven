@@ -13,6 +13,7 @@ import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { Ctx } from '../ctx';
 import type { TabProps } from '../registry';
 import { effectivePlugins, routeHosts } from '../resolve';
+import { inheritLoading } from './inherit';
 import { readPair } from './pairs';
 import { targetOf } from './source';
 import '../resources.css';
@@ -40,13 +41,17 @@ function Parts({ parts }: { parts: ReactNode[] }) {
 
 function matching(draft: Obj, ctx: Ctx): ReactNode {
   const { hosts, viaService } = routeHosts(draft, ctx);
+  const own = readPair(draft, 'host', 'hosts').length > 0;
+  const waiting = !own && inheritLoading(draft, ctx).service;
   const uris = readPair(draft, 'uri', 'uris');
   const methods = Array.isArray(draft.methods) ? draft.methods.filter((m): m is string => typeof m === 'string') : [];
   const conditions = Array.isArray(draft.vars) ? draft.vars.length : 0;
   return (
     <Parts
       parts={[
-        hosts.length > 0 ? (
+        waiting ? (
+          t('rt.overview.hostsLoading')
+        ) : hosts.length > 0 ? (
           <>
             <Mono values={hosts} />
             {viaService && ` ${t('rt.overview.viaService')}`}
@@ -72,13 +77,26 @@ function upstream(draft: Obj, ctx: Ctx): ReactNode {
 function plugins(draft: Obj, ctx: Ctx): ReactNode {
   if (draft.script !== undefined) return t('rt.overview.script');
   const names = effectivePlugins(draft, ctx).map((p) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name));
+  const waiting = inheritLoading(draft, ctx);
+  // The inherited ones aren't known yet: show the route's own, and say the rest is loading.
+  if (waiting.service || waiting.pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), t('rt.overview.inheritedLoading')]} />;
   return names.length > 0 ? <Mono values={names} /> : t('rt.overview.noPlugins');
+}
+
+/** Each timeout that is set, and the ones that are not (APISIX refuses a partial timeout; the Advanced tab flags it). */
+function timeouts(timeout: Obj): string {
+  const list = (['connect', 'send', 'read'] as const).map((key) => {
+    const name = t(`rt.overview.t.${key}`);
+    const v = timeout[key];
+    return typeof v === 'number' ? t('rt.overview.timeout', { name, value: v }) : t('rt.overview.timeoutMissing', { name });
+  });
+  return t('rt.overview.timeouts', { list: list.join(', ') });
 }
 
 function advanced(draft: Obj): ReactNode {
   const parts: string[] = [];
   const timeout = isObj(draft.timeout) ? draft.timeout : undefined;
-  if (timeout) parts.push(t('rt.overview.timeouts', { connect: String(timeout.connect), send: String(timeout.send), read: String(timeout.read) }));
+  if (timeout) parts.push(timeouts(timeout));
   if (draft.enable_websocket === true) parts.push(t('rt.overview.websocketOn'));
   if (draft.enable_websocket === false) parts.push(t('rt.overview.websocketOff'));
   if (draft.filter_func !== undefined) parts.push(t('rt.overview.filter'));
