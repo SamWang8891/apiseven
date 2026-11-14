@@ -364,6 +364,16 @@ describe('plugins', () => {
     expect(calls.map((c) => c.url)).toEqual([`${ADMIN}/plugins?all=true`]);
   });
 
+  it('allPlugins("stream") fetches the stream set, cached apart from the http one', async () => {
+    const httpSet = { 'limit-count': { schema: { type: 'object' } } };
+    const streamSet = { 'limit-conn': { schema: { type: 'object' } } };
+    const { api, calls } = setup((call) => json(call.url.includes('subsystem=stream') ? streamSet : httpSet));
+    expect(await api.allPlugins('stream')).toEqual(streamSet);
+    expect(await api.allPlugins()).toEqual(httpSet);
+    expect(await api.allPlugins('stream')).toEqual(streamSet);
+    expect(calls.map((c) => c.url)).toEqual([`${ADMIN}/plugins?all=true&subsystem=stream`, `${ADMIN}/plugins?all=true`]);
+  });
+
   it('allPlugins tries again after a failure', async () => {
     let fail = true;
     const { api, calls } = setup(() => (fail ? json({ error_msg: 'down' }, 503) : json({})));

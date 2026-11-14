@@ -5,9 +5,8 @@ import { Moon, Sun } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router';
 import type { Obj, PluginInfo } from '../api/types';
-import { schemaErrors } from '../schema/ajv';
+import { fieldErrors } from '../schema/ajv';
 import { Button, CodeEditor, LockProvider, Select, Switch } from '../ui';
-import type { FormError } from './errors';
 import raw from './fixtures/plugins-3.20.json?raw';
 import { SchemaForm } from './SchemaForm';
 import { fallbackStats } from './stats';
@@ -34,18 +33,6 @@ const rows: Row[] = (['http', 'stream'] as const).flatMap((subsystem) =>
     KINDS.filter((kind) => info[kind]).map((kind) => ({ subsystem, plugin, kind, ...fallbackStats(info[kind] as Obj) })),
   ),
 );
-
-/** Ajv's errors as the form takes them: dotted paths, a missing property at its own path. */
-function formErrors(schema: Obj, value: unknown): FormError[] {
-  return (schemaErrors(schema, value) ?? [])
-    .filter((e) => e.keyword !== 'if' && e.keyword !== 'oneOf' && e.keyword !== 'anyOf')
-    .map((e) => {
-      const base = e.instancePath.split('/').slice(1).map((s) => s.replace(/~1/g, '/').replace(/~0/g, '~'));
-      const params = e.params as Record<string, unknown>;
-      if (e.keyword === 'required' && typeof params.missingProperty === 'string') base.push(params.missingProperty);
-      return { path: base.join('.'), message: e.message ?? e.keyword };
-    });
-}
 
 export default function Playground() {
   const [params, setParams] = useSearchParams();
@@ -83,7 +70,7 @@ export default function Playground() {
     document.documentElement.dataset.theme = theme;
   }, [theme]);
 
-  const errors = useMemo(() => (validate ? formErrors(schema, value) : undefined), [validate, schema, value]);
+  const errors = useMemo(() => (validate ? (fieldErrors(schema, value) ?? undefined) : undefined), [validate, schema, value]);
   const set = (key: string, next: string | undefined) =>
     setParams(
       (p) => {

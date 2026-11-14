@@ -48,11 +48,12 @@ export function useItem(kind: Kind, id: string | undefined, parent?: Parent): Us
   });
 }
 
-export function useAllPlugins(): UseQueryResult<Record<string, PluginInfo>, ApiError> {
+/** Every http plugin with its schemas; with 'stream', every stream plugin (for stream routes). */
+export function useAllPlugins(subsystem?: 'stream'): UseQueryResult<Record<string, PluginInfo>, ApiError> {
   const client = useClient();
   return useQuery<Record<string, PluginInfo>, ApiError>({
-    queryKey: scopedKey(client.conn.id, ['plugins', 'all']),
-    queryFn: () => client.allPlugins(),
+    queryKey: scopedKey(client.conn.id, ['plugins', 'all', subsystem ?? 'http']),
+    queryFn: () => client.allPlugins(subsystem),
     // The client caches the result for its lifetime, so refetching would return the same data.
     staleTime: Infinity,
   });

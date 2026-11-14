@@ -11,6 +11,7 @@ import type { Item, Kind, Obj, Parent } from '../api/types';
 import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
 import { t } from '../i18n';
 import { DeleteResourceDialog, ViewJsonDialog } from '../pages/RowActions';
+import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
@@ -53,6 +54,11 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const client = useClient();
   const ctx = useCtx();
   const plugins = useAllPlugins().data;
+  // The stream set only for kinds whose plugins run in the stream subsystem; for the others this
+  // asks for the http set again, which the query cache answers.
+  const streamKind = scopeOfKind[kind] === 'stream_route';
+  const streamSet = useAllPlugins(streamKind ? 'stream' : undefined).data;
+  const streamPlugins = streamKind ? streamSet : undefined;
   const invalidate = useInvalidate();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -63,7 +69,9 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const { draft, setDraft, dirty, reset, baseline } = useDraft(item ? valueOf(item) : (start?.baseline ?? {}), item ? undefined : start?.draft);
   const [locked, setLocked] = useState(!isNew);
   const [newId, setNewId] = useState('');
-  const [attempted, setAttempted] = useState(false);
+  /** Saves blocked by problems since the last lock. */
+  const [saveAttempts, setSaveAttempts] = useState(0);
+  const attempted = saveAttempts > 0;
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<Failure>();
   const [conflict, setConflict] = useState<Item>();
@@ -113,7 +121,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const guard = useLeaveGuard(unsaved);
 
   // --- Issues ------------------------------------------------------------------------------------
-  const env = useMemo(() => ({ isNew, ctx, plugins }), [isNew, ctx, plugins]);
+  const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins }), [isNew, ctx, plugins, streamPlugins]);
   const checked = useMemo(() => def.validate?.(draft, env) ?? [], [def, draft, env]);
   const typedId = typeof draft.id === 'string' || typeof draft.id === 'number' ? String(draft.id) : undefined;
   const frameIssues = useMemo(() => {
@@ -149,7 +157,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     focusNext.current = 'edit';
     setLocked(true);
     setJsonEpoch((n) => n + 1);
-    setAttempted(false);
+    setSaveAttempts(0);
     setFailure(undefined);
   }
 
@@ -170,7 +178,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   async function save(force = false) {
     if (saving || locked) return;
     if (problems > 0) {
-      setAttempted(true);
+      setSaveAttempts((n) => n + 1);
       toast.error(problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems }));
       const first = jsonError !== undefined ? JSON_TAB : tabIds.find((tab) => byTab.has(tab));
       if (first) setTab(first);
@@ -246,6 +254,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     ctx,
     parent,
     original,
+    saveAttempts,
     issues: [...(byTab.get(tab) ?? []), ...(failureIssue && failureTab === tab && tab !== JSON_TAB ? [failureIssue] : [])],
   });
   const changedHere = (fields: string[]) => fields.some((field) => !deepEqual(draft[field], baseline[field]));

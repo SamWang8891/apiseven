@@ -1,0 +1,579 @@
+/*
+ * The Plugins tab (prefix pl-). The configured plugins read as one ruled list, like a table's rows:
+ * each header is a line to scan (name, category, the config in one monospace line, problems, on/off,
+ * docs, remove), and an open card's body hangs under it behind a rule, as the schema form nests.
+ *
+ *   .pl                 the tab: notes, the bar with the count and Add, the list, inherited plugins
+ *   .pl-card            one plugin; --open, --off, --error
+ *   .pl-views           Form | JSON switch inside a card
+ *   .pl-metabox         the collapsible _meta section; .pl-meta the form inside it
+ *   .pl-picker          the Add plugin dialog: search, grouped options (.pl-option)
+ *   .pl-inherited       plugins running here from a service or plugin config
+ */
+
+.pl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  max-width: 1040px;
+}
+
+.pl-note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.pl-note--warn {
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.pl-alert {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+}
+
+/* --- The bar above the list -------------------------------------------------------------- */
+
+.pl-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: var(--control-h);
+}
+
+.pl-bar__count {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* --- Cards: one ruled list --------------------------------------------------------------- */
+
+.pl-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+
+.pl-card {
+  position: relative;
+  min-width: 0;
+}
+
+.pl-card + .pl-card {
+  border-top: 1px solid var(--border);
+}
+
+/* A card with problems carries a danger rule down its left edge, open or not. */
+.pl-card--error::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  bottom: 0;
+  left: -1px;
+  width: 3px;
+  background: var(--danger);
+}
+
+.pl-card:first-child.pl-card--error::before {
+  top: 0;
+  border-top-left-radius: var(--radius-lg);
+}
+
+.pl-card:last-child.pl-card--error::before {
+  border-bottom-left-radius: var(--radius-lg);
+}
+
+.pl-card__head {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 44px;
+  padding: 0 var(--s2) 0 0;
+}
+
+.pl-card__toggle {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 var(--s2) 0 var(--s3);
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pl-card__toggle:hover {
+  background: var(--bg-sunken);
+}
+
+.pl-card:first-child .pl-card__toggle {
+  border-top-left-radius: var(--radius-lg);
+}
+
+.pl-card__toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.pl-card__chevron {
+  flex: none;
+  color: var(--text-2);
+  transition: transform 120ms ease;
+}
+
+.pl-card--open > .pl-card__head .pl-card__chevron,
+.pl-metabox--open > .pl-metabox__toggle .pl-card__chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pl-card__chevron {
+    transition: none;
+  }
+}
+
+/* A minimum width lines the summaries up as a column, as in a table. */
+.pl-card__name {
+  flex: none;
+  min-width: 168px;
+  max-width: 40%;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-card__cat {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* The config in one line: what a collapsed card sets. */
+.pl-card__summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-card__tools {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.pl-card__problems {
+  display: inline-flex;
+  align-items: center;
+  height: 18px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: var(--on-danger);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pl-card__docs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-h-sm);
+  height: var(--control-h-sm);
+  border-radius: var(--radius);
+  color: var(--text-2);
+}
+
+.pl-card__docs:hover {
+  background: var(--bg-sunken);
+  color: var(--accent);
+}
+
+.pl-card__docs:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+/* The body hangs under the name, behind a rule, as the schema form nests its groups. */
+.pl-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  margin: 0 var(--s4) var(--s4) 19px;
+  padding: var(--s1) 0 var(--s1) var(--s4);
+  border-left: 1px solid var(--border);
+}
+
+.pl-card__alert {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+}
+
+/* --- Form | JSON ------------------------------------------------------------------------- */
+
+.pl-views {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.pl-views__btn {
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.pl-views__btn:hover {
+  color: var(--text);
+}
+
+.pl-views__btn[aria-pressed='true'] {
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.pl-views__btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+.pl-json {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  max-width: 880px;
+}
+
+.pl-json__bar {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pl-json__error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.pl-json__issues {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  color: var(--danger);
+  font-size: 12px;
+  line-height: 16px;
+  list-style: none;
+}
+
+/* --- _meta ------------------------------------------------------------------------------- */
+
+.pl-metabox {
+  max-width: 880px;
+  padding-top: var(--s2);
+  border-top: 1px dashed var(--border);
+}
+
+.pl-metabox__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 0 0 0 -6px;
+  padding: 4px 8px 4px 4px;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pl-metabox__toggle:hover {
+  background: var(--bg-sunken);
+}
+
+.pl-metabox__toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+.pl-metabox__title {
+  font-weight: 600;
+}
+
+.pl-metabox__keys {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-metabox__body {
+  margin-top: var(--s2);
+}
+
+.pl-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+}
+
+.pl-meta__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s3) var(--s5);
+}
+
+@media (min-width: 900px) {
+  .pl-meta__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.pl-meta__error {
+  display: grid;
+  grid-template-columns: minmax(0, 200px) minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s3) var(--s5);
+}
+
+/* --- The picker -------------------------------------------------------------------------- */
+
+.pl-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-height: 0;
+}
+
+.pl-picker__search {
+  position: relative;
+}
+
+.pl-picker__icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  color: var(--text-2);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.pl-picker__input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 var(--s3) 0 32px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+
+.pl-picker__input::placeholder {
+  color: var(--text-2);
+}
+
+.pl-picker__input:focus {
+  outline: 2px solid var(--focus);
+  outline-offset: -1px;
+  border-color: var(--focus);
+}
+
+.pl-picker__list {
+  max-height: min(60vh, 520px);
+  overflow-y: auto;
+  margin: 0 calc(-1 * var(--s2));
+  padding: 0 var(--s2);
+}
+
+.pl-picker__group + .pl-picker__group {
+  margin-top: var(--s2);
+}
+
+.pl-picker__cat {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 6px var(--s2) 4px;
+  background: var(--bg-raised);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pl-picker__empty {
+  margin: var(--s4) 0;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.pl-option {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  grid-template-areas: 'name desc';
+  align-items: baseline;
+  column-gap: var(--s3);
+  padding: 6px var(--s2);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+
+.pl-option--active {
+  background: var(--accent-bg);
+}
+
+.pl-option--added {
+  cursor: default;
+}
+
+.pl-option__name {
+  grid-area: name;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pl-option__added {
+  grid-area: name;
+  justify-self: end;
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--neutral-bg);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.pl-option--added .pl-option__name {
+  padding-right: 56px;
+}
+
+.pl-option__desc {
+  grid-area: desc;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Inherited --------------------------------------------------------------------------- */
+
+.pl-inherited {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin-top: var(--s2);
+}
+
+.pl-inherited__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pl-inherited__help {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.pl-inherited__list {
+  display: flex;
+  flex-direction: column;
+  margin: var(--s1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pl-inherited__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s3);
+  padding: 6px var(--s3);
+  border-bottom: 1px dashed var(--border);
+  font-size: 12px;
+}
+
+.pl-inherited__name {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pl-inherited__from {
+  color: var(--text-2);
+}
+
+.pl-inherited__tag {
+  padding: 0 6px;
+  border-radius: 3px;
+  background: var(--neutral-bg);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.pl-inherited__tag--over {
+  background: var(--accent-bg);
+}

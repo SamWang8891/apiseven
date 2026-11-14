@@ -2,6 +2,9 @@ import type { ReactNode } from 'react';
 import type { Item, Kind, Obj, Parent, PluginInfo } from '../api/types';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
+import type { Scope } from '../plugins/scope';
+import { makePluginsTab } from '../plugins/tab';
+import { pluginIssues } from '../plugins/validate';
 import type { FilterDef } from '../table/filter';
 import type { Ctx } from './ctx';
 import { nameOfValue } from './resolve';
@@ -39,6 +42,11 @@ export interface TabProps {
   issues: Issue[];
   /** The stored object as loaded (timestamps included); undefined for a new object. */
   original?: Item;
+  /**
+   * Save attempts blocked by issues since editing began (0 after every lock). A tab can react to a
+   * new one, e.g. the Plugins tab opens the cards that have issues.
+   */
+  saveAttempts: number;
 }
 
 export interface TabDef {
@@ -55,6 +63,8 @@ export interface ValidateEnv {
   ctx: Ctx;
   /** Every http plugin with its schemas (useAllPlugins().data); undefined until loaded. */
   plugins?: Record<string, PluginInfo>;
+  /** Every stream plugin (useAllPlugins('stream').data), for kinds whose plugins run in the stream subsystem; undefined until loaded and for other kinds. */
+  streamPlugins?: Record<string, PluginInfo>;
 }
 
 /** A way to group a list's rows (a toggle on the list page); one item can sit in several groups. */
@@ -151,18 +161,28 @@ function define(kind: Kind, spec: Spec): ResourceDef {
 
 const plugins = (): Obj => ({ plugins: {} });
 
+/**
+ * What every plugin-bearing kind shares: the Plugins tab and the plugin checks, for its scope.
+ * Spread into a define() spec (a fresh object each call; a ResourceDef itself is never spread).
+ */
+const withPlugins = (scope: Scope): Pick<ResourceDef, 'tabs' | 'validate'> => ({
+  tabs: [makePluginsTab(scope)],
+  validate: (draft, env) => pluginIssues(draft, env, scope),
+});
+
 export const registry: Record<Kind, ResourceDef> = {
   routes: define('routes', {
     group: 'traffic',
     hasStatus: true,
     idMode: 'optional',
     blank: () => ({ uri: '/*', status: 1 }),
+    ...withPlugins('route'),
     columns: routeColumns,
     filters: routeFilters,
     groupings: [hostGrouping],
   }),
-  stream_routes: define('stream_routes', { group: 'traffic', hasStatus: false, idMode: 'optional' }),
-  services: define('services', { group: 'traffic', hasStatus: false, idMode: 'optional' }),
+  stream_routes: define('stream_routes', { group: 'traffic', hasStatus: false, idMode: 'optional', ...withPlugins('stream_route') }),
+  services: define('services', { group: 'traffic', hasStatus: false, idMode: 'optional', ...withPlugins('service') }),
   upstreams: define('upstreams', {
     group: 'traffic',
     hasStatus: false,
@@ -174,14 +194,15 @@ export const registry: Record<Kind, ResourceDef> = {
     group: 'access',
     hasStatus: false,
     idMode: 'required',
+    ...withPlugins('consumer'),
     idFromDraft: (draft) => (typeof draft.username === 'string' && draft.username !== '' ? draft.username : undefined),
   }),
-  credentials: define('credentials', { group: 'access', hasStatus: false, idMode: 'required' }),
-  consumer_groups: define('consumer_groups', { group: 'access', hasStatus: false, idMode: 'required' }),
+  credentials: define('credentials', { group: 'access', hasStatus: false, idMode: 'required', ...withPlugins('credential') }),
+  consumer_groups: define('consumer_groups', { group: 'access', hasStatus: false, idMode: 'required', ...withPlugins('consumer_group') }),
   ssls: define('ssls', { group: 'access', hasStatus: true, idMode: 'optional', blank: () => ({ status: 1 }) }),
   secrets: define('secrets', { group: 'access', hasStatus: false, idMode: 'required' }),
-  global_rules: define('global_rules', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins }),
-  plugin_configs: define('plugin_configs', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins }),
+  global_rules: define('global_rules', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins, ...withPlugins('global_rule') }),
+  plugin_configs: define('plugin_configs', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins, ...withPlugins('plugin_config') }),
   // The id is the name of the plugin the metadata belongs to.
   plugin_metadata: define('plugin_metadata', { group: 'plugins', hasStatus: false, idMode: 'fixed-list' }),
   protos: define('protos', { group: 'other', hasStatus: false, idMode: 'optional' }),

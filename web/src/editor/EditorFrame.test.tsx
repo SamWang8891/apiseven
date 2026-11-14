@@ -527,7 +527,7 @@ describe('APISIX errors about plugins', () => {
 
 describe('kinds whose id is a field of the body (consumers: username)', () => {
   it('create with PUT …/<username>, and land on the new consumer', async () => {
-    const { user, admin } = await openEditor('#/consumers/new', { objects: { consumers: [] } });
+    const { user, admin } = await openEditor('#/consumers/new?tab=json', { objects: { consumers: [] } });
     await main().findByRole('button', { name: t('editor.create') });
     expect(main().queryByRole('textbox', { name: /^ID/ })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Consumer' }) }));

@@ -135,6 +135,14 @@ describe('useAllPlugins', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(all);
   });
+
+  it("loads the stream set with 'stream', under its own key", async () => {
+    const { client, urls } = fakeClient('c1', { plugins: { 'limit-conn': { schema: {} } } });
+    const qc = newQueryClient();
+    const { result } = renderHook(() => ({ http: useAllPlugins(), stream: useAllPlugins('stream') }), { wrapper: wrapper(client, qc) });
+    await waitFor(() => expect(result.current.stream.isSuccess && result.current.http.isSuccess).toBe(true));
+    expect(urls.map((u) => new URL(u, 'http://x').search).sort()).toEqual(['?all=true', '?all=true&subsystem=stream']);
+  });
 });
 
 describe('useInvalidate', () => {

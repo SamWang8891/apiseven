@@ -3,6 +3,7 @@ import type { Kind } from '../api/types';
 import { en } from '../i18n/en';
 import { t } from '../i18n';
 import { ctxOf, itemOf } from '../test/ctx';
+import { scopeOfKind } from '../plugins/scope';
 import { registry } from './registry';
 import { routeColumns } from './routes/columns';
 import { routeFilters } from './routes/filters';
@@ -74,10 +75,22 @@ describe('registry', () => {
     expect(registry.routes.groupings).toEqual([hostGrouping]);
   });
 
-  it('starts every other kind with no tabs and an id + name column pair', () => {
+  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others no tabs', () => {
+    for (const kind of KINDS) {
+      const def = registry[kind];
+      if (scopeOfKind[kind]) {
+        expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields]), kind).toEqual([['plugins', t('pl.tab'), ['plugins']]]);
+        expect(typeof def.validate, kind).toBe('function');
+      } else {
+        expect(def.tabs, kind).toEqual([]);
+        expect(typeof def.validate, kind).toBe('undefined');
+      }
+    }
+  });
+
+  it('starts every kind but routes with an id + name column pair', () => {
     for (const kind of KINDS.filter((k) => k !== 'routes')) {
       const def = registry[kind];
-      expect(def.tabs).toEqual([]);
       expect(def.columns.map((c) => [c.id, c.header, c.defaultVisible])).toEqual([
         ['id', t('column.id'), true],
         ['name', t('column.name'), true],

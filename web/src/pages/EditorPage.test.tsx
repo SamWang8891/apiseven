@@ -96,7 +96,7 @@ describe('create', () => {
 
 describe('duplicate', () => {
   it('…/new?from=r1 starts unlocked from a copy: no id, " copy" appended to the name', async () => {
-    const { user, admin } = await openEditor('#/routes/new?from=r1', { objects: objects() });
+    const { user, admin } = await openEditor('#/routes/new?from=r1&tab=json', { objects: objects() });
     expect(await main().findByRole('heading', { level: 1, name: t('page.new', { kind: 'Route' }) })).toBeInTheDocument();
     expect(main().getByText(t('editor.unsaved'))).toBeInTheDocument();
     const editor = await screen.findByRole('textbox', { name: jsonLabel });
@@ -108,7 +108,7 @@ describe('duplicate', () => {
   });
 
   it('a consumer copy has its username cleared', async () => {
-    await openEditor('#/consumers/new?from=jo', { objects: { consumers: [{ username: 'jo', desc: 'Jo', plugins: { 'key-auth': {} } }] } });
+    await openEditor('#/consumers/new?from=jo&tab=json', { objects: { consumers: [{ username: 'jo', desc: 'Jo', plugins: { 'key-auth': {} } }] } });
     const editor = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Consumer' }) });
     expect(editor.textContent).not.toContain('username');
     expect(editor.textContent).toContain('"key-auth": {}');

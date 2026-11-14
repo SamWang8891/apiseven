@@ -40,7 +40,8 @@ export class AdminClient {
   readonly conn: Connection;
   private readonly fetchImpl: typeof fetch;
   private readonly adminUrl: string;
-  private plugins?: Promise<Record<string, PluginInfo>>;
+  /** Every plugin with its schemas, per subsystem ('http' | 'stream'), fetched once per client. */
+  private readonly plugins = new Map<string, Promise<Record<string, PluginInfo>>>();
 
   constructor(conn: Connection, fetchImpl?: typeof fetch) {
     this.conn = conn;
@@ -121,13 +122,21 @@ export class AdminClient {
     return body;
   }
 
-  /** Every http plugin with its schemas (the only source of metadata_schema), fetched once per client. */
-  allPlugins(): Promise<Record<string, PluginInfo>> {
-    this.plugins ??= this.fetchAllPlugins().catch((err: unknown) => {
-      this.plugins = undefined;
-      throw err;
-    });
-    return this.plugins;
+  /**
+   * Every http plugin with its schemas (the only source of metadata_schema); with 'stream', every
+   * stream plugin instead. Fetched once per client and subsystem; a failure is not kept.
+   */
+  allPlugins(subsystem?: 'stream'): Promise<Record<string, PluginInfo>> {
+    const key = subsystem ?? 'http';
+    let all = this.plugins.get(key);
+    if (!all) {
+      all = this.fetchAllPlugins(subsystem).catch((err: unknown) => {
+        this.plugins.delete(key);
+        throw err;
+      });
+      this.plugins.set(key, all);
+    }
+    return all;
   }
 
   /**
@@ -148,8 +157,8 @@ export class AdminClient {
     }
   }
 
-  private async fetchAllPlugins(): Promise<Record<string, PluginInfo>> {
-    const { body } = await this.request('GET', 'plugins', { all: 'true' });
+  private async fetchAllPlugins(subsystem?: 'stream'): Promise<Record<string, PluginInfo>> {
+    const { body } = await this.request('GET', 'plugins', subsystem ? { all: 'true', subsystem } : { all: 'true' });
     if (!isObj(body)) throw notAdminApi();
     return body as Record<string, PluginInfo>;
   }

@@ -14,7 +14,7 @@ import type { EditorView } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
 import type { ErrorObject } from 'ajv';
 import type { Obj } from '../../api/types';
-import { schemaErrors } from '../../schema/ajv';
+import { errorMessage, schemaErrors, specificErrors, withDefaults } from '../../schema/ajv';
 import { expand, isObj, testPattern } from '../../schema/refs';
 
 type Segment = string | number;
@@ -69,23 +69,9 @@ function pathTo(state: EditorState, node: SyntaxNode): Segment[] {
 // ---------------------------------------------------------------------------------------------
 // Lint
 
-/**
- * Drops the per-branch errors under a failed anyOf/oneOf, keeping the summary error, and the
- * "must match then schema" summary of an if, keeping the errors of the branch that failed.
- */
-function withoutBranchNoise(errors: ErrorObject[]): ErrorObject[] {
-  const branches = errors.filter((e) => e.keyword === 'anyOf' || e.keyword === 'oneOf').map((e) => `${e.schemaPath}/`);
-  return errors.filter((e) => e.keyword !== 'if' && !branches.some((b) => e.schemaPath.startsWith(b)));
-}
-
 function describe(error: ErrorObject): string {
   const where = error.instancePath.slice(1).replace(/~1/g, '/').replace(/~0/g, '~');
-  const params = error.params as Record<string, unknown>;
-  let message = error.message ?? error.keyword;
-  if (error.keyword === 'additionalProperties') message = `must NOT have additional property "${String(params.additionalProperty)}"`;
-  if (error.keyword === 'enum' && Array.isArray(params.allowedValues)) {
-    message = `must be one of ${params.allowedValues.map((v) => JSON.stringify(v)).join(', ')}`;
-  }
+  const message = errorMessage(error);
   return where ? `${where}: ${message}` : message;
 }
 
@@ -132,7 +118,7 @@ export function schemaDiagnostics(state: EditorState, schema: Obj): Diagnostic[]
   if (!root) return [];
   const seen = new Set<string>();
   const out: Diagnostic[] = [];
-  for (const error of withoutBranchNoise(errors)) {
+  for (const error of specificErrors(schema, withDefaults(schema, data), errors)) {
     const { from, to } = rangeOf(state, root, error);
     const message = describe(error);
     const id = `${from}:${to}:${message}`;
