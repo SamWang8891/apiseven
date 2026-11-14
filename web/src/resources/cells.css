@@ -60,6 +60,7 @@
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
+  min-width: 0;
   max-width: 100%;
   height: 18px;
   padding: 0 5px;
@@ -68,6 +69,14 @@
   color: var(--text);
   font-size: 12px;
   line-height: 16px;
+  white-space: nowrap;
+}
+
+/* A chip's text: capped by the chip (at most the column), so a long name ends in an ellipsis. */
+.cell-chip__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -96,8 +105,9 @@
   background: transparent;
 }
 
-/* "off" after a hairline: the plugin is configured but does not run. */
+/* "off" after a hairline: the plugin is configured but does not run. It never shrinks. */
 .cell-plugin__off {
+  flex: none;
   padding-left: 5px;
   border-left: 1px solid var(--border-strong);
   color: var(--text-2);
@@ -106,7 +116,6 @@
 }
 
 .cell-label {
-  gap: 0;
   border-color: var(--border);
 }
 

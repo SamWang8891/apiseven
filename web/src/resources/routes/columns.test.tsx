@@ -206,6 +206,22 @@ describe('plugins', () => {
     expect(within(el).getByText('gzip').closest('.cell-plugin')).toHaveTextContent(/^gzip$/);
   });
 
+  it('names a long plugin in full: the chip text can ellipsise, the chip title holds the name', async () => {
+    const own = cell('plugins', route({ plugins: { 'ext-plugin-post-resp': {} } }));
+    const chip = within(own.el).getByText('ext-plugin-post-resp');
+    expect(chip).toHaveClass('cell-chip__text');
+    expect(chip.closest('.cell-plugin')).toHaveAttribute('title', 'ext-plugin-post-resp');
+    own.unmount();
+
+    // An inherited chip has a tooltip instead of a title: the name, then where it comes from.
+    const ctx = ctxOf({ services: [itemOf('s1', { name: 'web', plugins: { 'request-validation': {} } })] });
+    const { el, user } = cell('plugins', route({ service_id: 's1' }), ctx);
+    const inherited = within(el).getByText('request-validation').closest('.cell-plugin') as HTMLElement;
+    expect(inherited).not.toHaveAttribute('title');
+    await user.hover(inherited);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(`request-validation${t('cell.plugin.fromService', { name: 'web' })}`);
+  });
+
   it('is the empty mark without plugins', () => {
     const { el } = cell('plugins', route({ plugins: {} }));
     expect(el).toHaveTextContent(t('ui.empty'));
@@ -270,6 +286,13 @@ describe('the other optional columns', () => {
     expect(value('labels', route({}))).toEqual([]);
     const { el } = cell('labels', route({ labels: { team: 'core' } }));
     expect(el.querySelector('.cell-label')).toHaveTextContent('team:core');
+  });
+
+  it('labels: a long pair can ellipsise, its full text in the chip title', () => {
+    const { el } = cell('labels', route({ labels: { 'owner-team': 'platform-infrastructure-oncall' } }));
+    const chip = el.querySelector('.cell-label');
+    expect(chip).toHaveAttribute('title', 'owner-team:platform-infrastructure-oncall');
+    expect(chip?.querySelector('.cell-chip__text')).toHaveTextContent('owner-team:platform-infrastructure-oncall');
   });
 
   it('remote_addrs: from remote_addr or remote_addrs', () => {

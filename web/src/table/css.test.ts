@@ -49,6 +49,15 @@ describe('table and list page CSS', () => {
     }
   });
 
+  it('ellipsises chip text that is wider than its column, inside a chip capped at the column width', () => {
+    const cells = rules(files.find((f) => f.name === 'resources/cells.css')?.css ?? '');
+    const body = (sel: string) => cells.find(([s]) => s === sel)?.[1] ?? '';
+    expect(body('.cell-chip')).toMatch(/max-width:\s*100%/);
+    expect(body('.cell-chip')).toMatch(/min-width:\s*0/);
+    expect(body('.cell-chip__text')).toMatch(/overflow:\s*hidden/);
+    expect(body('.cell-chip__text')).toMatch(/text-overflow:\s*ellipsis/);
+  });
+
   it('keeps body text and its secondary colour on the row cells', () => {
     const cells = rules(files[0]?.css ?? '').find(([sel]) => sel === '.tbl-row > td');
     expect(cells?.[1]).toMatch(/(^|;|\s)color:\s*var\(--text\)\s*(;|$)/);

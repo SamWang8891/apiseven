@@ -91,17 +91,29 @@ export interface PluginChip {
   from?: string;
 }
 
+/**
+ * One plugin chip. A name wider than the column ends in an ellipsis; the full name is in the chip's
+ * title, or, for an inherited plugin, in its tooltip above where it comes from.
+ */
 function pluginChip(plugin: PluginChip): ReactNode {
   const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', plugin.disabled && 'cell-plugin--off'];
   const chip = (
-    <span key={plugin.name} className={cls.filter(Boolean).join(' ')}>
-      <span className="cell-plugin__name">{plugin.name}</span>
+    <span key={plugin.name} className={cls.filter(Boolean).join(' ')} title={plugin.from ? undefined : plugin.name}>
+      <span className="cell-chip__text">{plugin.name}</span>
       {plugin.disabled && <span className="cell-plugin__off">{t('cell.plugin.off')}</span>}
       {plugin.from && <span className="ui-sr-only"> ({plugin.from})</span>}
     </span>
   );
   return plugin.from ? (
-    <Tooltip key={plugin.name} content={plugin.from}>
+    <Tooltip
+      key={plugin.name}
+      content={
+        <span className="cell-tip-list">
+          <span>{plugin.name}</span>
+          <span>{plugin.from}</span>
+        </span>
+      }
+    >
       {chip}
     </Tooltip>
   ) : (
@@ -129,13 +141,15 @@ export function PluginChips({ plugins }: { plugins: PluginChip[] }) {
   return <ChipList chips={plugins.map(pluginChip)} all={plugins.map(pluginLine)} />;
 }
 
-/** `key:value` chips, the key quieter than the value. */
+/** `key:value` chips, the key quieter than the value; a long pair ends in an ellipsis, in full in the title. */
 export function LabelChips({ pairs }: { pairs: [string, string][] }) {
   if (pairs.length === 0) return <Empty />;
   const chip = ([key, value]: [string, string]) => (
-    <span key={key} className="cell-chip cell-label">
-      <span className="cell-label__key">{key}:</span>
-      {value}
+    <span key={key} className="cell-chip cell-label" title={`${key}:${value}`}>
+      <span className="cell-chip__text">
+        <span className="cell-label__key">{key}:</span>
+        {value}
+      </span>
     </span>
   );
   return <ChipList chips={pairs.map(chip)} all={pairs.map(([key, value]) => <span key={key}>{`${key}:${value}`}</span>)} />;
