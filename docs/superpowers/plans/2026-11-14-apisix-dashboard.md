@@ -21,7 +21,7 @@
 - Static build must work from any path: Vite `base: './'`, hash routing, no absolute asset URLs.
 - Saving never drops fields the form doesn't model. Save strips `create_time`/`update_time` at top level and inside `upstream` and each `plugins.*`.
 - All user-visible strings come from `web/src/i18n/en.ts` via `t(key)`.
-- Dev admin key: `apiseven-dev-admin-key`. Dev Admin API: `http://127.0.0.1:9180`. Dev gateway: `http://127.0.0.1:9080`.
+- Dev admin key: `apiseven-dev-admin-key`. Dev Admin API: `http://127.0.0.1:19180`. Dev gateway: `http://127.0.0.1:9080`.
 - Each task ends with `cd web && npm run check` green (`tsc -b && eslint . && vitest run`), then a commit.
 
 ## Review Focus
@@ -73,13 +73,13 @@ Dockerfile, compose.yaml, README.md, .gitignore
 **Files:** Create `dev/compose.yaml`, `dev/apisix-config.yaml`, `dev/seed.mjs`, `.gitignore`, everything under `web/` needed to boot (`package.json`, Vite/TS/ESLint config, `index.html`, `src/main.tsx`, `src/App.tsx`, `src/i18n/*`, `src/styles/*`).
 
 **Interfaces — Produces:**
-- `docker compose -f dev/compose.yaml up -d` → etcd + the newest released `apache/apisix:3.*-debian` tag (pin the exact tag), Admin API on `127.0.0.1:9180`, gateway on `127.0.0.1:9080`, admin key `apiseven-dev-admin-key`, plus a viewer key `apiseven-dev-viewer-key`, `allow_admin: [0.0.0.0/0]`, stream proxy enabled on TCP 9100 (so stream routes and stream plugins work).
+- `docker compose -f dev/compose.yaml up -d` → etcd + the newest released `apache/apisix:3.*-debian` tag (pin the exact tag), Admin API on `127.0.0.1:19180`, gateway on `127.0.0.1:9080`, admin key `apiseven-dev-admin-key`, plus a viewer key `apiseven-dev-viewer-key`, `allow_admin: [0.0.0.0/0]`, stream proxy enabled on TCP 9100 (so stream routes and stream plugins work).
 - `node dev/seed.mjs [--reset]` → idempotently creates sample data via the Admin API: ≥8 routes (mix of `host`/`hosts`, `uri`/`uris`, one disabled, one bound to a service, one with `upstream_id`, one with inline upstream, several plugins), 2 upstreams, 2 services, 2 consumers with a key-auth credential, 1 consumer group, 1 self-signed SSL, 1 global rule, 1 plugin config, 1 proto, 1 stream route. `--reset` deletes everything first.
 - `npm run dev | build | check | test` in `web/`.
 - `t(key: string, vars?: Record<string, string | number>): string` from `src/i18n`.
 - CSS variables in `tokens.css` under `:root` and `:root[data-theme="dark"]`: `--bg`, `--bg-raised`, `--bg-sunken`, `--text`, `--text-2`, `--border`, `--border-strong`, `--accent`, `--accent-text`, `--ok`, `--ok-bg`, `--warn`, `--warn-bg`, `--danger`, `--danger-bg`, `--neutral-bg`, `--focus`, `--font-sans`, `--font-mono`, `--radius`, spacing `--s1`…`--s6`.
 
-- [ ] **Step 1:** Write `dev/compose.yaml` + `dev/apisix-config.yaml`; run `docker compose -f dev/compose.yaml up -d`; verify `curl -s -H 'X-API-KEY: apiseven-dev-admin-key' http://127.0.0.1:9180/apisix/admin/routes` returns JSON with `"total"`.
+- [ ] **Step 1:** Write `dev/compose.yaml` + `dev/apisix-config.yaml`; run `docker compose -f dev/compose.yaml up -d`; verify `curl -s -H 'X-API-KEY: apiseven-dev-admin-key' http://127.0.0.1:19180/apisix/admin/routes` returns JSON with `"total"`.
 - [ ] **Step 2:** Write `dev/seed.mjs` (Node 22 `fetch`, no deps); run it twice; verify the route total is the same after the second run.
 - [ ] **Step 3:** Scaffold `web/` (Vite React-TS, strict TS, ESLint flat config, Vitest with jsdom + Testing Library). `App.tsx` renders the text `apiseven`.
 - [ ] **Step 4:** Write failing `src/styles/contrast.test.ts`: parse `tokens.css`, and for both themes assert WCAG contrast ≥ 4.5 for `--text`/`--bg`, `--text`/`--bg-raised`, `--text`/`--bg-sunken`, `--text-2`/`--bg`, `--text-2`/`--bg-raised`, `--accent-text`/`--accent`, `--ok`/`--ok-bg`, `--warn`/`--warn-bg`, `--danger`/`--danger-bg`, `--text`/`--neutral-bg`; and ≥ 3 for `--border-strong`/`--bg`.
