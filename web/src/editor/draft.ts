@@ -1,7 +1,8 @@
 // The editor's draft: one plain JSON object for the whole resource, changed only through immutable
 // path updates. Tabs write their own fields with setPath (empty values delete the key, so a cleared
 // field leaves nothing behind) or setPathRaw (when {} or [] means something, e.g. a plugin enabled
-// with no options). Fields no tab models are never touched.
+// with no options), and remove list rows with removeAt: nothing else ever shortens an array. Fields
+// no tab models are never touched.
 import { useCallback, useMemo, useState } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
@@ -27,13 +28,11 @@ export function isEmptyValue(v: unknown): boolean {
   return v === undefined || v === '' || (Array.isArray(v) && v.length === 0) || (isObj(v) && Object.keys(v).length === 0);
 }
 
-/** A shallow copy of `c` with `key` set to `value`, or removed when `value` is undefined (array elements are spliced out). */
+/** A shallow copy of `c` with `key` set to `value`; for an object, undefined removes the key. */
 function assign(c: Container, key: string | number, value: unknown): Container {
   if (Array.isArray(c)) {
     const copy = [...c];
-    const i = Number(key);
-    if (value === undefined) copy.splice(i, 1);
-    else copy[i] = value;
+    copy[Number(key)] = value;
     return copy;
   }
   const copy: Obj = { ...c };
@@ -42,44 +41,64 @@ function assign(c: Container, key: string | number, value: unknown): Container {
   return copy;
 }
 
-function has(c: Container, key: string | number): boolean {
-  return Array.isArray(c) ? Number(key) < c.length : Object.hasOwn(c, String(key));
-}
-
 /**
  * Sets `value` at `path` in a copy of `c` (only the containers along the path are copied). Missing
- * containers are created: an array when the key after them is a number, else an object. A value of
- * undefined deletes; with `prune`, a container emptied that way is deleted from its parent in turn.
+ * containers are created: an array when the key after them is a number, else an object.
+ * - An object key is deleted by undefined, and with `prune` by any empty value; with `prune`, an
+ *   object left empty by that is deleted from its parent object in turn.
+ * - An array element is never removed and an array never shrinks (removeAt does that): an empty
+ *   value is written into the element as it is, undefined leaves the element alone, and pruning
+ *   stops at the array, which keeps an element even when it became {}.
  */
 function update(c: Container, path: Path, value: unknown, prune: boolean): Container {
   const [key, ...rest] = path;
   if (key === undefined) return c;
+  const inArray = Array.isArray(c);
+  const removes = value === undefined || (prune && isEmptyValue(value));
   if (rest.length === 0) {
-    if (value === undefined && !has(c, key)) return c;
+    if (inArray) return value === undefined ? c : assign(c, key, value);
+    if (removes) return Object.hasOwn(c, String(key)) ? assign(c, key, undefined) : c;
     return assign(c, key, value);
   }
-  const child = Array.isArray(c) ? c[Number(key)] : c[String(key)];
+  const child = inArray ? c[Number(key)] : c[String(key)];
   if (!isContainer(child)) {
-    if (value === undefined) return c;
+    if (removes) return c;
     return assign(c, key, update(typeof rest[0] === 'number' ? [] : {}, rest, value, prune));
   }
   const next = update(child, rest, value, prune);
   if (next === child) return c;
-  return assign(c, key, prune && isEmptyValue(next) ? undefined : next);
+  return assign(c, key, prune && !inArray && isEmptyValue(next) ? undefined : next);
 }
 
 /**
- * Immutable set. A value of undefined, '', [] or {} DELETES the key instead, and every parent left
- * empty by that is deleted too (the root object stays, possibly empty). Arrays are addressed by
- * index; deleting an element removes it. Returns `obj` itself when deleting something absent.
+ * Immutable set. At an object key, a value of undefined, '', [] or {} DELETES the key instead, and
+ * every object left empty by that is deleted from its parent too, up to (not through) the nearest
+ * array; the root object stays, possibly empty. Arrays are addressed by index and are never
+ * shortened or reordered: an empty value is written into the element, undefined changes nothing,
+ * and a row emptied of its fields stays as {} (remove rows with removeAt). Setting a whole array to
+ * [] at an object key deletes that key. Returns `obj` itself when nothing changes.
  */
 export function setPath(obj: Obj, path: Path, value: unknown): Obj {
-  return update(obj, path, isEmptyValue(value) ? undefined : value, true) as Obj;
+  return update(obj, path, value, true) as Obj;
 }
 
-/** Immutable set of exactly `value` ({} and [] included); only undefined deletes, and nothing is pruned. */
+/**
+ * Immutable set of exactly `value` ({}, [] and '' included). Only undefined deletes an object key;
+ * nothing is pruned; array elements are never removed (undefined at an index changes nothing).
+ */
 export function setPathRaw(obj: Obj, path: Path, value: unknown): Obj {
   return update(obj, path, value, false) as Obj;
+}
+
+/**
+ * Removes element `index` of the array at `path` (a list row), keeping the others in order. When
+ * the array becomes empty its key is deleted, and objects left empty are pruned as setPath does.
+ * Returns `obj` itself when `path` holds no array or `index` is out of range.
+ */
+export function removeAt(obj: Obj, path: Path, index: number): Obj {
+  const list = getPath(obj, path);
+  if (!Array.isArray(list) || !Number.isInteger(index) || index < 0 || index >= list.length) return obj;
+  return setPath(obj, path, list.filter((_, i) => i !== index));
 }
 
 /** Structural equality of JSON values: object key order is ignored, array order is not. */

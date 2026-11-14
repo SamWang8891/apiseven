@@ -14,8 +14,11 @@ export const SEED_COUNTS: Partial<Record<Kind, number>> = {
   protos: 1,
 };
 
-/** A custom answer (a promise holds it back); `undefined` hands the request on to the default handling. */
-type Reply = (req: FakeRequest) => Response | Promise<Response> | 'network' | undefined;
+/**
+ * A custom answer (a promise holds it back); `undefined` hands the request on to the default
+ * handling, also when a promise resolves to it (to hold a request, then answer it as usual).
+ */
+type Reply = (req: FakeRequest) => Response | Promise<Response | undefined> | 'network' | undefined;
 
 export interface FakeAdminOptions {
   /** The body of ./config.json; it answers 404 when this is undefined. */
@@ -92,16 +95,21 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
     const path = url.pathname.replace(/^.*?\/apisix\/admin\//, '');
     const reply = opts.replies?.[path]?.(req);
     if (reply === 'network') return Promise.reject(new TypeError('Failed to fetch'));
-    if (reply) return reply instanceof Promise ? reply : Promise.resolve(reply);
+    if (reply instanceof Promise) return reply.then((r) => r ?? byDefault(path, headers, req));
+    if (reply) return Promise.resolve(reply);
+    return Promise.resolve(byDefault(path, headers, req));
+  };
 
+  /** The answer without a custom reply: the key check, the stored objects, the counted lists. */
+  function byDefault(path: string, headers: Headers, req: FakeRequest): Response {
     if (opts.key !== undefined && headers.get('X-API-KEY') !== opts.key) {
       const description = headers.has('X-API-KEY') ? 'wrong apikey' : 'missing apikey';
-      return Promise.resolve(json(401, { description, error_msg: 'failed to check token' }));
+      return json(401, { description, error_msg: 'failed to check token' });
     }
 
     const [kind = '', ...rest] = path.split('/');
     const stored = objects.get(kind);
-    if (stored) return Promise.resolve(answer(kind, stored, rest.length ? decodeURIComponent(rest.join('/')) : undefined, req, revision));
+    if (stored) return answer(kind, stored, rest.length ? decodeURIComponent(rest.join('/')) : undefined, req, revision);
 
     if (KINDS.has(path)) {
       const n = counts[path as Kind] ?? 0;
@@ -111,10 +119,10 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
         return { key: `/apisix/${path}/${id}`, value };
       });
       // An empty Lua table encodes as a JSON object, so an empty list arrives as {}.
-      return Promise.resolve(json(200, { total: n, list: n === 0 ? {} : list }));
+      return json(200, { total: n, list: n === 0 ? {} : list });
     }
-    return Promise.resolve(json(404, { error_msg: 'Unsupported resource type' }));
-  };
+    return json(404, { error_msg: 'Unsupported resource type' });
+  }
 
   /** The stored objects of a kind as APISIX holds them now (SSL keys included). */
   const stored = (kind: Kind): Obj[] => (objects.get(kind) ?? []).map((entry) => entry.value);

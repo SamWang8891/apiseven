@@ -115,6 +115,7 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
                 <Switch.Root
                   className="ui-switch"
                   checked={p.status.enabled}
+                  disabled={p.saving}
                   aria-label={t('table.status.toggle', { name: p.status.name })}
                   onCheckedChange={p.status.onChange}
                 >
@@ -145,7 +146,9 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
           )
         ) : (
           <>
-            <Button onClick={p.onDiscard}>{t('editor.discard')}</Button>
+            <Button disabled={p.saving} onClick={p.onDiscard}>
+              {t('editor.discard')}
+            </Button>
             <Button
               variant="primary"
               loading={p.saving}
@@ -167,7 +170,7 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
               { id: 'duplicate', label: t('action.duplicate'), icon: <Copy size={14} />, onSelect: p.onDuplicate },
               { id: 'json', label: t('action.viewJson'), icon: <Braces size={14} />, onSelect: p.onViewJson },
               { separator: true },
-              { id: 'delete', label: t('action.delete'), icon: <Trash2 size={14} />, danger: true, disabled: p.readOnly, onSelect: p.onDelete },
+              { id: 'delete', label: t('action.delete'), icon: <Trash2 size={14} />, danger: true, disabled: p.readOnly || p.saving, onSelect: p.onDelete },
             ]}
           />
         )}

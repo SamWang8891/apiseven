@@ -5,6 +5,7 @@ import { stripTimestamps } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { resetReadOnlyKeys } from '../api/write';
 import { t } from '../i18n';
+import type { TabDef } from '../resources/registry';
 import { getToasts } from '../ui/toast';
 import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, PROBE_TAB, writesOf } from '../test/editor';
@@ -346,13 +347,6 @@ describe('ID on create', () => {
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/my-route.v2', body: { uri: '/*', status: 1 } }]));
   });
 
-  it('kinds whose id is a body field (idFromDraft) get no ID field', async () => {
-    undo.push(overrideDef('consumers', { idFromDraft: (d) => (typeof d.username === 'string' ? d.username : undefined) }));
-    await openEditor('#/consumers/new', { objects: { consumers: [] } });
-    await main().findByRole('button', { name: t('editor.create') });
-    expect(main().queryByRole('textbox', { name: /^ID/ })).not.toBeInTheDocument();
-  });
-
   it('a new object starts unlocked, with no Edit button and no menu', async () => {
     await openEditor('#/routes/new', { objects: { routes: [] } });
     expect(await main().findByRole('heading', { level: 1, name: t('page.new', { kind: 'Route' }) })).toBeInTheDocument();
@@ -403,5 +397,156 @@ describe('a background refresh', () => {
     expect(screen.getByRole('textbox', { name: 'URI' })).toHaveValue('/a/mine');
     await user.click(screen.getByRole('button', { name: t('editor.save') }));
     expect(await screen.findByRole('dialog', { name: t('editor.conflict.title', { kind: 'Route', name: 'web' }) })).toBeInTheDocument();
+  });
+});
+
+/** A promise to hold a request with, and its release. */
+function gate() {
+  let open = () => {};
+  const promise = new Promise<undefined>((resolve) => {
+    open = () => resolve(undefined);
+  });
+  return { promise, open };
+}
+
+describe('a save in flight', () => {
+  it('locks the tab area, disables Discard and Delete, and lands on the saved value', async () => {
+    const held = gate();
+    const { user, admin } = await openRoute({ replies: { 'routes/r1': (req) => (req.method === 'PUT' ? held.promise : undefined) } });
+    await unlockAndSetUri(user, '/b');
+    await user.click(button(t('editor.save')));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    // Nothing can be typed while the request is out: the fields read as text.
+    expect(inputsInMain()).toHaveLength(0);
+    expect(main().getByText('/b')).toBeInTheDocument();
+    expect(button(t('editor.discard'))).toBeDisabled();
+    expect(button(t('editor.save'))).toHaveAttribute('aria-busy', 'true');
+    await user.click(button(t('editor.more')));
+    expect(await screen.findByRole('menuitem', { name: t('action.delete') })).toHaveAttribute('aria-disabled', 'true');
+    await user.keyboard('{Escape}');
+
+    held.open();
+    expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    expect(main().getByText('/b')).toBeInTheDocument();
+    expect(main().queryByText(t('editor.unsaved'))).not.toBeInTheDocument();
+  });
+
+  it('a create that finishes after the page was left does not navigate back to it', async () => {
+    const held = gate();
+    const { user, admin } = await openEditor('#/routes/new', {
+      objects: { routes: [] },
+      replies: { 'routes/late': (req) => (req.method === 'PUT' ? held.promise : undefined) },
+    });
+    await user.type(await main().findByRole('textbox', { name: 'ID' }), 'late');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(button(t('editor.discard'))).toBeDisabled();
+    await user.click(screen.getByRole('link', { name: /^Upstreams/ }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.leave.confirm') }));
+    await waitFor(() => expect(window.location.hash).toBe('#/upstreams'));
+
+    held.open();
+    await waitFor(() => expect(admin.stored('routes')).toHaveLength(1));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(window.location.hash).toBe('#/upstreams');
+  });
+});
+
+describe('the draft while locked', () => {
+  const FORCE_TAB: TabDef = {
+    id: 'force',
+    label: 'Force',
+    fields: ['uri'],
+    render: (p) => (
+      <button type="button" onClick={() => p.setDraft({ ...p.draft, uri: '/forced' })}>
+        force
+      </button>
+    ),
+  };
+
+  it('cannot change: setDraft does nothing until Edit', async () => {
+    undo.push(overrideDef('routes', { tabs: [FORCE_TAB, GENERAL_TAB] }));
+    const { user } = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] } });
+    await user.click(await main().findByRole('button', { name: 'force' }));
+    expect(main().queryByText(t('editor.unsaved'))).not.toBeInTheDocument();
+    await user.keyboard('e');
+    await user.click(await main().findByRole('button', { name: 'force' }));
+    expect(main().getByText(t('editor.unsaved'))).toBeInTheDocument();
+  });
+});
+
+describe('text in the JSON tab that does not parse', () => {
+  async function brokenJson() {
+    const app = await openRoute({}, '#/routes/r1?tab=json');
+    await app.user.keyboard('e');
+    await app.user.click(await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Route' }) }));
+    await app.user.keyboard('{Control>}{End}{/Control},');
+    await main().findByText(/^Not valid JSON: /);
+    return app;
+  }
+
+  it('counts as unsaved: Discard asks, then the locked view shows the stored object again', async () => {
+    const { user } = await brokenJson();
+    expect(main().getByText(t('editor.unsaved'))).toBeInTheDocument();
+    await user.click(button(t('editor.discard')));
+    await user.click(await screen.findByRole('button', { name: t('editor.leave.confirm') }));
+    expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    expect(main().queryByText(/^Not valid JSON: /)).not.toBeInTheDocument();
+    const editor = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Route' }) });
+    expect(editor.textContent).not.toMatch(/},$/);
+    await user.keyboard('e');
+    expect(await main().findByRole('button', { name: t('editor.save') })).toBeEnabled();
+  });
+
+  it('counts as unsaved: leaving the page asks', async () => {
+    const { user } = await brokenJson();
+    await user.click(screen.getByRole('link', { name: /^Upstreams/ }));
+    expect(await screen.findByRole('alertdialog', { name: t('editor.leave.title') })).toBeInTheDocument();
+  });
+});
+
+describe('APISIX errors about plugins', () => {
+  it('go to the plugin, never to a route field of the same name', async () => {
+    const msg = 'failed to check the configuration of plugin proxy-rewrite err: property "uri" validation failed: wrong type: expected string, got number';
+    const PLUGINS_TAB: TabDef = { id: 'plugins', label: 'Plugins', fields: ['plugins'], render: (p) => <p>{p.issues.map((i) => `${i.path}: ${i.message}`).join('; ')}</p> };
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB, PLUGINS_TAB] }));
+    const { user } = await openEditor('#/routes/r1', {
+      objects: { routes: [ROUTE] },
+      replies: { 'routes/r1': (req) => (req.method === 'PUT' ? json(400, { error_msg: msg }) : undefined) },
+    });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await unlockAndSetUri(user, '/b');
+    await user.click(button(t('editor.save')));
+    expect(within(await main().findByRole('alert')).getByText(msg)).toBeInTheDocument();
+    expect(tab(/^Plugins/)).toHaveAttribute('aria-selected', 'true');
+    expect(tab(/^Plugins/)).toHaveAccessibleName(`Plugins ${t('ui.tabs.errors', { count: 1 })}`);
+    expect(main().getByText(`plugins.proxy-rewrite: ${msg}`)).toBeInTheDocument();
+    expect(tab(/^General/)).toHaveAccessibleName('General');
+  });
+});
+
+describe('kinds whose id is a field of the body (consumers: username)', () => {
+  it('create with PUT …/<username>, and land on the new consumer', async () => {
+    const { user, admin } = await openEditor('#/consumers/new', { objects: { consumers: [] } });
+    await main().findByRole('button', { name: t('editor.create') });
+    expect(main().queryByRole('textbox', { name: /^ID/ })).not.toBeInTheDocument();
+    await user.click(await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Consumer' }) }));
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('{"username": "jo", "desc": "Jo"}');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'consumers/jo', body: { username: 'jo', desc: 'Jo' } }]));
+    await waitFor(() => expect(window.location.hash).toBe('#/consumers/jo'));
+  });
+
+  it('a stored consumer cannot be renamed', async () => {
+    const { user, admin } = await openEditor('#/consumers/jo?tab=json', { objects: { consumers: [{ username: 'jo' }] } });
+    await main().findByRole('heading', { level: 1, name: 'jo' });
+    await user.keyboard('e');
+    await user.click(await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Consumer' }) }));
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('{"username": "bob"}');
+    await user.click(button(t('editor.save')));
+    expect(await main().findByText(t('editor.id.changed', { id: 'jo', kind: 'Consumer' }))).toBeInTheDocument();
+    expect(writesOf(admin)).toEqual([]);
   });
 });

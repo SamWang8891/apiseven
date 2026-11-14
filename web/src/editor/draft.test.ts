@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
-import { deepEqual, getPath, setPath, setPathRaw, useDraft } from './draft';
+import { deepEqual, getPath, removeAt, setPath, setPathRaw, useDraft } from './draft';
 
 /** A deep copy, to prove an input was not changed. */
 const clone = <T>(v: T): T => structuredClone(v);
@@ -48,11 +48,26 @@ describe('setPath', () => {
     expect(setPath({ a: { b: { c: 1 }, x: 1 } }, ['a', 'b', 'c'], undefined)).toEqual({ a: { x: 1 } });
   });
 
-  it('addresses arrays by index; deleting an element removes it, and an emptied array is pruned', () => {
+  it('addresses arrays by index', () => {
     expect(setPath({ l: ['a', 'b', 'c'] }, ['l', 1], 'B')).toEqual({ l: ['a', 'B', 'c'] });
-    expect(setPath({ l: ['a', 'b', 'c'] }, ['l', 1], undefined)).toEqual({ l: ['a', 'c'] });
-    expect(setPath({ l: ['a'], k: 1 }, ['l', 0], '')).toEqual({ k: 1 });
-    expect(setPath({ l: [{ host: 'h' }] }, ['l', 0, 'host'], '')).toEqual({});
+  });
+
+  it('never removes or reorders array elements: an empty value is written into the element', () => {
+    const o: Obj = { l: ['a', 'b', 'c'] };
+    expect(setPath(o, ['l', 1], undefined)).toBe(o);
+    expect(setPath({ l: ['a', 'b'], k: 1 }, ['l', 1], '')).toEqual({ l: ['a', ''], k: 1 });
+    expect(setPath({ l: ['a'] }, ['l', 0], {})).toEqual({ l: [{}] });
+  });
+
+  it('prunes emptied objects up to, but not through, the nearest array: rows stay in place', () => {
+    expect(setPath({ l: [{ host: 'h' }] }, ['l', 0, 'host'], '')).toEqual({ l: [{}] });
+    expect(setPath({ l: [{ x: 1 }, { y: 2 }] }, ['l', 0, 'x'], '')).toEqual({ l: [{}, { y: 2 }] });
+    expect(setPath({ u: { nodes: [{ host: 'h', port: 1 }] } }, ['u', 'nodes', 0, 'host'], '')).toEqual({ u: { nodes: [{ port: 1 }] } });
+    expect(setPath({ l: [{ a: { b: 1 } }] }, ['l', 0, 'a', 'b'], undefined)).toEqual({ l: [{}] });
+  });
+
+  it('a whole array set to [] still deletes its key', () => {
+    expect(setPath({ nodes: [{ host: 'h' }], k: 1 }, ['nodes'], [])).toEqual({ k: 1 });
   });
 
   it('never changes its input, and returns the same object when deleting something absent', () => {
@@ -80,9 +95,10 @@ describe('setPathRaw', () => {
     expect(setPathRaw({ s: 'x' }, ['s'], '')).toEqual({ s: '' });
   });
 
-  it('deletes only on undefined, and never prunes the parents', () => {
+  it('deletes only on undefined, never prunes the parents, and never removes an array element', () => {
     expect(setPathRaw({ a: { b: 1 } }, ['a', 'b'], undefined)).toEqual({ a: {} });
-    expect(setPathRaw({ l: ['x'] }, ['l', 0], undefined)).toEqual({ l: [] });
+    const o: Obj = { l: ['x'] };
+    expect(setPathRaw(o, ['l', 0], undefined)).toBe(o);
   });
 
   it('never changes its input', () => {
@@ -90,6 +106,33 @@ describe('setPathRaw', () => {
     const before = clone(o);
     setPathRaw(o, ['plugins', 'key-auth'], {});
     setPathRaw(o, ['plugins', 'cors'], undefined);
+    expect(o).toEqual(before);
+  });
+});
+
+describe('removeAt', () => {
+  it('removes one element, keeping the order of the rest', () => {
+    expect(removeAt({ l: ['a', 'b', 'c'] }, ['l'], 1)).toEqual({ l: ['a', 'c'] });
+    expect(removeAt({ u: { nodes: [{ h: 1 }, { h: 2 }] } }, ['u', 'nodes'], 0)).toEqual({ u: { nodes: [{ h: 2 }] } });
+  });
+
+  it('deletes the key once the array is empty, pruning emptied objects up to the nearest array', () => {
+    expect(removeAt({ u: { nodes: [{ h: 1 }] }, k: 1 }, ['u', 'nodes'], 0)).toEqual({ k: 1 });
+    expect(removeAt({ ups: [{ nodes: [1] }] }, ['ups', 0, 'nodes'], 0)).toEqual({ ups: [{}] });
+  });
+
+  it('returns the object itself for an index out of range or a path that is not an array', () => {
+    const o: Obj = { l: ['a'], s: 'x' };
+    expect(removeAt(o, ['l'], 1)).toBe(o);
+    expect(removeAt(o, ['l'], -1)).toBe(o);
+    expect(removeAt(o, ['s'], 0)).toBe(o);
+    expect(removeAt(o, ['missing'], 0)).toBe(o);
+  });
+
+  it('never changes its input', () => {
+    const o: Obj = { l: [{ a: 1 }, { b: 2 }] };
+    const before = clone(o);
+    removeAt(o, ['l'], 0);
     expect(o).toEqual(before);
   });
 });

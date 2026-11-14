@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { issueAt, issuesByTab, issuesUnder, propertyOfError, tabOfIssue, withinPath, type Issue } from './issues';
+import { issueAt, issuesByTab, issuesUnder, pathOfError, tabOfIssue, withinPath, type Issue } from './issues';
 
 const issues: Issue[] = [
   { path: 'uri', message: 'Enter a URI' },
@@ -59,16 +59,47 @@ describe('attribution', () => {
   });
 });
 
-describe('propertyOfError', () => {
-  it('reads the first property APISIX names', () => {
-    expect(propertyOfError('invalid configuration: property "uri" validation failed: wrong type: expected string, got number')).toBe('uri');
-    expect(
-      propertyOfError('invalid configuration: property "upstream" validation failed: property "nodes" validation failed: expect array to have at least 1 items'),
-    ).toBe('upstream');
-  });
+describe('pathOfError: the draft path an APISIX save error is about', () => {
+  // Every shape below is quoted from APISIX 3.20 (admin/*.lua, plugin.lua, upstream.lua, ssl.lua).
+  const cases: [string, string][] = [
+    ['invalid configuration: property "uri" validation failed: wrong type: expected string, got number', 'uri'],
+    ['invalid configuration: property "upstream" validation failed: property "nodes" validation failed: expect array to have at least 1 items', 'upstream'],
+    ['failed to check the configuration of plugin proxy-rewrite err: property "uri" validation failed: wrong type: expected string, got number', 'plugins.proxy-rewrite'],
+    ['invalid plugins configuration: failed to check the configuration of plugin key-auth err: property "key" is required', 'plugins.key-auth'],
+    ['failed to check the configuration of stream plugin [limit-conn]: property "conn" is required', 'plugins.limit-conn'],
+    ['unknown plugin [no-such]', 'plugins.no-such'],
+    ['unknown plugin no-such', 'plugins.no-such'],
+    ['failed to fetch upstream info by upstream id [u9], response code: 404', 'upstream_id'],
+    ['failed to fetch service info by service id [s9], response code: 404', 'service_id'],
+    ['failed to fetch plugin config info by plugin config id [p9], response code: 404', 'plugin_config_id'],
+    ['failed to fetch consumer group info by consumer group id [g9], response code: 404', 'group_id'],
+    ["failed to validate the 'vars' expression: invalid operator 'nope'", 'vars'],
+    ["failed to load 'filter_func' string: [string \"x\"]:1: unexpected symbol", 'filter_func'],
+    ["'filter_func' should be a function", 'filter_func'],
+    ["failed to load 'script' string: [string \"x\"]:1: unexpected symbol", 'script'],
+    ["'script' should be a Lua object", 'script'],
+    ['failed to parse cert: PEM_read_bio_X509_AUX() failed', 'cert'],
+    ['failed to parse key: PEM_read_bio_PrivateKey() failed', 'key'],
+  ];
+  for (const [message, path] of cases) {
+    it(`${path} ← ${message.slice(0, 60)}`, () => expect(pathOfError(message)).toBe(path));
+  }
 
-  it('is undefined when no property is named', () => {
-    expect(propertyOfError('failed to check token: invalid method for role viewer')).toBeUndefined();
-    expect(propertyOfError(undefined)).toBeUndefined();
+  it('names no field when it is not sure: a property mentioned anywhere but at the start, two candidate fields, no field at all', () => {
+    for (const message of [
+      'only one of host or hosts is allowed',
+      'only one of remote_addr or remote_addrs is allowed',
+      'failed to check token: invalid method for role viewer',
+      'wrong route id',
+      'invalid configuration: value should match only one schema, but matches none',
+      'something else: property "uri" validation failed',
+      'invalid plugins configuration: plugin limit-count is not allowed here',
+      "failed to handle cert-key pair[1]: failed to parse cert: bad",
+      'failed to validate client_cert: failed to parse cert: bad',
+      '`upstream_host` can\'t be empty when `pass_host` is `rewrite`',
+    ]) {
+      expect(pathOfError(message), message).toBeUndefined();
+    }
+    expect(pathOfError(undefined)).toBeUndefined();
   });
 });

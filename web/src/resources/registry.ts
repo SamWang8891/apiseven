@@ -170,7 +170,12 @@ export const registry: Record<Kind, ResourceDef> = {
     blank: () => ({ type: 'roundrobin', nodes: [] }),
   }),
   // A consumer's id is its username.
-  consumers: define('consumers', { group: 'access', hasStatus: false, idMode: 'required' }),
+  consumers: define('consumers', {
+    group: 'access',
+    hasStatus: false,
+    idMode: 'required',
+    idFromDraft: (draft) => (typeof draft.username === 'string' && draft.username !== '' ? draft.username : undefined),
+  }),
   credentials: define('credentials', { group: 'access', hasStatus: false, idMode: 'required' }),
   consumer_groups: define('consumer_groups', { group: 'access', hasStatus: false, idMode: 'required' }),
   ssls: define('ssls', { group: 'access', hasStatus: true, idMode: 'optional', blank: () => ({ status: 1 }) }),

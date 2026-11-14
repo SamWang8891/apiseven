@@ -53,9 +53,44 @@ export function issuesByTab(issues: Issue[], tabs: TabFields[], fallback: string
 }
 
 /**
- * The top-level property an APISIX error names: `invalid configuration: property "uri" validation
- * failed: …` → `uri`. Nested schemas repeat the pattern; the first one is the top-level key.
+ * What APISIX 3.20 says when it refuses a save, and the draft path each message is about. Only
+ * shapes whose field is certain are listed (from admin/*.lua, plugin.lua, ssl.lua); anything else
+ * names no field and shows in the banner only. The first match wins.
  */
-export function propertyOfError(message: string | undefined): string | undefined {
-  return message === undefined ? undefined : /property "([^"]+)"/.exec(message)?.[1];
+const ERROR_PATHS: { pattern: RegExp; path: (m: RegExpExecArray) => string }[] = [
+  // The kind's own schema (every kind, also an SSL and a standalone upstream). The first property
+  // is the top-level key; a nested one follows it ("property "upstream" … property "nodes"").
+  { pattern: /^invalid configuration: property "([^"]+)"/, path: (m) => m[1] ?? '' },
+  // A plugin's schema; consumers and credentials wrap it in "invalid plugins configuration: ".
+  { pattern: /^(?:invalid plugins configuration: )?failed to check the configuration of plugin (\S+) err: /, path: (m) => `plugins.${m[1] ?? ''}` },
+  { pattern: /^failed to check the configuration of stream plugin \[([^\]]+)\]: /, path: (m) => `plugins.${m[1] ?? ''}` },
+  { pattern: /^(?:invalid plugins configuration: )?unknown plugin \[([^\]]+)\]$/, path: (m) => `plugins.${m[1] ?? ''}` },
+  { pattern: /^unknown plugin (\S+)$/, path: (m) => `plugins.${m[1] ?? ''}` },
+  // References to other objects that APISIX could not find.
+  { pattern: /^failed to fetch upstream info by upstream id \[/, path: () => 'upstream_id' },
+  { pattern: /^failed to fetch service info by service id \[/, path: () => 'service_id' },
+  { pattern: /^failed to fetch plugin config info by plugin config id \[/, path: () => 'plugin_config_id' },
+  { pattern: /^failed to fetch consumer group info by consumer group id \[/, path: () => 'group_id' },
+  // Route fields APISIX compiles.
+  { pattern: /^failed to validate the 'vars' expression: /, path: () => 'vars' },
+  { pattern: /^(?:failed to load 'filter_func' string: |'filter_func' should be a function$)/, path: () => 'filter_func' },
+  { pattern: /^(?:failed to load 'script' string: |'script' should be a Lua object$)/, path: () => 'script' },
+  // An SSL's main pair (extra pairs and the client CA have their own prefixes and name no field).
+  { pattern: /^failed to parse cert: /, path: () => 'cert' },
+  { pattern: /^failed to parse key: /, path: () => 'key' },
+];
+
+/**
+ * The draft path an APISIX save error is about: `uri` for `invalid configuration: property "uri" …`,
+ * `plugins.proxy-rewrite` for `failed to check the configuration of plugin proxy-rewrite err: …`,
+ * `upstream_id` for a missing upstream, and so on (see ERROR_PATHS). Undefined when the message
+ * names no field for certain, e.g. "only one of host or hosts is allowed".
+ */
+export function pathOfError(message: string | undefined): string | undefined {
+  if (message === undefined) return undefined;
+  for (const { pattern, path } of ERROR_PATHS) {
+    const m = pattern.exec(message);
+    if (m) return path(m) || undefined;
+  }
+  return undefined;
 }

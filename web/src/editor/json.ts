@@ -11,6 +11,9 @@ import { deepEqual } from './draft';
  */
 export const JsonErrorContext = createContext<((error: string | undefined) => void) | null>(null);
 
+/** The id of the frame's own JSON tab, after the kind's tabs. Registry tabs must not use it. */
+export const JSON_TAB = 'json';
+
 export const pretty = (value: unknown): string => JSON.stringify(value, null, 2);
 
 /**
