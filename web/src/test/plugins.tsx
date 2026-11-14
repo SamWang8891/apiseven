@@ -9,7 +9,7 @@ import type { Obj } from '../api/types';
 import { PluginsTab, type PluginsTabProps } from '../plugins/PluginsTab';
 import type { Scope } from '../plugins/scope';
 import { pluginIssues } from '../plugins/validate';
-import { LockProvider } from '../ui';
+import { LockProvider, PendingProvider, type PendingEntry } from '../ui';
 import { ctxOf } from './ctx';
 import { json, type FakeAdminOptions } from './fakeAdmin';
 import { pluginFixture } from './pluginFixture';
@@ -43,6 +43,10 @@ type Live = Pick<Options, 'locked' | 'saveAttempts' | 'extraIssues'>;
 export function renderPluginsTab(opts: Options) {
   const changes: Mock<(v: Plugins) => void> = vi.fn();
   let current = opts.value;
+  let pending: PendingEntry[] = [];
+  const onPending = (entries: PendingEntry[]) => {
+    pending = entries;
+  };
   const control: { set?: (p: Live) => void } = {};
   const env = { isNew: false, ctx: ctxOf(), plugins: pluginFixture().http, streamPlugins: pluginFixture().stream };
 
@@ -57,20 +61,22 @@ export function renderPluginsTab(opts: Options) {
       [value, live.extraIssues],
     );
     return (
-      <LockProvider locked={live.locked ?? false}>
-        <PluginsTab
-          value={value}
-          onChange={(v) => {
-            current = v;
-            changes(v);
-            setValue(v);
-          }}
-          scope={opts.scope}
-          issues={issues}
-          inherited={opts.inherited}
-          saveAttempts={live.saveAttempts}
-        />
-      </LockProvider>
+      <PendingProvider onChange={onPending}>
+        <LockProvider locked={live.locked ?? false}>
+          <PluginsTab
+            value={value}
+            onChange={(v) => {
+              current = v;
+              changes(v);
+              setValue(v);
+            }}
+            scope={opts.scope}
+            issues={issues}
+            inherited={opts.inherited}
+            saveAttempts={live.saveAttempts}
+          />
+        </LockProvider>
+      </PendingProvider>
     );
   }
 
@@ -84,5 +90,7 @@ export function renderPluginsTab(opts: Options) {
     value: () => current,
     /** Changes the lock, the save-attempt count or the extra issues, keeping the value. */
     update: (p: Live) => act(() => control.set?.(p)),
+    /** What the cards' fields hold but have not emitted (usePending), as messages. */
+    held: () => pending.map((entry) => entry.message),
   };
 }

@@ -1,4 +1,5 @@
-import { useId } from 'react';
+import { useId, type ReactNode } from 'react';
+import { t } from '../i18n';
 import type { FieldProps } from './Field';
 
 /** Ids that tie a control to its Field label, help and error text. */
@@ -17,4 +18,12 @@ export function useFieldIds(id: string | undefined, field: Pick<FieldProps, 'hel
   const controlId = id ?? generated;
   const describedBy = field.error ? errorId(controlId) : field.help ? helpId(controlId) : undefined;
   return { id: controlId, describedBy };
+}
+
+/**
+ * How a message about the field names it (usePending: "Port: "-" is not a number"): `fieldName`
+ * when given, else a text label, else the aria-label.
+ */
+export function nameOfField(fieldName: string | undefined, label: ReactNode, ariaLabel: string | undefined): string {
+  return fieldName ?? (typeof label === 'string' ? label : undefined) ?? ariaLabel ?? t('ui.pending.field');
 }

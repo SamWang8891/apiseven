@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { vi, type Mock } from 'vitest';
 import type { Obj } from '../api/types';
 import { SchemaForm, type SchemaFormProps } from '../schema-form/SchemaForm';
-import { LockProvider } from '../ui';
+import { LockProvider, PendingProvider, type PendingEntry } from '../ui';
 
 type Extra = Omit<SchemaFormProps, 'schema' | 'value' | 'onChange'> & { locked?: boolean };
 
@@ -18,26 +18,34 @@ export interface FormHarness extends RenderResult {
   value: () => unknown;
   /** Re-renders with other props (errors, locked), keeping the current value. */
   update: (extra: Extra) => void;
+  /** What the form's fields hold but have not emitted (usePending), as messages. */
+  held: () => string[];
 }
 
 export function renderSchemaForm(schema: Obj, initial: unknown, extra: Extra = {}): FormHarness {
   const changes = vi.fn<(v: unknown) => void>();
   let current = initial;
+  let pending: PendingEntry[] = [];
+  const onPending = (entries: PendingEntry[]) => {
+    pending = entries;
+  };
   function Harness({ locked, ...props }: Extra) {
     const [value, setValue] = useState(initial);
     return (
-      <LockProvider locked={locked ?? false}>
-        <SchemaForm
-          schema={schema}
-          value={value}
-          onChange={(v) => {
-            current = v;
-            changes(v);
-            setValue(v);
-          }}
-          {...props}
-        />
-      </LockProvider>
+      <PendingProvider onChange={onPending}>
+        <LockProvider locked={locked ?? false}>
+          <SchemaForm
+            schema={schema}
+            value={value}
+            onChange={(v) => {
+              current = v;
+              changes(v);
+              setValue(v);
+            }}
+            {...props}
+          />
+        </LockProvider>
+      </PendingProvider>
     );
   }
   const user = userEvent.setup();
@@ -48,6 +56,7 @@ export function renderSchemaForm(schema: Obj, initial: unknown, extra: Extra = {
     changes,
     value: () => current,
     update: (next) => result.rerender(<Harness {...next} />),
+    held: () => pending.map((entry) => entry.message),
   };
 }
 

@@ -1,7 +1,8 @@
 import { AlertDialog } from 'radix-ui';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
+import { PendingProvider, type PendingEntry } from './PendingContext';
 import './overlay.css';
 
 export interface ConfirmDialogProps {
@@ -20,7 +21,10 @@ export interface ConfirmDialogProps {
   onCancel: () => void;
 }
 
-/** Asks before an action. Stays open until the caller closes it, so it can show `busy`. Focus starts on Cancel. */
+/**
+ * Asks before an action. Stays open until the caller closes it, so it can show `busy`. Focus starts
+ * on Cancel. A field in the body that holds input it has not emitted (usePending) disables the action.
+ */
 export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, danger, busy, onConfirm, onCancel }: ConfirmDialogProps) {
   return (
     <AlertDialog.Root open={open} onOpenChange={(next) => !next && !busy && onCancel()}>
@@ -34,24 +38,36 @@ export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, da
             <header className="ui-dialog__header">
               <AlertDialog.Title className="ui-dialog__title">{title}</AlertDialog.Title>
             </header>
-            {body !== undefined && (
-              <AlertDialog.Description asChild>
-                <div className="ui-dialog__body">{body}</div>
-              </AlertDialog.Description>
-            )}
-            <footer className="ui-dialog__footer">
-              <AlertDialog.Cancel asChild>
-                <Button variant="secondary" disabled={busy}>
-                  {cancelLabel ?? t('ui.cancel')}
-                </Button>
-              </AlertDialog.Cancel>
-              <Button variant={danger ? 'danger' : 'primary'} loading={busy} onClick={onConfirm}>
-                {confirmLabel}
-              </Button>
-            </footer>
+            <BodyAndActions {...{ body, confirmLabel, cancelLabel, danger, busy, onConfirm }} />
           </AlertDialog.Content>
         </AlertDialog.Overlay>
       </AlertDialog.Portal>
     </AlertDialog.Root>
+  );
+}
+
+/** The body, as a pending-input boundary, and the buttons; the action waits while the body holds input. Both go when the dialog closes. */
+function BodyAndActions({ body, confirmLabel, cancelLabel, danger, busy, onConfirm }: Pick<ConfirmDialogProps, 'body' | 'confirmLabel' | 'cancelLabel' | 'danger' | 'busy' | 'onConfirm'>) {
+  const [held, setHeld] = useState<PendingEntry[]>([]);
+  return (
+    <>
+      {body !== undefined && (
+        <AlertDialog.Description asChild>
+          <div className="ui-dialog__body">
+            <PendingProvider onChange={setHeld}>{body}</PendingProvider>
+          </div>
+        </AlertDialog.Description>
+      )}
+      <footer className="ui-dialog__footer">
+        <AlertDialog.Cancel asChild>
+          <Button variant="secondary" disabled={busy}>
+            {cancelLabel ?? t('ui.cancel')}
+          </Button>
+        </AlertDialog.Cancel>
+        <Button variant={danger ? 'danger' : 'primary'} loading={busy} disabled={held.length > 0} onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
+      </footer>
+    </>
   );
 }

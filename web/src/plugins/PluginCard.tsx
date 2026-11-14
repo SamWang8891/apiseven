@@ -1,8 +1,10 @@
 // One configured plugin: a header to scan (name, category, on/off, the config in one line, problems,
 // docs, remove) that opens to the config as a form generated from the plugin's schema or as JSON,
 // both over the same value, then the `_meta` options. Locked, it still opens; everything reads as text.
+// A field that holds input it has not emitted (usePending) keeps what shows it on screen: the card,
+// `_meta` and the Form/JSON view refuse to close or switch until it is fixed or cleared.
 import { BookOpen, ChevronRight, Eye, EyeOff, Trash2 } from 'lucide-react';
-import { memo, useCallback, useId, useMemo, useState } from 'react';
+import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj, PluginInfo } from '../api/types';
 import { deepEqual } from '../editor/draft';
@@ -11,7 +13,7 @@ import { t } from '../i18n';
 import { ErrorLine } from '../schema-form/fields/chrome';
 import { redactSecrets } from '../schema-form/model';
 import { SchemaForm } from '../schema-form/SchemaForm';
-import { Button, CodeEditor, Switch, useLocked } from '../ui';
+import { Button, CodeEditor, PendingScope, Switch, useHeld, useLocked, usePending } from '../ui';
 import { catalog } from './catalog';
 import { MetaForm } from './MetaForm';
 import { formSchemaOf, isDisabled, META, metaOf, setDisabled, withMeta, withoutMeta } from './meta';
@@ -60,6 +62,8 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
   const locked = useLocked();
   const onChange = useCallback((next: unknown) => emit(name, next), [emit, name]);
   const ref = useCallback((el: HTMLDivElement | null) => cardRef?.(name, el), [cardRef, name]);
+  const held = useHeld();
+  const bodyRef = useRef<HTMLDivElement>(null);
   const ids = useId();
   const nameId = `${ids}-name`;
   const bodyId = `${ids}-body`;
@@ -81,7 +85,9 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
           aria-controls={open ? bodyId : undefined}
           aria-labelledby={nameId}
           aria-describedby={`${ids}-sum ${ids}-cat`}
-          onClick={() => onToggle(name)}
+          onClick={() => {
+            if (!(open && held.refuse(bodyRef.current))) onToggle(name);
+          }}
         >
           <ChevronRight className="pl-card__chevron" size={14} aria-hidden="true" />
           <span id={nameId} className="pl-card__name mono">
@@ -114,8 +120,10 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
         </div>
       </div>
       {open && (
-        <div id={bodyId} className="pl-card__body">
-          <CardBody name={name} conf={conf} info={info} list={list} schema={schema} encrypt={encrypt} issues={issues} onChange={onChange} />
+        <div id={bodyId} ref={bodyRef} className="pl-card__body">
+          <PendingScope onChange={held.track}>
+            <CardBody name={name} conf={conf} info={info} list={list} schema={schema} encrypt={encrypt} issues={issues} onChange={onChange} />
+          </PendingScope>
         </div>
       )}
     </div>
@@ -136,6 +144,10 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange }:
   // Open from the start when it holds a problem (a card opens itself when Save finds one).
   const [metaOpen, setMetaOpen] = useState(() => issues.some((issue) => isMetaPath(issue.path)));
   const ids = useId();
+  const viewHeld = useHeld();
+  const viewRef = useRef<HTMLDivElement>(null);
+  const metaHeld = useHeld();
+  const metaRef = useRef<HTMLDivElement>(null);
   const config = isObj(conf) ? conf : undefined;
   const meta = metaOf(conf);
   const hasForm = schema !== undefined;
@@ -161,34 +173,57 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange }:
       {hasForm && (
         <div className="pl-views" role="group" aria-label={t('pl.card.view', { name })}>
           {(['form', 'json'] as const).map((v) => (
-            <button key={v} type="button" className="pl-views__btn" aria-pressed={shown === v} onClick={() => setView(v)}>
+            <button
+              key={v}
+              type="button"
+              className="pl-views__btn"
+              aria-pressed={shown === v}
+              onClick={() => {
+                if (v !== shown && !viewHeld.refuse(viewRef.current)) setView(v);
+              }}
+            >
               {v === 'form' ? t('pl.card.form') : t('pl.card.json')}
             </button>
           ))}
         </div>
       )}
-      {shown === 'form' && formSchema ? (
-        <SchemaForm
-          schema={formSchema}
-          value={formValue}
-          onChange={(v) => onChange(isObj(v) ? withMeta(v, metaOf(conf)) : v)}
-          errors={fieldIssues}
-          idPrefix={`pl-${name}`}
-        />
-      ) : (
-        <ConfigJson name={name} conf={conf} schema={schema} encrypt={encrypt} issues={issues.filter((issue) => issue.path !== '')} onChange={onChange} />
-      )}
+      <div ref={viewRef} className="pl-view">
+        <PendingScope onChange={viewHeld.track}>
+          {shown === 'form' && formSchema ? (
+            <SchemaForm
+              schema={formSchema}
+              value={formValue}
+              onChange={(v) => onChange(isObj(v) ? withMeta(v, metaOf(conf)) : v)}
+              errors={fieldIssues}
+              idPrefix={`pl-${name}`}
+              name={name}
+            />
+          ) : (
+            <ConfigJson name={name} conf={conf} schema={schema} encrypt={encrypt} issues={issues.filter((issue) => issue.path !== '')} onChange={onChange} />
+          )}
+        </PendingScope>
+      </div>
       {config && (
         <section className={metaOpen ? 'pl-metabox pl-metabox--open' : 'pl-metabox'}>
-          <button type="button" className="pl-metabox__toggle" aria-expanded={metaOpen} aria-controls={metaOpen ? `${ids}-meta` : undefined} onClick={() => setMetaOpen((o) => !o)}>
+          <button
+            type="button"
+            className="pl-metabox__toggle"
+            aria-expanded={metaOpen}
+            aria-controls={metaOpen ? `${ids}-meta` : undefined}
+            onClick={() => {
+              if (!(metaOpen && metaHeld.refuse(metaRef.current))) setMetaOpen((o) => !o);
+            }}
+          >
             <ChevronRight className="pl-card__chevron" size={14} aria-hidden="true" />
             <span className="pl-metabox__title">{t('pl.meta.title')}</span>{' '}
             <span className="pl-metabox__keys mono">{metaKeys.length > 0 ? t('pl.meta.set', { keys: metaKeys.join(', ') }) : t('pl.meta.none')}</span>
             {metaIssues.length > 0 && <span className="pl-card__problems">{metaIssues.length}</span>}
           </button>
           {metaOpen && (
-            <div id={`${ids}-meta`} className="pl-metabox__body">
-              <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} />
+            <div id={`${ids}-meta`} ref={metaRef} className="pl-metabox__body">
+              <PendingScope onChange={metaHeld.track}>
+                <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} />
+              </PendingScope>
             </div>
           )}
         </section>
@@ -218,28 +253,31 @@ function ConfigJson({ name, conf, schema, encrypt, issues, onChange }: {
   onChange: (conf: unknown) => void;
 }) {
   const locked = useLocked();
-  const [state, setState] = useState(() => ({ text: pretty(conf), synced: conf, error: undefined as string | undefined }));
+  /** `error` (shown) and `held` (for Save) are set while the text is not emitted. */
+  const [state, setState] = useState(() => ({ text: pretty(conf), synced: conf, error: undefined as string | undefined, held: undefined as string | undefined }));
   const [revealed, setRevealed] = useState(false);
   let current = state;
   if (!Object.is(conf, state.synced)) {
-    current = says(state.text, conf) ? { ...state, synced: conf } : { text: pretty(conf), synced: conf, error: undefined };
+    current = says(state.text, conf) ? { ...state, synced: conf } : { text: pretty(conf), synced: conf, error: undefined, held: undefined };
     setState(current);
   }
   const hidden = useMemo(() => (locked ? redactSecrets(conf, '', encrypt) : undefined), [locked, conf, encrypt]);
+  usePending(locked ? undefined : current.held);
 
   function change(text: string) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      setState((s) => ({ ...s, text, error: t('pl.card.jsonInvalid', { error: e instanceof Error ? e.message : String(e) }) }));
+      const error = t('pl.card.jsonInvalid', { error: e instanceof Error ? e.message : String(e) });
+      setState((s) => ({ ...s, text, error, held: t('ui.pending.json', { field: name }) }));
       return;
     }
     if (!isObj(parsed)) {
-      setState((s) => ({ ...s, text, error: t('pl.card.notObject') }));
+      setState((s) => ({ ...s, text, error: t('pl.card.notObject'), held: t('ui.pending.jsonType', { field: name, type: 'object' }) }));
       return;
     }
-    setState({ text, synced: parsed, error: undefined });
+    setState({ text, synced: parsed, error: undefined, held: undefined });
     onChange(parsed);
   }
 
@@ -254,7 +292,16 @@ function ConfigJson({ name, conf, schema, encrypt, issues, onChange }: {
           </Button>
         </div>
       )}
-      <CodeEditor language="json" jsonSchema={schema} value={text} onChange={change} minLines={4} maxLines={24} aria-label={t('pl.card.jsonLabel', { name })} />
+      <CodeEditor
+        language="json"
+        jsonSchema={schema}
+        value={text}
+        onChange={change}
+        minLines={4}
+        maxLines={24}
+        aria-label={t('pl.card.jsonLabel', { name })}
+        aria-invalid={!locked && current.held !== undefined}
+      />
       <div aria-live="polite">{!locked && current.error !== undefined && <p className="pl-json__error mono">{current.error}</p>}</div>
       {issues.length > 0 && (
         <ul className="pl-json__issues">

@@ -1,8 +1,9 @@
 // The pending-input guard in the editor frame: a field holding input that is not in the draft
 // (usePending) blocks Save, badges its tab, counts as unsaved, and is not dropped by a tab switch
 // without asking.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
+import { Link } from 'react-router';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { resetReadOnlyKeys } from '../api/write';
@@ -10,7 +11,7 @@ import { t } from '../i18n';
 import type { TabDef } from '../resources/registry';
 import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
-import { usePending } from '../ui';
+import { NumberInput, TagInput, usePending } from '../ui';
 import { getToasts } from '../ui/toast';
 
 const undo: (() => void)[] = [];
@@ -27,7 +28,26 @@ function HoldingField() {
   return <input aria-label="held" aria-invalid={text !== '' || undefined} value={text} onChange={(e) => setText(e.target.value)} />;
 }
 
-const HOLD_TAB: TabDef = { id: 'hold', label: 'Hold', fields: [], render: () => <HoldingField /> };
+/** Renders of the hold tab's own content (not of the field holding input). */
+let tabRenders = 0;
+function RenderCount() {
+  tabRenders += 1;
+  return null;
+}
+
+const HOLD_TAB: TabDef = {
+  id: 'hold',
+  label: 'Hold',
+  fields: [],
+  render: () => (
+    <>
+      <HoldingField />
+      <RenderCount />
+      <Link to="?tab=general">Go to General</Link>
+      <Link to="/routes/new">New route</Link>
+    </>
+  ),
+};
 const ROUTE: Obj = { id: 'r1', name: 'web', uri: '/a', upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] } };
 const tab = (name: RegExp) => main().getByRole('tab', { name });
 const button = (name: string) => main().getByRole('button', { name });
@@ -46,7 +66,7 @@ describe('pending input', () => {
     const { user, admin } = await holding();
     expect(tab(/^Hold/)).toHaveAccessibleName(`Hold ${t('ui.tabs.errors', { count: 1 })}`);
     await user.click(button(t('editor.save')));
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: 'Held: "x" is not in the draft' }));
     expect(writesOf(admin)).toEqual([]);
     expect(tab(/^Hold/)).toHaveAttribute('aria-selected', 'true');
     expect(main().getByRole('textbox', { name: 'held' })).toHaveFocus();
@@ -55,7 +75,7 @@ describe('pending input', () => {
   it('blocks Cmd/Ctrl-S the same way', async () => {
     const { admin } = await holding();
     fireEvent.keyDown(main().getByRole('textbox', { name: 'held' }), { key: 's', ctrlKey: true });
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne')));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: 'Held: "x" is not in the draft' })));
     await new Promise((r) => setTimeout(r, 20));
     expect(writesOf(admin)).toEqual([]);
     expect(main().getByRole('textbox', { name: 'held' })).toHaveValue('x');
@@ -90,3 +110,158 @@ describe('pending input', () => {
     expect(writesOf(admin)).toEqual([]);
   });
 });
+
+describe('pending input and the URL', () => {
+  it('a link that changes only ?tab= asks first; Stay keeps the URL and the text, Discard switches', async () => {
+    const { user } = await holding();
+    await user.click(main().getByRole('link', { name: 'Go to General' }));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.pending.title') });
+    expect(within(dialog).getByText('Held: "x" is not in the draft')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: t('editor.pending.stay') }));
+    expect(tab(/^Hold/)).toHaveAttribute('aria-selected', 'true');
+    expect(main().getByRole('textbox', { name: 'held' })).toHaveValue('x');
+    expect(window.location.hash).not.toContain('tab=general');
+
+    await user.click(main().getByRole('link', { name: 'Go to General' }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.pending.discard') }));
+    await waitFor(() => expect(tab(/^General/)).toHaveAttribute('aria-selected', 'true'));
+    expect(window.location.hash).toContain('tab=general');
+  });
+
+  it('Back across ?tab= asks first; Stay keeps the URL on the current tab, Discard goes back', async () => {
+    const LINK_TAB: TabDef = { id: 'links', label: 'Links', fields: [], render: () => <Link to="?tab=hold">Go to Hold</Link> };
+    undo.push(overrideDef('routes', { tabs: [HOLD_TAB, LINK_TAB] }));
+    const { user } = await openEditor('#/routes/r1?tab=links', { objects: { routes: [ROUTE] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    // A history entry for the Hold tab, pushed as a link does.
+    await user.click(main().getByRole('link', { name: 'Go to Hold' }));
+    await user.type(await main().findByRole('textbox', { name: 'held' }), 'y');
+    expect(window.location.hash).toBe('#/routes/r1?tab=hold');
+
+    act(() => window.history.back());
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.pending.title') });
+    expect(within(dialog).getByText('Held: "y" is not in the draft')).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: t('editor.pending.stay') }));
+    await waitFor(() => expect(window.location.hash).toBe('#/routes/r1?tab=hold'));
+    expect(tab(/^Hold/)).toHaveAttribute('aria-selected', 'true');
+    expect(main().getByRole('textbox', { name: 'held' })).toHaveValue('y');
+
+    act(() => window.history.back());
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.pending.discard') }));
+    await waitFor(() => expect(window.location.hash).toBe('#/routes/r1?tab=links'));
+    await waitFor(() => expect(tab(/^Links/)).toHaveAttribute('aria-selected', 'true'));
+  });
+
+  it('a change of ?from= (a different copy) is leaving the page: unsaved work asks', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB, HOLD_TAB] }));
+    const { user } = await openEditor('#/routes/new?from=r1', { objects: { routes: [ROUTE] } });
+    await main().findByRole('textbox', { name: 'Name' });
+    await user.type(main().getByRole('textbox', { name: 'URI' }), '2');
+    await user.click(tab(/^Hold/));
+    await user.click(main().getByRole('link', { name: 'New route' }));
+    expect(await screen.findByRole('alertdialog', { name: t('editor.leave.title') })).toBeInTheDocument();
+  });
+});
+
+describe('pending input and the editor around it', () => {
+  it('registering and unregistering does not re-render the tab content', async () => {
+    const { user } = await holding();
+    const before = tabRenders;
+    await user.type(main().getByRole('textbox', { name: 'held' }), 'yz');
+    await user.clear(main().getByRole('textbox', { name: 'held' }));
+    expect(tab(/^Hold/)).toHaveAccessibleName('Hold');
+    expect(tabRenders).toBe(before);
+  });
+
+  it('a tab click first lets the focused field commit: tag text typed without Enter is added, no question asked', async () => {
+    function TagsTab({ draft, setDraft }: { draft: Obj; setDraft: (d: Obj) => void }) {
+      const hosts = Array.isArray(draft.hosts) ? (draft.hosts as string[]) : [];
+      return <TagInput label="Hosts" value={hosts} onChange={(next) => setDraft({ ...draft, hosts: next })} />;
+    }
+    undo.push(overrideDef('routes', { tabs: [{ id: 'tags', label: 'Tags', fields: ['hosts'], render: (p) => <TagsTab {...p} /> }, GENERAL_TAB] }));
+    const { user, admin } = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await user.type(main().getByRole('textbox', { name: 'Hosts' }), 'a.example.org');
+    await user.click(tab(/^General/));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(tab(/^General/)).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.hosts).toEqual(['a.example.org']);
+  });
+
+  it('a tab click with refused tag text still in the box asks, naming it; Stay keeps the text', async () => {
+    function TagsTab({ draft, setDraft }: { draft: Obj; setDraft: (d: Obj) => void }) {
+      const hosts = Array.isArray(draft.hosts) ? (draft.hosts as string[]) : [];
+      return <TagInput label="Hosts" value={hosts} validate={(tag) => (/^[a-z.]+$/.test(tag) ? undefined : 'Not a host')} onChange={(next) => setDraft({ ...draft, hosts: next })} />;
+    }
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB, { id: 'tags', label: 'Tags', fields: ['hosts'], render: (p) => <TagsTab {...p} /> }] }));
+    const { user } = await openEditor('#/routes/r1?tab=tags', { objects: { routes: [ROUTE] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await user.type(main().getByRole('textbox', { name: 'Hosts' }), 'bad host!');
+    await user.click(tab(/^General/));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.pending.title') });
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent(t('ui.pending.tag', { field: 'Hosts', text: 'bad host!', reason: 'Not a host' }));
+    await user.click(within(dialog).getByRole('button', { name: t('editor.pending.stay') }));
+    expect(tab(/^Tags/)).toHaveAttribute('aria-selected', 'true');
+    expect(main().getByRole('textbox', { name: 'Hosts' })).toHaveValue('bad host!');
+  });
+
+  it('typing in a field whose hold comes and goes keeps focus and caret', async () => {
+    function PortTab({ draft, setDraft }: { draft: Obj; setDraft: (d: Obj) => void }) {
+      const port = typeof draft.priority === 'number' ? draft.priority : undefined;
+      return <NumberInput label="Priority" value={port} onChange={(v) => setDraft({ ...draft, priority: v })} />;
+    }
+    undo.push(overrideDef('routes', { tabs: [{ id: 'num', label: 'Num', fields: ['priority'], render: (p) => <PortTab {...p} /> }] }));
+    const { user } = await openEditor('#/routes/r1', { objects: { routes: [{ ...ROUTE, priority: 10 }] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    const input = main().getByRole<HTMLInputElement>('spinbutton', { name: 'Priority' });
+    await user.click(input);
+    input.setSelectionRange(1, 1);
+    await user.keyboard('x');
+    expect(input).toHaveValue('1x0');
+    await waitFor(() => expect(tab(/^Num/)).toHaveAccessibleName(`Num ${t('ui.tabs.errors', { count: 1 })}`));
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(2);
+    await user.keyboard('{Backspace}');
+    await waitFor(() => expect(tab(/^Num/)).toHaveAccessibleName(/^Num/));
+    expect(tab(/^Num/)).not.toHaveAccessibleName(/to fix/);
+    expect(document.activeElement).toBe(input);
+    expect(input.selectionStart).toBe(1);
+    expect(input).toHaveValue('10');
+  });
+});
+
+describe('the JSON tab holds text that does not parse', () => {
+  it('a tab switch asks: Stay keeps the text; Discard and switch shows the last valid draft, which Save sends', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
+    const { user, admin } = await openEditor('#/routes/r1?tab=json', { objects: { routes: [ROUTE] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    const editor = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Route' }) });
+    await user.click(editor);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(JSON.stringify({ ...ROUTE, uri: '/b' }));
+    await user.keyboard('{Control>}{End}{/Control}x');
+    expect(tab(/^JSON/)).toHaveAccessibleName(`JSON ${t('ui.tabs.errors', { count: 1 })}`);
+
+    await user.click(tab(/^General/));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.pending.title') });
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent(t('ui.pending.json', { field: t('editor.json.tab') }));
+    await user.click(within(dialog).getByRole('button', { name: t('editor.pending.stay') }));
+    expect(tab(/^JSON/)).toHaveAttribute('aria-selected', 'true');
+    expect(editor.textContent).toMatch(/}x$/);
+
+    await user.click(tab(/^General/));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.pending.discard') }));
+    expect(await main().findByRole('textbox', { name: 'URI' })).toHaveValue('/b');
+    await user.click(button(t('editor.save')));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.uri).toBe('/b');
+  });
+});
+

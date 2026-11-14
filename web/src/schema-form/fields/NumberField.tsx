@@ -1,6 +1,6 @@
 import { Input, NumberInput } from '../../ui';
 import type { NumberNode } from '../analyze';
-import { useFieldError, useFieldId } from '../context';
+import { useFieldError, useFieldId, useFieldName } from '../context';
 import { parseNumberOrText } from '../model';
 import { FieldLabel } from './chrome';
 import { useFieldHelp } from './help';
@@ -16,6 +16,7 @@ export function NumberField({ node, value, name, path, onChange, prop, required,
   const id = useFieldId(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
+  const fieldName = useFieldName(path);
   const label = prop ? <FieldLabel name={prop.key} title={prop.title} /> : undefined;
   const common = { id, label, help, error, required, placeholder: placeholderOf(prop), 'aria-label': label ? undefined : ariaLabel };
 
@@ -37,6 +38,7 @@ export function NumberField({ node, value, name, path, onChange, prop, required,
   return (
     <NumberInput
       {...common}
+      fieldName={fieldName}
       integer={node.integer}
       min={min}
       max={max}

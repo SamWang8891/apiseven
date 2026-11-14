@@ -1,8 +1,9 @@
 import { X } from 'lucide-react';
 import { Dialog as RadixDialog } from 'radix-ui';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
+import { PendingProvider, type PendingEntry } from './PendingContext';
 import './overlay.css';
 
 export interface DialogProps {
@@ -10,12 +11,18 @@ export interface DialogProps {
   onClose: () => void;
   title: ReactNode;
   children: ReactNode;
-  /** Buttons, right-aligned on a bar below the body. */
-  footer?: ReactNode;
+  /**
+   * Buttons, right-aligned on a bar below the body. As a function it gets what the body's fields hold
+   * but have not emitted (usePending): disable the primary action while there is any.
+   */
+  footer?: ReactNode | ((held: PendingEntry[]) => ReactNode);
   size?: 'sm' | 'md' | 'lg';
 }
 
-/** Modal dialog: Escape, the close button and a click outside all call onClose. */
+/**
+ * Modal dialog: Escape, the close button and a click outside all call onClose. Its body is a
+ * pending-input boundary: what its fields hold is the dialog's (see `footer`), never the page's.
+ */
 export function Dialog({ open, onClose, title, children, footer, size = 'md' }: DialogProps) {
   return (
     <RadixDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
@@ -28,11 +35,24 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md' }: 
                 <Button variant="ghost" size="sm" icon={<X size={16} />} aria-label={t('ui.close')} />
               </RadixDialog.Close>
             </header>
-            <div className="ui-dialog__body">{children}</div>
-            {footer && <footer className="ui-dialog__footer">{footer}</footer>}
+            <BodyAndFooter footer={footer}>{children}</BodyAndFooter>
           </RadixDialog.Content>
         </RadixDialog.Overlay>
       </RadixDialog.Portal>
     </RadixDialog.Root>
+  );
+}
+
+/** The body, as a pending-input boundary, and the footer that hears what it holds; both go when the dialog closes. */
+function BodyAndFooter({ footer, children }: { footer: DialogProps['footer']; children: ReactNode }) {
+  const [held, setHeld] = useState<PendingEntry[]>([]);
+  const bar = typeof footer === 'function' ? footer(held) : footer;
+  return (
+    <>
+      <div className="ui-dialog__body">
+        <PendingProvider onChange={setHeld}>{children}</PendingProvider>
+      </div>
+      {bar && <footer className="ui-dialog__footer">{bar}</footer>}
+    </>
   );
 }

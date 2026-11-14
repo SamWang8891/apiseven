@@ -1,8 +1,9 @@
 import { ChevronRight, Info } from 'lucide-react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj } from '../../schema/refs';
+import { PendingScope, useHeld } from '../../ui';
 import { isWide, type ObjectNode } from '../analyze';
 import { useErrorBelow, useFieldError, useFieldId, useLatest } from '../context';
 import { isEmpty, joinPath, objectView, setKey, type Block, type Key, type Shown } from '../model';
@@ -132,7 +133,8 @@ function summary(node: ObjectNode, value: Obj | undefined): string {
 /**
  * A nested object: a titled group with a collapse toggle. Optional groups with no value start
  * collapsed (their fields are not mounted) and say what they would configure; one that holds an
- * error opens. Emptied, an optional group removes its key.
+ * error opens, and one whose field holds input it has not emitted does not collapse (useHeld).
+ * Emptied, an optional group removes its key.
  */
 export function ObjectField({ node, value, name, path, onChange, prop, required }: FieldProps<ObjectNode>) {
   const id = useFieldId(path);
@@ -141,6 +143,8 @@ export function ObjectField({ node, value, name, path, onChange, prop, required 
   const obj = isObj(value) ? value : undefined;
   const [open, setOpen] = useState(() => required || !isEmpty(obj) || errorBelow);
   const [sawError, setSawError] = useState(errorBelow);
+  const held = useHeld();
+  const bodyRef = useRef<HTMLDivElement>(null);
   if (errorBelow !== sawError) {
     setSawError(errorBelow);
     if (errorBelow && !open) setOpen(true);
@@ -165,7 +169,9 @@ export function ObjectField({ node, value, name, path, onChange, prop, required 
           className="sf-group__toggle"
           aria-expanded={open}
           aria-controls={open ? bodyId : undefined}
-          onClick={() => setOpen((o) => !o)}
+          onClick={() => {
+            if (!(open && held.refuse(bodyRef.current))) setOpen((o) => !o);
+          }}
         >
           <ChevronRight className="sf-group__chevron" aria-hidden="true" size={15} />
           <FieldLabel name={key} title={prop?.title} />
@@ -176,8 +182,10 @@ export function ObjectField({ node, value, name, path, onChange, prop, required 
       {prop?.description !== undefined && <p className="sf-group__help">{prop.description}</p>}
       {error !== undefined && <ErrorLine message={error} />}
       {open && (
-        <div className="sf-group__body" id={bodyId}>
-          <ObjectBody node={node} value={obj} path={path} emit={emit} />
+        <div className="sf-group__body" id={bodyId} ref={bodyRef}>
+          <PendingScope onChange={held.track}>
+            <ObjectBody node={node} value={obj} path={path} emit={emit} />
+          </PendingScope>
         </div>
       )}
     </section>

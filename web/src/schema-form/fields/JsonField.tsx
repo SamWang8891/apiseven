@@ -2,9 +2,11 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
-import { CodeEditor, Field, Textarea, useLocked } from '../../ui';
-import { useEncryptPaths, useFieldError, useFieldId } from '../context';
+import { CodeEditor, Field, Textarea, useLocked, usePending } from '../../ui';
+import type { Node } from '../analyze';
+import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
 import { redactSecrets } from '../model';
+import { jsonType } from '../node';
 import { FieldLabel } from './chrome';
 import { useFieldHelp } from './help';
 import type { FieldProps } from './types';
@@ -21,10 +23,25 @@ function says(text: string, value: unknown): boolean {
   }
 }
 
+/** The JSON types the field's value must have, where the schema says (a map is an object); undefined: any. */
+function typesOf(node: Node): string[] | undefined {
+  if (node.kind === 'map') return ['object'];
+  if (node.kind !== 'json') return undefined;
+  const type: unknown = node.schema.type;
+  if (typeof type === 'string') return [type];
+  return Array.isArray(type) && type.every((x): x is string => typeof x === 'string') ? type : undefined;
+}
+
+const hasType = (types: string[], v: unknown): boolean => {
+  const type = jsonType(v);
+  return types.includes(type) || (type === 'integer' && types.includes('number'));
+};
+
 /**
  * The fallback: an inline JSON editor for a value the form has no fields for, checked against its
  * sub-schema. Text that does not parse stays here with an error and is not emitted, so the last
- * valid value stands; empty text deletes the key. Locked, the JSON is read-only text with its secrets
+ * valid value stands, and Save waits for it (usePending); so does JSON of another type than the
+ * schema's (or a map's object). Empty text deletes the key. Locked, the JSON is read-only text with its secrets
  * masked (encrypt paths, secret-named keys), behind the same reveal as a secret input.
  */
 export function JsonField({
@@ -43,8 +60,11 @@ export function JsonField({
   const id = useFieldId(path);
   const placed = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
+  const fieldName = useFieldName(path);
   const [text, setText] = useState(() => toText(value));
-  const [invalid, setInvalid] = useState<string>();
+  /** Why the text typed is not emitted: shown on the field, and held for Save. */
+  const [invalid, setInvalid] = useState<{ error: string; held: string }>();
+  usePending(locked ? undefined : invalid?.held);
   const [synced, setSynced] = useState(value);
   const [revealed, setRevealed] = useState(false);
   const encrypt = useEncryptPaths();
@@ -96,18 +116,35 @@ export function JsonField({
       onChange(name, undefined);
       return;
     }
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(next);
-      setInvalid(undefined);
-      onChange(name, parsed);
+      parsed = JSON.parse(next);
     } catch (e) {
-      setInvalid(t('sf.json.invalid', { error: e instanceof Error ? e.message : String(e) }));
+      setInvalid({ error: t('sf.json.invalid', { error: e instanceof Error ? e.message : String(e) }), held: t('ui.pending.json', { field: fieldName }) });
+      return;
     }
+    const types = typesOf(node);
+    if (types && !hasType(types, parsed)) {
+      const type = types.join(' | ');
+      setInvalid({ error: t('sf.json.type', { type }), held: t('ui.pending.jsonType', { field: fieldName, type }) });
+      return;
+    }
+    setInvalid(undefined);
+    onChange(name, parsed);
   }
 
   return (
-    <Field label={label} help={fullHelp} error={invalid ?? placed} required={required} controlId={id}>
-      <CodeEditor language="json" jsonSchema={schema} value={text} onChange={edit} minLines={3} maxLines={16} aria-label={t('sf.json.label', { key })} />
+    <Field label={label} help={fullHelp} error={invalid?.error ?? placed} required={required} controlId={id}>
+      <CodeEditor
+        language="json"
+        jsonSchema={schema}
+        value={text}
+        onChange={edit}
+        minLines={3}
+        maxLines={16}
+        aria-label={t('sf.json.label', { key })}
+        aria-invalid={invalid !== undefined}
+      />
     </Field>
   );
 }

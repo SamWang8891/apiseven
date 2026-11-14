@@ -1,11 +1,11 @@
 // The frame's JSON tab: the whole draft as text. It is every resource's full editor until a kind has
 // form tabs, and stays the place where fields no form models are seen and changed.
 import { Copy, WandSparkles } from 'lucide-react';
-import { use, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { t } from '../i18n';
 import { registry, type TabProps } from '../resources/registry';
-import { Button, CodeEditor, toast, useLocked } from '../ui';
-import { JsonErrorContext, parse, pretty, represents } from './json';
+import { Button, CodeEditor, toast, useLocked, usePending } from '../ui';
+import { parse, pretty, represents } from './json';
 
 const LINE = 18;
 /** Room kept under the editor: its frame, and the page's bottom padding. */
@@ -29,33 +29,34 @@ function useFitLines(ref: RefObject<HTMLElement | null>): number {
 
 /**
  * A CodeMirror editor over JSON.stringify(draft). Every edit that parses to an object becomes the
- * draft; text that doesn't parse stays as typed, with the parser's message, and blocks Save. When
- * the draft changes from elsewhere (a form tab, Discard) the text follows. Locked: read-only, still
- * selectable and copyable. `issues` (those no form tab owns) are listed under it.
+ * draft; text that doesn't parse stays as typed, with the parser's message, and holds Save
+ * (usePending: it counts as unsaved, and a tab switch asks first). When the draft changes from
+ * elsewhere (a form tab, Discard) the text follows. Locked: read-only, still selectable and
+ * copyable. `issues` (those no form tab owns) are listed under it.
  */
 export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   const locked = useLocked();
-  const report = use(JsonErrorContext);
   const hostRef = useRef<HTMLDivElement>(null);
   const maxLines = useFitLines(hostRef);
-  const [state, setState] = useState(() => ({ text: pretty(draft), synced: draft, error: undefined as string | undefined }));
+  /** `error` (shown) and `held` (for Save) are set while the text does not parse to an object. */
+  const [state, setState] = useState(() => ({ text: pretty(draft), synced: draft, error: undefined as string | undefined, held: undefined as string | undefined }));
 
   let current = state;
   if (draft !== state.synced) {
-    current = represents(state.text, draft) ? { ...state, synced: draft } : { text: pretty(draft), synced: draft, error: undefined };
+    current = represents(state.text, draft) ? { ...state, synced: draft } : { text: pretty(draft), synced: draft, error: undefined, held: undefined };
     setState(current);
   }
-
-  useEffect(() => report?.(current.error), [report, current.error]);
-  useEffect(() => () => report?.(undefined), [report]);
+  usePending(locked ? undefined : current.held);
 
   function change(text: string) {
     const parsed = parse(text);
     if (parsed.ok) {
-      setState({ text, synced: parsed.value, error: undefined });
+      setState({ text, synced: parsed.value, error: undefined, held: undefined });
       setDraft(parsed.value);
     } else {
-      setState((s) => ({ ...s, text, error: parsed.error }));
+      const field = t('editor.json.tab');
+      const held = parsed.notObject ? t('ui.pending.jsonType', { field, type: 'object' }) : t('ui.pending.json', { field });
+      setState((s) => ({ ...s, text, error: parsed.error, held }));
     }
   }
 
@@ -94,6 +95,7 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
           minLines={Math.min(MIN_LINES, maxLines)}
           maxLines={maxLines}
           aria-label={t('editor.json.label', { kind: singular })}
+          aria-invalid={!locked && current.held !== undefined}
         />
       </div>
       <div aria-live="polite">{current.error !== undefined && <p className="ed-json__error mono">{current.error}</p>}</div>

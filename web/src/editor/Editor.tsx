@@ -15,20 +15,20 @@ import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
-import { Input, LockProvider, PendingProvider, Tabs, toast, type PendingEntry } from '../ui';
+import { Input, LockProvider, PendingProvider, Tabs, toast } from '../ui';
 import { backOf } from './back';
 import { ConflictDialog } from './ConflictDialog';
 import { DiscardDialog, PendingDialog } from './DiscardDialog';
 import { deepEqual, setPath, useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
 import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
-import { JSON_TAB, JsonErrorContext } from './json';
+import { JSON_TAB } from './json';
 import { JsonTab } from './JsonTab';
 import { saveResource } from './save';
 import { useEditorKeys } from './useEditorKeys';
+import { useActiveTab } from './useActiveTab';
 import { useLeaveGuard } from './useLeaveGuard';
 import { useSaveRequest } from './useSaveRequest';
-import { useTabParam } from './useTabParam';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
 const valueOf = (item: Item): Obj => stripTimestamps(item.value);
@@ -76,17 +76,14 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<Failure>();
   const [conflict, setConflict] = useState<Item>();
-  const [jsonError, setJsonError] = useState<string>();
   const [dialog, setDialog] = useState<'json' | 'delete' | 'discard'>();
   /**
-   * Bumped on every lock: remounts the tab area, so nothing a field held without putting it in the
-   * draft (text that never parsed, a flagged node address) can outlive Save or Discard.
+   * Bumped by Discard (and reloading theirs): remounts the tab area, so nothing a field held without
+   * putting it in the draft (text that never parsed, a flagged node address) outlives it. A save
+   * happens only when nothing is held, so it locks without a remount: the tab, the open cards and
+   * the scroll position stay as they were.
    */
   const [epoch, setEpoch] = useState(0);
-  /** What fields of the active tab hold that is not in the draft (usePending): Save waits for it. */
-  const [pending, setPending] = useState<PendingEntry[]>([]);
-  /** A tab the user chose while the active one holds pending input: asked about first. */
-  const [switchTo, setSwitchTo] = useState<string>();
   const editRef = useRef<HTMLButtonElement>(null);
   const idRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -124,10 +121,6 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const name = isNew ? t('page.new', { kind: def.singular }) : def.nameOf({ id: id ?? '', value: draft });
   const back = backOf(kind, parent);
   const listPath = back.to;
-  // A typed ID, JSON text that doesn't parse and input a field holds are work to lose as well,
-  // though not in the draft.
-  const unsaved = dirty || (isNew && newId !== '') || jsonError !== undefined || pending.length > 0;
-  const guard = useLeaveGuard(unsaved);
 
   // --- Issues ------------------------------------------------------------------------------------
   const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins }), [isNew, ctx, plugins, streamPlugins]);
@@ -143,25 +136,30 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const tabFields = useMemo(() => def.tabs.map((tab) => ({ id: tab.id, fields: tab.fields })), [def]);
   const tabIds = [...def.tabs.map((tab) => tab.id), JSON_TAB];
   const byTab = useMemo(() => issuesByTab(issues, tabFields, JSON_TAB), [issues, tabFields]);
-  const failureIssue: Issue | undefined = failure?.path !== undefined ? { path: failure.path, message: failure.message } : undefined;
+  const failureIssue = useMemo<Issue | undefined>(() => (failure?.path !== undefined ? { path: failure.path, message: failure.message } : undefined), [failure]);
   const failureTab = failureIssue && tabOfIssue(failureIssue, tabFields, JSON_TAB);
-  const problems = issues.length + (idMissing ? 1 : 0) + (jsonError !== undefined ? 1 : 0) + pending.length;
 
   // --- Tabs --------------------------------------------------------------------------------------
-  const [requested, setTab] = useTabParam();
-  const active = requested !== null && tabIds.includes(requested) ? requested : (tabIds[0] ?? JSON_TAB);
-  /** A tab chosen by the user: asked about first while the active tab holds pending input. */
-  function chooseTab(next: string) {
-    if (next !== active && pending.length > 0) setSwitchTo(next);
-    else setTab(next);
-  }
+  const tabState = useActiveTab(tabIds, bodyRef);
+  const { active, pending, goTab } = tabState;
+  const problems = issues.length + (idMissing ? 1 : 0) + pending.length;
+  // A typed ID and input a field holds (JSON text that doesn't parse, …) are work to lose as well,
+  // though not in the draft.
+  const unsaved = dirty || (isNew && newId !== '') || pending.length > 0;
+  // Leaving the page asks while there is unsaved work; a tab change through the URL (Back, a link
+  // to ?tab=) asks, as a chosen tab does, while the active tab holds input. Either is judged once
+  // the field being typed in is left.
+  const guard = useLeaveGuard(unsaved, { settle: tabState.leaveField, holdsTab: tabState.holdsTab });
 
   // --- Lock and focus ------------------------------------------------------------------------------
-  function lock() {
+  /** Locks the page; `remount` (Discard) throws away what the fields hold, by remounting them. */
+  function lock(remount: boolean) {
     focusNext.current = 'edit';
     setLocked(true);
-    setEpoch((n) => n + 1);
-    setPending([]);
+    if (remount) {
+      setEpoch((n) => n + 1);
+      tabState.dropPending();
+    }
     setSaveAttempts(0);
     setFailure(undefined);
   }
@@ -184,18 +182,20 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     if (saving || locked) return;
     if (problems > 0) {
       setSaveAttempts((n) => n + 1);
-      toast.error(problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems }));
+      const fix = problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems });
+      // Input a field holds comes first: the toast names it, as its own error may not ("Not valid JSON").
+      toast.error(pending[0] ? t('editor.fixHeld', { fix, message: pending[0].message }) : fix);
       // Input this tab holds comes first: stay here, on the field that holds it.
       const holding = pending.length > 0 ? bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"] [aria-invalid="true"]') : undefined;
-      const first = pending.length > 0 ? active : jsonError !== undefined ? JSON_TAB : tabIds.find((tab) => byTab.has(tab));
-      if (first !== undefined && first !== active) setTab(first);
+      const first = pending.length > 0 ? active : tabIds.find((tab) => byTab.has(tab));
+      if (first !== undefined && first !== active) goTab(first);
       else if (holding) holding.focus();
       else if (first === undefined && idMissing) idRef.current?.focus();
       else if (left?.isConnected) left.focus();
       return;
     }
     if (!isNew && !dirty && !force) {
-      lock();
+      lock(false);
       toast.info(t('editor.nothingToSave'));
       return;
     }
@@ -220,7 +220,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         toast.success(t('editor.saved', { name: savedName }));
         setOriginal(saved);
         reset(valueOf(saved));
-        lock();
+        lock(false);
       }
     } else if ('conflict' in result) {
       setConflict(result.conflict);
@@ -229,7 +229,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       if (error.kind === 'auth') markReadOnly();
       const path = pathOfError(error.errorMsg);
       setFailure({ message: error.errorMsg ?? error.message, path });
-      if (path !== undefined) setTab(tabOfIssue({ path, message: '' }, tabFields, JSON_TAB));
+      if (path !== undefined) goTab(tabOfIssue({ path, message: '' }, tabFields, JSON_TAB));
     }
   }
 
@@ -243,7 +243,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       return;
     }
     if (unsaved) setDialog('discard');
-    else lock();
+    else lock(true);
   }
 
   function reloadTheirs(theirs: Item) {
@@ -251,24 +251,24 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     queryClient.setQueryData(scopedKey(client.conn.id, queryKeys.item(kind, theirs.id, parent)), theirs);
     setOriginal(theirs);
     reset(valueOf(theirs));
-    lock();
+    lock(true);
     toast.info(t('editor.conflict.reloaded', { name: def.nameOf(theirs) }));
   }
 
   useEditorKeys({ locked, canEdit: !readOnly, onEdit: unlock, onSave: () => requestSave() });
 
   // --- Tabs' content -----------------------------------------------------------------------------
-  const tabProps = (tab: string): TabProps => ({
-    draft,
-    setDraft: edit,
-    kind,
-    isNew,
-    ctx,
-    parent,
-    original,
-    saveAttempts,
-    issues: [...(byTab.get(tab) ?? []), ...(failureIssue && failureTab === tab && tab !== JSON_TAB ? [failureIssue] : [])],
-  });
+  // Only the active panel is mounted, so only its content is built; memoised, so a change of what
+  // fields hold (usePending, on a keystroke) re-renders the badges and not the panel.
+  const activeIssues = useMemo(
+    () => [...(byTab.get(active) ?? []), ...(failureIssue && failureTab === active && active !== JSON_TAB ? [failureIssue] : [])],
+    [byTab, active, failureIssue, failureTab],
+  );
+  const content = useMemo(() => {
+    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues };
+    const tab = def.tabs.find((candidate) => candidate.id === active);
+    return tab ? tab.render(props) : <JsonTab {...props} />;
+  }, [def, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues]);
   const changedHere = (fields: string[]) => fields.some((field) => !deepEqual(draft[field], baseline[field]));
   const label = (text: string, changed: boolean) => (
     <>
@@ -276,20 +276,10 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       {changed && <span className="ed-dot" aria-hidden="true" />}
     </>
   );
-  const badge = (tab: string) =>
-    (byTab.get(tab)?.length ?? 0) +
-    (failureTab === tab ? 1 : 0) +
-    (tab === JSON_TAB && jsonError !== undefined ? 1 : 0) +
-    (tab === active ? pending.length : 0);
-  // Only the active panel is mounted, so only its content is built.
+  const badge = (tab: string) => (byTab.get(tab)?.length ?? 0) + (failureTab === tab ? 1 : 0) + (tab === active ? pending.length : 0);
   const tabs = [
-    ...def.tabs.map((tab) => ({
-      id: tab.id,
-      label: label(tab.label, changedHere(tab.fields)),
-      badge: badge(tab.id),
-      content: tab.id === active ? tab.render(tabProps(tab.id)) : null,
-    })),
-    { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? <JsonTab {...tabProps(JSON_TAB)} /> : null },
+    ...def.tabs.map((tab) => ({ id: tab.id, label: label(tab.label, changedHere(tab.fields)), badge: badge(tab.id), content: tab.id === active ? content : null })),
+    { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? content : null },
   ];
 
   const status = def.hasStatus
@@ -310,7 +300,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         status={status}
         readOnly={readOnly}
         saving={saving}
-        saveBlocked={jsonError !== undefined}
+        saveBlocked={active === JSON_TAB && pending.length > 0}
         editRef={editRef}
         onEdit={unlock}
         onSave={() => requestSave()}
@@ -344,24 +334,19 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
           </div>
         )}
         <LockProvider locked={!editable}>
-          <JsonErrorContext value={setJsonError}>
-            <PendingProvider key={epoch} onChange={setPending}>
-              <Tabs tabs={tabs} active={active} onChange={chooseTab} />
-            </PendingProvider>
-          </JsonErrorContext>
+          <PendingProvider key={epoch} onChange={tabState.onPending}>
+            <Tabs tabs={tabs} active={active} onChange={tabState.chooseTab} />
+          </PendingProvider>
         </LockProvider>
       </div>
 
-      <DiscardDialog open={guard.blocked} name={name} onConfirm={guard.leave} onCancel={guard.stay} />
+      <DiscardDialog open={guard.blocked === 'leave'} name={name} onConfirm={guard.leave} onCancel={guard.stay} />
       <PendingDialog
-        open={switchTo !== undefined}
+        open={tabState.asking || guard.blocked === 'tab'}
         kind={def.singular}
         pending={pending}
-        onConfirm={() => {
-          if (switchTo !== undefined) setTab(switchTo);
-          setSwitchTo(undefined);
-        }}
-        onCancel={() => setSwitchTo(undefined)}
+        onConfirm={guard.blocked === 'tab' ? guard.leave : tabState.confirmSwitch}
+        onCancel={guard.blocked === 'tab' ? guard.stay : tabState.cancelSwitch}
       />
       <DiscardDialog
         open={dialog === 'discard'}
@@ -369,7 +354,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         onConfirm={() => {
           setDialog(undefined);
           reset();
-          lock();
+          lock(true);
         }}
         onCancel={() => setDialog(undefined)}
       />

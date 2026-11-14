@@ -3,10 +3,10 @@ import { useCallback, useState, type ReactNode } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
-import { Button, Input, KeyValueInput, useLocked } from '../../ui';
+import { Button, Input, KeyValueInput, useLocked, usePending } from '../../ui';
 import type { MapNode } from '../analyze';
-import { useFieldError, useFieldId, useLatest } from '../context';
-import { blankOf, joinPath, mapMode, type Key } from '../model';
+import { useFieldError, useFieldId, useFieldName, useLatest } from '../context';
+import { blankOf, isEmpty, joinPath, mapMode, type Key } from '../model';
 import { ErrorLine, FieldLabel, RequiredMark } from './chrome';
 import { useFieldHelp } from './help';
 import { JsonField } from './JsonField';
@@ -70,6 +70,21 @@ function toMap(node: MapNode, rows: Row[]): Obj {
   return out;
 }
 
+/**
+ * What the map leaves out of rows that hold something, as one message: a value without a key, a
+ * refused key, a key without a value. A new row with nothing typed in it holds nothing.
+ */
+function heldRows(rows: Row[], refused: (string | undefined)[], field: string): string | undefined {
+  const messages = rows.flatMap((row, i) => {
+    const refusal = refused[i];
+    if ((refusal === undefined && row.value !== undefined) || (row.key === '' && isEmpty(row.value))) return [];
+    if (refusal === '') return [t('ui.pending.noKey', { field, n: i + 1 })];
+    if (refusal !== undefined) return [t('ui.pending.problem', { field, problem: refusal })];
+    return [t('ui.pending.noValue', { field, key: row.key })];
+  });
+  return messages.length > 0 ? messages.join('; ') : undefined;
+}
+
 function sameMap(a: Obj, b: Obj): boolean {
   const ak = Object.keys(a);
   const bk = Object.keys(b);
@@ -79,7 +94,8 @@ function sameMap(a: Obj, b: Obj): boolean {
 /**
  * Rows of key + field, for values a key/value editor cannot hold (numbers, lists, secrets, objects).
  * The rows are local, so a row being typed into (no key yet, a value cleared, a repeated key) stays
- * where it is while the map leaves it out; a new value from outside replaces them.
+ * where it is while the map leaves it out, and holds Save meanwhile (usePending); a new value from
+ * outside replaces them.
  */
 function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   node: MapNode;
@@ -116,6 +132,8 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   );
 
   const refused = keyRefusals(node, rows);
+  const fieldName = useFieldName(path);
+  usePending(locked ? undefined : heldRows(rows, refused, fieldName));
 
   return (
     <div className="sf-map" role="group" aria-labelledby={labelId}>
@@ -136,8 +154,16 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
         <div className="sf-map__rows">
           {rows.map((row, i) => {
             const n = i + 1;
-            // A stored key that fails the pattern is shown as such, though the entry is kept.
-            const keyError = refused[i] || (stored(row) ? badKey(node, row.key) : undefined);
+            // A row the map leaves out though it holds something is flagged on its key: a refused
+            // key, a value without a key, a key without a value. A stored key that fails the pattern
+            // is shown as such, though the entry is kept.
+            const refusal = refused[i];
+            const keyError =
+              refusal === ''
+                ? isEmpty(row.value)
+                  ? undefined
+                  : t('sf.map.noKey')
+                : (refusal ?? (row.value === undefined && row.key !== '' ? t('sf.map.noValue') : stored(row) ? badKey(node, row.key) : undefined));
             return (
               <div className="sf-map__row" key={row.id}>
                 {locked ? (
@@ -190,6 +216,7 @@ export function MapField(props: FieldProps<MapNode>) {
   const id = useFieldId(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
+  const fieldName = useFieldName(path);
   const map = isObj(value) ? value : NONE;
   const latestRef = useLatest({ name, onChange, required });
   const emit = useCallback(
@@ -229,6 +256,7 @@ export function MapField(props: FieldProps<MapNode>) {
         error={error ?? refused}
         required={false}
         mono
+        fieldName={fieldName}
         value={text}
         onChange={(next) => {
           // Entries left as they were keep their stored type (a number stays a number).

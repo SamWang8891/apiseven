@@ -1,15 +1,8 @@
-// The JSON tab's text handling, and how it reports text that doesn't parse to the frame.
-import { createContext } from 'react';
+// The JSON tab's text handling.
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { deepEqual } from './draft';
-
-/**
- * How the JSON tab tells the frame its text doesn't parse (undefined once it does), so Save is
- * blocked while it holds text the draft can't follow. Without a provider the tab still shows the error.
- */
-export const JsonErrorContext = createContext<((error: string | undefined) => void) | null>(null);
 
 /** The id of the frame's own JSON tab, after the kind's tabs. Registry tabs must not use it. */
 export const JSON_TAB = 'json';
@@ -30,7 +23,8 @@ export function canonical(value: unknown): unknown {
   );
 }
 
-type Parsed = { ok: true; value: Obj } | { ok: false; error: string };
+/** A failure says why (`error`, shown) and whether the text was JSON of another type than an object. */
+type Parsed = { ok: true; value: Obj } | { ok: false; error: string; notObject?: boolean };
 
 export function parse(text: string): Parsed {
   let value: unknown;
@@ -39,7 +33,7 @@ export function parse(text: string): Parsed {
   } catch (err) {
     return { ok: false, error: t('editor.json.invalid', { error: err instanceof Error ? err.message : String(err) }) };
   }
-  return isObj(value) ? { ok: true, value } : { ok: false, error: t('editor.json.invalid', { error: t('editor.json.notObject') }) };
+  return isObj(value) ? { ok: true, value } : { ok: false, error: t('editor.json.invalid', { error: t('editor.json.notObject') }), notObject: true };
 }
 
 /** Whether `text` already says `draft` (so a draft change made from here doesn't reformat what was typed). */

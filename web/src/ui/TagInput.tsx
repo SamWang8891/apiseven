@@ -2,8 +2,9 @@ import { X } from 'lucide-react';
 import { useRef, useState, type ClipboardEvent, type ComponentProps, type KeyboardEvent } from 'react';
 import { t } from '../i18n';
 import { Field, type FieldProps } from './Field';
-import { useFieldIds } from './fieldIds';
+import { nameOfField, useFieldIds } from './fieldIds';
 import { useLocked } from './LockContext';
+import { usePending } from './PendingContext';
 import { ReadOnlyValue } from './ReadOnly';
 import './collection.css';
 
@@ -14,18 +15,29 @@ export type TagInputProps = Omit<ComponentProps<'input'>, 'value' | 'onChange' |
     /** Returns a message to refuse a tag; the text stays in the box with the message shown. */
     validate?: (tag: string) => string | undefined;
     mono?: boolean;
+    /** How a refused Save names the field while it holds refused text; default: the label (if text) or aria-label. */
+    fieldName?: string;
   };
 
 /**
  * A list of short strings. Enter, comma, Tab or leaving the box adds what was typed; a paste is split
  * on whitespace and commas; Backspace in the empty box removes the last tag; duplicates are skipped.
+ * Text `validate` refuses stays in the box, flagged, and holds Save (usePending) until it is changed.
  */
 export function TagInput({
-  label, help, error, required, htmlFor, id, value, onChange, validate, mono, placeholder, className, disabled, onBlur, ...native
+  label, help, error, required, htmlFor, id, value, onChange, validate, mono, placeholder, className, disabled, onBlur, fieldName, ...native
 }: TagInputProps) {
   const locked = useLocked();
   const [draft, setDraft] = useState('');
   const [rejected, setRejected] = useState<string>();
+  // Text still being typed is added when the box is left (an editor's Save leaves it first); text
+  // that was refused cannot be, so Save waits for it.
+  const text = draft.trim();
+  usePending(
+    locked || rejected === undefined || text === ''
+      ? undefined
+      : t('ui.pending.tag', { field: nameOfField(fieldName, label, native['aria-label']), text, reason: rejected }),
+  );
   const inputRef = useRef<HTMLInputElement>(null);
   const shownError = rejected ?? error;
   const ids = useFieldIds(id ?? htmlFor, { help, error: shownError });

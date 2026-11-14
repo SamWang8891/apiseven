@@ -1,8 +1,9 @@
 import { useState, type ComponentProps, type KeyboardEvent } from 'react';
 import { t } from '../i18n';
 import { Field, type FieldProps } from './Field';
-import { useFieldIds } from './fieldIds';
+import { nameOfField, useFieldIds } from './fieldIds';
 import { useLocked } from './LockContext';
+import { usePending } from './PendingContext';
 import { ReadOnlyValue } from './ReadOnly';
 import './input.css';
 
@@ -20,9 +21,11 @@ export type NumberInputProps = Omit<
     step?: number;
     integer?: boolean;
     mono?: boolean;
+    /** How a refused Save names the field while it shows text that is not a number; default: the label (if text) or aria-label. */
+    fieldName?: string;
   };
 
-type Parsed = { ok: true; value: number | undefined } | { ok: false; message: string };
+type Parsed = { ok: true; value: number | undefined } | { ok: false; message: string; whole?: boolean };
 
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
 
@@ -31,7 +34,7 @@ function parse(text: string, integer: boolean | undefined): Parsed {
   if (s === '') return { ok: true, value: undefined };
   const n = Number(s);
   if (!NUMBER.test(s) || !Number.isFinite(n)) return { ok: false, message: t('ui.number.invalid') };
-  if (integer && !Number.isInteger(n)) return { ok: false, message: t('ui.number.integer') };
+  if (integer && !Number.isInteger(n)) return { ok: false, message: t('ui.number.integer'), whole: true };
   return { ok: true, value: n };
 }
 
@@ -40,7 +43,7 @@ const format = (n: number | undefined): string => (n === undefined ? '' : String
 const decimals = (n: number): number => (String(n).split('.')[1] ?? '').length;
 
 export function NumberInput({
-  label, help, error, required, htmlFor, mono, id, value, onChange, min, max, step = 1, integer, className, onKeyDown, ...native
+  label, help, error, required, htmlFor, mono, id, value, onChange, min, max, step = 1, integer, fieldName, className, onKeyDown, ...native
 }: NumberInputProps) {
   const locked = useLocked();
   // The text being edited, which may be mid-way ("-", "1.") or invalid ("abc").
@@ -54,6 +57,11 @@ export function NumberInput({
   }
 
   const parsed = parse(draft, integer);
+  // Text that is not a number is shown but not emitted: Save waits until it is one, or is cleared.
+  const named = nameOfField(fieldName, label, native['aria-label']);
+  usePending(
+    locked || parsed.ok ? undefined : t(parsed.whole ? 'ui.pending.notInteger' : 'ui.pending.notNumber', { field: named, text: draft.trim() }),
+  );
   const rangeError =
     parsed.ok && parsed.value !== undefined
       ? min !== undefined && parsed.value < min

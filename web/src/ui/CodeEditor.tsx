@@ -16,6 +16,8 @@ export interface CodeEditorProps {
   minLines?: number;
   maxLines?: number;
   'aria-label'?: string;
+  /** The text is not accepted (it doesn't parse): marked for assistive tech, and found by a refused Save. */
+  'aria-invalid'?: boolean;
 }
 
 // CodeMirror is fetched on first use; until then the text shows as a plain block of the same size.

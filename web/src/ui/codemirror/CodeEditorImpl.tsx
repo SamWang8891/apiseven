@@ -42,6 +42,7 @@ export default function CodeEditorImpl({
   jsonSchema,
   readOnly = false,
   'aria-label': ariaLabel,
+  'aria-invalid': invalid = false,
 }: CodeEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
@@ -106,10 +107,11 @@ export default function CodeEditorImpl({
   }, [readOnly]);
 
   useLayoutEffect(() => {
-    viewRef.current?.dispatch({
-      effects: labelSlot.reconfigure(ariaLabel ? EditorView.contentAttributes.of({ 'aria-label': ariaLabel }) : []),
-    });
-  }, [ariaLabel]);
+    const attributes: Record<string, string> = {};
+    if (ariaLabel) attributes['aria-label'] = ariaLabel;
+    if (invalid) attributes['aria-invalid'] = 'true';
+    viewRef.current?.dispatch({ effects: labelSlot.reconfigure(EditorView.contentAttributes.of(attributes)) });
+  }, [ariaLabel, invalid]);
 
   return <div ref={hostRef} className="ui-code__host" />;
 }

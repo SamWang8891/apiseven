@@ -1,7 +1,7 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
-import { Select } from '../../ui';
+import { PendingScope, Select, useHeld } from '../../ui';
 import type { VariantNode } from '../analyze';
 import { useFieldError, useFieldId, useLatest } from '../context';
 import { activeOption, isEmpty, switchOption } from '../model';
@@ -14,8 +14,9 @@ import type { FieldProps } from './types';
 
 /**
  * Alternatives (oneOf/anyOf) the analysis can tell apart: a select of the forms, then the chosen
- * form's fields. Switching keeps what both forms have and drops the rest. A value that matches no
- * form is shown, and kept, as JSON.
+ * form's fields. Switching keeps what both forms have and drops the rest; it waits while a field of
+ * the current form holds input it has not emitted (useHeld). A value that matches no form is shown,
+ * and kept, as JSON.
  */
 export function VariantField(props: FieldProps<VariantNode>) {
   const { node, value, name, path, onChange, prop, required, ariaLabel } = props;
@@ -23,6 +24,8 @@ export function VariantField(props: FieldProps<VariantNode>) {
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
   const [chosen, setChosen] = useState<number>();
+  const held = useHeld();
+  const bodyRef = useRef<HTMLDivElement>(null);
   const latestRef = useLatest({ name, onChange, required });
   const emitObject = useCallback(
     (next: Obj) => {
@@ -57,19 +60,21 @@ export function VariantField(props: FieldProps<VariantNode>) {
           options={node.options.map((o, i) => ({ value: String(i), label: o.label }))}
           onChange={(picked) => {
             const to = Number(picked);
-            if (!Number.isInteger(to) || to === index) return;
+            if (!Number.isInteger(to) || to === index || held.refuse(bodyRef.current)) return;
             setChosen(to);
             onChange(name, switchOption(node, index, to, value));
           }}
         />
       </div>
       {inner && (
-        <div className="sf-variant__body">
-          {inner.kind === 'object' ? (
-            <ObjectBody node={inner} value={value} path={path} emit={emitObject} />
-          ) : (
-            <NodeField node={inner} value={value} name={name} path={path} onChange={onChange} required={required} ariaLabel={key} />
-          )}
+        <div className="sf-variant__body" ref={bodyRef}>
+          <PendingScope onChange={held.track}>
+            {inner.kind === 'object' ? (
+              <ObjectBody node={inner} value={value} path={path} emit={emitObject} />
+            ) : (
+              <NodeField node={inner} value={value} name={name} path={path} onChange={onChange} required={required} ariaLabel={key} />
+            )}
+          </PendingScope>
         </div>
       )}
     </div>

@@ -1,9 +1,12 @@
 // What every field of one form shares: its id prefix and where its errors landed (errors.ts).
 import { createContext, use, useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { t } from '../i18n';
 import { fieldId } from './model';
 
 export interface FormContextValue {
   prefix: string;
+  /** What messages about the form's fields start with (a plugin's name); none by default. */
+  name?: string;
   /** Dotted paths of secret values (the schema's encrypt_fields and the caller's), arrays transparent. */
   encrypt: string[];
   /** Messages by the dotted path of the rendered field that shows them ('' = the form as a whole). */
@@ -20,6 +23,15 @@ export function useEncryptPaths(): string[] {
 /** The DOM id of the field at `path`. */
 export function useFieldId(path: string): string {
   return fieldId(use(FormContext).prefix, path);
+}
+
+/**
+ * How a message about the field at `path` names it (usePending: a refused Save lists it): the dotted
+ * path, after the form's name when it has one ("limit-count.count").
+ */
+export function useFieldName(path: string): string {
+  const { name } = use(FormContext);
+  return [name, path].filter((part) => part !== undefined && part !== '').join('.') || t('ui.pending.field');
 }
 
 /** The error to show on the field at `path` (several are joined), if any. */

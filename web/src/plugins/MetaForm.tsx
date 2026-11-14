@@ -2,14 +2,14 @@
 // (schema_def.lua plugin_injected_schema): disable (boolean), priority (integer), filter (an array
 // of vars conditions), error_response (a string or an object). pre_function is not offered; it and
 // any other key are kept as they are and named.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj, PluginInfo } from '../api/types';
 import { deepEqual } from '../editor/draft';
 import { issueAt, type Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { FieldLabel } from '../schema-form/fields/chrome';
-import { CodeEditor, Field, NumberInput, Select, Switch, Textarea, useLocked } from '../ui';
+import { CodeEditor, Field, NumberInput, PendingScope, Select, Switch, Textarea, useHeld, useLocked, usePending } from '../ui';
 
 export interface MetaFormProps {
   /** The config's `_meta`. */
@@ -22,6 +22,8 @@ export interface MetaFormProps {
   issues: Issue[];
   /** Prefix of the fields' DOM ids. */
   idPrefix: string;
+  /** The plugin's name, which messages about held input start with ("limit-count._meta.filter"). */
+  name: string;
 }
 
 const KNOWN = new Set(['disable', 'priority', 'filter', 'error_response']);
@@ -42,9 +44,9 @@ type Check = (parsed: unknown) => string | undefined;
 
 /**
  * A JSON value edited as text: empty text removes it, text that does not parse (or that `check`
- * refuses) stays here with an error and is not emitted.
+ * refuses) stays here with an error, is not emitted, and holds Save (usePending, named `fieldName`).
  */
-function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id }: {
+function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id, fieldName }: {
   value: unknown;
   onChange: (v: unknown) => void;
   label: string;
@@ -53,17 +55,21 @@ function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id }
   error?: string;
   check: Check;
   id: string;
+  fieldName: string;
 }) {
-  const [state, setState] = useState(() => ({ text: pretty(value), synced: value, invalid: undefined as string | undefined }));
+  const locked = useLocked();
+  /** `invalid` (shown) and `held` (for Save) are set while the text is not emitted. */
+  const [state, setState] = useState(() => ({ text: pretty(value), synced: value, invalid: undefined as string | undefined, held: undefined as string | undefined }));
   let current = state;
   if (!Object.is(value, state.synced)) {
-    current = says(state.text, value) ? { ...state, synced: value } : { text: pretty(value), synced: value, invalid: undefined };
+    current = says(state.text, value) ? { ...state, synced: value } : { text: pretty(value), synced: value, invalid: undefined, held: undefined };
     setState(current);
   }
+  usePending(locked ? undefined : current.held);
 
   function edit(text: string) {
     if (text.trim() === '') {
-      setState({ text, synced: undefined, invalid: undefined });
+      setState({ text, synced: undefined, invalid: undefined, held: undefined });
       onChange(undefined);
       return;
     }
@@ -71,21 +77,22 @@ function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id }
     try {
       parsed = JSON.parse(text);
     } catch (e) {
-      setState((s) => ({ ...s, text, invalid: t('pl.card.jsonInvalid', { error: e instanceof Error ? e.message : String(e) }) }));
+      const invalid = t('pl.card.jsonInvalid', { error: e instanceof Error ? e.message : String(e) });
+      setState((s) => ({ ...s, text, invalid, held: t('ui.pending.json', { field: fieldName }) }));
       return;
     }
     const refused = check(parsed);
     if (refused) {
-      setState((s) => ({ ...s, text, invalid: refused }));
+      setState((s) => ({ ...s, text, invalid: refused, held: t('ui.pending.problem', { field: fieldName, problem: refused }) }));
       return;
     }
-    setState({ text, synced: parsed, invalid: undefined });
+    setState({ text, synced: parsed, invalid: undefined, held: undefined });
     onChange(parsed);
   }
 
   return (
     <Field label={<FieldLabel name={label} />} help={help} error={current.invalid ?? error} controlId={id}>
-      <CodeEditor language="json" value={current.text} onChange={edit} minLines={2} maxLines={12} aria-label={ariaLabel} />
+      <CodeEditor language="json" value={current.text} onChange={edit} minLines={2} maxLines={12} aria-label={ariaLabel} aria-invalid={!locked && current.held !== undefined} />
     </Field>
   );
 }
@@ -93,7 +100,7 @@ function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id }
 const arrayOnly: Check = (v) => (Array.isArray(v) ? undefined : t('pl.meta.filterNotArray'));
 const objectOnly: Check = (v) => (isObj(v) ? undefined : t('pl.meta.errorNotObject'));
 
-export function MetaForm({ meta, onChange, info, issues, idPrefix }: MetaFormProps) {
+export function MetaForm({ meta, onChange, info, issues, idPrefix, name }: MetaFormProps) {
   const locked = useLocked();
   const current = meta ?? {};
   const set = (key: string, v: unknown) => {
@@ -108,8 +115,14 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix }: MetaFormPro
   // How error_response is written: follows the stored value, else the user's pick.
   const [pick, setPick] = useState<'text' | 'json'>(isObj(errorResponse) ? 'json' : 'text');
   const kind = isObj(errorResponse) ? 'json' : typeof errorResponse === 'string' ? 'text' : pick;
-  /** A switch converts what is there: text becomes {"message": text} (as the APISIX docs write it), and back. */
+  const errorHeld = useHeld();
+  const errorRef = useRef<HTMLDivElement>(null);
+  /**
+   * A switch converts what is there: text becomes {"message": text} (as the APISIX docs write it), and
+   * back. It waits while the JSON holds text that is not emitted.
+   */
   function switchKind(to: 'text' | 'json') {
+    if (to === kind || errorHeld.refuse(errorRef.current)) return;
     setPick(to);
     if (to === 'json' && typeof errorResponse === 'string') set('error_response', { message: errorResponse });
     if (to === 'text' && isObj(errorResponse)) {
@@ -119,6 +132,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix }: MetaFormPro
   const others = Object.keys(current).filter((key) => !KNOWN.has(key));
   const priority = typeof current.priority === 'number' ? current.priority : undefined;
   const id = (key: string) => `${idPrefix}-meta-${key}`;
+  const fieldName = (key: string) => `${name}._meta.${key}`;
 
   return (
     <div className="pl-meta">
@@ -136,6 +150,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix }: MetaFormPro
         <NumberInput
           id={id('priority')}
           label={<FieldLabel name="priority" />}
+          fieldName={fieldName('priority')}
           integer
           value={priority}
           placeholder={info?.priority !== undefined ? t('pl.meta.priorityDefault', { priority: info.priority }) : undefined}
@@ -146,6 +161,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix }: MetaFormPro
       </div>
       <JsonValue
         id={id('filter')}
+        fieldName={fieldName('filter')}
         value={current.filter}
         onChange={(v) => set('filter', v)}
         label="filter"
@@ -155,7 +171,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix }: MetaFormPro
         check={arrayOnly}
       />
       {offerError && (
-        <div className="pl-meta__error">
+        <div className="pl-meta__error" ref={errorRef}>
           {!locked && (
             <Select
               id={id('error-kind')}
@@ -168,28 +184,31 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix }: MetaFormPro
               onChange={(v) => switchKind(v === 'json' ? 'json' : 'text')}
             />
           )}
-          {kind === 'json' ? (
-            <JsonValue
-              id={id('error_response')}
-              value={isObj(errorResponse) ? errorResponse : undefined}
-              onChange={(v) => set('error_response', v)}
-              label="error_response"
-              ariaLabel={t('pl.meta.errorJsonLabel')}
-              help={t('pl.meta.errorHelp')}
-              error={issueAt(issues, 'error_response')}
-              check={objectOnly}
-            />
-          ) : (
-            <Textarea
-              id={id('error_response')}
-              label={<FieldLabel name="error_response" />}
-              rows={2}
-              value={typeof errorResponse === 'string' ? errorResponse : ''}
-              help={t('pl.meta.errorHelp')}
-              error={issueAt(issues, 'error_response')}
-              onChange={(v) => set('error_response', v === '' ? undefined : v)}
-            />
-          )}
+          <PendingScope onChange={errorHeld.track}>
+            {kind === 'json' ? (
+              <JsonValue
+                id={id('error_response')}
+                fieldName={fieldName('error_response')}
+                value={isObj(errorResponse) ? errorResponse : undefined}
+                onChange={(v) => set('error_response', v)}
+                label="error_response"
+                ariaLabel={t('pl.meta.errorJsonLabel')}
+                help={t('pl.meta.errorHelp')}
+                error={issueAt(issues, 'error_response')}
+                check={objectOnly}
+              />
+            ) : (
+              <Textarea
+                id={id('error_response')}
+                label={<FieldLabel name="error_response" />}
+                rows={2}
+                value={typeof errorResponse === 'string' ? errorResponse : ''}
+                help={t('pl.meta.errorHelp')}
+                error={issueAt(issues, 'error_response')}
+                onChange={(v) => set('error_response', v === '' ? undefined : v)}
+              />
+            )}
+          </PendingScope>
         </div>
       )}
       {others.length > 0 && <p className="pl-note">{t('pl.meta.other', { keys: others.join(', ') })}</p>}

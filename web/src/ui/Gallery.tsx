@@ -13,6 +13,7 @@ import {
   Input,
   LockProvider,
   Menu,
+  NumberInput,
   Select,
   Tabs,
   Toaster,
@@ -129,6 +130,7 @@ function Overlays() {
   const [confirm, setConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
+  const [port, setPort] = useState<number | undefined>(80);
   return (
     <div className="ui-gallery__line">
       <Button onClick={() => setDialog(true)}>Open dialog</Button>
@@ -156,17 +158,19 @@ function Overlays() {
         open={dialog}
         onClose={() => setDialog(false)}
         title="Add upstream node"
-        footer={
+        footer={(held) => (
           <>
             <Button onClick={() => setDialog(false)}>Cancel</Button>
-            <Button variant="primary" onClick={() => setDialog(false)}>
+            {/* A field holding input it has not emitted (a port of "-") keeps the dialog from confirming. */}
+            <Button variant="primary" disabled={held.length > 0} onClick={() => setDialog(false)}>
               Add node
             </Button>
           </>
-        }
+        )}
       >
         <div className="ui-gallery__form ui-gallery__form--single">
           <Input label="Host" mono required value={name} onChange={(e) => setName(e.target.value)} placeholder="backend.internal" />
+          <NumberInput label="Port" mono integer min={1} max={65535} value={port} onChange={setPort} />
           <Select label="Scheme" options={[{ value: 'http', label: 'http' }, { value: 'https', label: 'https' }]} value="https" onChange={() => {}} />
         </div>
       </Dialog>

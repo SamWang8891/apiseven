@@ -5,7 +5,7 @@
  *
  *   .pl                 the tab: notes, the bar with the count and Add, the list, inherited plugins
  *   .pl-card            one plugin; --open, --off, --error
- *   .pl-views           Form | JSON switch inside a card
+ *   .pl-views           Form | JSON switch inside a card; .pl-view wraps the view shown (no box)
  *   .pl-metabox         the collapsible _meta section; .pl-meta the form inside it
  *   .pl-picker          the Add plugin dialog: search, grouped options (.pl-option)
  *   .pl-inherited       plugins running here from a service or plugin config
@@ -279,6 +279,11 @@
 .pl-views__btn:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 0;
+}
+
+/* The Form or JSON view: a hook for finding a field in it, with no box of its own. */
+.pl-view {
+  display: contents;
 }
 
 .pl-json {

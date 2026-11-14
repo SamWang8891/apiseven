@@ -29,11 +29,13 @@ export interface SchemaFormProps {
   errors?: FormError[];
   /** Prefix of the fields' DOM ids (fieldId(prefix, path)); a generated one by default. */
   idPrefix?: string;
+  /** What messages about held input start with (a plugin's name), before the field's dotted path. */
+  name?: string;
 }
 
 const NO_ERRORS: FormError[] = [];
 
-export const SchemaForm: FC<SchemaFormProps> = ({ schema, value, onChange, encryptFields, errors = NO_ERRORS, idPrefix }) => {
+export const SchemaForm: FC<SchemaFormProps> = ({ schema, value, onChange, encryptFields, errors = NO_ERRORS, idPrefix, name }) => {
   const encryptKey = (encryptFields ?? []).join('\n');
   const node = useMemo(() => analyze(schema, { encryptFields: encryptKey === '' ? [] : encryptKey.split('\n') }), [schema, encryptKey]);
   const generated = useId().replace(/[^\w-]/g, '');
@@ -48,7 +50,7 @@ export const SchemaForm: FC<SchemaFormProps> = ({ schema, value, onChange, encry
     const own: unknown[] = Array.isArray(schema.encrypt_fields) ? (schema.encrypt_fields as unknown[]) : [];
     return [...new Set([...own, ...encryptKey.split('\n')])].filter((p): p is string => typeof p === 'string' && p !== '');
   }, [schema, encryptKey]);
-  const context = useMemo(() => ({ prefix, encrypt, errors: stable }), [prefix, encrypt, stable]);
+  const context = useMemo(() => ({ prefix, name, encrypt, errors: stable }), [prefix, name, encrypt, stable]);
 
   const latestRef = useLatest(onChange);
   const emit = useCallback((_: Key, v: unknown) => latestRef.current(v), [latestRef]);

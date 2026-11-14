@@ -130,7 +130,8 @@ describe('fields holding input that is not in the draft', () => {
     expect(tab(t('up.section.nodes'))).toHaveAccessibleName(`${t('up.section.nodes')} ${t('ui.tabs.errors', { count: 1 })}`);
 
     await user.click(main().getByRole('button', { name: t('editor.save') }));
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
+    const held = t('up.pending.duplicate', { node: t('up.pending.node', { n: 3 }), addr: 'b.example:80' });
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: held }));
     expect(writesOf(admin)).toEqual([]);
 
     await user.click(main().getByRole('button', { name: t('up.nodes.removeN', { n: 1 }) }));

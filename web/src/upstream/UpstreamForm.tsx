@@ -2,14 +2,15 @@
 // route's `upstream`). `sections`: each section a collapsible Section showing its one-line summary
 // while collapsed; Nodes starts open, the others when they hold a value or a problem. `tabs`: the
 // sections as an inner tab strip. Issues have paths relative to the upstream (`nodes.0.host`);
-// those no section owns (the upstream as a whole) show above the sections.
-import { useState, type FC } from 'react';
+// those no section owns (the upstream as a whole) show above the sections. A section whose field
+// holds input it has not emitted (usePending) stays shown: it does not collapse, nor its tab switch.
+import { useRef, useState, type FC } from 'react';
 import type { Obj } from '../api/types';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
 import { Section } from '../resources/Section';
-import { Tabs } from '../ui';
+import { PendingScope, Tabs, useHeld } from '../ui';
 import { DEFAULT_TYPE } from './meta';
 import { upstreamSections, type UpstreamSection } from './sections';
 import './upstream.css';
@@ -50,21 +51,25 @@ function Stray({ issues }: { issues: Issue[] }) {
 
 export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = NONE, ctx, layout }) => {
   const [active, setActive] = useState<string>(upstreamSections[0]?.id ?? 'nodes');
+  const held = useHeld();
+  const tabsRef = useRef<HTMLDivElement>(null);
   const stray = issues.filter((issue) => !upstreamSections.some((s) => owns(s, issue)));
   const ownIssues = (s: UpstreamSection) => issues.filter((issue) => owns(s, issue));
 
   if (layout === 'tabs') {
     return (
-      <div className="up up--tabs">
+      <div className="up up--tabs" ref={tabsRef}>
         <Stray issues={stray} />
         <Tabs
           active={active}
-          onChange={setActive}
+          onChange={(next) => {
+            if (next !== active && !held.refuse(tabsRef.current)) setActive(next);
+          }}
           tabs={upstreamSections.map((s) => ({
             id: s.id,
             label: s.label,
             badge: ownIssues(s).length,
-            content: s.id === active ? s.render({ value, onChange, issues: ownIssues(s), ctx }) : null,
+            content: s.id === active ? <PendingScope onChange={held.track}>{s.render({ value, onChange, issues: ownIssues(s), ctx })}</PendingScope> : null,
           }))}
         />
       </div>

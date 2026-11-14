@@ -3,7 +3,9 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
 import { Field, type FieldProps } from './Field';
+import { nameOfField } from './fieldIds';
 import { useLocked } from './LockContext';
+import { usePending } from './PendingContext';
 import { ReadOnlyValue } from './ReadOnly';
 import './collection.css';
 
@@ -18,6 +20,8 @@ export type KeyValueInputProps = FieldProps & {
   valuePlaceholder?: string;
   mono?: boolean;
   disabled?: boolean;
+  /** How a refused Save names the field while a row is left out; default: the label (if text). */
+  fieldName?: string;
 };
 
 interface Row {
@@ -66,8 +70,21 @@ function sameMap(a: Record<string, string>, b: Record<string, string>): boolean 
   return ak.length === bk.length && ak.every((k, i) => k === bk[i] && a[k] === b[k]);
 }
 
-/** Editable rows of key/value pairs (labels, headers, vars). Locked: a two-column list. */
-export function KeyValueInput({ label, help, error, required, value, onChange, keyPlaceholder, valuePlaceholder, mono, disabled }: KeyValueInputProps) {
+/** What the map leaves out of rows that hold something (a blank row holds nothing), as one message. */
+function heldRows(rows: Row[], field: string): string | undefined {
+  const out = withheld(rows);
+  const messages = rows.flatMap((row, i) => {
+    if (!out[i] || (row.key === '' && row.value === '')) return [];
+    return [row.key === '' ? t('ui.pending.noKey', { field, n: i + 1 }) : t('ui.pending.duplicateKey', { field, key: row.key })];
+  });
+  return messages.length > 0 ? messages.join('; ') : undefined;
+}
+
+/**
+ * Editable rows of key/value pairs (labels, headers, vars). Locked: a two-column list. A row the map
+ * leaves out though it holds something (a value without a key, a repeated key) holds Save (usePending).
+ */
+export function KeyValueInput({ label, help, error, required, value, onChange, keyPlaceholder, valuePlaceholder, mono, disabled, fieldName }: KeyValueInputProps) {
   const locked = useLocked();
   const [rows, setRows] = useState(() => toRows(value));
   // A value from outside that differs from what the rows say replaces the rows.
@@ -78,6 +95,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
   }
   const [focus, setFocus] = useState<{ row: number } | { removedAt: number }>();
   const groupRef = useRef<HTMLDivElement>(null);
+  usePending(locked ? undefined : heldRows(rows, nameOfField(fieldName, label, undefined)));
 
   useEffect(() => {
     if (!focus || !groupRef.current) return;
@@ -116,9 +134,12 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
   }
 
   const edit = (id: number, patch: Partial<Row>) => update(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  // A row left out for its key (not just for being blank) is flagged; the stored entry is not.
-  const duplicate = withheld(rows).map((out, i) => out && rows[i]?.key !== '');
-  const shownError = error ?? (duplicate.some(Boolean) ? t('ui.kv.duplicate') : undefined);
+  // A row left out though it holds something is flagged (a blank row is not, nor the stored entry):
+  // a repeated key, or a value without a key.
+  const out = withheld(rows);
+  const duplicate = out.map((o, i) => o && rows[i]?.key !== '');
+  const noKey = out.map((o, i) => o && rows[i]?.key === '' && rows[i]?.value !== '');
+  const shownError = error ?? (duplicate.some(Boolean) ? t('ui.kv.duplicate') : noKey.some(Boolean) ? t('ui.kv.noKey') : undefined);
   const inputClass = mono ? 'ui-input mono' : 'ui-input';
 
   const add = !disabled && (
@@ -145,7 +166,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
             <input
               className={`${inputClass} ui-kv__key`}
               aria-label={t('ui.kv.keyN', { n: i + 1 })}
-              aria-invalid={duplicate[i] || undefined}
+              aria-invalid={duplicate[i] || noKey[i] || undefined}
               placeholder={keyPlaceholder ?? t('ui.kv.key')}
               value={row.key}
               disabled={disabled}
