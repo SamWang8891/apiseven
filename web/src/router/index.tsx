@@ -7,8 +7,10 @@ import { TooltipProvider } from '../ui';
 import { pathFor } from './paths';
 import { CredentialRoute, EditorRoute, ListRoute, NotFound } from './routeElements';
 
-// The UI kit showcase, in development builds only (the import is dropped from production bundles).
+// The UI kit showcase and the schema form playground, in development builds only (the imports are
+// dropped from production bundles).
 const Gallery = import.meta.env.DEV ? lazy(() => import('../ui/Gallery')) : null;
+const Playground = import.meta.env.DEV ? lazy(() => import('../schema-form/Playground')) : null;
 
 const routes: RouteObject[] = [
   {
@@ -24,6 +26,20 @@ const routes: RouteObject[] = [
                 <TooltipProvider>
                   <Suspense fallback={null}>
                     <Gallery />
+                  </Suspense>
+                </TooltipProvider>
+              ),
+            },
+          ]
+        : []),
+      ...(Playground
+        ? [
+            {
+              path: '__schema',
+              element: (
+                <TooltipProvider>
+                  <Suspense fallback={null}>
+                    <Playground />
                   </Suspense>
                 </TooltipProvider>
               ),
@@ -54,7 +70,7 @@ const routes: RouteObject[] = [
 
 /**
  * The app's hash router: #/connect, #/:kind (with ?q= and f.<filter>= for the list's search), #/:kind/new, #/:kind/:id,
- * #/consumers/:username/credentials/new|:id, and #/__kit in development.
+ * #/consumers/:username/credentials/new|:id, and #/__kit and #/__schema in development.
  */
 export function createAppRouter() {
   return createHashRouter(routes);

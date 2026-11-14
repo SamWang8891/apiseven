@@ -104,6 +104,18 @@ describe('schemaDiagnostics', () => {
     ]);
   });
 
+  it('applies property defaults before if/then, as APISIX does, so a default that rules a branch out is not flagged', () => {
+    const conditional: Obj = {
+      type: 'object',
+      properties: { policy: { type: 'string', default: 'local' } },
+      if: { properties: { policy: { enum: ['redis'] } } },
+      then: { required: ['redis_host'] },
+    };
+    const lintWith = (source: string) => schemaDiagnostics(stateOf(source).state, conditional).map((d) => d.message);
+    expect(lintWith('{"count": 1}')).toEqual([]);
+    expect(lintWith('{"policy": "redis"}')).toEqual([`must have required property 'redis_host'`]);
+  });
+
   it('ignores a schema it cannot compile', () => {
     const { state } = stateOf('{"a": 1}');
     expect(schemaDiagnostics(state, { type: 'object', properties: { a: { type: 'no-such-type' } } })).toEqual([]);

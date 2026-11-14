@@ -12,14 +12,14 @@ import type { Diagnostic } from '@codemirror/lint';
 import type { EditorState } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { SyntaxNode } from '@lezer/common';
-import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import type { ErrorObject } from 'ajv';
 import type { Obj } from '../../api/types';
+import { schemaErrors } from '../../schema/ajv';
+import { expand, isObj, testPattern } from '../../schema/refs';
 
 type Segment = string | number;
 
 const VALUE_NODES = new Set(['Object', 'Array', 'String', 'Number', 'True', 'False', 'Null']);
-
-const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 // ---------------------------------------------------------------------------------------------
 // Syntax tree helpers (Lezer JSON: JsonText > value; Object > Property > PropertyName ":" value)
@@ -69,28 +69,13 @@ function pathTo(state: EditorState, node: SyntaxNode): Segment[] {
 // ---------------------------------------------------------------------------------------------
 // Lint
 
-const validators = new WeakMap<Obj, ValidateFunction | null>();
-
-/** Compiles once per schema object; null when Ajv cannot compile it (the editor then only checks syntax). */
-function validatorFor(schema: Obj): ValidateFunction | null {
-  let validate = validators.get(schema);
-  if (validate === undefined) {
-    const copy = { ...schema };
-    delete copy.$schema; // APISIX schemas are draft-07 compatible; a draft-04 URI here would not resolve.
-    try {
-      validate = new Ajv({ allErrors: true, strict: false, validateFormats: false }).compile(copy);
-    } catch {
-      validate = null;
-    }
-    validators.set(schema, validate);
-  }
-  return validate;
-}
-
-/** Drops the per-branch errors under a failed anyOf/oneOf, keeping the summary error. */
+/**
+ * Drops the per-branch errors under a failed anyOf/oneOf, keeping the summary error, and the
+ * "must match then schema" summary of an if, keeping the errors of the branch that failed.
+ */
 function withoutBranchNoise(errors: ErrorObject[]): ErrorObject[] {
   const branches = errors.filter((e) => e.keyword === 'anyOf' || e.keyword === 'oneOf').map((e) => `${e.schemaPath}/`);
-  return errors.filter((e) => !branches.some((b) => e.schemaPath.startsWith(b)));
+  return errors.filter((e) => e.keyword !== 'if' && !branches.some((b) => e.schemaPath.startsWith(b)));
 }
 
 function describe(error: ErrorObject): string {
@@ -133,21 +118,21 @@ function rangeOf(state: EditorState, root: SyntaxNode, error: ErrorObject): { fr
 
 /** Schema violations of the document, positioned on the offending text. Empty if the text is not JSON. */
 export function schemaDiagnostics(state: EditorState, schema: Obj): Diagnostic[] {
-  const validate = validatorFor(schema);
-  if (!validate) return [];
   let data: unknown;
   try {
     data = JSON.parse(state.doc.toString());
   } catch {
     return [];
   }
-  if (validate(data)) return [];
+  // Defaults are applied first, as APISIX does; a schema that does not compile gives null (syntax only).
+  const errors = schemaErrors(schema, data);
+  if (!errors || errors.length === 0) return [];
   const tree = ensureSyntaxTree(state, state.doc.length, 1000) ?? syntaxTree(state);
   const root = tree.topNode.firstChild;
   if (!root) return [];
   const seen = new Set<string>();
   const out: Diagnostic[] = [];
-  for (const error of withoutBranchNoise(validate.errors ?? [])) {
+  for (const error of withoutBranchNoise(errors)) {
     const { from, to } = rangeOf(state, root, error);
     const message = describe(error);
     const id = `${from}:${to}:${message}`;
@@ -160,29 +145,6 @@ export function schemaDiagnostics(state: EditorState, schema: Obj): Diagnostic[]
 
 // ---------------------------------------------------------------------------------------------
 // Completion
-
-function resolveRef(root: Obj, ref: string): Obj | undefined {
-  if (!ref.startsWith('#')) return undefined;
-  let cur: unknown = root;
-  for (const raw of ref.slice(1).split('/').filter(Boolean)) {
-    const seg = decodeURIComponent(raw).replace(/~1/g, '/').replace(/~0/g, '~');
-    cur = isObj(cur) ? cur[seg] : undefined;
-  }
-  return isObj(cur) ? cur : undefined;
-}
-
-/** The schema plus everything it pulls in through $ref and allOf/anyOf/oneOf/then/else. */
-function expand(root: Obj, schema: unknown, depth = 0): Obj[] {
-  if (!isObj(schema) || depth > 10) return [];
-  if (typeof schema.$ref === 'string') return expand(root, resolveRef(root, schema.$ref), depth + 1);
-  const out = [schema];
-  for (const key of ['allOf', 'anyOf', 'oneOf']) {
-    const list = schema[key];
-    if (Array.isArray(list)) for (const sub of list) out.push(...expand(root, sub, depth + 1));
-  }
-  for (const key of ['then', 'else']) out.push(...expand(root, schema[key], depth + 1));
-  return out;
-}
 
 function childSchemas(root: Obj, schemas: Obj[], seg: Segment): Obj[] {
   const out: Obj[] = [];
@@ -199,19 +161,11 @@ function childSchemas(root: Obj, schemas: Obj[], seg: Segment): Obj[] {
       continue;
     }
     const patterns = s.patternProperties;
-    const matched = isObj(patterns) ? Object.entries(patterns).filter(([p]) => safeTest(p, seg)) : [];
+    const matched = isObj(patterns) ? Object.entries(patterns).filter(([p]) => testPattern(p, seg)) : [];
     if (matched.length > 0) for (const [, sub] of matched) out.push(...expand(root, sub));
     else if (isObj(s.additionalProperties)) out.push(...expand(root, s.additionalProperties));
   }
   return out;
-}
-
-function safeTest(pattern: string, text: string): boolean {
-  try {
-    return new RegExp(pattern, 'u').test(text);
-  } catch {
-    return false;
-  }
 }
 
 function schemasAt(schema: Obj, path: Segment[]): Obj[] {

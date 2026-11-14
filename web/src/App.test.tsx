@@ -16,6 +16,13 @@ describe('App', () => {
     expect(await screen.findByRole('textbox', { name: 'limit-count config' })).toBeInTheDocument();
   });
 
+  it('renders the schema form playground at #/__schema, from the plugin in the URL', async () => {
+    renderApp({ hash: '#/__schema?plugin=limit-count' });
+    expect(await screen.findByRole('heading', { name: /schema form/ })).toBeInTheDocument();
+    expect(await screen.findByRole('textbox', { name: 'count (required)' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /^Fallbacks: \d+ of \d+ top-level properties/ })).toBeInTheDocument();
+  });
+
   it('shows a splash, not the Connect page, while config.json loads', async () => {
     let answer!: (r: Response) => void;
     const pending = new Promise<Response>((resolve) => (answer = resolve));

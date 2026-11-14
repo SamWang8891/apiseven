@@ -1,0 +1,99 @@
+/* Dev-only schema form playground (#/__schema). */
+
+.sf-pg {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 var(--s5) 96px;
+}
+
+.sf-pg__bar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: 52px;
+  margin: 0 calc(-1 * var(--s5));
+  padding: var(--s2) var(--s5);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.sf-pg__bar h1 {
+  font-size: 15px;
+}
+
+.sf-pg__bar h1 span {
+  color: var(--text-2);
+  font-weight: 500;
+}
+
+.sf-pg__pickers {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.sf-pg__pickers > :nth-child(2) {
+  min-width: 240px;
+}
+
+.sf-pg__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: var(--s5);
+  align-items: start;
+  margin-top: var(--s5);
+}
+
+.sf-pg__json {
+  position: sticky;
+  top: 68px;
+}
+
+.sf-pg__json h2,
+.sf-pg__stats h2 {
+  margin-bottom: var(--s2);
+  font-size: 13px;
+}
+
+.sf-pg__stats {
+  margin-top: var(--s6);
+}
+
+.sf-pg__stats table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.sf-pg__stats th,
+.sf-pg__stats td {
+  padding: 4px var(--s2);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.sf-pg__stats th {
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.sf-pg__stats tr[aria-current] td {
+  background: var(--accent-bg);
+}
+
+.sf-pg__link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-size: 12px;
+  text-decoration: underline;
+  cursor: pointer;
+}
