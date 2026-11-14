@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Item, Kind, Obj, Parent } from '../api/types';
 import { t } from '../i18n';
+import type { FilterDef } from '../table/filter';
 import type { Ctx } from './ctx';
 import { nameOfValue } from './resolve';
 
@@ -52,6 +53,8 @@ export interface ResourceDef {
    * kind has no POST, so the caller picks it), `fixed-list` (a plugin name).
    */
   idMode: 'optional' | 'required' | 'fixed-list';
+  /** Quick-filter chips on the list page. */
+  filters?: FilterDef[];
 }
 
 /** name → username → desc → id. */

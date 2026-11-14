@@ -70,6 +70,11 @@ export function nameOfValue(value: Obj): string | undefined {
 
 const itemName = (item: Item): string => nameOfValue(item.value) ?? item.id;
 
+/** Routes and SSLs: `status` 0 is off; anything else, a missing status included, is on (APISIX's default is 1). */
+export function isEnabled(value: Obj): boolean {
+  return value.status !== 0;
+}
+
 /** The route's own `hosts` / `host`, else its service's `hosts` (apisix/http/route.lua). */
 export function routeHosts(route: Obj, ctx: Ctx): { hosts: string[]; viaService: boolean } {
   const own = strings(route.hosts);

@@ -4,6 +4,7 @@ import { useList } from '../api/hooks';
 import type { Kind, Parent } from '../api/types';
 import { ConnectPage } from '../connection/ConnectPage';
 import { t } from '../i18n';
+import { ListPage } from '../pages/ListPage';
 import { RouteErrorPage } from '../shell/ErrorPage';
 import { Shell } from '../shell/Shell';
 import { TooltipProvider } from '../ui';
@@ -11,31 +12,6 @@ import { kindFromSegment, pathFor } from './paths';
 
 // The UI kit showcase, in development builds only (the import is dropped from production bundles).
 const Gallery = import.meta.env.DEV ? lazy(() => import('../ui/Gallery')) : null;
-
-/** Placeholder list page (Task 5 replaces it): the kind, its count, and links to each object. */
-export function ListPlaceholder({ kind, parent }: { kind: Kind; parent?: Parent }) {
-  const list = useList(kind, parent);
-  return (
-    <div className="shell-page">
-      <div className="shell-page__head">
-        <h1>{t(`kind.${kind}.plural`)}</h1>
-      </div>
-      <p>{list.data ? t('page.count', { count: list.data.length }) : list.error ? list.error.message : t('ui.empty')}</p>
-      {list.data && list.data.length > 0 && (
-        <ul className="shell-placeholder">
-          {list.data.map((item) => (
-            <li key={item.id}>
-              <Link className="mono" to={pathFor(kind, item.id, parent)}>
-                {item.id}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-      <p className="shell-note">{t('page.placeholder')}</p>
-    </div>
-  );
-}
 
 /** Placeholder editor page (Task 7 replaces it). `id` is decoded; undefined on the create page. */
 export function EditorPlaceholder({ kind, id, parent }: { kind: Kind; id?: string; parent?: Parent }) {
@@ -86,7 +62,7 @@ function NotFound() {
 
 function ListRoute() {
   const kind = kindFromSegment(useParams().kind);
-  return kind ? <ListPlaceholder key={kind} kind={kind} /> : <NotFound />;
+  return kind ? <ListPage key={kind} kind={kind} /> : <NotFound />;
 }
 
 function EditorRoute({ creating }: { creating?: boolean }) {
@@ -147,10 +123,10 @@ const routes: RouteObject[] = [
 ];
 
 /**
- * The app's hash router: #/connect, #/:kind, #/:kind/new, #/:kind/:id,
+ * The app's hash router: #/connect, #/:kind (with ?q= and f.<filter>= for the list's search), #/:kind/new, #/:kind/:id,
  * #/consumers/:username/credentials/new|:id, and #/__kit in development.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- the route table lives beside the placeholder pages it renders (Tasks 5 and 7 replace them)
+// eslint-disable-next-line react-refresh/only-export-components -- the route table lives beside the placeholder editor it renders (Task 7 replaces it)
 export function createAppRouter() {
   return createHashRouter(routes);
 }

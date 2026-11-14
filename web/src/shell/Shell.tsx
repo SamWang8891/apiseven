@@ -1,7 +1,9 @@
+import { LockKeyhole } from 'lucide-react';
 import { Fragment, useMemo, type ReactNode } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AdminClient } from '../api/client';
 import { ClientProvider } from '../api/hooks';
+import { useReadOnlyKey } from '../api/write';
 import { needsKey, useConnections, type SavedConnection } from '../connection/store';
 import { t } from '../i18n';
 import { kindFromSegment, pathFor } from '../router/paths';
@@ -29,6 +31,7 @@ function Frame({ conn }: { conn: SavedConnection }) {
         <div className="shell">
           <Sidebar />
           <Header title={<Breadcrumb />} />
+          <ReadOnlyBanner />
           {/* Keyed by connection: a page never carries state over to another APISIX. */}
           <main key={conn.id} className="shell-main">
             <Outlet />
@@ -37,6 +40,17 @@ function Frame({ conn }: { conn: SavedConnection }) {
         <Toaster />
       </TooltipProvider>
     </ClientProvider>
+  );
+}
+
+/** Stays under the header once a write was refused for the key's role (see useWrite). */
+function ReadOnlyBanner() {
+  if (!useReadOnlyKey()) return null;
+  return (
+    <div className="shell-readonly" role="status">
+      <LockKeyhole size={14} strokeWidth={2.25} aria-hidden="true" />
+      <span>{t('readOnly.banner')}</span>
+    </div>
   );
 }
 

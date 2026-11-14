@@ -1,0 +1,453 @@
+/*
+ * DataTable. One bordered surface: toolbar above (toolbar.css), the scroll area (the table, or a
+ * state), and a footer with the selection and the pager. The scroll area is the only scroller, in
+ * both directions, so the header sticks to its top, the checkbox column to its left and the actions
+ * column to its right. Rows: comfortable ~40px, compact ~30px (one 20px text line plus padding);
+ * data cells align on their first line's baseline, so stacked values start level with single ones.
+ * State is a badge with words, never a faded row.
+ */
+
+.tbl {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  padding-bottom: var(--s4);
+}
+
+/* Selection checkboxes reuse the kit's look; "some selected" fills like checked. */
+.tbl-check[data-state='indeterminate'] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* --- Scroll area and table ------------------------------------------------------------------- */
+
+.tbl-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--bg-raised);
+}
+
+.tbl-scroll:last-child {
+  border-radius: var(--radius-lg);
+}
+
+.tbl-table {
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.tbl-table thead > tr > * {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 36px;
+  padding: 0;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg-sunken);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.tbl--compact .tbl-table thead > tr > * {
+  height: 32px;
+}
+
+.tbl-th--sorted {
+  color: var(--text);
+}
+
+.tbl-sort {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tbl-sort:hover {
+  color: var(--text);
+}
+
+.tbl-sort:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.tbl-sort__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tbl-sort__mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 1px;
+  color: var(--accent);
+}
+
+/* Unsorted columns show their arrow only on hover and focus: sortable, without the noise. */
+.tbl-th:not(.tbl-th--sorted) .tbl-sort__mark {
+  visibility: hidden;
+  color: var(--text-2);
+}
+
+.tbl-th:not(.tbl-th--sorted) .tbl-sort:hover .tbl-sort__mark,
+.tbl-th:not(.tbl-th--sorted) .tbl-sort:focus-visible .tbl-sort__mark {
+  visibility: visible;
+}
+
+.tbl-sort__rank {
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The right edge: a hairline divider, wider and accent while dragged. */
+.tbl-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.tbl-resize::after {
+  position: absolute;
+  top: 10px;
+  right: 0;
+  bottom: 10px;
+  width: 1px;
+  background: var(--border);
+  content: '';
+}
+
+.tbl-resize:hover::after,
+.tbl-resize:active::after {
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+
+/* Body rows */
+
+.tbl-row > td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--text);
+  line-height: 20px;
+  vertical-align: top;
+  overflow: hidden;
+}
+
+.tbl--compact .tbl-row > td {
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
+/* Data cells share the first line's baseline, so 12px mono and 13px text line up across a row. */
+.tbl-row > td.tbl-cell {
+  vertical-align: baseline;
+}
+
+.tbl-row:hover > td {
+  background: color-mix(in srgb, var(--accent-bg) 45%, var(--bg-raised));
+}
+
+.tbl-row--selected > td,
+.tbl-row--selected:hover > td {
+  background: var(--accent-bg);
+}
+
+.tbl-cell.mono {
+  font-size: 12px;
+}
+
+.tbl-line {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tbl-empty {
+  color: var(--text-2);
+}
+
+.tbl-name {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.tbl-name:hover {
+  text-decoration: underline;
+}
+
+.tbl-more {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+  cursor: help;
+}
+
+.tbl-tip-lines {
+  display: flex;
+  flex-direction: column;
+}
+
+.tbl-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  height: 20px;
+}
+
+/* The badge alone sets the cell's baseline (the switch has no text), so it lines up with the row. */
+.tbl-status > :last-child {
+  align-self: baseline;
+}
+
+/* Sticky edge columns: selection on the left, row actions on the right. */
+.tbl-table .tbl-cell-check {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-right: 0;
+}
+
+.tbl-row > td.tbl-cell-check {
+  padding-top: 13px;
+}
+
+.tbl--compact .tbl-row > td.tbl-cell-check {
+  padding-top: 8px;
+}
+
+.tbl-table thead > tr > .tbl-cell-check {
+  z-index: 3;
+  padding-left: 12px;
+}
+
+.tbl-cell-check > .tbl-check {
+  display: grid;
+}
+
+.tbl-table .tbl-cell-actions {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  text-align: right;
+}
+
+.tbl-row > td.tbl-cell-actions {
+  padding: 8px 8px 0 0;
+}
+
+.tbl--compact .tbl-row > td.tbl-cell-actions {
+  padding-top: 3px;
+}
+
+.tbl-table thead > tr > .tbl-cell-actions {
+  z-index: 3;
+}
+
+.tbl-row > td.tbl-filler {
+  padding: 0;
+}
+
+/* Group header rows: a band across the table, its text pinned to the left while scrolling sideways. */
+.tbl-group > th {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  font-weight: 400;
+  text-align: left;
+}
+
+.tbl-group__inner {
+  position: sticky;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 12px 12px 6px;
+}
+
+.tbl-group__name {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.tbl-group__count {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tbl-skeleton {
+  display: block;
+  height: 10px;
+  margin: 5px 0;
+  border-radius: 3px;
+  background: var(--neutral-bg);
+}
+
+/* --- Empty, no-match and error states -------------------------------------------------------- */
+
+.tbl-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s2);
+  padding: 56px var(--s4);
+  text-align: center;
+}
+
+.tbl-state h2 {
+  margin-top: var(--s1);
+}
+
+.tbl-state__icon {
+  color: var(--text-2);
+}
+
+.tbl-state__body {
+  margin-bottom: var(--s2);
+  color: var(--text-2);
+}
+
+.tbl-state--error .tbl-state__icon {
+  color: var(--danger);
+}
+
+.tbl-state__message {
+  max-width: 640px;
+  margin-bottom: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+/* --- Footer: selection and pager ------------------------------------------------------------- */
+
+.tbl-foot {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+  min-height: 46px;
+  padding: 6px 8px 6px 12px;
+  border: 1px solid var(--border);
+  border-top: 0;
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--bg-raised);
+}
+
+.tbl-selbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: 3px 4px 3px 10px;
+  border-radius: var(--radius);
+  background: var(--accent-bg);
+}
+
+.tbl-selbar__count {
+  margin-right: var(--s1);
+  color: var(--text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tbl-selbar__actions {
+  display: flex;
+  gap: 6px;
+}
+
+.tbl-selbar__progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.tbl-pager {
+  display: flex;
+  align-items: center;
+  gap: var(--s4);
+  margin-left: auto;
+  color: var(--text-2);
+}
+
+.tbl-pager__range,
+.tbl-pager__page {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tbl-pager__size {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  white-space: nowrap;
+}
+
+.tbl-pager__select {
+  width: 76px;
+}
+
+.tbl-pager__nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tbl-pager__page {
+  padding: 0 6px;
+  color: var(--text);
+}

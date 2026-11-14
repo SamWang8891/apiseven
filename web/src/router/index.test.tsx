@@ -40,12 +40,13 @@ describe('editor routes', () => {
     expect(main.getByText('jo e')).toHaveClass('mono');
   });
 
-  it('shows the item count on the list placeholder', async () => {
+  it('mounts the list page at #/<kind>', async () => {
     saveConnections([DEV_CONN], DEV_CONN.id);
     renderApp({ hash: '#/upstreams', counts: { upstreams: 2 } });
     const main = await mainRegion();
     expect(main.getByRole('heading', { level: 1, name: t('kind.upstreams.plural') })).toBeInTheDocument();
-    expect(await main.findByText(t('page.count', { count: 2 }))).toBeInTheDocument();
+    expect(await main.findByRole('link', { name: 'upstreams-2' })).toHaveAttribute('href', `#${pathFor('upstreams', 'upstreams-2')}`);
+    expect(main.getByRole('table')).toBeInTheDocument();
   });
 });
 

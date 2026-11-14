@@ -1,0 +1,215 @@
+/*
+ * DataTable toolbar (search, filter chips, the table's own buttons) and its popovers (Columns,
+ * filter values). Class prefix tbl-, like table.css; colours from the tokens.
+ */
+
+/* --- Toolbar -------------------------------------------------------------------------------- */
+
+.tbl-toolbar {
+  flex: none;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  gap: var(--s3);
+}
+
+.tbl-toolbar__start {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.tbl-toolbar__end {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.tbl-toolbar__count {
+  margin-right: var(--s1);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tbl-search {
+  position: relative;
+  flex: 0 1 300px;
+  min-width: 180px;
+}
+
+.tbl-search__icon {
+  position: absolute;
+  top: 50%;
+  left: 9px;
+  color: var(--text-2);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.tbl-search__input {
+  padding-right: 30px;
+  padding-left: 31px;
+}
+
+.tbl-search__input::-webkit-search-cancel-button {
+  cursor: pointer;
+}
+
+.tbl-search__key {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: 3px;
+  background: var(--bg-sunken);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.tbl-chip__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tbl-chip--on,
+.tbl-chip--on:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--text);
+}
+
+.tbl-chip__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-text);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.tbl-chip__chevron {
+  margin-right: -3px;
+  color: var(--text-2);
+}
+
+.tbl-pressed,
+.tbl-pressed:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+
+.tbl-new {
+  text-decoration: none;
+}
+
+/* --- Popovers: Columns and filter chips ------------------------------------------------------ */
+
+.tbl-menu {
+  width: 264px;
+  padding: 6px;
+}
+
+.tbl-menu__title {
+  padding: 4px 6px 0;
+  font-size: 13px;
+}
+
+.tbl-menu__hint {
+  padding: 2px 6px 6px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.tbl-menu__find {
+  margin-bottom: 6px;
+}
+
+.tbl-menu__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tbl-menu__list--scroll {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.tbl-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 0 6px;
+  border-radius: 3px;
+}
+
+.tbl-menu__item[draggable='true'] {
+  cursor: grab;
+}
+
+.tbl-menu__item:hover {
+  background: var(--bg-sunken);
+}
+
+.tbl-menu__item--dragging,
+.tbl-menu__item--dragging:hover {
+  background: var(--accent-bg);
+}
+
+/* Where the dragged column lands: a line above or below the row it is over. */
+.tbl-menu__item--before {
+  box-shadow: inset 0 2px 0 var(--accent);
+}
+
+.tbl-menu__item--after {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tbl-menu__grip {
+  flex: none;
+  color: var(--text-2);
+}
+
+.tbl-menu__label {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  min-height: 30px;
+  cursor: pointer;
+}
+
+.tbl-menu__label > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tbl-menu__foot {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}

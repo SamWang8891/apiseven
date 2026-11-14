@@ -13,9 +13,10 @@
 .shell {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
-  grid-template-rows: 48px minmax(0, 1fr);
+  grid-template-rows: 48px auto minmax(0, 1fr);
   grid-template-areas:
     'sidebar header'
+    'sidebar banner'
     'sidebar main';
   height: 100vh;
   height: 100dvh;
@@ -279,6 +280,27 @@
   color: var(--accent);
 }
 
+/* --- Read-only banner (a write was refused for the key's role) ----------------------------- */
+
+.shell-readonly {
+  grid-area: banner;
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 34px;
+  padding: 6px var(--s5);
+  border-bottom: 1px solid var(--border);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.shell-readonly svg {
+  flex: none;
+}
+
 /* --- Main area and page hooks -------------------------------------------------------------- */
 
 .shell-main {
@@ -328,7 +350,7 @@
   color: var(--text-2);
 }
 
-/* Placeholder pages (until Tasks 5 and 7). */
+/* Placeholder editor page (until Task 7). */
 .shell-facts {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -349,14 +371,6 @@
   overflow-wrap: anywhere;
 }
 
-.shell-placeholder {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 4px var(--s4);
-  margin: var(--s3) 0 0;
-  padding: 0;
-  list-style: none;
-}
 
 /* --- Error page and splash ----------------------------------------------------------------- */
 
