@@ -281,3 +281,31 @@ describe('a held rename keeps the stored entry in the map (R8)', () => {
     expect(Object.keys((form.value() as Obj).keyed as Obj)).toEqual(['z', 'y']);
   });
 });
+
+describe('map rows always send what they show (fix round 2)', () => {
+  const key = (n: number) => group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n }) });
+
+  it("the reviewer's sequence: key 2 → a (held), key 1 → c, leave: the value is what the rows show", async () => {
+    const form = renderSchemaForm(SCHEMA, { limits: { a: 1, b: 2 } });
+    await form.user.clear(key(2));
+    await form.user.type(key(2), 'a');
+    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'a' }) })]);
+    await form.user.clear(key(1));
+    await form.user.type(key(1), 'c');
+    await form.user.click(document.body);
+    expect(form.held()).toEqual([]);
+    expect(form.value()).toEqual({ limits: { c: 1, a: 2 } });
+    expect(Object.keys((form.value() as Obj).limits as Obj)).toEqual(['c', 'a']);
+  });
+
+  it('two rows swap keys', async () => {
+    const form = renderSchemaForm(SCHEMA, { limits: { a: 1, b: 2 } });
+    await form.user.clear(key(1));
+    await form.user.type(key(1), 'b');
+    await form.user.clear(key(2));
+    await form.user.type(key(2), 'a');
+    expect(form.held()).toEqual([]);
+    await form.user.click(document.body);
+    expect(form.value()).toEqual({ limits: { b: 1, a: 2 } });
+  });
+});

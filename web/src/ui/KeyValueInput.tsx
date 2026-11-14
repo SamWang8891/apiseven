@@ -119,13 +119,17 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
     );
   }
 
+  /**
+   * The one way the rows change (entryRows.ts rule 1): typing, leaving a row, adding, removing all
+   * come here, and the map the rows make is sent whenever it differs from the value.
+   */
   function update(next: Row[]) {
     setRows(next);
     const map = toMap(next);
     if (!sameMap(map, value)) onChange(map);
   }
   /** Leaving a row: a good entry becomes the one the row keeps in the map while it later holds input. */
-  const commit = (id: number) => setRows((prev) => commitEntry(prev, id, RULES));
+  const commit = (id: number) => update(commitEntry(rows, id, RULES));
 
   const edit = (id: number, patch: Partial<Pick<Row, 'key' | 'value'>>) => update(rows.map((r) => (r.id === id ? changedEntry({ ...r, ...patch }, RULES) : r)));
   // A row that holds input is flagged on its key (a blank row is not): a repeated key, or a value without a key.
@@ -143,7 +147,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
       icon={<Plus size={13} />}
       onClick={() => {
         const row = newRow();
-        setRows([...rows, row]);
+        update([...rows, row]);
         setFocus({ row: row.id });
       }}
     >

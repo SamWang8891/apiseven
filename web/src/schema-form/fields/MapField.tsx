@@ -103,6 +103,8 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   const latestRef = useLatest({ rows, value, emit });
 
   const rules = rulesOf(node);
+  // The one way the rows change (entryRows.ts rule 1): typing, leaving a row, adding, removing all
+  // come here, and the map the rows make is sent whenever it differs from the value.
   const update = useCallback(
     (next: Row[]) => {
       const { value: cur, emit: send } = latestRef.current;
@@ -118,11 +120,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
     [latestRef, update, node],
   );
   /** Leaving a row: a good entry becomes the one the row keeps in the map while it later holds input. */
-  const commit = (id: number) => {
-    const next = commitEntry(latestRef.current.rows, id, rules);
-    latestRef.current = { ...latestRef.current, rows: next };
-    setRows(next);
-  };
+  const commit = (id: number) => update(commitEntry(latestRef.current.rows, id, rules));
 
   const refused = entryRefusals(rows, rules);
   const fieldName = useFieldName(path);

@@ -70,13 +70,17 @@ const CONTROLS = [
 ].join(', ');
 
 /**
- * Every element that takes input (what a locked form must not contain): native inputs and
- * contenteditable, and any control by role. A read-only one (aria-readonly, as a locked CodeMirror
- * is) and one hidden from assistive tech don't count; a disabled one does, as a locked view must not
- * show disabled controls either.
+ * What a locked form may contain that matches CONTROLS, by its own marker: the locked code editor's
+ * content (CodeMirror's `.cm-content`, read-only), a hidden input, and the native input Radix renders
+ * beside a checkbox or switch for forms (`aria-hidden`, out of the tab order).
+ */
+const NOT_CONTROLS = ['.cm-content[aria-readonly="true"]', 'input[type="hidden"]', 'input[aria-hidden="true"][tabindex="-1"]'].join(', ');
+
+/**
+ * Every element that takes input (what a locked form must not contain): native inputs (read-only
+ * ones too: a box is a box), textareas, selects, contenteditable, and any control by role. A
+ * disabled one counts as well: a locked view shows values, not disabled controls.
  */
 export function editableControls(container: HTMLElement): Element[] {
-  return [...container.querySelectorAll(CONTROLS)].filter(
-    (el) => el.getAttribute('aria-readonly') !== 'true' && !el.hasAttribute('readonly') && !el.closest('[aria-hidden="true"]') && !el.matches('input[type="hidden"]'),
-  );
+  return [...container.querySelectorAll(CONTROLS)].filter((el) => !el.matches(NOT_CONTROLS));
 }

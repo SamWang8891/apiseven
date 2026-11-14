@@ -1,10 +1,13 @@
-// Rows of key → value that edit a map (KeyValueInput; the schema form's map rows). A row's entry goes
-// into the map while its key is good. While a row holds input it can't put there (no key, a key
-// another row has, a key or value the rules refuse), the map keeps the row's last committed entry,
-// in its place: an unfinished rename never deletes an entry, and "Discard and switch" leaves the map
-// as it was. A row commits its entry when it is left while good (blur; Save leaves the field first),
-// so the keys typed on the way to a taken one ("e", "en" before "env") never become the kept entry.
-// A row emptied completely (no key, no value) is a removal; so is its Remove button.
+// Rows of key → value that edit a map (KeyValueInput; the schema form's map rows). The rule, in three lines:
+//   1. The map is a pure function of the rows (entriesOf), recomputed and sent on every change to the rows
+//      (typing, leaving a row, add, remove) whenever it differs from what was last sent.
+//   2. "Used twice" is judged on the keys the rows show now; a held row's kept entry never reserves a key.
+//   3. A good row is in the map as shown; a held row keeps its last committed entry there, in its place,
+//      unless a good row shows that key: so whenever nothing is held, the map is exactly the rows as shown.
+// "Held": a row that shows something it can't put in the map (no key, a key used twice, a key or value
+// the rules refuse). "Committed": a row commits its entry when it is left while good (blur; Save leaves
+// the field first), so keys typed on the way to a taken one ("e", "en" before "env") are never what a
+// held row keeps. A row emptied completely (no key, no value) is a removal, as is its Remove button.
 
 /** JSON values compared as data (a value from outside is a new object with the same content). */
 const sameValue = (a: unknown, b: unknown): boolean => Object.is(a, b) || JSON.stringify(a) === JSON.stringify(b);
@@ -18,7 +21,7 @@ export interface EntryRow<V> {
 }
 
 export interface EntryRules<V> {
-  /** Why a key another row has is refused (a message, or a marker the caller turns into one). */
+  /** Why a key another row shows is refused (a message, or a marker the caller turns into one). */
   duplicate: (key: string) => string;
   /** Why a changed key is refused besides that, if it is (a key pattern). A row's own unchanged key never is. */
   refuseKey?: (key: string) => string | undefined;
@@ -28,38 +31,48 @@ export interface EntryRules<V> {
   blank: (row: EntryRow<V>) => boolean;
 }
 
+/** The row shows the key it committed (a stored entry nobody renamed, or a rename already left). */
+const unchanged = <V>(row: EntryRow<V>): boolean => row.last !== undefined && row.key === row.last.key;
+
 /**
  * Why each row's current entry stays out of the map ('' for no key, else the rules' message), or
- * undefined when it goes in. A key is taken by the row whose last entry has it (a held row keeps
- * its entry in the map) and by a row above that puts it there now. A row's own unchanged key is
- * never refused: stored data the key rules refuse stays until someone changes it.
+ * undefined when it goes in. A changed key that is empty or refused by the key rules is out; of the
+ * other rows that show one key, one keeps it and the rest are "used twice": the one showing its own
+ * committed key, else one whose value is good, else the first. A row's own unchanged key is never
+ * refused by the key rules (stored data stays until someone changes it).
  */
 export function entryRefusals<V>(rows: EntryRow<V>[], rules: EntryRules<V>): (string | undefined)[] {
-  const owner = new Map<string, number>();
-  for (const row of rows) if (row.last && !owner.has(row.last.key)) owner.set(row.last.key, row.id);
-  const used = new Set<string>();
-  return rows.map((row) => {
-    const own = row.last !== undefined && row.key === row.last.key;
-    let refusal: string | undefined;
-    if (used.has(row.key) || (owner.has(row.key) && owner.get(row.key) !== row.id)) refusal = rules.duplicate(row.key);
-    else if (!own) refusal = row.key === '' ? '' : rules.refuseKey?.(row.key);
-    refusal ??= rules.refuseValue?.(row);
-    if (refusal === undefined) used.add(row.key);
-    return refusal;
+  const keyRefusal = rows.map((row) => (unchanged(row) ? undefined : row.key === '' ? '' : rules.refuseKey?.(row.key)));
+  const valueRefusal = rows.map((row) => rules.refuseValue?.(row));
+  const rank = (i: number): number => (unchanged(rows[i] as EntryRow<V>) ? 2 : 0) + (valueRefusal[i] === undefined ? 1 : 0);
+  const keeper = new Map<string, number>();
+  rows.forEach((row, i) => {
+    if (keyRefusal[i] !== undefined) return;
+    const other = keeper.get(row.key);
+    if (other === undefined || rank(i) > rank(other)) keeper.set(row.key, i);
   });
+  return rows.map((row, i) => keyRefusal[i] ?? (keeper.get(row.key) === i ? valueRefusal[i] : rules.duplicate(row.key)));
 }
 
 /** Whether a row holds input it can't put in the map (refused, and not blank). */
 export const entryHeld = <V>(row: EntryRow<V>, refusal: string | undefined, rules: EntryRules<V>): boolean => refusal !== undefined && !rules.blank(row);
 
-/** The map the rows make, in row order: each row's entry, or while it holds input, its last good one. */
+/**
+ * The map the rows make, in row order: each good row's entry as shown; for a held row, its last
+ * committed entry unless a good row shows that key (or an earlier held row already keeps it).
+ */
 export function entriesOf<V>(rows: EntryRow<V>[], rules: EntryRules<V>): Record<string, V> {
   const refused = entryRefusals(rows, rules);
+  const shown = new Set(rows.filter((_, i) => refused[i] === undefined).map((row) => row.key));
+  const kept = new Set<string>();
   const map: Record<string, V> = {};
   rows.forEach((row, i) => {
     const refusal = refused[i];
     if (refusal === undefined) map[row.key] = row.value;
-    else if (entryHeld(row, refusal, rules) && row.last) map[row.last.key] = row.last.value;
+    else if (entryHeld(row, refusal, rules) && row.last && !shown.has(row.last.key) && !kept.has(row.last.key)) {
+      kept.add(row.last.key);
+      map[row.last.key] = row.last.value;
+    }
   });
   return map;
 }
@@ -81,7 +94,8 @@ export function changedEntry<V>(row: EntryRow<V>, rules: EntryRules<V>): EntryRo
 /**
  * Rows for a map that came from outside (`fresh`, one per entry), with the rows that hold input
  * kept (never dropped): in the place of their last entry when the map still has it as it was, else
- * at the end as new rows (what they were renamed from may be back in the map).
+ * at the end as new rows (what they were renamed from may be back in the map). The rows then make
+ * exactly that map, so nothing needs sending.
  */
 export function keepHeldRows<V>(fresh: EntryRow<V>[], rows: EntryRow<V>[], rules: EntryRules<V>): EntryRow<V>[] {
   const refused = entryRefusals(rows, rules);

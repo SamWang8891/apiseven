@@ -421,3 +421,34 @@ describe('a held rename keeps the stored entry in the map (R8)', () => {
     expect(screen.getByRole('status', { name: 'map' })).toHaveTextContent('{"env":"dev"}');
   });
 });
+
+describe('map rows always send what they show (fix round 2)', () => {
+  const map = () => screen.getByRole('status', { name: 'map' }).textContent;
+  const key = (n: number) => screen.getByRole('textbox', { name: t('ui.kv.keyN', { n }) });
+
+  it("the reviewer's sequence: key 2 → team (held), key 1 → squad, leave: the map is what the rows show", async () => {
+    const { user, held } = withProvider(<Labels initial={{ team: 'core', env: 'dev' }} />);
+    await user.clear(key(2));
+    await user.type(key(2), 'team');
+    expect(held()).toEqual([t('ui.pending.duplicateKey', { field: 'Labels', key: 'team' })]);
+    expect(map()).toBe('{"team":"core","env":"dev"}');
+    await user.clear(key(1));
+    await user.type(key(1), 'squad');
+    await user.click(document.body);
+    expect(held()).toEqual([]);
+    expect(map()).toBe('{"squad":"core","team":"dev"}');
+  });
+
+  it('two rows swap keys: nothing is called used twice while the keys shown are unique', async () => {
+    const { user, held } = withProvider(<Labels initial={{ team: 'core', env: 'dev' }} />);
+    await user.clear(key(1));
+    await user.type(key(1), 'env');
+    expect(held()).toEqual([t('ui.pending.duplicateKey', { field: 'Labels', key: 'env' })]);
+    await user.clear(key(2));
+    await user.type(key(2), 'team');
+    expect(held()).toEqual([]);
+    await user.click(document.body);
+    expect(held()).toEqual([]);
+    expect(map()).toBe('{"env":"core","team":"dev"}');
+  });
+});

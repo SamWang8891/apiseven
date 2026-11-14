@@ -332,4 +332,23 @@ describe('fix round 1', () => {
     expect(labels).toEqual({ squad: 'core', env: 'dev' });
     expect(Object.keys(labels)).toEqual(['squad', 'env']);
   });
+
+  it("labels: key 2 → team, key 1 → squad, leave, Save: the PUT has what the rows show (fix round 2)", async () => {
+    const { user, admin } = await openRoute(API_V1);
+    await settled();
+    await user.keyboard('e');
+    const key = (n: number) => main().getByRole('textbox', { name: t('ui.kv.keyN', { n }) });
+    expect(key(1)).toHaveValue('team');
+    expect(key(2)).toHaveValue('env');
+    await user.clear(key(2));
+    await user.type(key(2), 'team');
+    await user.clear(key(1));
+    await user.type(key(1), 'squad');
+    await user.click(main().getByRole('heading', { level: 1 }));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    const labels = writesOf(admin)[0]?.body?.labels as Obj;
+    expect(labels).toEqual({ squad: 'core', team: 'dev' });
+    expect(Object.keys(labels)).toEqual(['squad', 'team']);
+  });
 });

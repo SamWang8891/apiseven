@@ -71,9 +71,12 @@ export function UpstreamTab({ draft, setDraft, ctx, issues, isNew }: TabProps) {
   function choose(next: string) {
     const to = next as UpstreamSource;
     if (to === source) return;
-    // Any switch that removes an inline upstream holding something asks first: leaving Inline, and
-    // leaving Existing for the service's upstream while a leftover inline one is still there.
-    const drops = to !== 'inline' && isObj(draft.upstream) && (!isEmptyUpstream(draft.upstream) || (source === 'inline' && inlineHeld));
+    // Asks first when the switch would lose something: input the inline form holds (whether or not
+    // any of it is in the draft yet), or an inline upstream with content that the switch removes
+    // (leaving Inline, or leaving Existing for the service's upstream with a leftover inline one).
+    const losesHeld = source === 'inline' && inlineHeld;
+    const removesUpstream = to !== 'inline' && isObj(draft.upstream) && !isEmptyUpstream(draft.upstream);
+    const drops = losesHeld || removesUpstream;
     if (drops) setAsking(to);
     else apply(to);
   }

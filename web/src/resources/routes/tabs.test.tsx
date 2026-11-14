@@ -279,6 +279,20 @@ describe('Upstream: where requests go', () => {
     expect(line).toHaveTextContent('10.0.0.12:8080');
   });
 
+  it('leaving Inline asks while the inline form holds input, though nothing of it is in the draft yet', async () => {
+    const h = renderRouteTab(UpstreamTab, { uri: '/*', status: 1 }, { isNew: true, ctx: CTX });
+    await h.user.click(await screen.findByRole('button', { name: t('up.section.connection') }));
+    await h.user.type(screen.getByRole('spinbutton', { name: t('up.conn.retries') }), 'abc');
+    expect(h.held()).toHaveLength(1);
+    expect(h.value()).not.toHaveProperty('upstream');
+    await h.user.click(radio('existing'));
+    const dialog = await screen.findByRole('alertdialog', { name: t('rt.up.discard.title') });
+    expect(dialog).toHaveTextContent(t('rt.up.discard.bodyHeld'));
+    await h.user.click(within(dialog).getByRole('button', { name: t('rt.up.discard.cancel') }));
+    expect(radio('inline')).toBeChecked();
+    expect(screen.getByRole('spinbutton', { name: t('up.conn.retries') })).toHaveValue('abc');
+  });
+
   it('Existing → Inline removes upstream_id, without asking', async () => {
     const h = renderRouteTab(UpstreamTab, { uri: '/x', upstream_id: 'u1' }, { ctx: CTX });
     await h.user.click(radio('inline'));

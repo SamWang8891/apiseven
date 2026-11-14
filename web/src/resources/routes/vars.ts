@@ -150,8 +150,9 @@ export function heldMessage(rows: Row[]): string | undefined {
 
 /**
  * Rows for a value that came from outside: its own rows, with the rows that hold input kept (never
- * dropped): in the place of their last condition when the value still has it, else at the end.
- * Unchanged when the rows already make that value.
+ * dropped): in the place of their last condition when the value still has it, else at the end as
+ * new rows that keep no condition (the value no longer has theirs: sending it again would bring back
+ * what was removed). Unchanged when the rows already make that value; the result makes exactly it.
  */
 export function rowsFor(value: unknown, rows: Row[]): Row[] {
   if (deepEqual(valueOfRows(rows), value)) return rows;
@@ -161,7 +162,7 @@ export function rowsFor(value: unknown, rows: Row[]): Row[] {
   rows.forEach((row, i) => {
     if (resultOf(row, i + 1).kind !== 'held') return;
     const at = next.findIndex((fresh, j) => !replaced.has(j) && row.last !== undefined && deepEqual(fresh.last, row.last));
-    if (at < 0) extra.push(row);
+    if (at < 0) extra.push({ ...row, last: undefined });
     else {
       replaced.add(at);
       next[at] = row;
