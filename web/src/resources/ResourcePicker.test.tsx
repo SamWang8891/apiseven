@@ -11,14 +11,17 @@ import { ResourcePicker } from './ResourcePicker';
 
 const ITEMS: Item[] = [itemOf('u1', { name: 'web-pool' }), itemOf('u2', { name: 'api-backend', type: 'chash' }), itemOf('u3')];
 
-function Harness({ initial, locked = false, onChange, filter }: { initial?: string; locked?: boolean; onChange?: (id: string | undefined) => void; filter?: (item: Item) => boolean }) {
+function Harness({
+  initial, locked = false, onChange, filter, loading, items = ITEMS,
+}: { initial?: string; locked?: boolean; onChange?: (id: string | undefined) => void; filter?: (item: Item) => boolean; loading?: boolean; items?: Item[] }) {
   const [value, setValue] = useState(initial);
   return (
     <MemoryRouter>
       <LockProvider locked={locked}>
         <ResourcePicker
           kind="upstreams"
-          items={ITEMS}
+          items={items}
+          loading={loading}
           value={value}
           label="Upstream"
           clearable
@@ -76,5 +79,27 @@ describe('ResourcePicker', () => {
   it('says not found when locked on a dangling id', () => {
     render(<Harness initial="gone" locked />);
     expect(screen.getByText(t('picker.notFound', { id: 'gone' }))).toBeInTheDocument();
+  });
+
+  describe('while the list is loading', () => {
+    it('shows the id with a quiet loading note, not "not found"', () => {
+      render(<Harness initial="u1" items={[]} loading />);
+      const box = screen.getByRole('combobox', { name: 'Upstream' });
+      expect(box).toHaveTextContent('u1');
+      expect(box).toHaveAccessibleDescription(t('picker.loading'));
+      expect(screen.queryByText(t('picker.notFound', { id: 'u1' }))).not.toBeInTheDocument();
+    });
+
+    it('locked, the id and the note', () => {
+      render(<Harness initial="u1" items={[]} loading locked />);
+      expect(screen.getByText('u1')).toHaveClass('mono');
+      expect(screen.getByText(t('picker.loading'))).toBeInTheDocument();
+      expect(screen.queryByText(t('picker.notFound', { id: 'u1' }))).not.toBeInTheDocument();
+    });
+
+    it('once loaded (loading false), an id with no match is flagged', () => {
+      render(<Harness initial="u9" loading={false} />);
+      expect(screen.getByRole('combobox', { name: 'Upstream' })).toHaveAccessibleDescription(t('picker.notFound', { id: 'u9' }));
+    });
   });
 });

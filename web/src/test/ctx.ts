@@ -6,8 +6,23 @@ export function itemOf(id: string, value: Obj = {}): Item {
   return { id, value: { id, ...value } };
 }
 
-/** A Ctx with every list empty except the ones given. */
-export function ctxOf(parts: Partial<Ctx> = {}): Ctx {
+const ALL_LOADED: Ctx['loaded'] = {
+  routes: true,
+  streamRoutes: true,
+  services: true,
+  upstreams: true,
+  ssls: true,
+  pluginConfigs: true,
+  consumerGroups: true,
+  consumers: true,
+};
+
+/**
+ * A Ctx with every list empty except the ones given, and every list loaded unless `loaded` says
+ * otherwise (`ctxOf({ loaded: { upstreams: false } })`).
+ */
+export function ctxOf(parts: Partial<Omit<Ctx, 'loaded'>> & { loaded?: Partial<Ctx['loaded']> } = {}): Ctx {
+  const { loaded, ...lists } = parts;
   return {
     routes: [],
     streamRoutes: [],
@@ -17,6 +32,7 @@ export function ctxOf(parts: Partial<Ctx> = {}): Ctx {
     pluginConfigs: [],
     consumerGroups: [],
     consumers: [],
-    ...parts,
+    ...lists,
+    loaded: { ...ALL_LOADED, ...loaded },
   };
 }

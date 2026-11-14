@@ -2,6 +2,9 @@ import { useMemo } from 'react';
 import { useList } from '../api/hooks';
 import type { Item, Kind } from '../api/types';
 
+/** The lists of a Ctx, by field name. */
+export type CtxList = 'routes' | 'streamRoutes' | 'services' | 'upstreams' | 'ssls' | 'pluginConfigs' | 'consumerGroups' | 'consumers';
+
 /** The lists the resolvers look objects up in (see resolve.ts). Treat the arrays as read-only. */
 export interface Ctx {
   routes: Item[];
@@ -12,32 +15,51 @@ export interface Ctx {
   pluginConfigs: Item[];
   consumerGroups: Item[];
   consumers: Item[];
+  /**
+   * Whether each list has loaded at least once. Until then its array is empty though the objects may
+   * exist, so an id that matches nothing in it is not yet a dangling reference.
+   */
+  loaded: Record<CtxList, boolean>;
 }
 
 /** One shared empty list, so a list that has not loaded keeps the same identity across renders. */
 const NONE: Item[] = [];
 
-function useItems(kind: Kind): Item[] {
+function useItems(kind: Kind): [Item[], boolean] {
   // Data stays while a refetch fails; a list that never loaded (loading, error) is empty.
-  return useList(kind).data ?? NONE;
+  const data = useList(kind).data;
+  return [data ?? NONE, data !== undefined];
 }
 
 /**
  * Every list the resolvers need, from the shared query cache. The object keeps its identity until
- * one of the lists changes (React Query hands back the same array when a refetch brings the same
- * data), so it can sit in dependency arrays and memoised table rows.
+ * one of the lists (or whether it has loaded) changes (React Query hands back the same array when a
+ * refetch brings the same data), so it can sit in dependency arrays and memoised table rows.
  */
 export function useCtx(): Ctx {
-  const routes = useItems('routes');
-  const streamRoutes = useItems('stream_routes');
-  const services = useItems('services');
-  const upstreams = useItems('upstreams');
-  const ssls = useItems('ssls');
-  const pluginConfigs = useItems('plugin_configs');
-  const consumerGroups = useItems('consumer_groups');
-  const consumers = useItems('consumers');
+  const [routes, routesLoaded] = useItems('routes');
+  const [streamRoutes, streamRoutesLoaded] = useItems('stream_routes');
+  const [services, servicesLoaded] = useItems('services');
+  const [upstreams, upstreamsLoaded] = useItems('upstreams');
+  const [ssls, sslsLoaded] = useItems('ssls');
+  const [pluginConfigs, pluginConfigsLoaded] = useItems('plugin_configs');
+  const [consumerGroups, consumerGroupsLoaded] = useItems('consumer_groups');
+  const [consumers, consumersLoaded] = useItems('consumers');
+  const loaded = useMemo(
+    () => ({
+      routes: routesLoaded,
+      streamRoutes: streamRoutesLoaded,
+      services: servicesLoaded,
+      upstreams: upstreamsLoaded,
+      ssls: sslsLoaded,
+      pluginConfigs: pluginConfigsLoaded,
+      consumerGroups: consumerGroupsLoaded,
+      consumers: consumersLoaded,
+    }),
+    [routesLoaded, streamRoutesLoaded, servicesLoaded, upstreamsLoaded, sslsLoaded, pluginConfigsLoaded, consumerGroupsLoaded, consumersLoaded],
+  );
   return useMemo(
-    () => ({ routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers }),
-    [routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers],
+    () => ({ routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, loaded }),
+    [routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, loaded],
   );
 }

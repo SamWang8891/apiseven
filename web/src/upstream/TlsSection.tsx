@@ -82,6 +82,7 @@ export function TlsSection({ value, onChange, issues, ctx }: SectionProps) {
           <ResourcePicker
             kind="ssls"
             items={ctx.ssls}
+            loading={!ctx.loaded.ssls}
             filter={(item) => item.value.type === 'client'}
             label={t('up.tls.ssl')}
             help={locked ? undefined : t('up.tls.sslHelp')}

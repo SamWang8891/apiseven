@@ -11,6 +11,8 @@ import { nameOfValue } from './resolve';
 import { routeColumns } from './routes/columns';
 import { routeFilters } from './routes/filters';
 import { hostGrouping } from './routes/grouping';
+import { routeTabs } from './routes/tabs';
+import { routeIssues } from './routes/validate';
 import { upstreamColumns } from './upstreams/columns';
 import { upstreamFilters } from './upstreams/filters';
 import { upstreamTabs } from './upstreams/tabs';
@@ -112,6 +114,11 @@ export interface ResourceDef {
   validate?(draft: Obj, env: ValidateEnv): Issue[];
   /** For kinds whose id is a field of the body (a consumer's `username`): the frame shows no ID input. */
   idFromDraft?(draft: Obj): string | undefined;
+  /**
+   * Search params the create page copies into a new object (`#/routes/new?service_id=s1` starts
+   * with `service_id: 's1'`); any other param is ignored.
+   */
+  prefill?: string[];
 }
 
 /** name → username → desc → id. */
@@ -180,7 +187,10 @@ export const registry: Record<Kind, ResourceDef> = {
     hasStatus: true,
     idMode: 'optional',
     blank: () => ({ uri: '/*', status: 1 }),
-    ...withPlugins('route'),
+    tabs: routeTabs,
+    // Includes the plugin checks (pluginIssues) and the inline upstream's (upstreamIssues).
+    validate: (draft, env) => routeIssues(draft, env),
+    prefill: ['service_id', 'upstream_id', 'plugin_config_id'],
     columns: routeColumns,
     filters: routeFilters,
     groupings: [hostGrouping],

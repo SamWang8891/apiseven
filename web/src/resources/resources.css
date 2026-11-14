@@ -139,6 +139,11 @@
   font-size: 12px;
 }
 
+.res-picker__loading {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
 .res-picker__missing {
   color: var(--danger);
   font-weight: 500;

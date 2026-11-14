@@ -1,7 +1,7 @@
 // The Plugins tab inside the editor frame, as the registry wires it for every plugin-bearing kind.
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { resetReadOnlyKeys } from '../api/write';
 import { t } from '../i18n';
@@ -10,6 +10,12 @@ import { main, openEditor, writesOf } from '../test/editor';
 import type { FakeAdminOptions } from '../test/fakeAdmin';
 import { pluginReplies } from '../test/plugins';
 import { getToasts } from '../ui/toast';
+
+// A route's tabs load their module on first view; load it up front, so a test's first query doesn't
+// meet the loading placeholder.
+beforeAll(async () => {
+  await import('../resources/routes/bodies');
+});
 
 afterEach(() => {
   resetApp();
@@ -21,9 +27,8 @@ const tab = (name: string | RegExp) => main().getByRole('tab', { name });
 
 describe('a route with an incomplete limit-count', () => {
   it('blocks Save, badges the Plugins tab, shows the error on the card; filled in, the PUT carries numbers', async () => {
-    const { user, admin } = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] }, replies: pluginReplies() });
+    const { user, admin } = await openEditor('#/routes/r1?tab=plugins', { objects: { routes: [ROUTE] }, replies: pluginReplies() });
     await main().findByRole('heading', { level: 1, name: 'web' });
-    // The Plugins tab is the route's first tab for now, before the frame's JSON tab.
     await waitFor(() => expect(tab(/^Plugins/)).toHaveAccessibleName(`Plugins ${t('ui.tabs.errors', { count: 2 })}`));
 
     await user.keyboard('e');
@@ -80,7 +85,7 @@ async function replaceCode(user: UserEvent, box: HTMLElement, text: string) {
 
 /** r1 with `plugins`, opened, unlocked, with the card of `open` opened. */
 async function editRoute(plugins: Obj, open: string) {
-  const app = await openEditor('#/routes/r1', { objects: { routes: [{ ...ROUTE, plugins }] }, replies: pluginReplies() });
+  const app = await openEditor('#/routes/r1?tab=plugins', { objects: { routes: [{ ...ROUTE, plugins }] }, replies: pluginReplies() });
   await main().findByRole('heading', { level: 1, name: 'web' });
   await waitFor(() => expect(tab(/^Plugins/)).toHaveAccessibleName('Plugins'));
   await app.user.keyboard('e');

@@ -75,8 +75,8 @@ describe('registry', () => {
     expect(registry.routes.groupings).toEqual([hostGrouping]);
   });
 
-  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but upstreams) no tabs', () => {
-    for (const kind of KINDS.filter((k) => k !== 'upstreams')) {
+  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but routes and upstreams) no tabs', () => {
+    for (const kind of KINDS.filter((k) => k !== 'upstreams' && k !== 'routes')) {
       const def = registry[kind];
       if (scopeOfKind[kind]) {
         expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields]), kind).toEqual([['plugins', t('pl.tab'), ['plugins']]]);
@@ -86,6 +86,25 @@ describe('registry', () => {
         expect(typeof def.validate, kind).toBe('undefined');
       }
     }
+  });
+
+  it('gives routes their own tabs, checks and prefill', () => {
+    const def = registry.routes;
+    expect(def.tabs.map((tab) => [tab.id, tab.label])).toEqual([
+      ['general', t('rt.tab.general')],
+      ['matching', t('rt.tab.matching')],
+      ['upstream', t('rt.tab.upstream')],
+      ['plugins', t('pl.tab')],
+      ['advanced', t('rt.tab.advanced')],
+    ]);
+    // Every top-level route field is owned by exactly one tab (the frame's own: id, status, timestamps).
+    const owned = def.tabs.flatMap((tab) => tab.fields);
+    expect(new Set(owned).size).toBe(owned.length);
+    expect(owned.sort()).toEqual(
+      ['name', 'desc', 'labels', 'priority', 'host', 'hosts', 'uri', 'uris', 'methods', 'remote_addr', 'remote_addrs', 'vars', 'filter_func', 'service_id', 'upstream_id', 'upstream', 'plugins', 'plugin_config_id', 'timeout', 'enable_websocket', 'script', 'script_id'].sort(),
+    );
+    expect(def.prefill).toEqual(['service_id', 'upstream_id', 'plugin_config_id']);
+    expect(def.validate?.({ uri: '/*', status: 1 }, { isNew: true, ctx: ctxOf() }).map((i) => [i.path, i.tab])).toEqual([['', 'upstream']]);
   });
 
   it('gives upstreams their own tabs, columns and checks', () => {

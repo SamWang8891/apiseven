@@ -40,8 +40,13 @@ const COUNTS = {
 };
 
 function sizes(ctx: Ctx): Record<string, number> {
-  return Object.fromEntries(Object.entries(ctx).map(([k, v]: [string, Item[]]) => [k, v.length]));
+  const lists = Object.entries(ctx).filter((entry): entry is [string, Item[]] => entry[0] !== 'loaded');
+  return Object.fromEntries(lists.map(([k, v]) => [k, v.length]));
 }
+
+const NOTHING_LOADED = {
+  routes: false, streamRoutes: false, services: false, upstreams: false, ssls: false, pluginConfigs: false, consumerGroups: false, consumers: false,
+};
 
 describe('useCtx', () => {
   it('has empty lists while loading', () => {
@@ -49,6 +54,14 @@ describe('useCtx', () => {
     expect(sizes(result.current)).toEqual({
       routes: 0, streamRoutes: 0, services: 0, upstreams: 0, ssls: 0, pluginConfigs: 0, consumerGroups: 0, consumers: 0,
     });
+    expect(result.current.loaded).toEqual(NOTHING_LOADED);
+  });
+
+  it('marks each list loaded once its query has succeeded, an empty list too', async () => {
+    const { result } = setup({ counts: { ...COUNTS, ssls: 0 } });
+    await waitFor(() => expect(Object.values(result.current.loaded).every(Boolean)).toBe(true));
+    expect(result.current.ssls).toEqual([]);
+    expect(result.current.loaded.ssls).toBe(true);
   });
 
   it('reads the eight lists into their fields', async () => {
@@ -71,6 +84,9 @@ describe('useCtx', () => {
     await waitFor(() => expect(result.current.routes).toHaveLength(3));
     await waitFor(() => expect(admin.requests.some((r) => r.url.pathname.endsWith('/stream_routes'))).toBe(true));
     expect(result.current.streamRoutes).toEqual([]);
+    // Never loaded: a reference into it can't be called dangling.
+    expect(result.current.loaded.streamRoutes).toBe(false);
+    expect(result.current.loaded.routes).toBe(true);
   });
 
   it('keeps the same object across re-renders and same-data refetches', async () => {
@@ -81,6 +97,7 @@ describe('useCtx', () => {
 
     rerender();
     expect(result.current).toBe(before);
+    expect(result.current.loaded).toBe(before.loaded);
 
     await act(() => qc.invalidateQueries());
     await waitFor(() => expect(qc.isFetching()).toBe(0));

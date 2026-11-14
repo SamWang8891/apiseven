@@ -8,12 +8,13 @@ export default defineConfig({
   build: {
     rolldownOptions: {
       output: {
-        // React and the router in chunks of their own: they change less often than the app, and the
-        // entry chunk stays under the size warning.
+        // React, the router and the UI strings in chunks of their own: they change less often than
+        // the app (the strings grow with every editor), and the entry chunk stays under the size warning.
         codeSplitting: {
           groups: [
             { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
             { name: 'router', test: /node_modules[\\/]react-router[\\/]/ },
+            { name: 'i18n', test: /src[\\/]i18n[\\/]/ },
           ],
         },
       },

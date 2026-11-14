@@ -75,7 +75,7 @@ describe('tabs in the URL', () => {
 
 describe('create', () => {
   it('after a successful create, goes to the new object, locked', async () => {
-    const { user } = await openEditor('#/routes/new', { objects: { routes: [] } });
+    const { user } = await openEditor('#/routes/new?upstream_id=u1', { objects: { routes: [], upstreams: [UPSTREAM] } });
     await user.type(await main().findByRole('textbox', { name: 'ID' }), 'fresh');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('routes', 'fresh')}`));

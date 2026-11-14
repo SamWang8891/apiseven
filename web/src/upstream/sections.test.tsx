@@ -150,4 +150,11 @@ describe('TLS', () => {
     await choose(h.user, t('up.tls.verify'), t('up.tls.verifyDefault'));
     await waitFor(() => expect(h.value()).toEqual({}));
   });
+
+  it('the SSL object picker says loading, not "not found", until the SSL list has loaded', () => {
+    renderUpstream({ tls: { client_cert_id: 'c1' } }, { section: 'tls', ctx: ctxOf({ loaded: { ssls: false } }) });
+    const picker = screen.getByRole('combobox', { name: t('up.tls.ssl') });
+    expect(picker).toHaveTextContent('c1');
+    expect(picker).toHaveAccessibleDescription(t('picker.loading'));
+  });
 });

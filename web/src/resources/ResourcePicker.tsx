@@ -2,6 +2,8 @@
 // searchable select listing objects by name with the id beside it, and a link to the one chosen.
 // An id that matches no object stays selected and is flagged (it may be a typo, or the object was
 // deleted): it is never cleared behind the user's back. Locked, it reads as a link to the object.
+// While the list is still loading (`loading`), an id it doesn't hold yet is shown as it is, with a
+// quiet note, never as "not found".
 import { ExternalLink } from 'lucide-react';
 import type { FC, ReactNode } from 'react';
 import { Link } from 'react-router';
@@ -25,6 +27,8 @@ export interface ResourcePickerProps {
   /** Which items to offer (the chosen one is always shown, whether or not it passes). */
   filter?: (item: Item) => boolean;
   placeholder?: string;
+  /** The list hasn't loaded yet (`!ctx.loaded.<list>`): an id it lacks is not called "not found". */
+  loading?: boolean;
 }
 
 const nameOf = (item: Item): string => nameOfValue(item.value) ?? item.id;
@@ -34,10 +38,12 @@ function optionOf(item: Item): Option {
   return name === item.id ? { value: item.id, label: name } : { value: item.id, label: name, description: item.id };
 }
 
-export const ResourcePicker: FC<ResourcePickerProps> = ({ kind, items, value, onChange, label, help, error, clearable, filter, placeholder }) => {
+export const ResourcePicker: FC<ResourcePickerProps> = ({ kind, items, value, onChange, label, help, error, clearable, filter, placeholder, loading }) => {
   const locked = useLocked();
   const chosen = value === undefined ? undefined : items.find((item) => String(item.id) === value);
-  const missing = value !== undefined && !chosen ? t('picker.notFound', { id: value }) : undefined;
+  const unmatched = value !== undefined && !chosen;
+  const missing = unmatched && !loading ? t('picker.notFound', { id: value }) : undefined;
+  const waiting = unmatched && loading;
 
   if (locked) {
     return (
@@ -49,6 +55,11 @@ export const ResourcePicker: FC<ResourcePickerProps> = ({ kind, items, value, on
                 {nameOf(chosen)}
               </Link>
               {nameOf(chosen) !== chosen.id && <span className="res-picker__id mono">{chosen.id}</span>}
+            </>
+          ) : waiting ? (
+            <>
+              <span className="mono">{value}</span>
+              <span className="res-picker__loading">{t('picker.loading')}</span>
             </>
           ) : (
             <span className="res-picker__missing">{missing}</span>
@@ -63,7 +74,7 @@ export const ResourcePicker: FC<ResourcePickerProps> = ({ kind, items, value, on
     <div className={label === undefined ? 'res-picker res-picker--bare' : 'res-picker'}>
       <Select
         label={label}
-        help={help}
+        help={waiting ? t('picker.loading') : help}
         error={error ?? missing}
         value={value}
         onChange={onChange}

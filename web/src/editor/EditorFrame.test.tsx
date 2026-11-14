@@ -30,6 +30,10 @@ const ROUTE: Obj = {
   update_time: 1700000100,
 };
 
+/** A new route that has something to do (APISIX needs an upstream, a service, plugins or a script). */
+const NEW_ROUTE = '#/routes/new?upstream_id=u1';
+const UPSTREAMS = [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }];
+
 /** An existing route r1 opened with a General tab (name, uri) before the JSON tab. */
 async function openRoute(opts: Parameters<typeof openEditor>[1] = {}, hash = '#/routes/r1') {
   undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
@@ -335,17 +339,17 @@ describe('ID on create', () => {
   });
 
   it("idMode 'optional' with an empty ID: POST without an id", async () => {
-    const { user, admin } = await openEditor('#/routes/new', { objects: { routes: [] } });
+    const { user, admin } = await openEditor(NEW_ROUTE, { objects: { routes: [], upstreams: UPSTREAMS } });
     expect(await main().findByRole('textbox', { name: 'ID' })).toHaveAccessibleDescription(t('editor.id.optional'));
     await user.click(main().getByRole('button', { name: t('editor.create') }));
-    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'POST', path: 'routes', body: { uri: '/*', status: 1 } }]));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'POST', path: 'routes', body: { uri: '/*', status: 1, upstream_id: 'u1' } }]));
   });
 
   it('with an ID: PUT to …/<id>, the id kept out of the body', async () => {
-    const { user, admin } = await openEditor('#/routes/new', { objects: { routes: [] } });
+    const { user, admin } = await openEditor(NEW_ROUTE, { objects: { routes: [], upstreams: UPSTREAMS } });
     await user.type(await main().findByRole('textbox', { name: 'ID' }), 'my-route.v2');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
-    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/my-route.v2', body: { uri: '/*', status: 1 } }]));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/my-route.v2', body: { uri: '/*', status: 1, upstream_id: 'u1' } }]));
   });
 
   it('a new object starts unlocked, with no Edit button and no menu', async () => {
@@ -434,8 +438,8 @@ describe('a save in flight', () => {
 
   it('a create that finishes after the page was left does not navigate back to it', async () => {
     const held = gate();
-    const { user, admin } = await openEditor('#/routes/new', {
-      objects: { routes: [] },
+    const { user, admin } = await openEditor(NEW_ROUTE, {
+      objects: { routes: [], upstreams: UPSTREAMS },
       replies: { 'routes/late': (req) => (req.method === 'PUT' ? held.promise : undefined) },
     });
     await user.type(await main().findByRole('textbox', { name: 'ID' }), 'late');
