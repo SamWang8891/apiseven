@@ -29,6 +29,8 @@ type Row = EntryRow<unknown>;
 
 /** The marker of a row whose key has no value yet (the row's own message names it). */
 const NO_VALUE = 'no-value';
+/** The marker of a row carried over a change of the value from outside (held until edited). */
+const CARRIED = 'carried';
 
 /**
  * The map's rules for its rows (entryRows.ts): a key another row has is refused, and so is a
@@ -41,6 +43,7 @@ function rulesOf(node: MapNode): EntryRules<unknown> {
     refuseKey: (key) => badKey(node, key),
     refuseValue: (row) => (row.value === undefined ? NO_VALUE : undefined),
     blank: (row) => row.key === '' && isEmpty(row.value),
+    carried: () => CARRIED,
   };
 }
 
@@ -61,6 +64,7 @@ function heldRows(rows: Row[], refused: (string | undefined)[], rules: EntryRule
   const messages = rows.flatMap((row, i) => {
     const refusal = refused[i];
     if (!entryHeld(row, refusal, rules)) return [];
+    if (refusal === CARRIED) return [t('ui.pending.kept', { field, n: i + 1 })];
     if (refusal === '') return [t('ui.pending.noKey', { field, n: i + 1 })];
     if (refusal === NO_VALUE) return [t('ui.pending.noValue', { field, key: row.key })];
     return [t('ui.pending.problem', { field, problem: refusal ?? '' })];
@@ -107,11 +111,16 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   // come here, and the map the rows make is sent whenever it differs from the value.
   const update = useCallback(
     (next: Row[]) => {
+      // Rows and the value as of the last change (also before it renders): changes in one task build on each other.
+      // Nothing changed (leaving a row that commits nothing): no state update, which, queued, would be
+      // replayed over a later resync from outside and bring the old rows back.
+      if (next === latestRef.current.rows) return;
       const { value: cur, emit: send } = latestRef.current;
-      latestRef.current = { ...latestRef.current, rows: next };
-      setRows(next);
       const map = toMap(node, next);
-      if (!sameMap(map, cur)) send(map);
+      const changed = !sameMap(map, cur);
+      latestRef.current = { ...latestRef.current, rows: next, value: changed ? map : cur };
+      setRows(next);
+      if (changed) send(map);
     },
     [latestRef, node, setRows],
   );
@@ -132,7 +141,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
         {label}
         {!locked && (
           <span className="sf-list__action">
-            <Button variant="ghost" size="sm" icon={<Plus size={13} />} onClick={() => update([...rows, { id: ++lastRow, key: '', value: blankOf(node.value) }])}>
+            <Button variant="ghost" size="sm" icon={<Plus size={13} />} onClick={() => update([...latestRef.current.rows, { id: ++lastRow, key: '', value: blankOf(node.value) }])}>
               {t('sf.map.add')}
             </Button>
           </span>
@@ -155,11 +164,13 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
                 ? isEmpty(row.value)
                   ? undefined
                   : t('sf.map.noKey')
-                : refusal === NO_VALUE
-                  ? row.key === ''
-                    ? undefined
-                    : t('sf.map.noValue')
-                  : (refusal ?? (unchanged ? badKey(node, row.key) : undefined));
+                : refusal === CARRIED
+                  ? t('ui.kv.kept')
+                  : refusal === NO_VALUE
+                    ? row.key === ''
+                      ? undefined
+                      : t('sf.map.noValue')
+                    : (refusal ?? (unchanged ? badKey(node, row.key) : undefined));
             return (
               <div className="sf-map__row" key={row.id} onBlur={() => commit(row.id)}>
                 {locked ? (
@@ -173,7 +184,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
                     placeholder={t('sf.map.key')}
                     value={row.key}
                     error={keyError}
-                    onChange={(e) => update(rows.map((r) => (r.id === row.id ? changedEntry({ ...r, key: e.target.value }, rules) : r)))}
+                    onChange={(e) => update(latestRef.current.rows.map((r) => (r.id === row.id ? changedEntry({ ...r, key: e.target.value }, rules) : r)))}
                   />
                 )}
                 <NodeField
@@ -190,7 +201,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
                     variant="ghost"
                     icon={<X size={15} />}
                     aria-label={t('sf.map.remove', { key: row.key === '' ? n : row.key })}
-                    onClick={() => update(rows.filter((r) => r.id !== row.id))}
+                    onClick={() => update(latestRef.current.rows.filter((r) => r.id !== row.id))}
                   />
                 )}
               </div>

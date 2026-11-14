@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
 import { Field, type FieldProps } from './Field';
@@ -28,11 +28,14 @@ export type KeyValueInputProps = FieldProps & {
 
 type Row = EntryRow<string>;
 
-/** The marker of a key another row has (the field's message names the key). */
+/** The marker of a key another row shows (the field's message names the key). */
 const DUPLICATE = 'duplicate';
+/** The marker of a row carried over a change of the value from outside (held until edited). */
+const CARRIED = 'carried';
 const RULES: EntryRules<string> = {
   duplicate: () => DUPLICATE,
   blank: (row) => row.key === '' && row.value === '',
+  carried: () => CARRIED,
 };
 
 let lastRowId = 0;
@@ -65,6 +68,7 @@ function heldRows(rows: Row[], field: string): string | undefined {
   const messages = rows.flatMap((row, i) => {
     const refusal = refused[i];
     if (!entryHeld(row, refusal, RULES)) return [];
+    if (refusal === CARRIED) return [t('ui.pending.kept', { field, n: i + 1 })];
     return [refusal === '' ? t('ui.pending.noKey', { field, n: i + 1 }) : t('ui.pending.duplicateKey', { field, key: row.key })];
   });
   return messages.length > 0 ? messages.join('; ') : undefined;
@@ -85,6 +89,12 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
     setSynced(value);
     if (!sameMap(toMap(rows), value)) setRows(rowsFor(value, rows));
   }
+  // The rows and the map last sent, as of the last change, also before it renders: every handler
+  // reads them here, so two changes in one task build on each other, never on an older render's rows.
+  const latest = useRef({ rows, sent: value });
+  useLayoutEffect(() => {
+    latest.current = { rows, sent: value };
+  });
   const [focus, setFocus] = useState<{ row: number } | { removedAt: number }>();
   const groupRef = useRef<HTMLDivElement>(null);
   usePending(locked ? undefined : heldRows(rows, nameOfField(fieldName, label, undefined)));
@@ -124,19 +134,29 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
    * come here, and the map the rows make is sent whenever it differs from the value.
    */
   function update(next: Row[]) {
-    setRows(next);
+    // Nothing changed (leaving a row that commits nothing): no state update at all. A no-op update
+    // still queued would be replayed over a later resync from outside and bring the old rows back.
+    if (next === latest.current.rows) return;
+    const { sent } = latest.current;
     const map = toMap(next);
-    if (!sameMap(map, value)) onChange(map);
+    const send = !sameMap(map, sent);
+    latest.current = { rows: next, sent: send ? map : sent };
+    setRows(next);
+    if (send) onChange(map);
   }
+  const current = () => latest.current.rows;
   /** Leaving a row: a good entry becomes the one the row keeps in the map while it later holds input. */
-  const commit = (id: number) => update(commitEntry(rows, id, RULES));
+  const commit = (id: number) => update(commitEntry(current(), id, RULES));
 
-  const edit = (id: number, patch: Partial<Pick<Row, 'key' | 'value'>>) => update(rows.map((r) => (r.id === id ? changedEntry({ ...r, ...patch }, RULES) : r)));
-  // A row that holds input is flagged on its key (a blank row is not): a repeated key, or a value without a key.
+  const edit = (id: number, patch: Partial<Pick<Row, 'key' | 'value'>>) => update(current().map((r) => (r.id === id ? changedEntry({ ...r, ...patch }, RULES) : r)));
+  // A row that holds input is flagged on its key (a blank row is not): a repeated key, a value
+  // without a key, or a row carried over an outside change.
   const refused = entryRefusals(rows, RULES);
   const duplicate = refused.map((r) => r === DUPLICATE);
   const noKey = refused.map((r, i) => r === '' && rows[i]?.value !== '');
-  const shownError = error ?? (duplicate.some(Boolean) ? t('ui.kv.duplicate') : noKey.some(Boolean) ? t('ui.kv.noKey') : undefined);
+  const carried = refused.map((r) => r === CARRIED);
+  const shownError =
+    error ?? (carried.some(Boolean) ? t('ui.kv.kept') : duplicate.some(Boolean) ? t('ui.kv.duplicate') : noKey.some(Boolean) ? t('ui.kv.noKey') : undefined);
   const inputClass = mono ? 'ui-input mono' : 'ui-input';
 
   const add = !disabled && (
@@ -147,7 +167,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
       icon={<Plus size={13} />}
       onClick={() => {
         const row = newRow();
-        update([...rows, row]);
+        update([...current(), row]);
         setFocus({ row: row.id });
       }}
     >
@@ -163,7 +183,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
             <input
               className={`${inputClass} ui-kv__key`}
               aria-label={t('ui.kv.keyN', { n: i + 1 })}
-              aria-invalid={duplicate[i] || noKey[i] || undefined}
+              aria-invalid={duplicate[i] || noKey[i] || carried[i] || undefined}
               placeholder={keyPlaceholder ?? t('ui.kv.key')}
               value={row.key}
               disabled={disabled}
@@ -190,7 +210,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
                 icon={<X size={15} />}
                 aria-label={t('ui.kv.remove', { n: i + 1 })}
                 onClick={() => {
-                  const rest = rows.filter((r) => r.id !== row.id);
+                  const rest = current().filter((r) => r.id !== row.id);
                   if (rest.length > 0) {
                     update(rest);
                     setFocus({ removedAt: i });

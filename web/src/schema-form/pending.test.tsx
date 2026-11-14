@@ -2,12 +2,13 @@
 // (a number that doesn't parse, refused tag text, a withheld map row, JSON that doesn't parse or is
 // not the schema's type) is declared through usePending, named by the field's dotted path (after
 // the form's `name`, when it has one).
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
+import { changeTo, reactProps } from '../test/reactProps';
 import { renderSchemaForm } from '../test/schemaForm';
 import { PendingProvider, type PendingEntry } from '../ui';
 import { SchemaForm } from './SchemaForm';
@@ -203,7 +204,8 @@ describe('held input is never replaced by a value from outside', () => {
     await page.user.type(group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n: 2 }) }), 'b');
     await page.user.click(screen.getByRole('button', { name: 'Elsewhere' }));
     expect(group('limits').getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['a', 'c', 'b']);
-    expect(page.held()).toEqual([t('ui.pending.noValue', { field: 'limits', key: 'b' })]);
+    // Carried over the change: held as not saved until it is edited (fix round 3).
+    expect(page.held()).toEqual([t('ui.pending.kept', { field: 'limits', n: 3 })]);
   });
 });
 
@@ -307,5 +309,42 @@ describe('map rows always send what they show (fix round 2)', () => {
     expect(form.held()).toEqual([]);
     await form.user.click(document.body);
     expect(form.value()).toEqual({ limits: { b: 1, a: 2 } });
+  });
+});
+
+describe('map rows equal their value after an outside change too (fix round 3)', () => {
+  it('a "used twice" row kept through a change that drops its rival stays held until edited', async () => {
+    const page = renderWithOutside({ limits: { a: 1, b: 2 } }, () => ({ limits: { b: 2 } }));
+    const key = (n: number) => group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n }) });
+    await page.user.clear(key(2));
+    await page.user.type(key(2), 'a');
+    await page.user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect(group('limits').getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['a']);
+    expect(page.value()).toEqual({ limits: { b: 2 } });
+    expect(page.held()).toEqual([t('ui.pending.kept', { field: 'limits', n: 1 })]);
+    await page.user.type(group('limits').getByRole('spinbutton', { name: t('sf.map.valueOf', { key: 'a' }) }), '0');
+    expect(page.held()).toEqual([]);
+    expect(page.value()).toEqual({ limits: { a: 20 } });
+  });
+
+  it('a key edit and leaving the row, or two row edits, in one task all land (no stale rows)', () => {
+    const form = renderSchemaForm(SCHEMA, { limits: { a: 1, b: 2 } });
+    const key = (n: number) => group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n }) });
+    // Handlers from the same render, no render between (as two handlers in one task would run).
+    const [key2, row2] = [reactProps(key(2)), reactProps(key(2).closest('.sf-map__row') as Element)];
+    act(() => {
+      key2.onChange?.(changeTo('a'));
+      row2.onBlur?.();
+    });
+    expect(key(2)).toHaveValue('a');
+    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'a' }) })]);
+    const [key1, key2again] = [reactProps(key(1)), reactProps(key(2))];
+    act(() => {
+      key1.onChange?.(changeTo(''));
+      key2again.onChange?.(changeTo('c'));
+    });
+    expect(key(1)).toHaveValue('');
+    expect(key(2)).toHaveValue('c');
+    expect(form.value()).toEqual({ limits: { a: 1, c: 2 } });
   });
 });

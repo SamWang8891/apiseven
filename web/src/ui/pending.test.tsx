@@ -1,11 +1,12 @@
 // The kit's input holders and the pending-input guard: text a control shows but has not emitted is
 // declared through usePending (named after the field), and a dialog's own form cannot be confirmed
 // while a field in it holds such input.
-import { render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
+import { changeTo, reactProps } from '../test/reactProps';
 import { Button, ConfirmDialog, Dialog, KeyValueInput, NumberInput, PendingProvider, TagInput, TooltipProvider, type PendingEntry } from './index';
 
 /** Renders `ui` under a provider; `held()` is what it holds now (the messages). */
@@ -352,7 +353,8 @@ describe('held input is never replaced by a value from outside', () => {
     await user.type(screen.getByRole('textbox', { name: t('ui.kv.valueN', { n: 2 }) }), 'kept');
     await user.click(screen.getByRole('button', { name: 'Elsewhere' }));
     expect(screen.getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['env', 'prod', 'team', 'a', '', 'kept']);
-    expect(held()).toEqual([t('ui.pending.noKey', { field: 'Labels', n: 3 })]);
+    // Carried over the change: held as not saved until it is edited (fix round 3).
+    expect(held()).toEqual([t('ui.pending.kept', { field: 'Labels', n: 3 })]);
   });
 });
 
@@ -450,5 +452,102 @@ describe('map rows always send what they show (fix round 2)', () => {
     await user.click(document.body);
     expect(held()).toEqual([]);
     expect(map()).toBe('{"env":"core","team":"dev"}');
+  });
+});
+
+describe('map rows equal their value after an outside change too (fix round 3)', () => {
+  /** Labels whose value can be replaced from outside (as another part of a page would). */
+  function Outside({ initial, next }: { initial: Record<string, string>; next: Record<string, string> }) {
+    const [value, setValue] = useState(initial);
+    return (
+      <>
+        <KeyValueInput label="Labels" value={value} onChange={setValue} />
+        <output aria-label="map">{JSON.stringify(value)}</output>
+        <button type="button" onClick={() => setValue(next)}>
+          Elsewhere
+        </button>
+      </>
+    );
+  }
+  const map = () => screen.getByRole('status', { name: 'map' }).textContent;
+  const key = (n: number) => screen.getByRole('textbox', { name: t('ui.kv.keyN', { n }) });
+  const value = (n: number) => screen.getByRole('textbox', { name: t('ui.kv.valueN', { n }) });
+
+  it('a "used twice" row kept through a change that drops its rival stays held, not saved, until it is edited', async () => {
+    const { user, held } = withProvider(<Outside initial={{ team: 'core', env: 'dev' }} next={{ env: 'dev' }} />);
+    await user.clear(key(2));
+    await user.type(key(2), 'team');
+    await user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect(key(1)).toHaveValue('team');
+    expect(value(1)).toHaveValue('dev');
+    expect(map()).toBe('{"env":"dev"}');
+    expect(held()).toEqual([t('ui.pending.kept', { field: 'Labels', n: 1 })]);
+    expect(key(1)).toHaveAttribute('aria-invalid', 'true');
+    // Edited, it is the user's again, and the map is what it shows.
+    await user.type(value(1), '!');
+    expect(held()).toEqual([]);
+    expect(map()).toBe('{"team":"dev!"}');
+  });
+
+  it('kept through a change to an unrelated map, it is added after the new entries, held, and sends nothing', async () => {
+    const { user, held } = withProvider(<Outside initial={{ team: 'core', env: 'dev' }} next={{ x: '1' }} />);
+    await user.clear(key(2));
+    await user.type(key(2), 'team');
+    await user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect([key(1), value(1), key(2), value(2)].map((el) => (el as HTMLInputElement).value)).toEqual(['x', '1', 'team', 'dev']);
+    expect(map()).toBe('{"x":"1"}');
+    expect(held()).toEqual([t('ui.pending.kept', { field: 'Labels', n: 2 })]);
+  });
+
+  it('leaving a row that commits nothing, then a value from outside: the rows are the new value (property seed 9)', () => {
+    const control: { set?: (map: Record<string, string>) => void } = {};
+    function Settable() {
+      const [value, setValue] = useState<Record<string, string>>({});
+      useEffect(() => {
+        control.set = setValue;
+      }, []);
+      return (
+        <>
+          <KeyValueInput label="Labels" value={value} onChange={setValue} />
+          <output aria-label="map">{JSON.stringify(value)}</output>
+        </>
+      );
+    }
+    withProvider(<Settable />);
+    // Leaving a blank row commits nothing (an event, so at sync priority); then the value is set from
+    // outside any event (default priority). A no-op update queued by the first would be replayed over
+    // the resync and bring the old rows back.
+    fireEvent.focusOut(key(1));
+    act(() => control.set?.({ zz: 'new' }));
+    expect([key(1), value(1)].map((el) => (el as HTMLInputElement).value)).toEqual(['zz', 'new']);
+    expect(screen.getAllByRole('textbox')).toHaveLength(2);
+    expect(map()).toBe('{"zz":"new"}');
+  });
+
+  it('a key edit and leaving the row in one task both land (no stale rows)', () => {
+    const { held } = withProvider(<Labels initial={{ team: 'core', env: 'dev' }} />);
+    // The edit makes row 2 held (nothing is sent, so no new value would put it back if it were lost).
+    // Both handlers from the same render, no render between (as two handlers in one task would run).
+    const key2 = reactProps(key(2));
+    act(() => {
+      key2.onChange?.(changeTo('team'));
+      key2.onBlur?.();
+    });
+    expect(key(2)).toHaveValue('team');
+    expect(held()).toEqual([t('ui.pending.duplicateKey', { field: 'Labels', key: 'team' })]);
+    expect(map()).toBe('{"team":"core","env":"dev"}');
+  });
+
+  it('two row edits in one task both land', () => {
+    const { held } = withProvider(<Labels initial={{ team: 'core', env: 'dev' }} />);
+    const [key1, value2] = [reactProps(key(1)), reactProps(value(2))];
+    act(() => {
+      key1.onChange?.(changeTo(''));
+      value2.onChange?.(changeTo('prod'));
+    });
+    expect(key(1)).toHaveValue('');
+    expect(value(2)).toHaveValue('prod');
+    expect(held()).toEqual([t('ui.pending.noKey', { field: 'Labels', n: 1 })]);
+    expect(map()).toBe('{"team":"core","env":"prod"}');
   });
 });

@@ -5,9 +5,13 @@
 //   3. A good row is in the map as shown; a held row keeps its last committed entry there, in its place,
 //      unless a good row shows that key: so whenever nothing is held, the map is exactly the rows as shown.
 // "Held": a row that shows something it can't put in the map (no key, a key used twice, a key or value
-// the rules refuse). "Committed": a row commits its entry when it is left while good (blur; Save leaves
-// the field first), so keys typed on the way to a taken one ("e", "en" before "env") are never what a
-// held row keeps. A row emptied completely (no key, no value) is a removal, as is its Remove button.
+// the rules refuse), or that was kept through a change of the value from outside (below). "Committed":
+// a row commits its entry when it is left while good (blur; Save leaves the field first), so keys typed
+// on the way to a taken one ("e", "en" before "env") are never what a held row keeps. A row emptied
+// completely (no key, no value) is a removal, as is its Remove button.
+// A value from outside replaces the rows but keeps the rows that hold input, marked `carried`: held until
+// the user edits them, because what made them held may be gone with the old value (a rival key), and
+// they must not turn good and differ from the value nobody sent. So rule 3 holds then too.
 
 /** JSON values compared as data (a value from outside is a new object with the same content). */
 const sameValue = (a: unknown, b: unknown): boolean => Object.is(a, b) || JSON.stringify(a) === JSON.stringify(b);
@@ -18,6 +22,8 @@ export interface EntryRow<V> {
   value: V;
   /** The entry this row last committed to the map: the stored one, then each good one it is left with. */
   last?: { key: string; value: V };
+  /** Carried over a change of the value from outside while it held input: held until the user edits it. */
+  carried?: boolean;
 }
 
 export interface EntryRules<V> {
@@ -29,6 +35,8 @@ export interface EntryRules<V> {
   refuseValue?: (row: EntryRow<V>) => string | undefined;
   /** A row with nothing in it (no key, no value): it holds nothing, and emptied, it removes its entry. */
   blank: (row: EntryRow<V>) => boolean;
+  /** Why a row carried over an outside change is held (a message, or a marker the caller turns into one). */
+  carried: (row: EntryRow<V>) => string;
 }
 
 /** The row shows the key it committed (a stored entry nobody renamed, or a rename already left). */
@@ -42,7 +50,7 @@ const unchanged = <V>(row: EntryRow<V>): boolean => row.last !== undefined && ro
  * refused by the key rules (stored data stays until someone changes it).
  */
 export function entryRefusals<V>(rows: EntryRow<V>[], rules: EntryRules<V>): (string | undefined)[] {
-  const keyRefusal = rows.map((row) => (unchanged(row) ? undefined : row.key === '' ? '' : rules.refuseKey?.(row.key)));
+  const keyRefusal = rows.map((row) => (row.carried ? rules.carried(row) : unchanged(row) ? undefined : row.key === '' ? '' : rules.refuseKey?.(row.key)));
   const valueRefusal = rows.map((row) => rules.refuseValue?.(row));
   const rank = (i: number): number => (unchanged(rows[i] as EntryRow<V>) ? 2 : 0) + (valueRefusal[i] === undefined ? 1 : 0);
   const keeper = new Map<string, number>();
@@ -86,16 +94,19 @@ export function commitEntry<V>(rows: EntryRow<V>[], id: number, rules: EntryRule
   return rows.map((r) => (r.id === id ? { ...r, last: { key: r.key, value: r.value } } : r));
 }
 
-/** A row the user changed: emptied completely it is a removal, and forgets the entry it had. */
+/** A row the user changed: it is theirs again (no longer carried); emptied completely it is a removal, and forgets its entry. */
 export function changedEntry<V>(row: EntryRow<V>, rules: EntryRules<V>): EntryRow<V> {
-  return row.last && rules.blank(row) ? { ...row, last: undefined } : row;
+  const own = row.carried ? { ...row, carried: undefined } : row;
+  return own.last && rules.blank(own) ? { ...own, last: undefined } : own;
 }
 
 /**
  * Rows for a map that came from outside (`fresh`, one per entry), with the rows that hold input
- * kept (never dropped): in the place of their last entry when the map still has it as it was, else
- * at the end as new rows (what they were renamed from may be back in the map). The rows then make
- * exactly that map, so nothing needs sending.
+ * carried over (never dropped) and marked `carried`, so they stay held until the user edits them: in
+ * the place of their last entry when the map still has it as it was (that entry is then what they
+ * keep), else at the end keeping nothing (what they were renamed from may be gone, or back in the
+ * map). The rows then make exactly `map` (`entriesOf(result) = map`), so nothing needs sending: a
+ * carried row can't turn good without an edit, and an edit goes through the editor's update, which sends.
  */
 export function keepHeldRows<V>(fresh: EntryRow<V>[], rows: EntryRow<V>[], rules: EntryRules<V>): EntryRow<V>[] {
   const refused = entryRefusals(rows, rules);
@@ -105,8 +116,8 @@ export function keepHeldRows<V>(fresh: EntryRow<V>[], rows: EntryRow<V>[], rules
     if (!entryHeld(row, refused[i], rules)) return;
     const { last } = row;
     const at = last ? next.findIndex((f) => fresh.includes(f) && f.last?.key === last.key && sameValue(f.last.value, last.value)) : -1;
-    if (at >= 0) next[at] = row;
-    else extra.push({ ...row, last: undefined });
+    if (at >= 0) next[at] = { ...row, carried: true };
+    else extra.push({ ...row, last: undefined, carried: true });
   });
   return [...next, ...extra];
 }

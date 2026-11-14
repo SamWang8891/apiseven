@@ -2,8 +2,8 @@
 // conditions sent equal a reference: each good row's condition as shown; a held row's last good
 // condition (none once its row was blanked or removed); a blank row nothing. So with nothing held,
 // the list is exactly the rows as shown, and no condition is sent twice or brought back.
-import { cleanup, fireEvent, render } from '@testing-library/react';
-import { useState } from 'react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
+import { useEffect, useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { t } from '../../i18n';
 import { prng } from '../../test/prng';
@@ -16,10 +16,18 @@ const [HELD_START = ''] = t('rt.vars.held.noVariable', { n: '\u0000' }).split('\
 const HELD_ROW = new RegExp(`${HELD_START.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(\\d+):`, 'g');
 
 function mount(initial: unknown[]) {
+  // What the rows must make: the last list sent, or the value from outside if it came after.
   let sent: unknown = initial;
   let held: PendingEntry[] = [];
+  const control: { set?: (v: unknown) => void } = {};
   function Harness() {
     const [value, setValue] = useState<unknown>(initial);
+    useEffect(() => {
+      control.set = (v) => {
+        sent = v;
+        setValue(v);
+      };
+    }, []);
     return (
       <TooltipProvider>
         <PendingProvider onChange={(entries) => (held = entries)}>
@@ -40,6 +48,7 @@ function mount(initial: unknown[]) {
     container,
     rows,
     sent: (): unknown[] => (Array.isArray(sent) ? (sent as unknown[]) : []),
+    outside: (v: unknown[] | undefined) => act(() => control.set?.(v)),
     heldRows: () => new Set(held.flatMap((e) => [...e.message.matchAll(HELD_ROW)].map((m) => Number(m[1]) - 1))),
     shown: () =>
       rows().map((row) => {
@@ -56,6 +65,7 @@ describe('VarsBuilder sends what its rows show (property, seeded)', () => {
   it(`${SEEDS} sequences of 8 edits over 1–3 rows`, () => {
     let steps = 0;
     let heldSteps = 0;
+    let outsideSteps = 0;
     for (let seed = 1; seed <= SEEDS; seed += 1) {
       const r = prng(seed);
       const initial = Array.from({ length: 1 + r.int(3) }, (_, i) => (r.int(2) === 0 ? [['a', 'b', 'c'][i], '==', r.pick(['1', 'x'])] : [['a', 'b', 'c'][i], '>', 1 + r.int(2)]));
@@ -68,8 +78,56 @@ describe('VarsBuilder sends what its rows show (property, seeded)', () => {
         const rows = ui.shown();
         const i = r.int(Math.max(1, rows.length));
         const row = rows[i];
-        const op = r.int(7);
-        if (!row || op === 4) {
+        const op = r.int(8);
+        if (op === 7) {
+          // A value from outside: one dropping a condition, one adding a copy of a condition a row
+          // shows, or an unrelated one.
+          const before = ui.shown();
+          const held = ui.heldRows();
+          const current = ui.sent();
+          const shownGood = before.flatMap((s, j) =>
+            held.has(j) || (s.variable === '' && s.text === '' && !s.not) ? [] : [[s.variable, ...(s.not ? ['!'] : []), s.op, s.op === '>' ? Number(s.text) : s.text]],
+          );
+          const candidates: [string, unknown[]][] = [
+            ['drop', current.slice(1)],
+            ['add', [...current, shownGood[0] ?? ['z', '==', 'q']]],
+            ['other', [['a', '==', 'x']]],
+          ];
+          const [kind, list] = r.pick(candidates);
+          log.push(`outside ${kind} ${JSON.stringify(list)}`);
+          const changes = JSON.stringify(list) !== JSON.stringify(current);
+          ui.outside(list.length > 0 ? list : undefined);
+          outsideSteps += 1;
+          if (changes) {
+            // The reference of rowsFor: the list's conditions as rows, each held row in the place of
+            // its last good condition when the list has it, else after them keeping none.
+            const slots: (number | undefined)[] = list.map(() => undefined);
+            const extra: number[] = [];
+            before.forEach((s, j) => {
+              if (!held.has(j)) {
+                lastGood.delete(s.id);
+                return;
+              }
+              const last = lastGood.get(s.id);
+              const at = last ? list.findIndex((c, k) => slots[k] === undefined && JSON.stringify(c) === JSON.stringify(last)) : -1;
+              if (at >= 0) slots[at] = s.id;
+              else {
+                extra.push(s.id);
+                lastGood.delete(s.id);
+              }
+            });
+            const after = ui.shown();
+            const where = `seed ${seed}: ${log.join(', ')} (rows after the outside change)`;
+            expect(after, where).toHaveLength(list.length + extra.length);
+            list.forEach((c, k) => {
+              const placed = slots[k];
+              const rowAfter = after[k];
+              if (placed !== undefined) expect(rowAfter?.id, where).toBe(placed);
+              else if (rowAfter) lastGood.set(rowAfter.id, c as unknown[]);
+            });
+            extra.forEach((id, e) => expect(after[list.length + e]?.id, where).toBe(id));
+          }
+        } else if (!row || op === 4) {
           log.push('add');
           fireEvent.click([...ui.container.querySelectorAll('button')].find((b) => b.textContent === t('rt.vars.add')) as HTMLElement);
         } else if (op === 0) {
@@ -121,5 +179,6 @@ describe('VarsBuilder sends what its rows show (property, seeded)', () => {
     }
     expect(steps).toBe(SEEDS * 8);
     expect(heldSteps).toBeGreaterThan(SEEDS);
+    expect(outsideSteps).toBeGreaterThan(SEEDS / 2);
   }, 30_000);
 });
