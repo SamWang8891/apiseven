@@ -1,10 +1,11 @@
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj } from '../../schema/refs';
 import { Button, useLocked } from '../../ui';
-import type { ArrayNode, Node } from '../analyze';
+import type { ArrayNode, Node, ObjectPart } from '../analyze';
+import { isSecretName } from '../analyze-scalars';
 import { useFieldError, useFieldId, useLatest } from '../context';
 import { blankOf, joinPath, type Key } from '../model';
 import { ErrorLine, FieldLabel, RequiredMark } from './chrome';
@@ -29,11 +30,23 @@ function useRowKeys(length: number) {
   return { keys, setKeys };
 }
 
-/** A short "host=127.0.0.1, port=6379" of a row's first scalar values, for its header. */
-function rowSummary(item: unknown): string {
+/** The keys an item's form marks secret (its own fields, those of its conditions and of its object forms). */
+function secretKeys(item: Node): Set<string> {
+  const keys = new Set<string>();
+  const collect = (part: ObjectPart) => {
+    for (const p of part.props) if (p.node.kind === 'string' && p.node.secret) keys.add(p.key);
+    for (const c of part.conditionals) [c.then, c.else].forEach((x) => x && collect(x));
+  };
+  if (item.kind === 'object') collect(item);
+  if (item.kind === 'variant') item.options.forEach((o) => o.node.kind === 'object' && collect(o.node));
+  return keys;
+}
+
+/** A short "host=127.0.0.1, port=6379" of a row's first scalar values, for its header; never a secret. */
+function rowSummary(item: unknown, secret: Set<string>): string {
   if (!isObj(item)) return '';
   return Object.entries(item)
-    .filter(([, v]) => v === null || typeof v !== 'object')
+    .filter(([k, v]) => (v === null || typeof v !== 'object') && !secret.has(k) && !isSecretName(k))
     .slice(0, 3)
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(', ');
@@ -70,6 +83,7 @@ const Row = memo(function Row({ item, value, index, count, path, onItem, onMove,
     </span>
   );
   const label = t('sf.list.item', { n });
+  const secrets = useMemo(() => secretKeys(item), [item]);
 
   // One-line items (a secret, a PEM) sit in a compact row; objects, maps and variants in a card.
   if (item.kind === 'string') {
@@ -87,7 +101,7 @@ const Row = memo(function Row({ item, value, index, count, path, onItem, onMove,
       <div className="sf-card__head">
         <span className="sf-card__title">
           <span className="sf-card__index">{label}</span>
-          <span className="sf-card__summary mono">{rowSummary(value)}</span>
+          <span className="sf-card__summary mono">{rowSummary(value, secrets)}</span>
         </span>
         {actions}
       </div>

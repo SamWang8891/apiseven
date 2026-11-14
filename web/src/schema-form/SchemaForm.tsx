@@ -43,7 +43,12 @@ export const SchemaForm: FC<SchemaFormProps> = ({ schema, value, onChange, encry
   // same, so fields re-render only when what they show changes.
   const placed = useMemo(() => placeErrors(node, value, errors), [node, value, errors]);
   const stable = useStableByKey(placed, JSON.stringify([...placed]));
-  const context = useMemo(() => ({ prefix, errors: stable }), [prefix, stable]);
+  // The secret paths, for masking secrets the fields cannot see (inside a locked JSON value).
+  const encrypt = useMemo(() => {
+    const own: unknown[] = Array.isArray(schema.encrypt_fields) ? (schema.encrypt_fields as unknown[]) : [];
+    return [...new Set([...own, ...encryptKey.split('\n')])].filter((p): p is string => typeof p === 'string' && p !== '');
+  }, [schema, encryptKey]);
+  const context = useMemo(() => ({ prefix, encrypt, errors: stable }), [prefix, encrypt, stable]);
 
   const latestRef = useLatest(onChange);
   const emit = useCallback((_: Key, v: unknown) => latestRef.current(v), [latestRef]);

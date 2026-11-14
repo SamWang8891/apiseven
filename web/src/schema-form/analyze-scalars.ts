@@ -8,6 +8,11 @@ import type { Node, NumberNode, StringNode } from './node';
 const SECRET_KEY = /secret|password|private_key|token/i;
 /** Names that contain a secret word but name something else: token_endpoint, client_rsa_private_key_id, … */
 const NOT_SECRET_KEY = /(^|_)(url|uri|endpoint|method|expected|id|header|name|field|path|in|alg|type)$/i;
+/** Whether a property's name says it holds a secret (client_secret, redis_password, service_token, but not token_endpoint). */
+export function isSecretName(key: string): boolean {
+  return SECRET_KEY.test(key) && !NOT_SECRET_KEY.test(key);
+}
+
 const MULTILINE_KEY = /(^|_)(body|template|pem|cert|certificate|private_key|public_key|lua|script|functions?|prompt|content)(_|$)/i;
 const MULTILINE_DESCRIPTION = /\b(PEM|Lua (code|function)|template)\b/i;
 /** Names of values that are one line however long they may be (URIs, hosts, names, patterns). */
@@ -26,7 +31,7 @@ export function stringNode(s: Obj, ctx: Ctx, enumValues?: string[]): StringNode 
   const format = typeof s.format === 'string' ? s.format : undefined;
   const maxLength = num(s.maxLength);
   const encrypted = ctx.encrypt.has(ctx.path.join('.'));
-  const secret = !enumValues && (encrypted || (SECRET_KEY.test(key) && !NOT_SECRET_KEY.test(key)));
+  const secret = !enumValues && (encrypted || isSecretName(key));
   const oneLine = ONE_LINE_KEY.test(key) || (format !== undefined && MONO_FORMATS.has(format));
   const multiline =
     !enumValues &&

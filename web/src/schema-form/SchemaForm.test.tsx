@@ -327,6 +327,85 @@ describe('SchemaForm: JSON fallback, ids, secrets, hidden fields', () => {
   });
 });
 
+describe('SchemaForm: secrets and stored entries (review fix round 1)', () => {
+  it('redacts the secret inside a locked JSON fallback (openfunction authorization.service_token), with a reveal', async () => {
+    const value = { function_uri: 'http://fn.example', authorization: { service_token: 'tok-123' } };
+    const form = renderSchemaForm(schemaOf('openfunction'), value, { locked: true });
+    expect(form.container.textContent).not.toContain('tok-123');
+    expect(form.container.textContent).toContain('service_token');
+    const reveal = screen.getByRole('button', { name: 'Show value' });
+    await form.user.click(reveal);
+    expect(form.container.textContent).toContain('tok-123');
+    await form.user.click(screen.getByRole('button', { name: 'Hide value' }));
+    expect(form.container.textContent).not.toContain('tok-123');
+  });
+
+  it('redacts, at any depth of a locked JSON fallback, encrypt paths and secret-named keys, and nothing else', () => {
+    const schema: Obj = {
+      type: 'object',
+      properties: { blob: { type: 'object', additionalProperties: false }, rules: { type: 'array' }, client_secret: { type: 'string' } },
+    };
+    const value = {
+      blob: { inner: 'hidden-1', other: 'shown-1' },
+      rules: [{ password: 'hidden-2', name: 'shown-2' }, ['x', { api_token: 'hidden-3' }]],
+      client_secret: { nested: 'hidden-4' },
+    };
+    const form = renderSchemaForm(schema, value, { locked: true, encryptFields: ['blob.inner'] });
+    const text = form.container.textContent;
+    for (const hidden of ['hidden-1', 'hidden-2', 'hidden-3', 'hidden-4']) expect(text).not.toContain(hidden);
+    for (const shown of ['shown-1', 'shown-2', 'other', 'api_token']) expect(text).toContain(shown);
+  });
+
+  it('shows the JSON in clear while editing', async () => {
+    renderSchemaForm(schemaOf('openfunction'), { authorization: { service_token: 'tok-123' } });
+    expect((await screen.findByRole('textbox', { name: 'authorization as JSON' })).textContent).toContain('tok-123');
+  });
+
+  it('never prints a secret in a list card header, locked or not', () => {
+    const schema: Obj = {
+      type: 'object',
+      properties: { nodes: { type: 'array', items: { type: 'object', properties: { host: { type: 'string' }, password: { type: 'string' }, apikey: { type: 'string' } } } } },
+    };
+    const value = { nodes: [{ host: 'h1', password: 'p1', apikey: 'k1' }] };
+    for (const locked of [false, true]) {
+      const form = renderSchemaForm(schema, value, { locked, encryptFields: ['nodes.apikey'] });
+      const summary = form.container.querySelector('.sf-card__summary')?.textContent ?? '';
+      expect(summary).toContain('host=h1');
+      expect(summary).not.toContain('p1');
+      expect(summary).not.toContain('k1');
+      form.unmount();
+    }
+  });
+
+  it('keeps a stored map entry whose key fails the pattern through an edit of another entry', async () => {
+    const schema: Obj = { type: 'object', properties: { weights: { type: 'object', patternProperties: { '^[a-z0-9:]+$': { type: 'integer' } } } } };
+    const form = renderSchemaForm(schema, { weights: { 'Bad Key': 1, good: 2 } });
+    expect(screen.getByText(/Key "Bad Key" must match/)).toBeInTheDocument();
+    const good = screen.getByRole('spinbutton', { name: 'Value of good' });
+    await form.user.clear(good);
+    await form.user.type(good, '5');
+    expect(form.value()).toEqual({ weights: { 'Bad Key': 1, good: 5 } });
+  });
+
+  it('renaming a map key to one already stored keeps the stored entry', async () => {
+    const schema: Obj = { type: 'object', properties: { weights: { type: 'object', additionalProperties: { type: 'integer' } } } };
+    const form = renderSchemaForm(schema, { weights: { a: 1, b: 2 } });
+    const key = screen.getByRole('textbox', { name: 'Key of entry 1' });
+    await form.user.clear(key);
+    await form.user.type(key, 'b');
+    expect(form.value()).toEqual({ weights: { b: 2 } });
+    await form.user.type(key, 'c');
+    expect(form.value()).toEqual({ weights: { bc: 1, b: 2 } });
+  });
+
+  it('keeps each stored tag as it was, even two that read the same (1 and "1")', async () => {
+    const schema: Obj = { type: 'object', properties: { ids: { type: 'array', items: { type: ['string', 'integer'] } } } };
+    const form = renderSchemaForm(schema, { ids: [1, '1'] });
+    await form.user.type(screen.getByRole('textbox', { name: 'ids' }), 'x{Enter}');
+    expect(form.value()).toEqual({ ids: [1, '1', 'x'] });
+  });
+});
+
 describe('SchemaForm: errors', () => {
   const schema: Obj = {
     type: 'object',

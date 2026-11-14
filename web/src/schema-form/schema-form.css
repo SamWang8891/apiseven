@@ -448,6 +448,37 @@
   border-left: 1px solid var(--border);
 }
 
+.sf-reveal {
+  position: relative;
+}
+
+/* The reveal of a locked JSON value's secrets, at the end of its label row. */
+.sf-reveal__toggle {
+  position: absolute;
+  top: -3px;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.sf-reveal__toggle:hover {
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+
+.sf-reveal__toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
 .sf-bool {
   position: relative;
 }

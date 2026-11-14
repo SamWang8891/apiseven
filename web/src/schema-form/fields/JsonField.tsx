@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { CodeEditor, Field, Textarea, useLocked } from '../../ui';
-import { useFieldError, useFieldId } from '../context';
+import { useEncryptPaths, useFieldError, useFieldId } from '../context';
+import { redactSecrets } from '../model';
 import { FieldLabel } from './chrome';
 import { useFieldHelp } from './help';
 import type { FieldProps } from './types';
@@ -22,7 +24,8 @@ function says(text: string, value: unknown): boolean {
 /**
  * The fallback: an inline JSON editor for a value the form has no fields for, checked against its
  * sub-schema. Text that does not parse stays here with an error and is not emitted, so the last
- * valid value stands; empty text deletes the key. Locked, the JSON is read-only text.
+ * valid value stands; empty text deletes the key. Locked, the JSON is read-only text with its secrets
+ * masked (encrypt paths, secret-named keys), behind the same reveal as a secret input.
  */
 export function JsonField({
   node,
@@ -43,6 +46,9 @@ export function JsonField({
   const [text, setText] = useState(() => toText(value));
   const [invalid, setInvalid] = useState<string>();
   const [synced, setSynced] = useState(value);
+  const [revealed, setRevealed] = useState(false);
+  const encrypt = useEncryptPaths();
+  const hidden = useMemo(() => (locked ? redactSecrets(value, path, encrypt) : undefined), [locked, value, path, encrypt]);
   if (!Object.is(value, synced)) {
     setSynced(value);
     if (!says(text, value)) {
@@ -63,7 +69,24 @@ export function JsonField({
   );
 
   if (locked) {
-    return <Textarea id={id} label={label} help={fullHelp} error={placed} required={required} mono rows={2} value={text} onChange={() => {}} />;
+    // The stored value, never text typed before the lock (it could hold a secret in clear).
+    const shown = hidden && !revealed ? toText(hidden.value) : toText(value);
+    return (
+      <div className="sf-reveal">
+        <Textarea id={id} label={label} help={fullHelp} error={placed} required={required} mono rows={2} value={shown} onChange={() => {}} />
+        {hidden?.redacted && (
+          <button
+            type="button"
+            className="sf-reveal__toggle"
+            aria-label={revealed ? t('ui.secret.hide') : t('ui.secret.show')}
+            aria-pressed={revealed}
+            onClick={() => setRevealed((r) => !r)}
+          >
+            {revealed ? <EyeOff aria-hidden="true" size={14} /> : <Eye aria-hidden="true" size={14} />}
+          </button>
+        )}
+      </div>
+    );
   }
 
   function edit(next: string) {

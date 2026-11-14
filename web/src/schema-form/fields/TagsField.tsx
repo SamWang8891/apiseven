@@ -42,8 +42,13 @@ export function TagsField({ node, value, name, path, onChange, prop, required, a
   const mono = node.item.kind === 'string' ? node.item.mono : node.item.kind !== 'number';
 
   function change(tags: string[]) {
-    // Items that were there keep their stored form; new ones are typed by the schema.
-    const next = tags.map((tag) => items.find((x) => tagOf(x) === tag) ?? itemOf(node.item, tag));
+    // Items that were there keep their stored form, each one used once (so 1 and "1" stay
+    // themselves); new ones are typed by the schema.
+    const unused = items.map((item) => ({ item, tag: tagOf(item) }));
+    const next = tags.map((tag) => {
+      const at = unused.findIndex((u) => u.tag === tag);
+      return at === -1 ? itemOf(node.item, tag) : unused.splice(at, 1)[0]?.item;
+    });
     onChange(name, next.length === 0 && !required ? undefined : next);
   }
 

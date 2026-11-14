@@ -4,11 +4,18 @@ import { fieldId } from './model';
 
 export interface FormContextValue {
   prefix: string;
+  /** Dotted paths of secret values (the schema's encrypt_fields and the caller's), arrays transparent. */
+  encrypt: string[];
   /** Messages by the dotted path of the rendered field that shows them ('' = the form as a whole). */
   errors: Map<string, string[]>;
 }
 
-export const FormContext = createContext<FormContextValue>({ prefix: 'sf', errors: new Map() });
+export const FormContext = createContext<FormContextValue>({ prefix: 'sf', encrypt: [], errors: new Map() });
+
+/** The secret paths of the form (see FormContextValue.encrypt). */
+export function useEncryptPaths(): string[] {
+  return use(FormContext).encrypt;
+}
 
 /** The DOM id of the field at `path`. */
 export function useFieldId(path: string): string {

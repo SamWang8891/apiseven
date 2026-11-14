@@ -9,7 +9,10 @@ import './collection.css';
 
 export type KeyValueInputProps = FieldProps & {
   value: Record<string, string>;
-  /** The map in row order. Rows with an empty key, or a key already used above, are left out. */
+  /**
+   * The map in row order. An entry that still has the key it came with is always kept (even an
+   * empty one); a new or renamed row is left out while its key is empty or already taken.
+   */
   onChange: (v: Record<string, string>) => void;
   keyPlaceholder?: string;
   valuePlaceholder?: string;
@@ -21,21 +24,39 @@ interface Row {
   id: number;
   key: string;
   value: string;
+  /** The key the row had in the value it was made from; undefined for a row added here. */
+  origin?: string;
 }
 
 let lastRowId = 0;
-const newRow = (key = '', value = ''): Row => ({ id: ++lastRowId, key, value });
+const newRow = (key = '', value = '', origin?: string): Row => ({ id: ++lastRowId, key, value, origin });
 /** One row per entry; an empty map gets one blank row, ready to type into (blank rows are not emitted). */
 function toRows(map: Record<string, string>): Row[] {
-  const rows = Object.entries(map).map(([k, v]) => newRow(k, v));
+  const rows = Object.entries(map).map(([k, v]) => newRow(k, v, k));
   return rows.length > 0 ? rows : [newRow()];
+}
+
+/** A row that still has the key it came with: an entry nobody renamed, kept whatever its key. */
+const stored = (row: Row): boolean => row.origin !== undefined && row.key === row.origin;
+
+/** Which rows the map leaves out: new or renamed ones whose key is empty, stored, or used above. */
+function withheld(rows: Row[]): boolean[] {
+  const kept = new Set(rows.filter(stored).map((r) => r.key));
+  const used = new Set<string>();
+  return rows.map((row) => {
+    if (stored(row)) return false;
+    const out = row.key === '' || kept.has(row.key) || used.has(row.key);
+    used.add(row.key);
+    return out;
+  });
 }
 
 function toMap(rows: Row[]): Record<string, string> {
   const map: Record<string, string> = {};
-  for (const row of rows) {
-    if (row.key !== '' && !Object.hasOwn(map, row.key)) map[row.key] = row.value;
-  }
+  const out = withheld(rows);
+  rows.forEach((row, i) => {
+    if (!out[i]) map[row.key] = row.value;
+  });
   return map;
 }
 
@@ -95,12 +116,8 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
   }
 
   const edit = (id: number, patch: Partial<Row>) => update(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  const seen = new Set<string>();
-  const duplicate = rows.map((r) => {
-    const repeated = r.key !== '' && seen.has(r.key);
-    seen.add(r.key);
-    return repeated;
-  });
+  // A row left out for its key (not just for being blank) is flagged; the stored entry is not.
+  const duplicate = withheld(rows).map((out, i) => out && rows[i]?.key !== '');
   const shownError = error ?? (duplicate.some(Boolean) ? t('ui.kv.duplicate') : undefined);
   const inputClass = mono ? 'ui-input mono' : 'ui-input';
 

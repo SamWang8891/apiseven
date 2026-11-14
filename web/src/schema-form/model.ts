@@ -5,6 +5,7 @@ import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { validatorFor } from '../schema/ajv';
 import { isObj } from '../schema/refs';
+import { isSecretName } from './analyze-scalars';
 import { ANY_SCHEMA, jsonType, type MapNode, type Node, type ObjectNode, type ObjectPart, type Prop, type VariantNode } from './analyze';
 
 export type Key = string | number;
@@ -283,6 +284,41 @@ export function objectView(node: ObjectNode, value: unknown): ObjectView {
   };
   if (hints.length > 0) view.hint = hints.join(' ');
   return view;
+}
+
+// --- Secrets ---------------------------------------------------------------------------------
+
+/** What a secret reads as while hidden (the kit's masked input shows the same). */
+export const MASK = '••••••••';
+
+/** The object keys of a dotted field path, array indices left out (as APISIX's encrypt_fields write paths). */
+export const keyPath = (path: string): string[] => (path === '' ? [] : path.split('.').filter((seg) => !/^\d+$/.test(seg)));
+
+/**
+ * `value` (shown at the field `path`) with every secret string masked: those at an encrypt path or
+ * below one (a map of headers), and those under a key whose name says secret, at any depth from the
+ * field's own key down. `redacted` says whether anything was.
+ */
+export function redactSecrets(value: unknown, path: string, encrypt: string[]): { value: unknown; redacted: boolean } {
+  let redacted = false;
+  const encrypted = (keys: string[]) => {
+    const joined = keys.join('.');
+    return encrypt.some((e) => joined === e || joined.startsWith(`${e}.`));
+  };
+  const walk = (v: unknown, keys: string[], secret: boolean): unknown => {
+    if (typeof v === 'string') {
+      if (!secret && !encrypted(keys)) return v;
+      redacted = true;
+      return MASK;
+    }
+    if (Array.isArray(v)) return v.map((x) => walk(x, keys, secret));
+    if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, [...keys, k], secret || isSecretName(k))]));
+    return v;
+  };
+  const keys = keyPath(path);
+  const own = keys.at(-1);
+  const out = walk(value, keys, own !== undefined && isSecretName(own));
+  return { value: out, redacted };
 }
 
 // --- Ids -------------------------------------------------------------------------------------

@@ -28,17 +28,45 @@ interface Row {
   id: number;
   key: string;
   value: unknown;
+  /** The key the row had in the value it was made from; undefined for a row added here. */
+  origin?: string;
 }
 
 let lastRow = 0;
-const toRows = (map: Obj): Row[] => Object.entries(map).map(([key, value]) => ({ id: ++lastRow, key, value }));
+const toRows = (map: Obj): Row[] => Object.entries(map).map(([key, value]) => ({ id: ++lastRow, key, value, origin: key }));
 
-/** The map the rows stand for: rows without a key or a value, with a repeated key or a refused one are left out. */
+/** A row that still has the key it came with: an entry nobody renamed, kept whatever its key. */
+const stored = (row: Row): boolean => row.origin !== undefined && row.key === row.origin;
+
+/**
+ * Why each row's key keeps it out of the map, if it does. A stored entry is never refused (data
+ * that fails the key pattern stays until someone changes it); a new or renamed row is refused while
+ * its key is empty, already stored or used above, or fails the key pattern.
+ */
+function keyRefusals(node: MapNode, rows: Row[]): (string | undefined)[] {
+  const kept = new Set(rows.filter(stored).map((r) => r.key));
+  const used = new Set<string>();
+  return rows.map((row) => {
+    const own = stored(row);
+    const refusal = own
+      ? undefined
+      : row.key === ''
+        ? ''
+        : kept.has(row.key) || used.has(row.key)
+          ? t('sf.map.duplicate', { key: row.key })
+          : badKey(node, row.key);
+    used.add(row.key);
+    return refusal;
+  });
+}
+
+/** The map the rows stand for: rows without a value, and new or renamed rows whose key is refused, are left out. */
 function toMap(node: MapNode, rows: Row[]): Obj {
   const out: Obj = {};
-  for (const row of rows) {
-    if (row.key !== '' && !(row.key in out) && row.value !== undefined && !badKey(node, row.key)) out[row.key] = row.value;
-  }
+  const refused = keyRefusals(node, rows);
+  rows.forEach((row, i) => {
+    if (row.value !== undefined && refused[i] === undefined) out[row.key] = row.value;
+  });
   return out;
 }
 
@@ -87,8 +115,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
     [latestRef, update],
   );
 
-  const counts = new Map<string, number>();
-  rows.forEach((r) => counts.set(r.key, (counts.get(r.key) ?? 0) + 1));
+  const refused = keyRefusals(node, rows);
 
   return (
     <div className="sf-map" role="group" aria-labelledby={labelId}>
@@ -109,12 +136,8 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
         <div className="sf-map__rows">
           {rows.map((row, i) => {
             const n = i + 1;
-            const keyError =
-              row.key !== '' && (counts.get(row.key) ?? 0) > 1 && rows.findIndex((r) => r.key === row.key) !== i
-                ? t('sf.map.duplicate', { key: row.key })
-                : row.key === ''
-                  ? undefined
-                  : badKey(node, row.key);
+            // A stored key that fails the pattern is shown as such, though the entry is kept.
+            const keyError = refused[i] || (stored(row) ? badKey(node, row.key) : undefined);
             return (
               <div className="sf-map__row" key={row.id}>
                 {locked ? (

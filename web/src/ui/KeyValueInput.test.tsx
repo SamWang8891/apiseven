@@ -83,6 +83,23 @@ describe('KeyValueInput', () => {
     expect(keyInput(1)).toHaveFocus();
   });
 
+  it('keeps a stored entry with an empty key through an edit of another row', async () => {
+    const { onChange, user } = setup({ '': 'x', a: 'y' });
+    await user.type(valueInput(2), '!');
+    expect(onChange).toHaveBeenLastCalledWith({ '': 'x', a: 'y!' });
+  });
+
+  it('renaming a key to one already stored keeps the stored entry and flags the renamed row', async () => {
+    const { onChange, user } = setup({ env: 'prod', team: 'core' });
+    await user.clear(keyInput(1));
+    await user.type(keyInput(1), 'team');
+    expect(onChange).toHaveBeenLastCalledWith({ team: 'core' });
+    expect(keyInput(1)).toHaveAttribute('aria-invalid', 'true');
+    expect(keyInput(2)).not.toHaveAttribute('aria-invalid');
+    await user.type(keyInput(1), 's');
+    expect(onChange).toHaveBeenLastCalledWith({ teams: 'prod', team: 'core' });
+  });
+
   it('keeps the first of two equal keys and flags the second', async () => {
     const { onChange, user } = setup({ env: 'prod' });
     await user.click(screen.getByRole('button', { name: t('ui.kv.add') }));
