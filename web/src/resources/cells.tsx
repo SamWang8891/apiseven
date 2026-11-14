@@ -11,7 +11,7 @@ import { pathFor } from '../router/paths';
 import { Empty, Lines, NameCell } from '../table/cells';
 import { formatAbsolute, formatRelative } from '../table/format';
 import { Badge, toast, Tooltip } from '../ui';
-import { nameOfValue, type CtxKind, type RefTarget, type UpstreamSummary } from './resolve';
+import { nameOfValue, type CtxKind, type Reference, type RefTarget, type UpstreamSummary } from './resolve';
 import './cells.css';
 
 /** Chips shown before `+N`. */
@@ -224,6 +224,34 @@ export function UpstreamCell({ summary }: { summary: UpstreamSummary }) {
         </span>
       )}
     </>
+  );
+}
+
+/** Referrers listed in the "used by" tooltip before "and N more". */
+const SHOWN_REFS = 8;
+
+/**
+ * How many objects point at this one (from referencesTo), the first of them in a tooltip as
+ * "Route shop"; "unused" when none do.
+ */
+export function UsedByCell({ refs }: { refs: Reference[] }) {
+  if (refs.length === 0) return <span className="cell-muted">{t('cell.unused')}</span>;
+  const more = refs.length - SHOWN_REFS;
+  return (
+    <Tooltip
+      content={
+        <span className="cell-tip-list">
+          {refs.slice(0, SHOWN_REFS).map((ref) => (
+            <span key={`${ref.kind}/${ref.id}`}>{`${t(`kind.${ref.kind}.singular`)} ${ref.name}`}</span>
+          ))}
+          {more > 0 && <span className="cell-tip-note">{t('cell.usedByMore', { count: more })}</span>}
+        </span>
+      }
+    >
+      <button type="button" className="tbl-more cell-count" aria-label={t('cell.usedBy', { count: refs.length })}>
+        {refs.length}
+      </button>
+    </Tooltip>
   );
 }
 

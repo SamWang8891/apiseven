@@ -142,3 +142,57 @@
   width: 16px;
   height: 16px;
 }
+
+/* Segmented: exclusive choices side by side, the chosen one raised out of a sunken track (the same
+   look as a plugin card's Form | JSON switch), on the 32px control line. */
+.ui-segmented {
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  min-height: var(--control-h);
+  padding: 2px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.ui-segmented[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.ui-segmented__option {
+  min-width: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 26px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-segmented__option:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.ui-segmented__option[aria-checked='true'] {
+  background: var(--bg-raised);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.ui-segmented__option:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.ui-segmented__option:disabled {
+  color: var(--text-2);
+  text-decoration: line-through;
+  cursor: not-allowed;
+}

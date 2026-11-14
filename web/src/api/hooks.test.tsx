@@ -12,6 +12,7 @@ import {
   useInvalidate,
   useItem,
   useList,
+  useResourceSchema,
 } from './hooks';
 
 const queryClients: QueryClient[] = [];
@@ -142,6 +143,17 @@ describe('useAllPlugins', () => {
     const { result } = renderHook(() => ({ http: useAllPlugins(), stream: useAllPlugins('stream') }), { wrapper: wrapper(client, qc) });
     await waitFor(() => expect(result.current.stream.isSuccess && result.current.http.isSuccess).toBe(true));
     expect(urls.map((u) => new URL(u, 'http://x').search).sort()).toEqual(['?all=true', '?all=true&subsystem=stream']);
+  });
+});
+
+describe('useResourceSchema', () => {
+  it('loads schema/<name>', async () => {
+    const schema = { type: 'object', properties: { nodes: {} } };
+    const { client, urls } = fakeClient('c1', { 'schema/upstream': schema });
+    const { result } = renderHook(() => useResourceSchema('upstream'), { wrapper: wrapper(client, newQueryClient()) });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual(schema);
+    expect(urls).toEqual(['/apisix/admin/schema/upstream']);
   });
 });
 

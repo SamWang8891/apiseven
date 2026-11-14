@@ -42,6 +42,8 @@ export class AdminClient {
   private readonly adminUrl: string;
   /** Every plugin with its schemas, per subsystem ('http' | 'stream'), fetched once per client. */
   private readonly plugins = new Map<string, Promise<Record<string, PluginInfo>>>();
+  /** Resource schemas by name ('upstream', 'route', …), fetched once per client. */
+  private readonly schemas = new Map<string, Promise<Obj>>();
 
   constructor(conn: Connection, fetchImpl?: typeof fetch) {
     this.conn = conn;
@@ -137,6 +139,25 @@ export class AdminClient {
       this.plugins.set(key, all);
     }
     return all;
+  }
+
+  /**
+   * A resource's JSON schema as this APISIX checks it (GET /apisix/admin/schema/<name>, where name is
+   * `route`, `service`, `upstream`, `consumer`, `ssl`, `stream_route`, `global_rule`,
+   * `plugin_config`, `proto`, `consumer_group` or `credential`). Fetched once per client and name;
+   * a failure is not kept.
+   */
+  resourceSchema(name: string): Promise<Obj> {
+    let schema = this.schemas.get(name);
+    if (!schema) {
+      schema = this.request('GET', `schema/${encodeURIComponent(name)}`).then(({ body }) => {
+        if (!isObj(body)) throw notAdminApi();
+        return body;
+      });
+      schema.catch(() => this.schemas.delete(name));
+      this.schemas.set(name, schema);
+    }
+    return schema;
   }
 
   /**

@@ -11,6 +11,10 @@ import { nameOfValue } from './resolve';
 import { routeColumns } from './routes/columns';
 import { routeFilters } from './routes/filters';
 import { hostGrouping } from './routes/grouping';
+import { upstreamColumns } from './upstreams/columns';
+import { upstreamFilters } from './upstreams/filters';
+import { upstreamTabs } from './upstreams/tabs';
+import { upstreamIssues } from '../upstream/validate';
 
 export type { Ctx } from './ctx';
 export { useCtx } from './ctx';
@@ -188,6 +192,10 @@ export const registry: Record<Kind, ResourceDef> = {
     hasStatus: false,
     idMode: 'optional',
     blank: () => ({ type: 'roundrobin', nodes: [] }),
+    tabs: upstreamTabs,
+    columns: upstreamColumns,
+    filters: upstreamFilters,
+    validate: (draft) => upstreamIssues(draft),
   }),
   // A consumer's id is its username.
   consumers: define('consumers', {

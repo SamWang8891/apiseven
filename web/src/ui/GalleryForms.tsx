@@ -11,6 +11,7 @@ import {
   LockProvider,
   Menu,
   NumberInput,
+  Segmented,
   Select,
   Switch,
   TagInput,
@@ -62,6 +63,7 @@ export function FormMatrix() {
   const [balancer, setBalancer] = useState<string | undefined>('chash');
   const [scheme, setScheme] = useState<string | undefined>('https');
   const [enabled, setEnabled] = useState(true);
+  const [target, setTarget] = useState('nodes');
   const [verify, setVerify] = useState(false);
   const [hosts, setHosts] = useState(['api.example.games', 'm.example.games']);
   const [labels, setLabels] = useState<Record<string, string>>({ env: 'prod', team: 'platform' });
@@ -107,6 +109,21 @@ export function FormMatrix() {
         name="Select search"
         render={(s) => (
           <Select label="Scheme" mono searchable clearable placeholder="Default (http)" options={SCHEMES} value={scheme} onChange={setScheme} error={err(s, 'Unsupported')} disabled={off(s)} />
+        )}
+      />
+      <Row
+        name="Segmented"
+        render={(s) => (
+          <Segmented
+            label="Send requests to"
+            value={target}
+            onChange={setTarget}
+            error={err(s, 'Pick one')}
+            options={[
+              { value: 'nodes', label: 'Nodes' },
+              { value: 'discovery', label: 'Service discovery', disabled: off(s) },
+            ]}
+          />
         )}
       />
       <Row

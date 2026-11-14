@@ -2,7 +2,7 @@ import { skipToken, useQuery, useQueryClient, type UseQueryResult } from '@tanst
 import { createContext, createElement, useCallback, useContext, type FC, type ReactNode } from 'react';
 import type { AdminClient } from './client';
 import type { ApiError } from './errors';
-import type { Item, Kind, Parent, PluginInfo } from './types';
+import type { Item, Kind, Obj, Parent, PluginInfo } from './types';
 
 const ClientContext = createContext<AdminClient | null>(null);
 
@@ -55,6 +55,17 @@ export function useAllPlugins(subsystem?: 'stream'): UseQueryResult<Record<strin
     queryKey: scopedKey(client.conn.id, ['plugins', 'all', subsystem ?? 'http']),
     queryFn: () => client.allPlugins(subsystem),
     // The client caches the result for its lifetime, so refetching would return the same data.
+    staleTime: Infinity,
+  });
+}
+
+/** A resource's JSON schema from this APISIX (`upstream`, `route`, …); see AdminClient.resourceSchema. */
+export function useResourceSchema(name: string): UseQueryResult<Obj, ApiError> {
+  const client = useClient();
+  return useQuery<Obj, ApiError>({
+    queryKey: scopedKey(client.conn.id, ['schema', name]),
+    queryFn: () => client.resourceSchema(name),
+    // The client caches the result for its lifetime; schemas only change with an APISIX upgrade.
     staleTime: Infinity,
   });
 }

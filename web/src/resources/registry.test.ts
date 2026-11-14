@@ -75,8 +75,8 @@ describe('registry', () => {
     expect(registry.routes.groupings).toEqual([hostGrouping]);
   });
 
-  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others no tabs', () => {
-    for (const kind of KINDS) {
+  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but upstreams) no tabs', () => {
+    for (const kind of KINDS.filter((k) => k !== 'upstreams')) {
       const def = registry[kind];
       if (scopeOfKind[kind]) {
         expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields]), kind).toEqual([['plugins', t('pl.tab'), ['plugins']]]);
@@ -88,8 +88,15 @@ describe('registry', () => {
     }
   });
 
-  it('starts every kind but routes with an id + name column pair', () => {
-    for (const kind of KINDS.filter((k) => k !== 'routes')) {
+  it('gives upstreams their own tabs, columns and checks', () => {
+    const def = registry.upstreams;
+    expect(def.tabs.map((tab) => tab.id)).toEqual(['general', 'nodes', 'balancing', 'health', 'connection', 'tls']);
+    expect(def.columns[0]?.id).toBe('name');
+    expect(def.validate?.({ nodes: [] }, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['nodes']);
+  });
+
+  it('starts every kind but routes and upstreams with an id + name column pair', () => {
+    for (const kind of KINDS.filter((k) => k !== 'routes' && k !== 'upstreams')) {
       const def = registry[kind];
       expect(def.columns.map((c) => [c.id, c.header, c.defaultVisible])).toEqual([
         ['id', t('column.id'), true],

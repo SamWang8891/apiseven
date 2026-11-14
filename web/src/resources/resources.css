@@ -1,0 +1,195 @@
+/*
+ * Shared editor pieces (Section.tsx, ResourcePicker.tsx). Class prefix res-; colours from the
+ * tokens; nothing is faded.
+ *
+ *   .res-section        a collapsible titled part of a tab: a header row (chevron, title, problem
+ *                       count, and while collapsed a one-line summary) over its body. Stacked
+ *                       sections share their rules, so a column of them reads as a list of facts:
+ *                       title on the left, what it holds on the right.
+ *   .res-picker         a reference picker: the select, then an Open link on the control line.
+ */
+
+.res-section {
+  border-top: 1px solid var(--border);
+}
+
+.res-section:last-child {
+  border-bottom: 1px solid var(--border);
+}
+
+.res-section__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: calc(100% + 2 * var(--s2));
+  min-height: 40px;
+  margin: 0 calc(-1 * var(--s2));
+  padding: 6px var(--s2);
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.res-section__toggle:hover {
+  background: var(--bg-sunken);
+}
+
+.res-section__toggle:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.res-section__chevron {
+  flex: none;
+  color: var(--text-2);
+  transition: transform 120ms ease-out;
+}
+
+.res-section--open .res-section__chevron {
+  transform: rotate(90deg);
+}
+
+/* A fixed title column, so the summaries of stacked sections line up. */
+.res-section__title {
+  flex: none;
+  min-width: 128px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.res-section__issues {
+  display: inline-flex;
+  flex: none;
+}
+
+.res-section__summary {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.res-section__body {
+  padding: var(--s1) 0 var(--s5) 23px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .res-section__chevron {
+    transition: none;
+  }
+}
+
+/* --- Reference picker ----------------------------------------------------------------------- */
+
+.res-picker {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--s2);
+  align-items: start;
+  min-width: 0;
+}
+
+/* On the control's line: below the 16px label and its 5px gap. */
+.res-picker__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--control-h);
+  margin-top: 21px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.res-picker--bare .res-picker__open {
+  margin-top: 0;
+}
+
+.res-picker__open:hover {
+  text-decoration: underline;
+}
+
+.res-picker__ro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--s2);
+}
+
+.res-picker__link {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.res-picker__link:hover {
+  text-decoration: underline;
+}
+
+.res-picker__id {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.res-picker__missing {
+  color: var(--danger);
+  font-weight: 500;
+}
+
+/* --- Overview ------------------------------------------------------------------------------- */
+
+/* One line per part of an object (an upstream's sections), each name linking to its tab: the
+   object at a glance, as a two-column list of facts. */
+.res-overview {
+  max-width: 880px;
+}
+
+.res-overview__title {
+  margin: 0 0 var(--s2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.res-overview__list {
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.res-overview__row {
+  display: grid;
+  grid-template-columns: 152px minmax(0, 1fr);
+  column-gap: var(--s4);
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  line-height: 18px;
+}
+
+.res-overview__row dt,
+.res-overview__row dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.res-overview__row dd {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.res-overview__link {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.res-overview__link:hover {
+  text-decoration: underline;
+}

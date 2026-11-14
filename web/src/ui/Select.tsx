@@ -24,6 +24,8 @@ export type SelectProps = FieldProps & {
   clearable?: boolean;
   placeholder?: string;
   mono?: boolean;
+  /** Option descriptions in monospace (ids, addresses). */
+  monoDescription?: boolean;
   id?: string;
   disabled?: boolean;
   className?: string;
@@ -37,7 +39,7 @@ function matches(option: Option, query: string): boolean {
 }
 
 export function Select({
-  label, help, error, required, htmlFor, value, onChange, options, searchable, clearable, placeholder, mono, id, disabled, className,
+  label, help, error, required, htmlFor, value, onChange, options, searchable, clearable, placeholder, mono, monoDescription, id, disabled, className,
   'aria-label': ariaLabel,
 }: SelectProps) {
   const locked = useLocked();
@@ -216,7 +218,7 @@ export function Select({
                   </span>
                   <span className="ui-select__text">
                     <span className={mono ? 'ui-select__label mono' : 'ui-select__label'}>{option.label}</span>
-                    {option.description && <span className="ui-select__desc">{option.description}</span>}
+                    {option.description && <span className={monoDescription ? 'ui-select__desc mono' : 'ui-select__desc'}>{option.description}</span>}
                   </span>
                 </li>
               ))}

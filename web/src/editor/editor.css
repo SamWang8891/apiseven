@@ -443,3 +443,35 @@
   color: var(--text-2);
   font-size: 12px;
 }
+
+/* A lazily loaded part (a tab body, an inline form) that failed to load: the error and a Retry, in
+   its place only. */
+.ed-lazy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 880px;
+  padding: 10px var(--s3);
+  border: 1px solid var(--danger);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--text);
+}
+
+.ed-lazy > svg {
+  flex: none;
+  color: var(--danger);
+}
+
+.ed-lazy__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ed-lazy__loading {
+  color: var(--text-2);
+  font-size: 12px;
+}

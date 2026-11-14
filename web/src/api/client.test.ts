@@ -384,6 +384,27 @@ describe('plugins', () => {
   });
 });
 
+describe('resourceSchema', () => {
+  it('fetches schema/<name> once per client and name', async () => {
+    const { api, calls } = setup((call) => json({ type: 'object', title: call.url.split('/').pop() }));
+    expect(await api.resourceSchema('upstream')).toEqual({ type: 'object', title: 'upstream' });
+    expect(await api.resourceSchema('upstream')).toEqual({ type: 'object', title: 'upstream' });
+    await api.resourceSchema('route');
+    expect(calls.map((c) => c.url)).toEqual([`${ADMIN}/schema/upstream`, `${ADMIN}/schema/route`]);
+  });
+
+  it('tries again after a failure, and refuses an answer that is not an object', async () => {
+    let answer: Response = json({ error_msg: 'down' }, 503);
+    const { api, calls } = setup(() => answer);
+    await expect(api.resourceSchema('upstream')).rejects.toBeInstanceOf(ApiError);
+    answer = json(['not', 'a', 'schema']);
+    expect((await apiError(api.resourceSchema('upstream'))).kind).toBe('parse');
+    answer = json({ type: 'object' });
+    expect(await api.resourceSchema('upstream')).toEqual({ type: 'object' });
+    expect(calls).toHaveLength(3);
+  });
+});
+
 describe('supports', () => {
   it('is false for credentials on a 404', async () => {
     const { api } = setup(() => json({ error_msg: 'Unsupported resource type: credentials' }, 404));

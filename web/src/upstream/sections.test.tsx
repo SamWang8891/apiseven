@@ -1,0 +1,153 @@
+// The balancing, health, connection and TLS sections, each rendered as its standalone tab renders it.
+import { screen, waitFor, within } from '@testing-library/react';
+import { describe, expect, it } from 'vitest';
+import { t } from '../i18n';
+import { ctxOf, itemOf } from '../test/ctx';
+import { renderUpstream } from '../test/upstream';
+
+/** The accessible name of a field marked required. */
+const req = (label: string) => `${label} (${t('ui.required')})`;
+
+async function choose(user: ReturnType<typeof renderUpstream>['user'], combobox: string, option: string | RegExp) {
+  await user.click(screen.getByRole('combobox', { name: combobox }));
+  await user.click(await screen.findByRole('option', { name: option }));
+}
+
+describe('load balancing', () => {
+  it('shows hash_on and key only for chash; switching away removes both', async () => {
+    const h = renderUpstream({ type: 'roundrobin', nodes: [] }, { section: 'balancing' });
+    expect(screen.queryByRole('combobox', { name: t('up.balance.hashOn') })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: req(t('up.balance.key')) })).not.toBeInTheDocument();
+
+    await choose(h.user, t('up.balance.type'), t('up.balance.chash'));
+    await choose(h.user, t('up.balance.hashOn'), 'header');
+    await h.user.type(screen.getByRole('textbox', { name: req(t('up.balance.key')) }), 'X-User-Id');
+    expect(h.value()).toEqual({ type: 'chash', hash_on: 'header', key: 'X-User-Id', nodes: [] });
+    expect(screen.getByRole('textbox', { name: req(t('up.balance.key')) })).toHaveAccessibleDescription(t('up.balance.keyHelp.header'));
+
+    await choose(h.user, t('up.balance.type'), t('up.balance.roundrobin'));
+    expect(h.value()).toEqual({ type: 'roundrobin', nodes: [] });
+  });
+
+  it('turns slow start on and off for round robin', async () => {
+    const h = renderUpstream({ type: 'roundrobin' }, { section: 'balancing' });
+    await h.user.click(screen.getByRole('switch', { name: t('up.warm.title') }));
+    await h.user.type(screen.getByRole('spinbutton', { name: req(t('up.warm.slowStart')) }), '30');
+    await h.user.type(screen.getByRole('spinbutton', { name: req(t('up.warm.minWeight')) }), '10');
+    expect(h.value()).toEqual({ type: 'roundrobin', warm_up_conf: { slow_start_time_seconds: 30, min_weight_percent: 10 } });
+    await h.user.click(screen.getByRole('switch', { name: t('up.warm.title') }));
+    expect(h.value()).toEqual({ type: 'roundrobin' });
+  });
+});
+
+describe('health checks', () => {
+  it('turning active checks off removes checks.active, and checks once empty', async () => {
+    const h = renderUpstream({ checks: { active: { http_path: '/health' } } }, { section: 'health' });
+    expect(screen.getByRole('textbox', { name: t('up.hc.path') })).toHaveValue('/health');
+    await h.user.click(screen.getByRole('switch', { name: t('up.hc.active') }));
+    expect(h.value()).toEqual({});
+  });
+
+  it('offers passive checks only with active ones; turning active off removes checks entirely', async () => {
+    const h = renderUpstream({ x_future: 1 }, { section: 'health' });
+    expect(screen.getByRole('switch', { name: t('up.hc.passive') })).toBeDisabled();
+
+    await h.user.click(screen.getByRole('switch', { name: t('up.hc.active') }));
+    expect(h.value()).toEqual({ x_future: 1, checks: { active: {} } });
+    await h.user.click(screen.getByRole('switch', { name: t('up.hc.passive') }));
+    expect(h.value()).toEqual({ x_future: 1, checks: { active: {}, passive: {} } });
+
+    const passive = screen.getByRole('group', { name: t('up.hc.passive') });
+    await h.user.type(within(passive).getByRole('spinbutton', { name: t('up.hc.httpFailures') }), '3');
+    expect(h.value().checks).toEqual({ active: {}, passive: { unhealthy: { http_failures: 3 } } });
+
+    await h.user.click(screen.getByRole('switch', { name: t('up.hc.active') }));
+    expect(h.value()).toEqual({ x_future: 1 });
+  });
+
+  it('clearing a probe field keeps active checks on', async () => {
+    const h = renderUpstream({ checks: { active: { http_path: '/h' } } }, { section: 'health' });
+    await h.user.clear(screen.getByRole('textbox', { name: t('up.hc.path') }));
+    expect(h.value()).toEqual({ checks: { active: {} } });
+  });
+
+  it('edits status lists as numbers', async () => {
+    const h = renderUpstream({ checks: { active: {} } }, { section: 'health' });
+    const healthy = screen.getByRole('group', { name: t('up.hc.healthy') });
+    await h.user.type(within(healthy).getByRole('textbox', { name: t('up.hc.statuses') }), '200,204,');
+    expect(h.value().checks).toEqual({ active: { healthy: { http_statuses: [200, 204] } } });
+  });
+});
+
+describe('connection', () => {
+  it('changing one timeout writes all three; clearing all three removes timeout', async () => {
+    const h = renderUpstream({ x_future: 1 }, { section: 'connection' });
+    const connect = screen.getByRole('spinbutton', { name: t('up.conn.connect') });
+    await h.user.type(connect, '5');
+    expect(h.value()).toEqual({ x_future: 1, timeout: { connect: 5, send: 60, read: 60 } });
+
+    await h.user.clear(connect);
+    await h.user.clear(screen.getByRole('spinbutton', { name: t('up.conn.send') }));
+    expect(h.value().timeout).toEqual({ read: 60 });
+    await h.user.clear(screen.getByRole('spinbutton', { name: t('up.conn.read') }));
+    expect(h.value()).toEqual({ x_future: 1 });
+  });
+
+  it('shows upstream_host only for pass_host rewrite, and removes it when switching away', async () => {
+    const h = renderUpstream({ pass_host: 'rewrite', upstream_host: 'api.example.com' }, { section: 'connection' });
+    expect(screen.getByRole('textbox', { name: req(t('up.conn.upstreamHost')) })).toHaveValue('api.example.com');
+    await choose(h.user, t('up.conn.passHost'), /^node/);
+    expect(h.value()).toEqual({ pass_host: 'node' });
+    expect(screen.queryByRole('textbox', { name: req(t('up.conn.upstreamHost')) })).not.toBeInTheDocument();
+  });
+
+  it('writes the keepalive pool and retries', async () => {
+    const h = renderUpstream({}, { section: 'connection' });
+    await h.user.type(screen.getByRole('spinbutton', { name: t('up.conn.poolSize') }), '64');
+    await h.user.type(screen.getByRole('spinbutton', { name: t('up.conn.retries') }), '2');
+    await choose(h.user, t('up.conn.scheme'), 'https');
+    expect(h.value()).toEqual({ keepalive_pool: { size: 64 }, retries: 2, scheme: 'https' });
+  });
+});
+
+describe('TLS', () => {
+  const ctx = ctxOf({
+    ssls: [
+      itemOf('c1', { type: 'client', cert: 'x', name: 'mtls-client' }),
+      itemOf('s1', { type: 'server', cert: 'x', snis: ['a.example'] }),
+      itemOf('s2', { cert: 'x', sni: 'b.example' }),
+    ],
+  });
+
+  it('choosing an SSL object writes client_cert_id and removes the inline pair; only client certificates are offered', async () => {
+    const h = renderUpstream({ tls: { client_cert: 'CERT', client_key: 'KEY', verify: true } }, { section: 'tls', ctx });
+    expect(screen.getByRole('radio', { name: t('up.tls.mode.inline') })).toBeChecked();
+    await h.user.click(screen.getByRole('radio', { name: t('up.tls.mode.ssl') }));
+    expect(h.value()).toEqual({ tls: { verify: true } });
+
+    await h.user.click(screen.getByRole('combobox', { name: t('up.tls.ssl') }));
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['mtls-clientc1']);
+    await h.user.click(options[0] as HTMLElement);
+    expect(h.value()).toEqual({ tls: { verify: true, client_cert_id: 'c1' } });
+  });
+
+  it('writes an inline pair and masks a stored key', async () => {
+    const h = renderUpstream({ tls: { client_cert: 'CERT', client_key: 'ENCRYPTED' } }, { section: 'tls' });
+    expect(screen.queryByText('ENCRYPTED')).not.toBeInTheDocument();
+    expect(screen.getByText(t('up.tls.keyStored'))).toBeInTheDocument();
+    await h.user.click(screen.getByRole('button', { name: t('up.tls.replaceKey') }));
+    await h.user.type(screen.getByRole('textbox', { name: t('up.tls.key') }), 'NEW');
+    expect(h.value()).toEqual({ tls: { client_cert: 'CERT', client_key: 'NEW' } });
+  });
+
+  it('sets verify, and None removes the client certificate', async () => {
+    const h = renderUpstream({ tls: { client_cert_id: 'c1' } }, { section: 'tls', ctx });
+    await choose(h.user, t('up.tls.verify'), t('up.tls.verifyOn'));
+    expect(h.value()).toEqual({ tls: { client_cert_id: 'c1', verify: true } });
+    await h.user.click(screen.getByRole('radio', { name: t('up.tls.mode.none') }));
+    expect(h.value()).toEqual({ tls: { verify: true } });
+    await choose(h.user, t('up.tls.verify'), t('up.tls.verifyDefault'));
+    await waitFor(() => expect(h.value()).toEqual({}));
+  });
+});

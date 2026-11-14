@@ -189,3 +189,9 @@
   margin-left: var(--s2);
   color: var(--text-2);
 }
+
+/* A count with its list in a tooltip ("used by"): the number at body size, tabular. */
+.cell-count {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}

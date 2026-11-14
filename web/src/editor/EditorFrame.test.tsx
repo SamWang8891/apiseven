@@ -261,6 +261,7 @@ describe('issues', () => {
 
 describe('JSON tab', () => {
   it('is the only tab when the kind has none of its own, and edits the whole draft', async () => {
+    undo.push(overrideDef('upstreams', { tabs: [], validate: undefined }));
     const { user, admin } = await openEditor('#/upstreams/u1', { objects: { upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] } });
     await main().findByRole('heading', { level: 1, name: 'pool' });
     expect(main().getAllByRole('tab').map((el) => el.textContent)).toEqual(['JSON']);
