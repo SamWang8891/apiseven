@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
+import { EC_IPV6, FAR } from '../test/certs';
 import { ctxOf, itemOf } from '../test/ctx';
 import { effectivePlugins, nameOfValue, referencesTo, routeHosts, sslForHost, upstreamSummary } from './resolve';
 
@@ -308,6 +309,26 @@ describe('sslForHost', () => {
     });
     expect(sslForHost('a.test', ctx)).toEqual({ item: ctx.ssls[0], notAfter: 1_800_000_000_000 });
     expect(sslForHost('b.test', ctx)?.notAfter).toBeUndefined();
+  });
+
+  it('reads notAfter from the certificate when there is no validity_end (APISIX 3.7+)', () => {
+    const ctx = ctxOf({
+      ssls: [ssl('far', { snis: ['a.test'], cert: FAR }), ssl('junk', { snis: ['b.test'], cert: 'not a PEM' })],
+    });
+    expect(sslForHost('a.test', ctx)?.notAfter).toBe(Date.UTC(2051, 5, 30, 23, 59, 59));
+    expect(sslForHost('b.test', ctx)?.notAfter).toBeUndefined();
+  });
+
+  it('prefers validity_end over the certificate', () => {
+    const ctx = ctxOf({ ssls: [ssl('both', { snis: ['a.test'], cert: FAR, validity_end: 1_800_000_000 })] });
+    expect(sslForHost('a.test', ctx)?.notAfter).toBe(1_800_000_000_000);
+  });
+
+  it('breaks ties on the expiry read from the certificates', () => {
+    const ctx = ctxOf({
+      ssls: [ssl('soon', { snis: ['a.test'], cert: EC_IPV6 }), ssl('far', { snis: ['a.test'], cert: FAR })],
+    });
+    expect(sslForHost('a.test', ctx)?.item.id).toBe('far');
   });
 });
 

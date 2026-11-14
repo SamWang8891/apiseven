@@ -4,6 +4,7 @@ import { isObj } from '../api/sanitize';
 import type { Item, Kind, Obj } from '../api/types';
 import { t } from '../i18n';
 import type { Ctx } from './ctx';
+import { parseCert } from './ssls/parseCert';
 
 export interface UpstreamSummary {
   label: string;
@@ -174,10 +175,14 @@ function sniRank(ssl: Obj, host: string): number {
   return snis.some((s) => wildcardCovers(s, host)) ? 1 : 0;
 }
 
-/** APISIX before 3.7 stored the certificate's expiry as `validity_end`, in seconds; 3.7 removed the field. */
+/**
+ * APISIX before 3.7 stored the certificate's expiry as `validity_end`, in seconds; 3.7 removed the
+ * field, so read it from the certificate itself (parseCert is memoised per PEM).
+ */
 function notAfterOf(ssl: Obj): number | undefined {
   const end = ssl.validity_end;
-  return typeof end === 'number' && Number.isFinite(end) ? end * 1000 : undefined;
+  if (typeof end === 'number' && Number.isFinite(end)) return end * 1000;
+  return typeof ssl.cert === 'string' ? parseCert(ssl.cert)?.notAfter : undefined;
 }
 
 /** The certificate APISIX would present for `host`: an exact SNI beats a wildcard, then the later expiry wins. */
