@@ -15,7 +15,7 @@ export { Dialog, type DialogProps } from './Dialog';
 export { ConfirmDialog, type ConfirmDialogProps } from './ConfirmDialog';
 export { Menu, type MenuItem, type MenuProps } from './Menu';
 export { Badge, type BadgeProps } from './Badge';
-export { Tooltip, type TooltipProps } from './Tooltip';
+export { Tooltip, TooltipProvider, type TooltipProps } from './Tooltip';
 export { toast, type ToastTone } from './toast';
 export { Toaster } from './Toaster';
 export { CodeEditor, type CodeEditorProps } from './CodeEditor';

@@ -98,6 +98,9 @@ const KIT_PAIRS: [string, string, number][] = [
   ['--code-literal', '--bg-sunken', 4.5],
 ];
 
+// Shell and Connect page: the detail line of an error box is body text on the danger tint.
+const SHELL_PAIRS: [string, string, number][] = [['--text', '--danger-bg', 4.5]];
+
 describe('contrast()', () => {
   it('matches known WCAG values', () => {
     expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 5);
@@ -122,7 +125,7 @@ describe('tokens.css', () => {
 
   for (const [theme, vars] of Object.entries(themes)) {
     describe(`${theme} theme`, () => {
-      for (const [fg, bg, min] of [...PAIRS, ...MORE_PAIRS, ...KIT_PAIRS]) {
+      for (const [fg, bg, min] of [...PAIRS, ...MORE_PAIRS, ...KIT_PAIRS, ...SHELL_PAIRS]) {
         it(`${fg} on ${bg} has contrast >= ${min}`, () => {
           const ratio = contrast(vars.get(fg) ?? 'missing', vars.get(bg) ?? 'missing');
           expect(ratio, `${fg} ${vars.get(fg)} on ${bg} ${vars.get(bg)}`).toBeGreaterThanOrEqual(min);

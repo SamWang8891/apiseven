@@ -71,3 +71,26 @@ export function useInvalidate(): (kind: Kind, parent?: Parent) => Promise<void> 
     [queryClient, connId],
   );
 }
+
+/**
+ * Whether the connected APISIX has this kind (false on versions without it, or stream routes with
+ * stream mode off). Undefined while it is being checked, and when the check itself failed.
+ */
+export function useSupports(kind: Kind): boolean | undefined {
+  const client = useClient();
+  return useQuery<boolean, ApiError>({
+    queryKey: scopedKey(client.conn.id, ['supports', kind]),
+    queryFn: () => client.supports(kind),
+    // Endpoints only change with an APISIX upgrade.
+    staleTime: Infinity,
+  }).data;
+}
+
+/** Checks the connection; `version` comes from APISIX's Server header. */
+export function usePing(): UseQueryResult<{ version?: string }, ApiError> {
+  const client = useClient();
+  return useQuery<{ version?: string }, ApiError>({
+    queryKey: scopedKey(client.conn.id, ['ping']),
+    queryFn: () => client.ping(),
+  });
+}

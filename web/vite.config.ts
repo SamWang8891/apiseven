@@ -5,6 +5,20 @@ export default defineConfig({
   // Relative asset URLs so the build runs from any path or a plain file server.
   base: './',
   plugins: [react()],
+  build: {
+    rolldownOptions: {
+      output: {
+        // React and the router in chunks of their own: they change less often than the app, and the
+        // entry chunk stays under the size warning.
+        codeSplitting: {
+          groups: [
+            { name: 'react', test: /node_modules[\\/](react|react-dom|scheduler)[\\/]/ },
+            { name: 'router', test: /node_modules[\\/]react-router[\\/]/ },
+          ],
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     // Vitest's defaults, stated on purpose: every test file gets its own worker and a fresh jsdom (UI

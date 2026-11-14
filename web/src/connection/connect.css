@@ -1,0 +1,213 @@
+/* Connect page: one left-aligned column, the form on a raised panel, saved connections below. */
+
+.connect {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 8vh var(--s4) var(--s6);
+}
+
+.connect-column {
+  width: 100%;
+  max-width: 480px;
+}
+
+.connect-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: var(--control-h-sm);
+  margin-bottom: var(--s5);
+}
+
+.connect-brand {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.connect-intro {
+  margin-top: var(--s1);
+  color: var(--text-2);
+}
+
+.connect-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  margin-top: var(--s4);
+  padding: var(--s5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+
+/* The request Connect will make, rebuilt as the URL is typed: shows what the URL turns into. */
+.connect-request {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.connect-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: calc(-1 * var(--s2));
+  color: var(--warn);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.connect-warn svg {
+  flex: none;
+  margin-top: 1px;
+}
+
+/* The connection a key is asked for: what it is, not an input. */
+.connect-target {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.connect-target__name {
+  grid-column: 2;
+  font-weight: 600;
+}
+
+.connect-target__url {
+  grid-column: 2;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.connect-target__icon {
+  grid-row: 1 / span 2;
+  grid-column: 1;
+  color: var(--text-2);
+}
+
+.connect-alert {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s2);
+  margin-top: var(--s4);
+  padding: 10px var(--s3);
+  border: 1px solid var(--danger);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--text);
+  line-height: 18px;
+}
+
+.connect-form .connect-alert {
+  margin-top: 0;
+}
+
+.connect-alert__icon {
+  margin-top: 1px;
+  color: var(--danger);
+}
+
+.connect-alert__title {
+  font-weight: 600;
+}
+
+.connect-alert__detail {
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.connect-alert__hint {
+  margin-top: var(--s1);
+}
+
+.connect-reason {
+  margin-top: var(--s4);
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.connect-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-top: var(--s1);
+}
+
+.connect-saved {
+  margin-top: var(--s6);
+}
+
+.connect-saved h2 {
+  margin-bottom: var(--s2);
+  font-size: 13px;
+}
+
+.connect-saved__list {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  list-style: none;
+}
+
+.connect-saved__item {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: 10px var(--s3);
+}
+
+.connect-saved__item + .connect-saved__item {
+  border-top: 1px solid var(--border);
+}
+
+.connect-saved__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.connect-saved__title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.connect-saved__name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.connect-saved__url {
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.connect-saved__actions {
+  display: flex;
+  flex: none;
+  gap: var(--s1);
+}
+
+.connect-note {
+  margin-top: var(--s4);
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
