@@ -33,9 +33,17 @@ export function Checkbox({ label, help, error, required, htmlFor, id, checked, o
     );
   }
 
-  // With an inline label, the Field label (if any) heads the group; the inline one names the box.
+  // With an inline label, the Field label (if any) heads the group and the inline one names the box;
+  // either way the help/error are named after the box's id, which its aria-describedby points at.
   return (
-    <Field label={label} help={help} error={error} required={required} htmlFor={children === undefined ? ids.id : undefined}>
+    <Field
+      label={label}
+      help={help}
+      error={error}
+      required={required}
+      htmlFor={children === undefined ? ids.id : undefined}
+      controlId={ids.id}
+    >
       <span className="ui-toggle-row">
         <RadixCheckbox.Root
           {...native}

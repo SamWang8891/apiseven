@@ -15,8 +15,19 @@ export interface FieldProps {
   htmlFor?: string;
 }
 
-/** `action` (kit-internal, e.g. KeyValueInput's "Add entry") sits at the end of the label row. */
-export const Field: FC<FieldProps & { children: ReactNode; action?: ReactNode }> = ({ label, help, error, required, htmlFor, action, children }) => {
+/** Kit-internal extras: an `action` at the end of the label row (KeyValueInput's "Add entry"), and
+ * `controlId`, the id the help/error ids are named after (default `htmlFor`), for a control whose
+ * label is not this one, such as a Checkbox labelled by its inline text. */
+export const Field: FC<FieldProps & { children: ReactNode; action?: ReactNode; controlId?: string }> = ({
+  label,
+  help,
+  error,
+  required,
+  htmlFor,
+  action,
+  controlId = htmlFor,
+  children,
+}) => {
   // "Required" is an instruction for editing; a locked page shows values, not instructions.
   const locked = useLocked();
   const showRequired = required && !locked;
@@ -43,13 +54,13 @@ export const Field: FC<FieldProps & { children: ReactNode; action?: ReactNode }>
       )}
       {children}
       {error ? (
-        <p className="ui-field__error" id={htmlFor && errorId(htmlFor)}>
+        <p className="ui-field__error" id={controlId && errorId(controlId)}>
           <CircleAlert aria-hidden="true" size={14} strokeWidth={2.25} />
           <span>{error}</span>
         </p>
       ) : (
         help !== undefined && (
-          <p className="ui-field__help" id={htmlFor && helpId(htmlFor)}>
+          <p className="ui-field__help" id={controlId && helpId(controlId)}>
             {help}
           </p>
         )
