@@ -93,7 +93,8 @@ describe('KeyValueInput', () => {
     const { onChange, user } = setup({ env: 'prod', team: 'core' });
     await user.clear(keyInput(1));
     await user.type(keyInput(1), 'team');
-    expect(onChange).toHaveBeenLastCalledWith({ team: 'core' });
+    // Held: the row's last good entry (env) stays in the map, in its place.
+    expect(onChange).toHaveBeenLastCalledWith({ env: 'prod', team: 'core' });
     expect(keyInput(1)).toHaveAttribute('aria-invalid', 'true');
     expect(keyInput(2)).not.toHaveAttribute('aria-invalid');
     await user.type(keyInput(1), 's');

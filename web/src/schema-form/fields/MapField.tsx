@@ -4,6 +4,7 @@ import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
 import { Button, Input, KeyValueInput, useEditingState, useLocked, usePending } from '../../ui';
+import { changedEntry, commitEntry, entriesOf, entryHeld, entryRefusals, keepHeldRows, type EntryRow, type EntryRules } from '../../ui/entryRows';
 import type { MapNode } from '../analyze';
 import { useFieldError, useFieldId, useFieldName, useLatest } from '../context';
 import { blankOf, isEmpty, joinPath, mapMode, type Key } from '../model';
@@ -24,76 +25,45 @@ function badKey(node: MapNode, key: string): string | undefined {
   return t('sf.map.badKey', { key, pattern: node.patterns.join(' | ') });
 }
 
-interface Row {
-  id: number;
-  key: string;
-  value: unknown;
-  /** The key the row had in the value it was made from; undefined for a row added here. */
-  origin?: string;
+type Row = EntryRow<unknown>;
+
+/** The marker of a row whose key has no value yet (the row's own message names it). */
+const NO_VALUE = 'no-value';
+
+/**
+ * The map's rules for its rows (entryRows.ts): a key another row has is refused, and so is a
+ * changed key the key patterns refuse (a stored one that fails them stays until someone changes it);
+ * a row without a value stays out. While a row holds input, the map keeps its last committed entry.
+ */
+function rulesOf(node: MapNode): EntryRules<unknown> {
+  return {
+    duplicate: (key) => t('sf.map.duplicate', { key }),
+    refuseKey: (key) => badKey(node, key),
+    refuseValue: (row) => (row.value === undefined ? NO_VALUE : undefined),
+    blank: (row) => row.key === '' && isEmpty(row.value),
+  };
 }
 
 let lastRow = 0;
-const toRows = (map: Obj): Row[] => Object.entries(map).map(([key, value]) => ({ id: ++lastRow, key, value, origin: key }));
+const toRows = (map: Obj): Row[] => Object.entries(map).map(([key, value]) => ({ id: ++lastRow, key, value, last: { key, value } }));
 
-/** A row that still has the key it came with: an entry nobody renamed, kept whatever its key. */
-const stored = (row: Row): boolean => row.origin !== undefined && row.key === row.origin;
+/** The map the rows stand for: each row's entry, or while it holds input, its last committed one. */
+const toMap = (node: MapNode, rows: Row[]): Obj => entriesOf(rows, rulesOf(node));
 
-/**
- * Why each row's key keeps it out of the map, if it does. A stored entry is never refused (data
- * that fails the key pattern stays until someone changes it); a new or renamed row is refused while
- * its key is empty, already stored or used above, or fails the key pattern.
- */
-function keyRefusals(node: MapNode, rows: Row[]): (string | undefined)[] {
-  const kept = new Set(rows.filter(stored).map((r) => r.key));
-  const used = new Set<string>();
-  return rows.map((row) => {
-    const own = stored(row);
-    const refusal = own
-      ? undefined
-      : row.key === ''
-        ? ''
-        : kept.has(row.key) || used.has(row.key)
-          ? t('sf.map.duplicate', { key: row.key })
-          : badKey(node, row.key);
-    used.add(row.key);
-    return refusal;
-  });
-}
-
-/** The map the rows stand for: rows without a value, and new or renamed rows whose key is refused, are left out. */
-function toMap(node: MapNode, rows: Row[]): Obj {
-  const out: Obj = {};
-  const refused = keyRefusals(node, rows);
-  rows.forEach((row, i) => {
-    if (row.value !== undefined && refused[i] === undefined) out[row.key] = row.value;
-  });
-  return out;
-}
-
-/** Whether a row holds something the map leaves out (`refusal` is its key's, from keyRefusals); a blank new row holds nothing. */
-const holds = (row: Row, refusal: string | undefined): boolean => !((refusal === undefined && row.value !== undefined) || (row.key === '' && isEmpty(row.value)));
+/** The rows for a map that came from outside, keeping the rows that hold input (never dropped). */
+const rowsFor = (node: MapNode, map: Obj, rows: Row[]): Row[] => keepHeldRows(toRows(map), rows, rulesOf(node));
 
 /**
- * The rows for a map that came from outside, then the rows that hold something the map left out
- * (never dropped). A kept row is a new row: what it was renamed from may be back in the map.
- */
-function rowsFor(node: MapNode, map: Obj, rows: Row[]): Row[] {
-  const refused = keyRefusals(node, rows);
-  const kept = rows.filter((row, i) => holds(row, refused[i])).map((row) => ({ ...row, origin: undefined }));
-  return [...toRows(map), ...kept];
-}
-
-/**
- * What the map leaves out of rows that hold something, as one message: a value without a key, a
+ * What the rows hold that isn't in the map as shown, as one message: a value without a key, a
  * refused key, a key without a value. A new row with nothing typed in it holds nothing.
  */
-function heldRows(rows: Row[], refused: (string | undefined)[], field: string): string | undefined {
+function heldRows(rows: Row[], refused: (string | undefined)[], rules: EntryRules<unknown>, field: string): string | undefined {
   const messages = rows.flatMap((row, i) => {
     const refusal = refused[i];
-    if (!holds(row, refusal)) return [];
+    if (!entryHeld(row, refusal, rules)) return [];
     if (refusal === '') return [t('ui.pending.noKey', { field, n: i + 1 })];
-    if (refusal !== undefined) return [t('ui.pending.problem', { field, problem: refusal })];
-    return [t('ui.pending.noValue', { field, key: row.key })];
+    if (refusal === NO_VALUE) return [t('ui.pending.noValue', { field, key: row.key })];
+    return [t('ui.pending.problem', { field, problem: refusal ?? '' })];
   });
   return messages.length > 0 ? messages.join('; ') : undefined;
 }
@@ -132,6 +102,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   }
   const latestRef = useLatest({ rows, value, emit });
 
+  const rules = rulesOf(node);
   const update = useCallback(
     (next: Row[]) => {
       const { value: cur, emit: send } = latestRef.current;
@@ -143,13 +114,19 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
     [latestRef, node, setRows],
   );
   const onValue = useCallback(
-    (id: Key, v: unknown) => update(latestRef.current.rows.map((r) => (r.id === id ? { ...r, value: v } : r))),
-    [latestRef, update],
+    (id: Key, v: unknown) => update(latestRef.current.rows.map((r) => (r.id === id ? changedEntry({ ...r, value: v }, rulesOf(node)) : r))),
+    [latestRef, update, node],
   );
+  /** Leaving a row: a good entry becomes the one the row keeps in the map while it later holds input. */
+  const commit = (id: number) => {
+    const next = commitEntry(latestRef.current.rows, id, rules);
+    latestRef.current = { ...latestRef.current, rows: next };
+    setRows(next);
+  };
 
-  const refused = keyRefusals(node, rows);
+  const refused = entryRefusals(rows, rules);
   const fieldName = useFieldName(path);
-  usePending(locked ? undefined : heldRows(rows, refused, fieldName));
+  usePending(locked ? undefined : heldRows(rows, refused, rules, fieldName));
 
   return (
     <div className="sf-map" role="group" aria-labelledby={labelId}>
@@ -174,14 +151,19 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
             // key, a value without a key, a key without a value. A stored key that fails the pattern
             // is shown as such, though the entry is kept.
             const refusal = refused[i];
+            const unchanged = row.last !== undefined && row.key === row.last.key;
             const keyError =
               refusal === ''
                 ? isEmpty(row.value)
                   ? undefined
                   : t('sf.map.noKey')
-                : (refusal ?? (row.value === undefined && row.key !== '' ? t('sf.map.noValue') : stored(row) ? badKey(node, row.key) : undefined));
+                : refusal === NO_VALUE
+                  ? row.key === ''
+                    ? undefined
+                    : t('sf.map.noValue')
+                  : (refusal ?? (unchanged ? badKey(node, row.key) : undefined));
             return (
-              <div className="sf-map__row" key={row.id}>
+              <div className="sf-map__row" key={row.id} onBlur={() => commit(row.id)}>
                 {locked ? (
                   <span className="sf-map__key mono">{row.key}</span>
                 ) : (
@@ -193,7 +175,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
                     placeholder={t('sf.map.key')}
                     value={row.key}
                     error={keyError}
-                    onChange={(e) => update(rows.map((r) => (r.id === row.id ? { ...r, key: e.target.value } : r)))}
+                    onChange={(e) => update(rows.map((r) => (r.id === row.id ? changedEntry({ ...r, key: e.target.value }, rules) : r)))}
                   />
                 )}
                 <NodeField

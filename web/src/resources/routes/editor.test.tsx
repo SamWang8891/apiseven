@@ -297,4 +297,39 @@ describe('fix round 1', () => {
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body).toMatchObject({ uri: 'wiki', desc: 'kept' });
   });
+
+  it('a held label rename never leaves the draft (R8): discarded on a tab switch, saved unchanged; a valid rename saves in place', async () => {
+    const { user, admin } = await openRoute(API_V1);
+    await settled();
+    await user.keyboard('e');
+    const key1 = () => main().getByRole('textbox', { name: t('ui.kv.keyN', { n: 1 }) });
+    const value1 = () => main().getByRole('textbox', { name: t('ui.kv.valueN', { n: 1 }) });
+    expect(key1()).toHaveValue('team');
+    await user.clear(key1());
+    await user.click(tab(t('rt.tab.matching')));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.pending.title') });
+    expect(dialog).toHaveTextContent(t('ui.pending.noKey', { field: t('rt.general.labels'), n: 1 }));
+    await user.click(within(dialog).getByRole('button', { name: t('editor.pending.discard') }));
+    await settled();
+    expect(main().queryByText(t('editor.unsaved'))).not.toBeInTheDocument();
+    await user.click(tab(t('rt.tab.general')));
+    await settled();
+    expect(key1()).toHaveValue('team');
+    expect(value1()).toHaveValue('core');
+
+    await user.type(main().getByRole('textbox', { name: t('rt.general.desc') }), 'x');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.labels).toEqual({ team: 'core', env: 'dev' });
+
+    await screen.findByText(t('editor.locked'));
+    await user.keyboard('e');
+    await user.clear(key1());
+    await user.type(key1(), 'squad');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(2));
+    const labels = writesOf(admin)[1]?.body?.labels as Obj;
+    expect(labels).toEqual({ squad: 'core', env: 'dev' });
+    expect(Object.keys(labels)).toEqual(['squad', 'env']);
+  });
 });

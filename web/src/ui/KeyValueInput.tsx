@@ -6,77 +6,52 @@ import { Field, type FieldProps } from './Field';
 import { nameOfField } from './fieldIds';
 import { useEditingState, useLocked } from './LockContext';
 import { usePending } from './PendingContext';
+import { changedEntry, commitEntry, entriesOf, entryHeld, entryRefusals, keepHeldRows, type EntryRow, type EntryRules } from './entryRows';
 import { ReadOnlyValue } from './ReadOnly';
 import './collection.css';
 
 export type KeyValueInputProps = FieldProps & {
   value: Record<string, string>;
   /**
-   * The map in row order. An entry that still has the key it came with is always kept (even an
-   * empty one); a new or renamed row is left out while its key is empty or already taken.
+   * The map in row order. A row whose key is empty or another row's leaves its last committed entry
+   * in the map, in its place, until the key is good again (entryRows.ts); a row emptied completely,
+   * or removed, takes its entry out.
    */
   onChange: (v: Record<string, string>) => void;
   keyPlaceholder?: string;
   valuePlaceholder?: string;
   mono?: boolean;
   disabled?: boolean;
-  /** How a refused Save names the field while a row is left out; default: the label (if text). */
+  /** How a refused Save names the field while a row holds input; default: the label (if text). */
   fieldName?: string;
 };
 
-interface Row {
-  id: number;
-  key: string;
-  value: string;
-  /** The key the row had in the value it was made from; undefined for a row added here. */
-  origin?: string;
-}
+type Row = EntryRow<string>;
+
+/** The marker of a key another row has (the field's message names the key). */
+const DUPLICATE = 'duplicate';
+const RULES: EntryRules<string> = {
+  duplicate: () => DUPLICATE,
+  blank: (row) => row.key === '' && row.value === '',
+};
 
 let lastRowId = 0;
-const newRow = (key = '', value = '', origin?: string): Row => ({ id: ++lastRowId, key, value, origin });
+/** A row; one made from an entry of the map has that entry as its last (it is in the map). */
+const newRow = (key = '', value = '', fromMap = false): Row => ({ id: ++lastRowId, key, value, last: fromMap ? { key, value } : undefined });
 /** One row per entry; an empty map gets one blank row, ready to type into (blank rows are not emitted). */
 function toRows(map: Record<string, string>): Row[] {
-  const rows = Object.entries(map).map(([k, v]) => newRow(k, v, k));
+  const rows = Object.entries(map).map(([k, v]) => newRow(k, v, true));
   return rows.length > 0 ? rows : [newRow()];
 }
 
-/** A row that still has the key it came with: an entry nobody renamed, kept whatever its key. */
-const stored = (row: Row): boolean => row.origin !== undefined && row.key === row.origin;
-
-/** Which rows the map leaves out: new or renamed ones whose key is empty, stored, or used above. */
-function withheld(rows: Row[]): boolean[] {
-  const kept = new Set(rows.filter(stored).map((r) => r.key));
-  const used = new Set<string>();
-  return rows.map((row) => {
-    if (stored(row)) return false;
-    const out = row.key === '' || kept.has(row.key) || used.has(row.key);
-    used.add(row.key);
-    return out;
-  });
-}
-
-/** A row the map leaves out though it holds something: a blank row holds nothing. */
-const heldRow = (row: Row, out: boolean): boolean => out && !(row.key === '' && row.value === '');
-
-/**
- * The rows for a map that came from outside, then the rows that hold something the map left out
- * (never dropped). A kept row is a new row: what it was renamed from may be back in the map.
- */
+/** The rows for a map that came from outside, keeping the rows that hold input (never dropped). */
 function rowsFor(map: Record<string, string>, rows: Row[]): Row[] {
-  const out = withheld(rows);
-  const kept = rows.filter((row, i) => heldRow(row, out[i] ?? false)).map((row) => ({ ...row, origin: undefined }));
-  if (kept.length === 0) return toRows(map);
-  return [...Object.entries(map).map(([k, v]) => newRow(k, v, k)), ...kept];
+  const fresh = Object.entries(map).map(([k, v]) => newRow(k, v, true));
+  const next = keepHeldRows(fresh, rows, RULES);
+  return next.length > 0 ? next : [newRow()];
 }
 
-function toMap(rows: Row[]): Record<string, string> {
-  const map: Record<string, string> = {};
-  const out = withheld(rows);
-  rows.forEach((row, i) => {
-    if (!out[i]) map[row.key] = row.value;
-  });
-  return map;
-}
+const toMap = (rows: Row[]): Record<string, string> => entriesOf(rows, RULES);
 
 function sameMap(a: Record<string, string>, b: Record<string, string>): boolean {
   const ak = Object.keys(a);
@@ -84,12 +59,13 @@ function sameMap(a: Record<string, string>, b: Record<string, string>): boolean 
   return ak.length === bk.length && ak.every((k, i) => k === bk[i] && a[k] === b[k]);
 }
 
-/** What the map leaves out of rows that hold something (a blank row holds nothing), as one message. */
+/** What the rows hold that isn't in the map as shown (a value without a key, a repeated key), as one message. */
 function heldRows(rows: Row[], field: string): string | undefined {
-  const out = withheld(rows);
+  const refused = entryRefusals(rows, RULES);
   const messages = rows.flatMap((row, i) => {
-    if (!heldRow(row, out[i] ?? false)) return [];
-    return [row.key === '' ? t('ui.pending.noKey', { field, n: i + 1 }) : t('ui.pending.duplicateKey', { field, key: row.key })];
+    const refusal = refused[i];
+    if (!entryHeld(row, refusal, RULES)) return [];
+    return [refusal === '' ? t('ui.pending.noKey', { field, n: i + 1 }) : t('ui.pending.duplicateKey', { field, key: row.key })];
   });
   return messages.length > 0 ? messages.join('; ') : undefined;
 }
@@ -148,13 +124,14 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
     const map = toMap(next);
     if (!sameMap(map, value)) onChange(map);
   }
+  /** Leaving a row: a good entry becomes the one the row keeps in the map while it later holds input. */
+  const commit = (id: number) => setRows((prev) => commitEntry(prev, id, RULES));
 
-  const edit = (id: number, patch: Partial<Row>) => update(rows.map((r) => (r.id === id ? { ...r, ...patch } : r)));
-  // A row left out though it holds something is flagged (a blank row is not, nor the stored entry):
-  // a repeated key, or a value without a key.
-  const out = withheld(rows);
-  const duplicate = out.map((o, i) => o && rows[i]?.key !== '');
-  const noKey = out.map((o, i) => o && rows[i]?.key === '' && rows[i]?.value !== '');
+  const edit = (id: number, patch: Partial<Pick<Row, 'key' | 'value'>>) => update(rows.map((r) => (r.id === id ? changedEntry({ ...r, ...patch }, RULES) : r)));
+  // A row that holds input is flagged on its key (a blank row is not): a repeated key, or a value without a key.
+  const refused = entryRefusals(rows, RULES);
+  const duplicate = refused.map((r) => r === DUPLICATE);
+  const noKey = refused.map((r, i) => r === '' && rows[i]?.value !== '');
   const shownError = error ?? (duplicate.some(Boolean) ? t('ui.kv.duplicate') : noKey.some(Boolean) ? t('ui.kv.noKey') : undefined);
   const inputClass = mono ? 'ui-input mono' : 'ui-input';
 
@@ -189,6 +166,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
               spellCheck={false}
               autoComplete="off"
               onChange={(e) => edit(row.id, { key: e.target.value })}
+              onBlur={() => commit(row.id)}
             />
             <input
               className={`${inputClass} ui-kv__value`}
@@ -199,6 +177,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
               spellCheck={false}
               autoComplete="off"
               onChange={(e) => edit(row.id, { value: e.target.value })}
+              onBlur={() => commit(row.id)}
             />
             {!disabled && (
               <Button

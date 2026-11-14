@@ -393,7 +393,8 @@ describe('SchemaForm: secrets and stored entries (review fix round 1)', () => {
     const key = screen.getByRole('textbox', { name: 'Key of entry 1' });
     await form.user.clear(key);
     await form.user.type(key, 'b');
-    expect(form.value()).toEqual({ weights: { b: 2 } });
+    // Held as used twice: the row's stored entry stays in the map, in its place, until the key is good.
+    expect(form.value()).toEqual({ weights: { a: 1, b: 2 } });
     await form.user.type(key, 'c');
     expect(form.value()).toEqual({ weights: { bc: 1, b: 2 } });
   });

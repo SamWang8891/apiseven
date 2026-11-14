@@ -247,3 +247,37 @@ describe('a kept map row is a new row', () => {
   });
 });
 
+describe('a held rename keeps the stored entry in the map (R8)', () => {
+  it('map rows: an empty, taken or pattern-refused key, or no value, keeps the last good entry in its place; a valid rename replaces it', async () => {
+    const form = renderSchemaForm(SCHEMA, { limits: { a: 1, b: 2 }, keyed: { x: 1, y: 2 } });
+    const key = (field: string, n: number) => group(field).getByRole('textbox', { name: t('sf.map.keyOf', { n }) });
+
+    await form.user.clear(key('limits', 1));
+    expect(form.value()).toEqual({ limits: { a: 1, b: 2 }, keyed: { x: 1, y: 2 } });
+    expect(form.held()).toEqual([t('ui.pending.noKey', { field: 'limits', n: 1 })]);
+    await form.user.type(key('limits', 1), 'b');
+    expect(form.value()).toEqual({ limits: { a: 1, b: 2 }, keyed: { x: 1, y: 2 } });
+    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'b' }) })]);
+    // A value cleared meanwhile: still the last good entry.
+    // Row 1 shows "b" now too: its value field is the first of the two named after b.
+    await form.user.clear(group('limits').getAllByRole('spinbutton', { name: t('sf.map.valueOf', { key: 'b' }) })[0] as HTMLElement);
+    expect(form.value()).toEqual({ limits: { a: 1, b: 2 }, keyed: { x: 1, y: 2 } });
+    await form.user.type(key('limits', 1), 'c');
+    expect(form.held()).toEqual([t('ui.pending.noValue', { field: 'limits', key: 'bc' })]);
+    expect(form.value()).toEqual({ limits: { a: 1, b: 2 }, keyed: { x: 1, y: 2 } });
+    await form.user.type(group('limits').getByRole('spinbutton', { name: t('sf.map.valueOf', { key: 'bc' }) }), '7');
+    expect(form.held()).toEqual([]);
+    expect(form.value()).toEqual({ limits: { bc: 7, b: 2 }, keyed: { x: 1, y: 2 } });
+    expect(Object.keys((form.value() as Obj).limits as Obj)).toEqual(['bc', 'b']);
+
+    // A key the pattern refuses: held, the entry stays where it was.
+    await form.user.clear(key('keyed', 1));
+    await form.user.type(key('keyed', 1), 'X1');
+    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'keyed', problem: t('sf.map.badKey', { key: 'X1', pattern: '^[a-z]+$' }) })]);
+    expect((form.value() as Obj).keyed).toEqual({ x: 1, y: 2 });
+    await form.user.clear(key('keyed', 1));
+    await form.user.type(key('keyed', 1), 'z');
+    expect((form.value() as Obj).keyed).toEqual({ z: 1, y: 2 });
+    expect(Object.keys((form.value() as Obj).keyed as Obj)).toEqual(['z', 'y']);
+  });
+});

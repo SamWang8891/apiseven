@@ -381,3 +381,43 @@ describe('a kept row is a new row', () => {
   });
 });
 
+describe('a held rename keeps the stored entry in the map (R8)', () => {
+  it('KeyValueInput: the last good entry stays in its place while the key is empty or taken; a valid rename replaces it', async () => {
+    const { user, held } = withProvider(<Labels initial={{ team: 'core', env: 'dev' }} />);
+    const map = () => screen.getByRole('status', { name: 'map' }).textContent;
+    const key1 = screen.getByRole('textbox', { name: t('ui.kv.keyN', { n: 1 }) });
+    const value1 = screen.getByRole('textbox', { name: t('ui.kv.valueN', { n: 1 }) });
+
+    await user.clear(key1);
+    expect(map()).toBe('{"team":"core","env":"dev"}');
+    expect(held()).toEqual([t('ui.pending.noKey', { field: 'Labels', n: 1 })]);
+
+    await user.type(key1, 'env');
+    expect(map()).toBe('{"team":"core","env":"dev"}');
+    expect(held()).toEqual([t('ui.pending.duplicateKey', { field: 'Labels', key: 'env' })]);
+
+    // A value typed meanwhile shows on the row; the map keeps the value of the last good entry.
+    await user.type(value1, '!');
+    expect(value1).toHaveValue('core!');
+    expect(map()).toBe('{"team":"core","env":"dev"}');
+
+    await user.clear(key1);
+    await user.type(key1, 'squad');
+    expect(map()).toBe('{"squad":"core!","env":"dev"}');
+    expect(held()).toEqual([]);
+
+    // Emptied completely (no key, no value): a removal, holding nothing.
+    await user.clear(key1);
+    await user.clear(value1);
+    expect(map()).toBe('{"env":"dev"}');
+    expect(held()).toEqual([]);
+  });
+
+  it('KeyValueInput: a new row that never had a good entry puts nothing in the map while it holds', async () => {
+    const { user, held } = withProvider(<Labels initial={{ env: 'dev' }} />);
+    await user.click(screen.getByRole('button', { name: t('ui.kv.add') }));
+    await user.type(screen.getByRole('textbox', { name: t('ui.kv.keyN', { n: 2 }) }), 'env');
+    expect(held()).toEqual([t('ui.pending.duplicateKey', { field: 'Labels', key: 'env' })]);
+    expect(screen.getByRole('status', { name: 'map' })).toHaveTextContent('{"env":"dev"}');
+  });
+});
