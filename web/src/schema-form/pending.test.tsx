@@ -219,3 +219,31 @@ describe('editing state ends on lock', () => {
   });
 });
 
+describe('a list of objects', () => {
+  it('removing an earlier item keeps a later item\'s held "-" on that item, named by its new path', async () => {
+    const schema: Obj = { type: 'object', properties: { nodes: { type: 'array', items: { type: 'object', properties: { host: { type: 'string' }, port: { type: 'integer' } } } } } };
+    const form = renderSchemaForm(schema, { nodes: [{ host: 'a', port: 1 }, { host: 'b', port: 2 }, { host: 'c', port: 3 }] });
+    const ports = () => screen.getAllByRole('spinbutton', { name: 'port' });
+    await form.user.clear(ports()[2] as HTMLElement);
+    await form.user.type(ports()[2] as HTMLElement, '-');
+    expect(form.held()).toEqual([t('ui.pending.notNumber', { field: 'nodes.2.port', text: '-' })]);
+    await form.user.click(screen.getByRole('button', { name: t('sf.list.remove', { n: 1 }) }));
+    expect(screen.getAllByRole('textbox', { name: 'host' }).map((el) => (el as HTMLInputElement).value)).toEqual(['b', 'c']);
+    expect(ports().map((el) => (el as HTMLInputElement).value)).toEqual(['2', '-']);
+    expect(form.held()).toEqual([t('ui.pending.notNumber', { field: 'nodes.1.port', text: '-' })]);
+  });
+});
+
+describe('a kept map row is a new row', () => {
+  it('a stored key emptied, kept through an outside change, then typed again: held as used twice', async () => {
+    const page = renderWithOutside({ limits: { a: 1 } }, (v) => ({ ...v, limits: { a: 5 } }));
+    const key1 = group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n: 1 }) });
+    await page.user.clear(key1);
+    await page.user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect(group('limits').getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['a', '']);
+    await page.user.type(group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n: 2 }) }), 'a');
+    expect(page.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'a' }) })]);
+    expect(page.value()).toEqual({ limits: { a: 5 } });
+  });
+});
+

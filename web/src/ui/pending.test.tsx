@@ -254,7 +254,7 @@ describe('dialogs answer for their own fields', () => {
 });
 
 describe('NumberInput: what is emitted is what the field shows', () => {
-  it('an integer beyond 2^53 is held (it would be saved rounded); the largest safe one is emitted', async () => {
+  it('an integer a double cannot hold exactly is held (it would be saved rounded); exact ones, past 2^53 too, are emitted', async () => {
     const onChange = vi.fn<(v: number | undefined) => void>();
     function Big() {
       const [value, setValue] = useState<number | undefined>(undefined);
@@ -276,10 +276,12 @@ describe('NumberInput: what is emitted is what the field shows', () => {
     expect(held()).toEqual([t('ui.pending.inexact', { field: 'Id', text: '12345678901234567890' })]);
     expect(onChange.mock.calls.flat().every((v) => v === undefined || Number.isSafeInteger(v))).toBe(true);
     expect(input).toHaveAttribute('aria-invalid', 'true');
-    await user.clear(input);
-    await user.type(input, '9007199254740991');
-    expect(held()).toEqual([]);
-    expect(onChange).toHaveBeenLastCalledWith(9007199254740991);
+    for (const exact of ['9007199254740991', '9007199254740992', '10000000000000000000']) {
+      await user.clear(input);
+      await user.type(input, exact);
+      expect(held()).toEqual([]);
+      expect(onChange).toHaveBeenLastCalledWith(Number(exact));
+    }
   });
 
   it('a decimal with more digits than a number holds is held; ordinary ones (1.50, 1e3, .5) are emitted', async () => {
@@ -353,3 +355,29 @@ describe('held input is never replaced by a value from outside', () => {
     expect(held()).toEqual([t('ui.pending.noKey', { field: 'Labels', n: 3 })]);
   });
 });
+
+describe('a kept row is a new row', () => {
+  it('a stored key emptied, kept through an outside change, then typed again: held as used twice, not stored twice', async () => {
+    function Outside() {
+      const [value, setValue] = useState<Record<string, string>>({ env: 'prod' });
+      return (
+        <>
+          <KeyValueInput label="Labels" value={value} onChange={setValue} />
+          <output aria-label="map">{JSON.stringify(value)}</output>
+          <button type="button" onClick={() => setValue({ env: 'x' })}>
+            Elsewhere
+          </button>
+        </>
+      );
+    }
+    const { user, held } = withProvider(<Outside />);
+    await user.clear(screen.getByRole('textbox', { name: t('ui.kv.keyN', { n: 1 }) }));
+    expect(held()).toEqual([t('ui.pending.noKey', { field: 'Labels', n: 1 })]);
+    await user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect(screen.getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['env', 'x', '', 'prod']);
+    await user.type(screen.getByRole('textbox', { name: t('ui.kv.keyN', { n: 2 }) }), 'env');
+    expect(held()).toEqual([t('ui.pending.duplicateKey', { field: 'Labels', key: 'env' })]);
+    expect(screen.getByRole('status', { name: 'map' })).toHaveTextContent('{"env":"x"}');
+  });
+});
+

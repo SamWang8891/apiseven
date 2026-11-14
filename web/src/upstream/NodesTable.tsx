@@ -1,8 +1,9 @@
 // The node list: a row per node (host, port, weight, priority, and the share of requests its weight
 // gives it), plus an empty row at the end to type a new node into or paste `host:port` lines. Rows
-// are keyed by position, so the new-node row and the node it becomes are one row: the host field
-// keeps focus while the node appears. A map-shaped list stays a map through edits (see NodesTable
-// and nodes.ts). Locked, it is a plain table.
+// are keyed by ids that follow them through removals, copies and pastes (rowIds.ts), so what a
+// row's fields hold stays on that row. The new-node row hands its id to the node it becomes, so the
+// host field keeps focus while the node appears. A map-shaped list stays a map through edits (see
+// NodesTable and nodes.ts). Locked, it is a plain table.
 import { Copy, X } from 'lucide-react';
 import { useEffect, useRef, type ClipboardEvent } from 'react';
 import { isObj } from '../api/sanitize';
@@ -11,6 +12,7 @@ import { issueAt } from '../editor/issues';
 import { t } from '../i18n';
 import { Button, Input, NumberInput, useEditingState, useLocked, usePending, type InputProps } from '../ui';
 import { IssueLine } from './fields';
+import { freshIds, useRowIds, withNewIds, withoutId } from './rowIds';
 import { Head, LockedNodes, ShareCell } from './NodeCells';
 import {
   addMapNode,
@@ -33,23 +35,11 @@ import {
 } from './nodes';
 import type { SectionProps } from './values';
 
-/** `record` with the key `at` removed and the keys after it moved down one (a removed row). */
-function afterRemove<T>(record: Record<number, T>, at: number): Record<number, T> {
-  const out: Record<number, T> = {};
-  for (const [key, v] of Object.entries(record)) {
-    const k = Number(key);
-    if (k !== at) out[k > at ? k - 1 : k] = v;
-  }
-  return out;
-}
-
-/** `record` with the keys after `at` moved up one (a row inserted after `at`). */
-function afterInsert<T>(record: Record<number, T>, at: number): Record<number, T> {
-  const out: Record<number, T> = {};
-  for (const [key, v] of Object.entries(record)) {
-    const k = Number(key);
-    out[k > at ? k + 1 : k] = v;
-  }
+/** `record` without the key `id` (a row that went). */
+function without<T>(record: Record<number, T>, id: number | undefined): Record<number, T> {
+  if (id === undefined || !(id in record)) return record;
+  const out = { ...record };
+  delete out[id];
   return out;
 }
 
@@ -68,30 +58,36 @@ function HostInput(props: Omit<InputProps, 'mono' | 'autoComplete'>) {
 export function NodesTable({ value, onChange, issues }: SectionProps) {
   const locked = useLocked();
   // Both end with the editing session (Save, Discard): nothing held may come back on the next Edit.
-  /** Addresses typed into map rows (or the new-node field) that the map can't take yet. */
+  /** Addresses typed into map rows (or the new-node field) that the map can't take yet, by row id. */
   const [held, setHeld] = useEditingState<Record<number, Address>>({});
   const [skipped, setSkipped] = useEditingState<string[]>([]);
-  /** Each map row's address before the edit in progress; 'new' for a row this edit added. */
+  /** Each map row's address before the edit in progress, by row id; 'new' for a row this edit added. */
   const start = useRef<Record<number, Address | 'new'>>({});
   useEffect(() => {
     if (locked) start.current = {};
   }, [locked]);
   const rows = rowsOf(value.nodes);
   const fresh = rows.length;
+  /** The rows' ids, then the new-node row's. */
+  const [ids, setIds] = useRowIds(rows.length + 1);
+  const idOf = (i: number): number => ids[i] ?? -1;
   /** The row that already has what row `i` holds (computed from the rows now, so it follows removals); -1 if none. */
   const otherOf = (i: number): number => {
-    const h = held[i];
+    const h = held[idOf(i)];
     if (!h) return -1;
     const key = addrOf(h.host, h.port);
     return rows.findIndex((row, j) => j !== i && (row.addr ?? addrOf(row.host ?? '', row.port)) === key);
   };
   // What the fields show but the upstream doesn't have yet: Save waits for it (usePending).
+  const heldRows = ids.flatMap((id, i) => {
+    const h = held[id];
+    return h ? [{ i, h }] : [];
+  });
   usePending(
-    Object.keys(held).length === 0
+    heldRows.length === 0
       ? undefined
-      : Object.entries(held)
-          .map(([key, h]) => {
-            const i = Number(key);
+      : heldRows
+          .map(({ i, h }) => {
             const node = i === fresh ? t('up.pending.newNode') : t('up.pending.node', { n: i + 1 });
             const addr = addrOf(h.host, h.port);
             return otherOf(i) >= 0 ? t('up.pending.duplicate', { node, addr }) : t('up.pending.unsaved', { node, addr });
@@ -104,14 +100,18 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   const map = isObj(value.nodes);
   const issue = (i: number, field: string) => issueAt(issues, `nodes.${i}.${field}`);
   const stored = (i: number): Address => ({ host: rows[i]?.host ?? '', port: rows[i]?.port });
-  const shown = (i: number): Address => held[i] ?? stored(i);
-  const hold = (i: number, h: Address | undefined) =>
+  const shown = (i: number): Address => held[idOf(i)] ?? stored(i);
+  const hold = (i: number, h: Address | undefined) => {
+    const id = idOf(i);
     setHeld((prev) => {
       const next = { ...prev };
-      if (h) next[i] = h;
-      else delete next[i];
+      if (h) next[id] = h;
+      else delete next[id];
       return next;
     });
+  };
+  /** After `rows` became `count` rows by nodes added at the end: the new-node row's id goes to the first of them. */
+  const appendedFromNew = (count: number) => setIds((prev) => [...prev, ...freshIds(count)]);
   const write = (up: Obj) => {
     setSkipped([]);
     onChange(up);
@@ -119,7 +119,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
 
   /** A map row's address edited; true when it was written. */
   function editAddress(i: number, address: Address, commitDigits = false): boolean {
-    start.current[i] ??= stored(i);
+    const id = idOf(i);
+    start.current[id] ??= stored(i);
     const edit = setMapAddress(value, i, address, { commitDigits });
     if (edit.ok) {
       hold(i, undefined);
@@ -128,9 +129,12 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     }
     hold(i, address);
     if (edit.reason === 'duplicate') {
-      const before = start.current[i];
-      if (before === 'new') write(removeNode(value, i));
-      else if (before) {
+      const before = start.current[id];
+      if (before === 'new') {
+        // A node this edit added goes back to being the new-node row, which shows what it holds.
+        setIds((prev) => [...withoutId(prev.slice(0, -1), i), id]);
+        write(removeNode(value, i));
+      } else if (before) {
         const back = setMapAddress(value, i, before, { commitDigits: true });
         if (back.ok && back.up.nodes !== value.nodes) write(back.up);
       }
@@ -145,6 +149,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
       return false;
     }
     if (!map) {
+      appendedFromNew(1);
       write(addNodes(value, [{ host: text, weight: NEW_WEIGHT }]).up);
       return true;
     }
@@ -154,7 +159,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
       return false;
     }
     hold(fresh, undefined);
-    start.current[fresh] = 'new';
+    start.current[idOf(fresh)] = 'new';
+    appendedFromNew(1);
     write(edit.up);
     return true;
   }
@@ -164,29 +170,35 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
    * all-digit host, or an address whose other row has gone); a duplicate stays held and flagged.
    */
   function settle(i: number) {
-    const h = held[i];
+    const id = idOf(i);
+    const h = held[id];
     const done = h ? (i === fresh ? editNew(h.host, true) : editAddress(i, h, true)) : true;
-    if (done) delete start.current[i];
+    if (done) delete start.current[id];
   }
 
   function keep(i: number) {
-    const h = held[i];
+    const h = held[idOf(i)];
     if (!h) return;
     setHeld({});
     start.current = {};
+    if (i === fresh) appendedFromNew(1);
     write(keepBoth(value, i, h));
   }
 
+  /** Removing a row discards what it held, with it. */
   function remove(i: number) {
-    setHeld((prev) => afterRemove(prev, i));
-    start.current = afterRemove(start.current, i);
+    const id = idOf(i);
+    setHeld((prev) => without(prev, id));
+    start.current = without(start.current, id);
+    setIds((prev) => withoutId(prev, i));
     write(removeNode(value, i));
   }
 
   function duplicate(i: number) {
-    setHeld((prev) => afterInsert(prev, i));
-    start.current = afterInsert(start.current, i);
-    write(duplicateNode(value, i));
+    const next = duplicateNode(value, i);
+    if (next === value) return;
+    setIds((prev) => withNewIds(prev, i + 1, 1));
+    write(next);
   }
 
   /** Text pasted into a host field that reads as addresses becomes nodes (at `index`, or added). */
@@ -198,6 +210,13 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     const result = index === undefined ? addNodes(value, pasted.map((row) => ({ ...row, weight: NEW_WEIGHT }))) : pasteNodes(value, index, pasted);
     hold(fresh, undefined);
     if (index !== undefined) hold(index, undefined);
+    const added = rowsOf(result.up.nodes).length - rows.length;
+    if (added > 0) {
+      // Into the new-node row: it becomes the first pasted node. Into a node: an array takes the
+      // rest right after it, a map at the end.
+      if (index === undefined) appendedFromNew(added);
+      else setIds((prev) => withNewIds(prev, map ? fresh : index + 1, added));
+    }
     if (result.up !== value) onChange(result.up);
     setSkipped(result.skipped);
   };
@@ -225,7 +244,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     const address = shown(i);
     const copyable = canDuplicate(value, i);
     return (
-      <tr key={i}>
+      <tr key={idOf(i)}>
         <td className="up-table__host">
           <HostInput
             aria-label={t('up.nodes.hostN', { n })}
@@ -300,14 +319,14 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     );
   };
 
-  // Keyed by position in one list with the node rows: typing here turns this row into node n+1 in
+  // Keyed in one list with the node rows: typing here turns this row (its id) into node n+1 in
   // place, so the field keeps focus. It spans host, port and weight; the cells after stay empty.
   const newRow = (
-    <tr key={fresh} className="up-table__new">
+    <tr key={idOf(fresh)} className="up-table__new">
       <td className="up-table__host" colSpan={3}>
         <HostInput
           aria-label={t('up.nodes.new')}
-          value={held[fresh]?.host ?? ''}
+          value={held[idOf(fresh)]?.host ?? ''}
           placeholder={t('up.nodes.newPlaceholder')}
           error={duplicateOf(fresh)}
           onChange={(e) => editNew(e.target.value)}

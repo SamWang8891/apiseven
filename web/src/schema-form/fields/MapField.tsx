@@ -73,10 +73,13 @@ function toMap(node: MapNode, rows: Row[]): Obj {
 /** Whether a row holds something the map leaves out (`refusal` is its key's, from keyRefusals); a blank new row holds nothing. */
 const holds = (row: Row, refusal: string | undefined): boolean => !((refusal === undefined && row.value !== undefined) || (row.key === '' && isEmpty(row.value)));
 
-/** The rows for a map that came from outside, then the rows that hold something the map left out (never dropped). */
+/**
+ * The rows for a map that came from outside, then the rows that hold something the map left out
+ * (never dropped). A kept row is a new row: what it was renamed from may be back in the map.
+ */
 function rowsFor(node: MapNode, map: Obj, rows: Row[]): Row[] {
   const refused = keyRefusals(node, rows);
-  const kept = rows.filter((row, i) => holds(row, refused[i]));
+  const kept = rows.filter((row, i) => holds(row, refused[i])).map((row) => ({ ...row, origin: undefined }));
   return [...toRows(map), ...kept];
 }
 

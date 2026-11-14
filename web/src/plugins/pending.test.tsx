@@ -134,7 +134,7 @@ describe('_meta', () => {
     expect(lastToast()).toBe(t('ui.pending.refused', { message: t('ui.pending.json', { field: 'key-auth._meta.error_response' }) }));
   });
 
-  it("held filter text stays when the card's JSON view changes _meta; fixed, it is saved with the JSON view's other change", async () => {
+  it("held filter text: the card's JSON view cannot change _meta meanwhile; fixed, the filter is saved and the JSON view editable again", async () => {
     const harness = renderPluginsTab({ scope: 'route', value: LIMIT });
     const el = await openCard(harness, 'limit-count');
     await harness.user.click(within(el).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
@@ -144,10 +144,71 @@ describe('_meta', () => {
     const box = await within(el).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) });
     await replaceCode(harness.user, box, '{"count": 9, "time_window": 60, "_meta": {"filter": [["b", "==", "1"]]}}');
     expect(filter.textContent).toBe('[["a", ');
-    expect(harness.held()).toEqual([t('ui.pending.json', { field: 'limit-count._meta.filter' })]);
+    expect(harness.value()).toEqual(LIMIT);
     await replaceCode(harness.user, filter, '[["c", "==", "2"]]');
     expect(harness.held()).toEqual([]);
-    expect(harness.value()).toEqual({ 'limit-count': { count: 9, time_window: 60, _meta: { filter: [['c', '==', '2']] } } });
+    expect(harness.value()).toEqual({ 'limit-count': { ...LIMIT['limit-count'], _meta: { filter: [['c', '==', '2']] } } });
+    expect(within(el).queryByText(t('pl.card.heldByMeta'))).not.toBeInTheDocument();
+    await replaceCode(harness.user, box, '{"count": 9, "time_window": 60}');
+    expect(harness.value()).toEqual({ 'limit-count': { count: 9, time_window: 60 } });
+  });
+});
+
+describe('the JSON view and _meta never hide or overwrite each other while one holds input', () => {
+  const metaToggle = (el: HTMLElement) => within(el).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) });
+  const jsonBox = (el: HTMLElement) => within(el).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) });
+
+  async function metaHolds(hold: (el: HTMLElement, user: ReturnType<typeof renderPluginsTab>['user']) => Promise<void>) {
+    const harness = renderPluginsTab({ scope: 'route', value: LIMIT });
+    const el = await openCard(harness, 'limit-count');
+    await harness.user.click(metaToggle(el));
+    await hold(el, harness.user);
+    return { ...harness, el };
+  }
+
+  it('_meta filter held, then the JSON view: read-only (typing changes nothing); _meta does not collapse; the filter text stays', async () => {
+    const { user, el, held, value } = await metaHolds(async (card, u) => replaceCode(u, await within(card).findByRole('textbox', { name: t('pl.meta.filterLabel') }), '[["a", '));
+    const filterHeld = t('ui.pending.json', { field: 'limit-count._meta.filter' });
+    expect(held()).toEqual([filterHeld]);
+    await user.click(within(el).getByRole('button', { name: t('pl.card.json') }));
+    expect(within(el).getByText(t('pl.card.heldByMeta'))).toBeInTheDocument();
+    const box = await jsonBox(el);
+    await replaceCode(user, box, '{"count": 2,');
+    expect(box.textContent).not.toContain('{"count": 2,');
+    expect(held()).toEqual([filterHeld]);
+    await user.click(metaToggle(el));
+    expect(metaToggle(el)).toHaveAttribute('aria-expanded', 'true');
+    expect(within(el).getByRole('textbox', { name: t('pl.meta.filterLabel') }).textContent).toBe('[["a", ');
+    expect(held()).toEqual([filterHeld]);
+    expect(value()).toEqual(LIMIT);
+  });
+
+  it('_meta priority "-" held, then the JSON view: the same', async () => {
+    const { user, el, held } = await metaHolds((card, u) => u.type(within(card).getByRole('spinbutton', { name: 'priority' }), '-'));
+    const priorityHeld = t('ui.pending.notNumber', { field: 'limit-count._meta.priority', text: '-' });
+    expect(held()).toEqual([priorityHeld]);
+    await user.click(within(el).getByRole('button', { name: t('pl.card.json') }));
+    const box = await jsonBox(el);
+    await replaceCode(user, box, '{"count": 2,');
+    expect(held()).toEqual([priorityHeld]);
+    await user.click(metaToggle(el));
+    expect(metaToggle(el)).toHaveAttribute('aria-expanded', 'true');
+    expect(within(el).getByRole('spinbutton', { name: 'priority' })).toHaveValue('-');
+  });
+
+  it('the mirror order: the JSON view holds first, then _meta cannot start holding, and may collapse', async () => {
+    const harness = renderPluginsTab({ scope: 'route', value: LIMIT });
+    const el = await openCard(harness, 'limit-count');
+    await harness.user.click(within(el).getByRole('button', { name: t('pl.card.json') }));
+    await replaceCode(harness.user, await jsonBox(el), '{"count": 2,');
+    const jsonHeld = t('ui.pending.json', { field: 'limit-count' });
+    await harness.user.click(metaToggle(el));
+    expect(within(el).queryByRole('spinbutton', { name: 'priority' })).not.toBeInTheDocument();
+    await replaceCode(harness.user, await within(el).findByRole('textbox', { name: t('pl.meta.filterLabel') }), '[["a", ');
+    expect(harness.held()).toEqual([jsonHeld]);
+    await harness.user.click(metaToggle(el));
+    expect(metaToggle(el)).toHaveAttribute('aria-expanded', 'false');
+    expect(harness.held()).toEqual([jsonHeld]);
   });
 });
 

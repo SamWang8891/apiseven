@@ -504,6 +504,7 @@ export const en: Record<string, string> = {
   'pl.meta.errorNotObject': 'Enter a JSON object, e.g. {"message": "Missing credential"}',
   'pl.meta.other': 'Also in _meta: {keys}. Edit them in JSON.',
   'pl.meta.heldByJson': 'These options are part of the JSON above: fix its text to change them here.',
+  'pl.card.heldByMeta': 'Run options below hold text that is not saved yet: fix or clear it to edit this JSON.',
   'pl.picker.title': 'Add a plugin',
   'pl.picker.search': 'Search plugins',
   'pl.picker.added': 'Added',

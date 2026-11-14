@@ -13,7 +13,7 @@ import { t } from '../i18n';
 import { ErrorLine } from '../schema-form/fields/chrome';
 import { redactSecrets } from '../schema-form/model';
 import { SchemaForm } from '../schema-form/SchemaForm';
-import { Button, CodeEditor, LockProvider, PendingScope, Switch, useHeld, useLocked, usePending, useReveal } from '../ui';
+import { Button, CodeEditor, LockProvider, PendingScope, Switch, useHeld, useLocked, usePending, useReveal, type PendingEntry } from '../ui';
 import { catalog } from './catalog';
 import { MetaForm } from './MetaForm';
 import { formSchemaOf, isDisabled, META, metaOf, setDisabled, withMeta, withoutMeta } from './meta';
@@ -158,8 +158,11 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
   const viewRef = useRef<HTMLDivElement>(null);
   const metaHeld = useHeld();
   const metaRef = useRef<HTMLDivElement>(null);
-  // While the JSON view holds text, `_meta` (part of that JSON) is read-only here: a change made
-  // beside it would be undone when the text is fixed.
+  // The JSON view and `_meta` both edit `_meta`, so while one of them holds input the other is
+  // read-only: a change made in one would be undone when the other's text is fixed. Which one waits
+  // is decided by who held first. A part goes read-only only while it holds nothing itself, and
+  // can't start holding while read-only, so becoming read-only never drops a held entry (the rule:
+  // a held entry goes only when its text is fixed or cleared, or a discard is confirmed).
   const [jsonHeld, setJsonHeld] = useState(false);
   const jsonHeldChange = useCallback(
     (h: boolean) => {
@@ -168,6 +171,16 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
     },
     [onJsonHeld],
   );
+  const [metaHolds, setMetaHolds] = useState(false);
+  const metaTrack = useCallback(
+    (entries: PendingEntry[]) => {
+      metaHeld.track(entries);
+      setMetaHolds(entries.length > 0);
+    },
+    [metaHeld],
+  );
+  const jsonWaits = metaHolds && !jsonHeld;
+  const metaWaits = jsonHeld && !metaHolds;
   const config = isObj(conf) ? conf : undefined;
   const meta = metaOf(conf);
   const hasForm = schema !== undefined;
@@ -219,15 +232,20 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
               name={name}
             />
           ) : (
-            <ConfigJson
-              name={name}
-              conf={conf}
-              schema={schema}
-              encrypt={encrypt}
-              issues={issues.filter((issue) => issue.path !== '')}
-              onChange={onChange}
-              onHeld={jsonHeldChange}
-            />
+            <>
+              {jsonWaits && !locked && <p className="pl-note">{t('pl.card.heldByMeta')}</p>}
+              <LockProvider locked={locked || jsonWaits}>
+                <ConfigJson
+                  name={name}
+                  conf={conf}
+                  schema={schema}
+                  encrypt={encrypt}
+                  issues={issues.filter((issue) => issue.path !== '')}
+                  onChange={onChange}
+                  onHeld={jsonHeldChange}
+                />
+              </LockProvider>
+            </>
           )}
         </PendingScope>
       </div>
@@ -249,9 +267,9 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
           </button>
           {metaOpen && (
             <div id={`${ids}-meta`} ref={metaRef} className="pl-metabox__body">
-              {jsonHeld && !locked && <p className="pl-note">{t('pl.meta.heldByJson')}</p>}
-              <PendingScope onChange={metaHeld.track}>
-                <LockProvider locked={locked || jsonHeld}>
+              {metaWaits && !locked && <p className="pl-note">{t('pl.meta.heldByJson')}</p>}
+              <PendingScope onChange={metaTrack}>
+                <LockProvider locked={locked || metaWaits}>
                   <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} />
                 </LockProvider>
               </PendingScope>

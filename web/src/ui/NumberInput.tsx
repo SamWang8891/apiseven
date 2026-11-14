@@ -49,9 +49,10 @@ function parse(text: string, integer: boolean | undefined): Parsed {
   const n = Number(s);
   if (!NUMBER.test(s) || !Number.isFinite(n)) return { ok: false, message: t('ui.number.invalid'), problem: 'invalid' };
   if (integer && !Number.isInteger(n)) return { ok: false, message: t('ui.number.integer'), problem: 'whole' };
-  // The number emitted must be the one shown: not a rounded one (an integer past 2^53, more digits
-  // than a double keeps). Ordinary text ("1.50", "1e3", ".5") reads back as the same number.
-  if ((integer && !Number.isSafeInteger(n)) || decimalOf(s) !== decimalOf(String(n))) return { ok: false, message: t('ui.number.inexact'), problem: 'inexact' };
+  // The number emitted must be the one shown, not a rounded one (more digits than a double keeps,
+  // e.g. most integers past 2^53). Text that reads back as the same number is emitted: "1.50", "1e3",
+  // ".5", and big integers a double holds exactly (2^53, 1e19).
+  if (decimalOf(s) !== decimalOf(String(n))) return { ok: false, message: t('ui.number.inexact'), problem: 'inexact' };
   return { ok: true, value: n };
 }
 

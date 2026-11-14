@@ -58,10 +58,13 @@ function withheld(rows: Row[]): boolean[] {
 /** A row the map leaves out though it holds something: a blank row holds nothing. */
 const heldRow = (row: Row, out: boolean): boolean => out && !(row.key === '' && row.value === '');
 
-/** The rows for a map that came from outside, then the rows that hold something the map left out (never dropped). */
+/**
+ * The rows for a map that came from outside, then the rows that hold something the map left out
+ * (never dropped). A kept row is a new row: what it was renamed from may be back in the map.
+ */
 function rowsFor(map: Record<string, string>, rows: Row[]): Row[] {
   const out = withheld(rows);
-  const kept = rows.filter((row, i) => heldRow(row, out[i] ?? false));
+  const kept = rows.filter((row, i) => heldRow(row, out[i] ?? false)).map((row) => ({ ...row, origin: undefined }));
   if (kept.length === 0) return toRows(map);
   return [...Object.entries(map).map(([k, v]) => newRow(k, v, k)), ...kept];
 }

@@ -12,6 +12,7 @@ import { ResourcePicker } from '../resources/ResourcePicker';
 import { Button, Field, Segmented, useLocked } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import { ChoiceSelect, PemField } from './fields';
+import { useRowIds, withoutId } from './rowIds';
 import { obj, str, type SectionProps } from './values';
 
 type Mode = 'none' | 'inline' | 'ssl';
@@ -33,6 +34,8 @@ export function TlsSection({ value, onChange, issues, ctx }: SectionProps) {
   const verify = tls.verify === true ? 'true' : tls.verify === false ? 'false' : undefined;
   const certId = typeof tls.client_cert_id === 'number' ? String(tls.client_cert_id) : str(tls.client_cert_id);
   const cas: unknown[] = Array.isArray(tls.ca_certs) ? tls.ca_certs : [];
+  // One id per CA row, following it through removals (an added row gets a new one at the end).
+  const [caIds, setCaIds] = useRowIds(cas.length);
 
   function switchTo(next: string) {
     if (next === mode) return;
@@ -107,13 +110,24 @@ export function TlsSection({ value, onChange, issues, ctx }: SectionProps) {
           <div className="up-cas">
             {cas.map((pem, i) => (
               <PemField
-                key={i}
+                key={caIds[i] ?? i}
                 label={t('up.tls.caN', { n: i + 1 })}
                 value={str(pem)}
                 error={issue(`ca_certs.${i}`)}
                 // An emptied entry stays (as '') until removed, so the list keeps its rows.
                 onChange={(v) => onChange(setPathRaw(value, ['tls', 'ca_certs', i], v ?? ''))}
-                extra={<Button variant="ghost" size="sm" icon={<X size={14} />} aria-label={t('up.tls.removeCa', { n: i + 1 })} onClick={() => onChange(removeAt(value, ['tls', 'ca_certs'], i))} />}
+                extra={
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<X size={14} />}
+                    aria-label={t('up.tls.removeCa', { n: i + 1 })}
+                    onClick={() => {
+                      setCaIds((prev) => withoutId(prev, i));
+                      onChange(removeAt(value, ['tls', 'ca_certs'], i));
+                    }}
+                  />
+                }
               />
             ))}
           </div>

@@ -82,6 +82,13 @@ export const PendingScope: FC<{ onChange: (entries: PendingEntry[]) => void; chi
  * field and the problem (`Node 2: "10.0.0.1:80" is already in the list`) while that is the case,
  * and undefined otherwise. The entry follows the message and goes when the component unmounts.
  * Without a PendingProvider above, it does nothing.
+ *
+ * The rule the callers keep: a held entry goes only when the user fixed the text, cleared it, or
+ * confirmed a discard (Discard, "Discard and switch", removing its row or plugin). Nothing else may
+ * unmount a holder or make it read-only while it holds: parts that hide fields refuse (useHeld), and
+ * a part made read-only because a sibling holds input is one that holds nothing itself (PluginCard).
+ * The component must also stay bound to one field: in a list, key it by a row id that follows the
+ * row, never by position.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the hook belongs beside its provider, as useLocked does
 export function usePending(message: string | undefined): void {

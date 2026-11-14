@@ -12,7 +12,7 @@ import type { Ctx } from '../resources/ctx';
 import type { SectionId } from '../upstream/meta';
 import { upstreamSections } from '../upstream/sections';
 import { UpstreamForm } from '../upstream/UpstreamForm';
-import { LockProvider, TooltipProvider } from '../ui';
+import { LockProvider, PendingProvider, TooltipProvider, type PendingEntry } from '../ui';
 import { ctxOf } from './ctx';
 
 export interface UpstreamOptions {
@@ -30,11 +30,17 @@ export interface UpstreamHarness extends RenderResult {
   value: () => Obj;
   /** Re-renders with other options (locked, issues), keeping the current value. */
   update: (opts: Pick<UpstreamOptions, 'locked' | 'issues'>) => void;
+  /** What the form's fields hold but have not emitted (usePending), as messages. */
+  held: () => string[];
 }
 
 export function renderUpstream(initial: Obj, opts: UpstreamOptions = {}): UpstreamHarness {
   const changes = vi.fn<(v: Obj) => void>();
   let current = initial;
+  let pending: PendingEntry[] = [];
+  const onPending = (entries: PendingEntry[]) => {
+    pending = entries;
+  };
   const ctx = opts.ctx ?? ctxOf();
   function Harness({ locked, issues }: Pick<UpstreamOptions, 'locked' | 'issues'>) {
     const [value, setValue] = useState(initial);
@@ -47,13 +53,15 @@ export function renderUpstream(initial: Obj, opts: UpstreamOptions = {}): Upstre
     return (
       <MemoryRouter>
         <TooltipProvider>
-          <LockProvider locked={locked ?? false}>
-            {section ? (
-              section.render({ value, onChange, issues: issues ?? [], ctx })
-            ) : (
-              <UpstreamForm value={value} onChange={onChange} issues={issues} ctx={ctx} layout={opts.layout ?? 'sections'} />
-            )}
-          </LockProvider>
+          <PendingProvider onChange={onPending}>
+            <LockProvider locked={locked ?? false}>
+              {section ? (
+                section.render({ value, onChange, issues: issues ?? [], ctx })
+              ) : (
+                <UpstreamForm value={value} onChange={onChange} issues={issues} ctx={ctx} layout={opts.layout ?? 'sections'} />
+              )}
+            </LockProvider>
+          </PendingProvider>
         </TooltipProvider>
       </MemoryRouter>
     );
@@ -66,5 +74,6 @@ export function renderUpstream(initial: Obj, opts: UpstreamOptions = {}): Upstre
     changes,
     value: () => current,
     update: (next) => result.rerender(<Harness {...next} />),
+    held: () => pending.map((entry) => entry.message),
   };
 }
