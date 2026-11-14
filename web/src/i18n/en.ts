@@ -63,6 +63,10 @@ export const en: Record<string, string> = {
   'notFound.body': 'Nothing in apiseven lives at',
   'notFound.back': 'Go to Routes',
 
+  // List columns every kind starts with (web/src/resources/registry.ts)
+  'column.id': 'ID',
+  'column.name': 'Name',
+
   // Errors that replace a page
   'error.title': 'Something went wrong',
   'error.body': 'This page hit an error it could not recover from. Reloading usually fixes it.',
