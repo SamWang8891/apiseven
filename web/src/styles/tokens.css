@@ -1,0 +1,75 @@
+/*
+ * Design tokens. Light theme on :root, dark theme on :root[data-theme="dark"].
+ * Every text/background pair is checked for WCAG contrast by contrast.test.ts.
+ *
+ * Surfaces:  --bg page canvas · --bg-raised panels, tables, menus, dialogs · --bg-sunken wells,
+ *            table headers, code, sidebar.
+ * Text:      --text body and read-only values · --text-2 secondary text (still >= 4.5:1).
+ * Lines:     --border dividers (decorative) · --border-strong input and control outlines (>= 3:1).
+ * Accent:    links, primary buttons (--accent-text on --accent), selection. Indigo, kept away
+ *            from the state hues so colour keeps meaning state.
+ * State:     --ok / --warn / --danger are text colours readable on their -bg tint and on plain
+ *            surfaces; badges are the -bg fill with the matching text. --neutral-bg is the fill
+ *            for "off" badges, with --text on it.
+ */
+
+:root {
+  color-scheme: light;
+
+  --bg: #fbfbfc;
+  --bg-raised: #ffffff;
+  --bg-sunken: #eef0f3;
+  --text: #0f1218;
+  --text-2: #4a5160;
+  --border: #dde1e7;
+  --border-strong: #848c9a;
+
+  --accent: #4a3fc4;
+  --accent-text: #ffffff;
+  --focus: #5b4ff0;
+
+  --ok: #116329;
+  --ok-bg: #daf3e1;
+  --warn: #7a4a00;
+  --warn-bg: #fdefd3;
+  --danger: #b42318;
+  --danger-bg: #fde4e1;
+  --neutral-bg: #e3e6eb;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', 'Cascadia Mono', Menlo, Consolas,
+    'Liberation Mono', monospace;
+
+  --radius: 4px;
+
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 24px;
+  --s6: 32px;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #0f1115;
+  --bg-raised: #181b21;
+  --bg-sunken: #0a0b0e;
+  --text: #e9ecf1;
+  --text-2: #a7aebb;
+  --border: #2b3039;
+  --border-strong: #6b7382;
+
+  --accent: #a99dff;
+  --accent-text: #140f38;
+  --focus: #b9afff;
+
+  --ok: #6edb8a;
+  --ok-bg: #11311c;
+  --warn: #f0c04c;
+  --warn-bg: #352606;
+  --danger: #ff8a7d;
+  --danger-bg: #3e1714;
+  --neutral-bg: #2c313b;
+}

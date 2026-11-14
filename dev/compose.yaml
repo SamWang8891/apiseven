@@ -1,0 +1,38 @@
+# Local APISIX + etcd for developing and testing apiseven.
+#   docker compose -f dev/compose.yaml up -d
+#   node dev/seed.mjs            # sample data (add --reset to wipe first)
+#   docker compose -f dev/compose.yaml down -v   # stop and drop etcd data
+name: apiseven-dev
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.35
+    command:
+      - etcd
+      - --name=etcd0
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+    volumes:
+      - etcd-data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  apisix:
+    image: apache/apisix:3.20.0-debian
+    depends_on:
+      etcd:
+        condition: service_healthy
+    volumes:
+      - ./apisix-config.yaml:/usr/local/apisix/conf/config.yaml:ro
+    ports:
+      # Host port 19180: 127.0.0.1:9180 is taken on the dev machine.
+      - "127.0.0.1:19180:9180" # Admin API
+      - "127.0.0.1:9080:9080" # HTTP gateway
+      - "127.0.0.1:9100:9100" # TCP stream proxy
+
+volumes:
+  etcd-data:
