@@ -146,6 +146,11 @@
   padding-right: 0;
 }
 
+/* "Keep both" under a host held because another node has its address. */
+.up-keep {
+  margin-top: var(--s1);
+}
+
 /* The new-node row: a dashed field, so it reads as a place to add rather than a node. */
 .up-table__new input {
   border-style: dashed;

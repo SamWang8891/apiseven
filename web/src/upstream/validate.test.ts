@@ -34,9 +34,15 @@ describe('upstreamIssues', () => {
       { path: 'nodes.1.priority', message: t('up.issue.priority') },
       { path: 'nodes.2.weight', message: t('up.issue.weightMissing') },
     ]);
-    expect(upstreamIssues({ nodes: { 'a:99999': 1, 'b:80': -2 } })).toEqual([
-      { path: 'nodes', message: t('up.issue.mapPort', { addr: 'a:99999' }) },
-      { path: 'nodes', message: t('up.issue.mapWeight', { addr: 'b:80' }) },
+  });
+
+  it('checks each map entry on its row: an empty host, the port, the weight', () => {
+    expect(upstreamIssues({ nodes: { ':80': 1, 'a:99999': 1, 'b:80': -2, 'c:80': null, '': 1 } })).toEqual([
+      { path: 'nodes.0.host', message: t('up.issue.host') },
+      { path: 'nodes.1.port', message: t('up.issue.port') },
+      { path: 'nodes.2.weight', message: t('up.issue.weight') },
+      { path: 'nodes.3.weight', message: t('up.issue.weightMissing') },
+      { path: 'nodes.4.host', message: t('up.issue.host') },
     ]);
   });
 

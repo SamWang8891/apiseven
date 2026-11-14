@@ -88,13 +88,16 @@ function checkTarget(up: Obj, add: Add): void {
       if (n.priority !== undefined && !isWhole(n.priority)) add(`nodes.${i}.priority`, t('up.issue.priority'));
     });
   } else if (isObj(nodes)) {
+    // A map entry's problems sit on its row, as the table shows it (in key order).
     const entries = Object.entries(nodes);
     if (entries.length === 0) add('nodes', t('up.issue.noNodes'));
-    for (const [addr, weight] of entries) {
-      const { port } = parseAddr(addr);
-      if (port !== undefined && (port < 1 || port > 65535)) add('nodes', t('up.issue.mapPort', { addr }));
-      if (!(isWhole(weight) && weight >= 0)) add('nodes', t('up.issue.mapWeight', { addr }));
-    }
+    entries.forEach(([addr, weight], i) => {
+      const { host, port } = parseAddr(addr);
+      if (host === '') add(`nodes.${i}.host`, t('up.issue.host'));
+      if (port !== undefined && (port < 1 || port > 65535)) add(`nodes.${i}.port`, t('up.issue.port'));
+      if (weight === null || weight === undefined) add(`nodes.${i}.weight`, t('up.issue.weightMissing'));
+      else if (!(isWhole(weight) && weight >= 0)) add(`nodes.${i}.weight`, t('up.issue.weight'));
+    });
   } else add('nodes', t('up.issue.noNodes'));
 }
 

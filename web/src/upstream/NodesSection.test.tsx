@@ -1,11 +1,17 @@
 import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import { isObj } from '../api/sanitize';
+import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { editableControls } from '../test/schemaForm';
 import { renderUpstream } from '../test/upstream';
 
 const newHost = () => screen.getByRole('textbox', { name: t('up.nodes.new') });
 const port = (n: number) => screen.getByRole('spinbutton', { name: t('up.nodes.portN', { n }) });
+const host = (n: number) => screen.getByRole('textbox', { name: t('up.nodes.hostN', { n }) });
+const weight = (n: number) => screen.getByRole('spinbutton', { name: t('up.nodes.weightN', { n }) });
+/** Every value the form emitted had its nodes as a map. */
+const allMaps = (changes: { mock: { calls: [Obj][] } }) => changes.mock.calls.every(([v]) => isObj(v.nodes));
 
 describe('the node list', () => {
   it('keeps a loaded map shape when a node is added', async () => {
@@ -101,6 +107,115 @@ describe('the node list', () => {
   });
 });
 
+describe('map-shaped nodes stay a map through edits', () => {
+  const MAP = { type: 'roundrobin', nodes: { '10.0.0.1:80': 1, '10.0.0.2:80': 2 } };
+
+  it('clearing and retyping a host', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.clear(host(1));
+    // An empty host stays in its row (upstreamIssues asks for one before saving).
+    expect(h.value().nodes).toEqual({ ':80': 1, '10.0.0.2:80': 2 });
+    await h.user.type(host(1), '10.0.0.9');
+    expect(h.value().nodes).toEqual({ '10.0.0.9:80': 1, '10.0.0.2:80': 2 });
+    expect(Object.keys(h.value().nodes as Obj)).toEqual(['10.0.0.9:80', '10.0.0.2:80']);
+    expect(allMaps(h.changes)).toBe(true);
+  });
+
+  it('clearing and retyping a weight', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.clear(weight(2));
+    expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.2:80': null });
+    expect(weight(2)).toHaveValue('');
+    await h.user.type(weight(2), '7');
+    expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.2:80': 7 });
+    expect(allMaps(h.changes)).toBe(true);
+  });
+
+  it('clearing a port, and a priority of 0, keep the map', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.clear(port(1));
+    await h.user.type(screen.getByRole('spinbutton', { name: t('up.nodes.priorityN', { n: 2 }) }), '0');
+    expect(h.value().nodes).toEqual({ '10.0.0.1': 1, '10.0.0.2:80': 2 });
+    expect(allMaps(h.changes)).toBe(true);
+  });
+
+  it('holds an all-digit host in its field while typing, and commits it on blur', async () => {
+    const h = renderUpstream({ nodes: { 'a.example': 1, 'b.example': 2 } }, { section: 'nodes' });
+    await h.user.clear(host(2));
+    await h.user.type(host(2), '10');
+    expect(host(2)).toHaveValue('10');
+    expect(h.value().nodes).toEqual({ 'a.example': 1, '': 2 });
+    await h.user.tab();
+    // Committed, not dropped (JavaScript lists the all-digit key first).
+    expect(h.value().nodes).toEqual({ 'a.example': 1, 10: 2 });
+    expect(host(1)).toHaveValue('10');
+    expect(allMaps(h.changes)).toBe(true);
+  });
+
+  it('commits an all-digit host typed as a new node on blur', async () => {
+    const h = renderUpstream({ nodes: { 'a.example': 1 } }, { section: 'nodes' });
+    await h.user.type(newHost(), '42');
+    expect(h.value().nodes).toEqual({ 'a.example': 1 });
+    await h.user.tab();
+    expect(h.value().nodes).toEqual({ 'a.example': 1, 42: 1 });
+  });
+
+  it('flags an address already in the list and keeps both entries as they were until told to keep both', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.clear(host(2));
+    await h.user.type(host(2), '10.0.0.1');
+    // Held in the field: node 2 keeps its address from before the edit; node 1 is untouched.
+    expect(h.value().nodes).toEqual(MAP.nodes);
+    expect(host(2)).toHaveValue('10.0.0.1');
+    expect(host(2)).toHaveAccessibleDescription(t('up.nodes.dupOf', { n: 1 }));
+    await h.user.tab();
+    expect(host(2)).toHaveValue('10.0.0.1');
+    expect(h.value().nodes).toEqual(MAP.nodes);
+
+    await h.user.click(screen.getByRole('button', { name: t('up.nodes.keepBothN', { n: 2 }) }));
+    expect(h.value().nodes).toEqual([
+      { host: '10.0.0.1', port: 80, weight: 1 },
+      { host: '10.0.0.1', port: 80, weight: 2 },
+    ]);
+  });
+
+  it('commits a held duplicate once it is changed to a free address', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.clear(host(2));
+    await h.user.type(host(2), '10.0.0.1');
+    await h.user.type(host(2), '1');
+    expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.11:80': 2 });
+    expect(host(2)).not.toHaveAccessibleDescription(t('up.nodes.dupOf', { n: 1 }));
+    expect(allMaps(h.changes)).toBe(true);
+  });
+
+  it('flags a new node at an address already in the list, adding nothing', async () => {
+    const h = renderUpstream({ nodes: { 'a.example': 1 } }, { section: 'nodes' });
+    await h.user.type(newHost(), 'a.example');
+    expect(h.value().nodes).toEqual({ 'a.example': 1 });
+    expect(newHost()).toHaveAccessibleDescription(t('up.nodes.dupOf', { n: 1 }));
+    await h.user.click(screen.getByRole('button', { name: t('up.nodes.keepBothNew') }));
+    expect(h.value().nodes).toEqual([{ host: 'a.example', weight: 1 }, { host: 'a.example', weight: 1 }]);
+  });
+
+  it('Duplicate copies the port and weight into a row with an empty host', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.click(screen.getByRole('button', { name: t('up.nodes.duplicateN', { n: 1 }) }));
+    expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, ':80': 1, '10.0.0.2:80': 2 });
+    expect(Object.keys(h.value().nodes as Obj)).toEqual(['10.0.0.1:80', ':80', '10.0.0.2:80']);
+    // A second copy would need the same empty address.
+    expect(screen.getByRole('button', { name: t('up.nodes.duplicateN', { n: 1 }) })).toBeDisabled();
+  });
+
+  it('a paste adds the new addresses and names the ones already in the list', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.click(newHost());
+    await h.user.paste('10.0.0.1:80\n10.0.0.3:80');
+    expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.2:80': 2, '10.0.0.3:80': 1 });
+    expect(screen.getByText(t('up.nodes.skipped', { list: '10.0.0.1:80' }))).toBeInTheDocument();
+  });
+});
+
 describe('service discovery', () => {
   it('switching to discovery removes the nodes, and switching back removes the discovery fields', async () => {
     const h = renderUpstream({ type: 'roundrobin', nodes: [{ host: 'a', port: 1, weight: 1 }], x_future: 1 }, { section: 'nodes' });
@@ -126,5 +241,18 @@ describe('service discovery', () => {
     await h.user.type(screen.getByRole('textbox', { name: t('up.discovery.group') }), 'G');
     expect(h.value().discovery_args).toEqual({ namespace_id: 'dev', group_name: 'G', weird: 'x', nested: { a: 1 } });
     expect(screen.getByText(t('up.discovery.unshown', { keys: 'nested' }))).toBeInTheDocument();
+  });
+});
+
+describe('held node text and the lock', () => {
+  it('drops held text when the editor locks, so it cannot come back on the next Edit', async () => {
+    const h = renderUpstream({ nodes: { '10.0.0.1:80': 1, '10.0.0.2:80': 2 } }, { section: 'nodes' });
+    await h.user.clear(host(2));
+    await h.user.type(host(2), '10.0.0.1');
+    expect(host(2)).toHaveValue('10.0.0.1');
+    h.update({ locked: true });
+    h.update({ locked: false });
+    expect(host(2)).toHaveValue('10.0.0.2');
+    expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.2:80': 2 });
   });
 });

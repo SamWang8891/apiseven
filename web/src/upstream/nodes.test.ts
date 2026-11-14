@@ -1,8 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import type { Obj } from '../api/types';
 import {
+  addMapNode,
   addNodes,
   addrOf,
+  canDuplicate,
   duplicateNode,
+  keepBoth,
+  setMapAddress,
+  type AddressEdit,
   isNodeList,
   parseAddr,
   parseNodeList,
@@ -52,33 +58,72 @@ describe('rowsOf', () => {
 describe('editing nodes', () => {
   const MAP = { type: 'roundrobin', nodes: { '10.0.0.1:80': 3, 'b.example': 1 } };
   const ARRAY = { nodes: [{ host: '10.0.0.1', port: 80, weight: 3, metadata: { zone: 'a' } }] };
+  const ok = (edit: AddressEdit) => {
+    if (!edit.ok) throw new Error(`expected the edit to go through, got ${edit.reason}`);
+    return edit.up.nodes;
+  };
 
-  it('keeps the map shape while every row fits it', () => {
-    expect(setNodeField(MAP, 1, 'port', 8080).nodes).toEqual({ '10.0.0.1:80': 3, 'b.example:8080': 1 });
+  it('a map keeps its shape and order through address, weight and port edits', () => {
+    expect(ok(setMapAddress(MAP, 1, { host: 'b.example', port: 8080 }))).toEqual({ '10.0.0.1:80': 3, 'b.example:8080': 1 });
+    expect(Object.keys(ok(setMapAddress(MAP, 0, { host: 'a', port: 1 })) as Obj)).toEqual(['a:1', 'b.example']);
     expect(setNodeField(MAP, 0, 'weight', 5).nodes).toEqual({ '10.0.0.1:80': 5, 'b.example': 1 });
-    expect(addNodes(MAP, [{ host: 'c', port: 1, weight: 1 }]).nodes).toEqual({ '10.0.0.1:80': 3, 'b.example': 1, 'c:1': 1 });
+    // An emptied host or weight stays in its row, for upstreamIssues to flag.
+    expect(ok(setMapAddress(MAP, 0, { host: '', port: 80 }))).toEqual({ ':80': 3, 'b.example': 1 });
+    expect(setNodeField(MAP, 1, 'weight', undefined).nodes).toEqual({ '10.0.0.1:80': 3, 'b.example': null });
+    // A priority of 0 is what the map means anyway.
+    expect(setNodeField(MAP, 0, 'priority', 0)).toBe(MAP);
   });
 
-  it('turns a map into the array shape for a row it cannot hold, weights kept', () => {
+  it('a map turns into the array shape only for a priority other than 0, weights kept', () => {
     expect(setNodeField(MAP, 0, 'priority', 1).nodes).toEqual([
       { host: '10.0.0.1', port: 80, weight: 3, priority: 1 },
       { host: 'b.example', weight: 1 },
     ]);
-    // No weight, no host, the same address twice.
-    expect(setNodeField(MAP, 1, 'weight', undefined).nodes).toEqual([{ host: '10.0.0.1', port: 80, weight: 3 }, { host: 'b.example' }]);
-    expect(setNodeField(MAP, 1, 'host', '').nodes).toEqual([{ host: '10.0.0.1', port: 80, weight: 3 }, { weight: 1 }]);
-    expect(Array.isArray(duplicateNode(MAP, 0).nodes)).toBe(true);
+  });
+
+  it('refuses an address another map entry has, naming that entry, and an all-digit host without a port until told to commit', () => {
+    expect(setMapAddress(MAP, 1, { host: '10.0.0.1', port: 80 })).toEqual({ ok: false, reason: 'duplicate', other: 0 });
+    expect(setMapAddress(MAP, 1, { host: '10', port: undefined })).toEqual({ ok: false, reason: 'digits' });
+    expect(ok(setMapAddress(MAP, 1, { host: '10', port: undefined }, { commitDigits: true }))).toEqual({ '10.0.0.1:80': 3, 10: 1 });
+    expect(ok(setMapAddress(MAP, 1, { host: '10', port: 80 }))).toEqual({ '10.0.0.1:80': 3, '10:80': 1 });
+    expect(addMapNode(MAP, { host: 'b.example', port: undefined })).toEqual({ ok: false, reason: 'duplicate', other: 1 });
+    expect(ok(addMapNode(MAP, { host: 'c', port: 1 }))).toEqual({ '10.0.0.1:80': 3, 'b.example': 1, 'c:1': 1 });
+  });
+
+  it('keeps both entries at one address as the array shape when told to', () => {
+    expect(keepBoth(MAP, 1, { host: '10.0.0.1', port: 80 }).nodes).toEqual([
+      { host: '10.0.0.1', port: 80, weight: 3 },
+      { host: '10.0.0.1', port: 80, weight: 1 },
+    ]);
+    expect(keepBoth(MAP, 2, { host: 'b.example', port: undefined }).nodes).toEqual([
+      { host: '10.0.0.1', port: 80, weight: 3 },
+      { host: 'b.example', weight: 1 },
+      { host: 'b.example', weight: 1 },
+    ]);
+  });
+
+  it('duplicates a map entry as a row with an empty host, once', () => {
+    const copied = duplicateNode(MAP, 0);
+    expect(copied.nodes).toEqual({ '10.0.0.1:80': 3, ':80': 3, 'b.example': 1 });
+    expect(canDuplicate(copied, 0)).toBe(false);
+    expect(duplicateNode(copied, 0)).toBe(copied);
+    expect(canDuplicate(MAP, 1)).toBe(true);
   });
 
   it('edits an array row in place, keeping keys the form does not show', () => {
     expect(setNodeField(ARRAY, 0, 'weight', 7).nodes).toEqual([{ host: '10.0.0.1', port: 80, weight: 7, metadata: { zone: 'a' } }]);
     expect(setNodeField(ARRAY, 0, 'port', undefined).nodes).toEqual([{ host: '10.0.0.1', weight: 3, metadata: { zone: 'a' } }]);
+    expect(setNodeField(ARRAY, 0, 'host', '').nodes).toEqual([{ port: 80, weight: 3, metadata: { zone: 'a' } }]);
     expect(duplicateNode(ARRAY, 0).nodes).toEqual([ARRAY.nodes[0], ARRAY.nodes[0]]);
   });
 
-  it('adds to the array shape, also when there are no nodes yet', () => {
-    expect(addNodes({}, [{ host: 'a', weight: 1 }]).nodes).toEqual([{ host: 'a', weight: 1 }]);
-    expect(addNodes(ARRAY, [{ host: 'a', weight: 1 }]).nodes).toEqual([...ARRAY.nodes, { host: 'a', weight: 1 }]);
+  it('adds nodes: to the array shape (also with no nodes yet), and to a map leaving out addresses it has', () => {
+    expect(addNodes({}, [{ host: 'a', weight: 1 }])).toEqual({ up: { nodes: [{ host: 'a', weight: 1 }] }, skipped: [] });
+    expect(addNodes(ARRAY, [{ host: 'a', weight: 1 }]).up.nodes).toEqual([...ARRAY.nodes, { host: 'a', weight: 1 }]);
+    expect(addNodes(MAP, [{ host: 'b.example' }, { host: 'c', port: 1 }, { host: 'c', port: 1 }])).toEqual({
+      up: { ...MAP, nodes: { '10.0.0.1:80': 3, 'b.example': 1, 'c:1': 1 } },
+      skipped: ['b.example', 'c:1'],
+    });
   });
 
   it('keeps an emptied list as an empty list of its shape', () => {
@@ -89,13 +134,17 @@ describe('editing nodes', () => {
 
   it('a paste replaces the address of the row it lands in and adds the rest after it', () => {
     const up = { nodes: [{ host: 'old', port: 1, weight: 4 }, { host: 'z', weight: 1 }] };
-    expect(pasteNodes(up, 0, [{ host: 'a', port: 80 }, { host: 'b', port: 81 }]).nodes).toEqual([
-      { host: 'a', port: 80, weight: 4 },
-      { host: 'b', port: 81, weight: 1 },
-      { host: 'z', weight: 1 },
-    ]);
+    expect(pasteNodes(up, 0, [{ host: 'a', port: 80 }, { host: 'b', port: 81 }])).toEqual({
+      up: { nodes: [{ host: 'a', port: 80, weight: 4 }, { host: 'b', port: 81, weight: 1 }, { host: 'z', weight: 1 }] },
+      skipped: [],
+    });
     // A host without a port keeps the row's port.
-    expect(pasteNodes(up, 0, [{ host: 'a' }]).nodes).toEqual([{ host: 'a', port: 1, weight: 4 }, { host: 'z', weight: 1 }]);
+    expect(pasteNodes(up, 0, [{ host: 'a' }]).up.nodes).toEqual([{ host: 'a', port: 1, weight: 4 }, { host: 'z', weight: 1 }]);
+    // In a map, addresses already there are left out and named.
+    expect(pasteNodes(MAP, 1, [{ host: '10.0.0.1', port: 80 }, { host: 'c' }])).toEqual({
+      up: { ...MAP, nodes: { '10.0.0.1:80': 3, 'b.example': 1, c: 1 } },
+      skipped: ['10.0.0.1:80'],
+    });
   });
 });
 

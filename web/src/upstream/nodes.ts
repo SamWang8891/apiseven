@@ -1,8 +1,11 @@
 // An upstream's nodes, in either shape APISIX takes: a map `{ "host:port": weight }` or an array of
 // `{ host, port, weight, priority, … }`. Edits keep the loaded shape: an array row is changed in
-// place (keys the form doesn't show, such as `metadata`, stay), a map is rebuilt in the same order.
-// A map can't hold a priority, a row without host or weight, or one address twice; a row like that
-// turns the list into the array shape, which can. A list that has no shape yet is an array.
+// place (keys the form doesn't show, such as `metadata`, stay), a map entry is renamed or reweighed
+// where it stands. A map stays a map through every edit but two: a priority other than 0, which
+// only the array holds, and keeping two entries at one address when the user asks to (keepBoth).
+// In between, a map entry may have an empty host (key ":80" or "") or no weight (null), which
+// upstreamIssues flags on its row; an address another entry has is refused, never merged. A list
+// that has no shape yet is an array.
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { removeAt, setPath, setPathRaw } from '../editor/draft';
@@ -72,17 +75,18 @@ export function rowsOf(nodes: unknown): NodeRow[] {
   return [];
 }
 
-/** The rows as a map, or undefined when one of them doesn't fit a map. */
-function toMap(rows: NodeRow[]): Obj | undefined {
-  const map: Obj = {};
-  for (const row of rows) {
-    if (!row.host || row.weight === undefined || row.priority !== undefined) return undefined;
-    const key = row.addr ?? addrOf(row.host, row.port);
-    if (Object.hasOwn(map, key)) return undefined;
-    map[key] = row.weight;
-  }
-  return map;
+/** An address being edited: the host as typed ('' allowed) and the port. */
+export interface Address {
+  host: string;
+  port: number | undefined;
 }
+
+/**
+ * What became of an address edit on a map: done, or refused because another entry (`other`) has
+ * that address, or because an all-digit host without a port would make JavaScript move the entry
+ * to the top of the map (integer-like keys come first), which only happens on request (commitDigits).
+ */
+export type AddressEdit = { ok: true; up: Obj } | { ok: false; reason: 'digits' } | { ok: false; reason: 'duplicate'; other: number };
 
 /** A row as an array entry: the fields it has. */
 function nodeOf(row: NodeRow): Obj {
@@ -94,73 +98,150 @@ function nodeOf(row: NodeRow): Obj {
   return node;
 }
 
-/** Writes map-shaped rows back: as the map while it holds them all, else as the array. */
-function writeMapRows(up: Obj, rows: NodeRow[]): Obj {
-  return setPathRaw(up, ['nodes'], toMap(rows) ?? rows.map(nodeOf));
-}
-
 const list = (up: Obj): unknown[] => (Array.isArray(up.nodes) ? up.nodes : []);
+const entriesOf = (up: Obj): [string, unknown][] => (isObj(up.nodes) ? Object.entries(up.nodes) : []);
+const writeMap = (up: Obj, entries: [string, unknown][]): Obj => setPathRaw(up, ['nodes'], Object.fromEntries(entries));
+const isDigits = (address: Address): boolean => address.port === undefined && /^\d+$/.test(address.host);
 
-/** Sets one field of node `index` (undefined or '' clears it). */
-export function setNodeField(up: Obj, index: number, field: 'host' | 'port' | 'weight' | 'priority', value: string | number | undefined): Obj {
-  if (isObj(up.nodes)) {
-    const rows = rowsOf(up.nodes);
-    const row = { ...rows[index], [field]: value === '' ? undefined : value };
-    if (field === 'host' || field === 'port') delete row.addr;
-    rows[index] = row;
-    return writeMapRows(up, rows);
-  }
-  return setPath(up, ['nodes', index, field], value);
+/** Why `address` can't take entry `index`'s place in a map (index = the entry count: a new entry). */
+function refusal(entries: [string, unknown][], index: number, address: Address, commitDigits: boolean): AddressEdit | undefined {
+  const key = addrOf(address.host, address.port);
+  const other = entries.findIndex(([k], j) => j !== index && k === key);
+  if (other >= 0) return { ok: false, reason: 'duplicate', other };
+  if (!commitDigits && isDigits(address)) return { ok: false, reason: 'digits' };
+  return undefined;
 }
 
-/** Appends nodes (a list without a shape becomes an array). */
-export function addNodes(up: Obj, added: NodeRow[]): Obj {
-  if (isObj(up.nodes)) return writeMapRows(up, [...rowsOf(up.nodes), ...added]);
-  return setPathRaw(up, ['nodes'], [...list(up), ...added.map(nodeOf)]);
+/** Gives map entry `index` a new address where it stands, its weight kept. */
+export function setMapAddress(up: Obj, index: number, address: Address, opts: { commitDigits?: boolean } = {}): AddressEdit {
+  const entries = entriesOf(up);
+  const entry = entries[index];
+  if (!entry) return { ok: true, up };
+  const refused = refusal(entries, index, address, opts.commitDigits ?? false);
+  if (refused) return refused;
+  entries[index] = [addrOf(address.host, address.port), entry[1]];
+  return { ok: true, up: writeMap(up, entries) };
+}
+
+/** Adds an entry with the default weight at the end of a map, unless refused as setMapAddress would. */
+export function addMapNode(up: Obj, address: Address, opts: { commitDigits?: boolean } = {}): AddressEdit {
+  const entries = entriesOf(up);
+  const refused = refusal(entries, entries.length, address, opts.commitDigits ?? false);
+  if (refused) return refused;
+  return { ok: true, up: writeMap(up, [...entries, [addrOf(address.host, address.port), NEW_WEIGHT]]) };
+}
+
+/**
+ * Sets one field of node `index` (undefined or '' clears it). In an array, in place. In a map: a
+ * cleared weight stays as null (flagged until filled); a priority other than 0 turns the list into
+ * the array shape, weights kept, and 0 or none changes nothing (it is what the map means); host and
+ * port go through setMapAddress, and a refused address changes nothing.
+ */
+export function setNodeField(up: Obj, index: number, field: 'host' | 'port' | 'weight' | 'priority', value: string | number | undefined): Obj {
+  if (!isObj(up.nodes)) return setPath(up, ['nodes', index, field], value);
+  const entries = entriesOf(up);
+  const entry = entries[index];
+  if (!entry) return up;
+  if (field === 'weight') {
+    entries[index] = [entry[0], value === undefined || value === '' ? null : value];
+    return writeMap(up, entries);
+  }
+  if (field === 'priority') {
+    if (typeof value !== 'number' || value === 0) return up;
+    const rows = rowsOf(up.nodes);
+    rows[index] = { ...rows[index], priority: value };
+    return setPathRaw(up, ['nodes'], rows.map(nodeOf));
+  }
+  const row = rowsOf(up.nodes)[index] ?? {};
+  const address: Address = field === 'host' ? { host: String(value ?? ''), port: row.port } : { host: row.host ?? '', port: typeof value === 'number' ? value : undefined };
+  const edit = setMapAddress(up, index, address, { commitDigits: true });
+  return edit.ok ? edit.up : up;
+}
+
+/**
+ * Turns a map into the array shape with entry `index` at `address` (index = the entry count: a new
+ * node), so two nodes can share an address: what the user chose with "Keep both". Weights are kept.
+ */
+export function keepBoth(up: Obj, index: number, address: Address): Obj {
+  const rows = rowsOf(up.nodes);
+  const moved: NodeRow = { ...(rows[index] ?? { weight: NEW_WEIGHT }), host: address.host, port: address.port };
+  delete moved.addr;
+  rows[index] = moved;
+  return setPathRaw(up, ['nodes'], rows.map(nodeOf));
+}
+
+/**
+ * Appends nodes (a list without a shape becomes an array). A map leaves out an address it already
+ * has (or that came earlier in `added`): those are returned in `skipped`, for the caller to name.
+ */
+export function addNodes(up: Obj, added: NodeRow[]): { up: Obj; skipped: string[] } {
+  if (!isObj(up.nodes)) return { up: setPathRaw(up, ['nodes'], [...list(up), ...added.map(nodeOf)]), skipped: [] };
+  const entries = entriesOf(up);
+  const skipped: string[] = [];
+  for (const row of added) {
+    const key = addrOf(row.host ?? '', row.port);
+    if (entries.some(([k]) => k === key)) skipped.push(key);
+    else entries.push([key, row.weight ?? NEW_WEIGHT]);
+  }
+  return { up: skipped.length === added.length ? up : writeMap(up, entries), skipped };
 }
 
 /**
  * Pasted addresses landing in node `index`'s host: the first replaces that node's host (and its
- * port, when the paste has one), the rest are added after it with the default weight.
+ * port, when the paste has one), the rest are added after it with the default weight (a map: at the
+ * end, leaving out, and returning in `skipped`, the addresses it already has).
  */
-export function pasteNodes(up: Obj, index: number, pasted: NodeRow[]): Obj {
+export function pasteNodes(up: Obj, index: number, pasted: NodeRow[]): { up: Obj; skipped: string[] } {
   const [first, ...rest] = pasted;
-  if (!first) return up;
+  if (!first) return { up, skipped: [] };
   const added = rest.map((row) => ({ ...row, weight: NEW_WEIGHT }));
   if (isObj(up.nodes)) {
-    const rows = rowsOf(up.nodes);
-    const row: NodeRow = { ...rows[index], host: first.host };
-    delete row.addr;
-    if (first.port !== undefined) row.port = first.port;
-    rows.splice(index, 1, row, ...added);
-    return writeMapRows(up, rows);
+    const row = rowsOf(up.nodes)[index] ?? {};
+    const address: Address = { host: first.host ?? '', port: first.port ?? row.port };
+    const edit = setMapAddress(up, index, address, { commitDigits: true });
+    const result = addNodes(edit.ok ? edit.up : up, added);
+    return { up: result.up, skipped: edit.ok ? result.skipped : [addrOf(address.host, address.port), ...result.skipped] };
   }
   const nodes = [...list(up)];
   const node: Obj = { ...(isObj(nodes[index]) ? nodes[index] : {}), host: first.host };
   if (first.port !== undefined) node.port = first.port;
   nodes.splice(index, 1, node, ...added.map(nodeOf));
-  return setPathRaw(up, ['nodes'], nodes);
+  return { up: setPathRaw(up, ['nodes'], nodes), skipped: [] };
 }
 
 /** Removes node `index`; the emptied list stays as an empty list of its shape while it is edited. */
 export function removeNode(up: Obj, index: number): Obj {
   if (isObj(up.nodes)) {
-    const rows = rowsOf(up.nodes);
-    rows.splice(index, 1);
-    return writeMapRows(up, rows);
+    const entries = entriesOf(up);
+    if (index < 0 || index >= entries.length) return up;
+    entries.splice(index, 1);
+    return writeMap(up, entries);
   }
   const next = removeAt(up, ['nodes'], index);
   return next !== up && next.nodes === undefined ? setPathRaw(next, ['nodes'], []) : next;
 }
 
-/** Inserts a copy of node `index` after it (a map can't hold the same address twice: it becomes an array). */
+/** The address a map copy of entry `index` gets: its port with an empty host, to type the new host into. */
+const copyKey = (up: Obj, index: number): string => addrOf('', rowsOf(up.nodes)[index]?.port);
+
+/** Whether node `index` can be duplicated: always in an array; in a map, while the copy's empty address is free. */
+export function canDuplicate(up: Obj, index: number): boolean {
+  if (!isObj(up.nodes)) return true;
+  const key = copyKey(up, index);
+  return !Object.hasOwn(up.nodes, key);
+}
+
+/**
+ * Inserts a copy of node `index` after it. A map can't hold one address twice, so its copy keeps the
+ * port and weight with an empty host, to be filled in (unchanged when that address is taken).
+ */
 export function duplicateNode(up: Obj, index: number): Obj {
   if (isObj(up.nodes)) {
-    const rows = rowsOf(up.nodes);
-    const row = rows[index];
-    if (!row) return up;
-    rows.splice(index + 1, 0, { ...row });
-    return writeMapRows(up, rows);
+    const entries = entriesOf(up);
+    const entry = entries[index];
+    if (!entry || !canDuplicate(up, index)) return up;
+    entries.splice(index + 1, 0, [copyKey(up, index), entry[1]]);
+    return writeMap(up, entries);
   }
   const nodes = [...list(up)];
   if (index < 0 || index >= nodes.length) return up;
