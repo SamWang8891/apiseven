@@ -27,9 +27,11 @@ export interface FakeAdminOptions {
   /** Replies by admin path (the part after /apisix/admin/, no query), taking precedence. */
   replies?: Record<string, Reply>;
   /**
-   * Stored objects per kind, which writes then change: PUT replaces one, PATCH merges its top-level
-   * keys (APISIX merges deeper; enough for status toggles), DELETE removes it. A kind listed here
-   * ignores `counts`. The id is `username` for consumers, else `id`.
+   * Stored objects per kind, which writes then change like APISIX: POST adds one under a generated
+   * id, PUT replaces one, PATCH merges into it (nested objects merge, `null` removes a key, arrays are
+   * replaced), DELETE removes it. Each object carries a `modifiedIndex` that every write to it raises;
+   * GETs report it, write responses don't (as in APISIX). SSL GETs leave out `key` / `keys`. A kind
+   * listed here ignores `counts`. The id is `username` for consumers, else `id`.
    */
   objects?: Partial<Record<Kind, Obj[]>>;
 }
@@ -67,9 +69,11 @@ const KINDS = new Set<string>([
  */
 export function fakeAdmin(opts: FakeAdminOptions = {}) {
   const requests: FakeRequest[] = [];
+  // etcd's revision: one counter for every write.
+  const revision = { n: 100 };
   const counts = opts.counts ?? SEED_COUNTS;
-  const objects = new Map<string, Obj[]>(
-    Object.entries(opts.objects ?? {}).map(([kind, list]) => [kind, list.map((value) => ({ ...value }))]),
+  const objects = new Map<string, Stored[]>(
+    Object.entries(opts.objects ?? {}).map(([kind, list]) => [kind, list.map((value) => ({ value: { ...value }, index: ++revision.n }))]),
   );
 
   const fetchImpl: typeof fetch = (input, init) => {
@@ -97,7 +101,7 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
 
     const [kind = '', ...rest] = path.split('/');
     const stored = objects.get(kind);
-    if (stored) return Promise.resolve(answer(kind, stored, rest.length ? decodeURIComponent(rest.join('/')) : undefined, req));
+    if (stored) return Promise.resolve(answer(kind, stored, rest.length ? decodeURIComponent(rest.join('/')) : undefined, req, revision));
 
     if (KINDS.has(path)) {
       const n = counts[path as Kind] ?? 0;
@@ -112,34 +116,83 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
     return Promise.resolve(json(404, { error_msg: 'Unsupported resource type' }));
   };
 
-  return { fetch: fetchImpl, requests };
+  /** The stored objects of a kind as APISIX holds them now (SSL keys included). */
+  const stored = (kind: Kind): Obj[] => (objects.get(kind) ?? []).map((entry) => entry.value);
+
+  /** Changes a stored object behind the editor's back (another user's save): raises its modifiedIndex. */
+  function touch(kind: Kind, id: string, change: Obj): void {
+    const entry = objects.get(kind)?.find((e) => idOf(kind, e.value) === id);
+    if (!entry) throw new Error(`no stored ${kind} ${id}`);
+    entry.value = { ...entry.value, ...change };
+    entry.index = ++revision.n;
+  }
+
+  return { fetch: fetchImpl, requests, stored, touch };
+}
+
+interface Stored {
+  value: Obj;
+  /** etcd's modifiedIndex: the revision of the last write to it. */
+  index: number;
 }
 
 const idOf = (kind: string, value: Obj): string => String(kind === 'consumers' ? value.username : value.id);
 
-/** The Admin API over a kind's stored objects: list, get, PUT, PATCH, DELETE. */
-function answer(kind: string, stored: Obj[], id: string | undefined, req: FakeRequest): Response {
-  const entry = (value: Obj) => ({ key: `/apisix/${kind}/${idOf(kind, value)}`, value });
-  if (id === undefined) {
-    if (req.method !== 'GET') return json(405, { error_msg: 'not supported here' });
-    return json(200, { total: stored.length, list: stored.length === 0 ? {} : stored.map(entry) });
+/** APISIX's PATCH merge (core.table.merge): nested objects merge, null removes, arrays and empty tables replace. */
+function merge(origin: Obj, extend: Obj): Obj {
+  const out: Obj = { ...origin };
+  for (const [k, v] of Object.entries(extend)) {
+    const old = out[k];
+    if (v === null) delete out[k];
+    else if (isPlain(v) && isPlain(old) && Object.keys(v).length > 0 && Object.keys(old).length > 0) out[k] = merge(old, v);
+    else out[k] = v;
   }
-  const at = stored.findIndex((value) => idOf(kind, value) === id);
+  return out;
+}
+
+const isPlain = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** What a GET shows: SSL private keys never leave APISIX. */
+function shown(kind: string, value: Obj): Obj {
+  if (kind !== 'ssls') return value;
+  const copy = { ...value };
+  delete copy.key;
+  delete copy.keys;
+  return copy;
+}
+
+/** The Admin API over a kind's stored objects: list, get, POST, PUT, PATCH, DELETE. */
+function answer(kind: string, stored: Stored[], id: string | undefined, req: FakeRequest, revision: { n: number }): Response {
+  const entry = (value: Obj) => ({ key: `/apisix/${kind}/${idOf(kind, value)}`, value });
+  const read = (s: Stored) => ({ ...entry(shown(kind, s.value)), modifiedIndex: s.index, createdIndex: s.index });
   const body = (req.body ?? {}) as Obj;
+  if (id === undefined) {
+    if (req.method === 'POST') {
+      const value = { ...body, id: String(revision.n + 1).padStart(20, '0') };
+      stored.push({ value, index: ++revision.n });
+      return json(201, entry(value));
+    }
+    if (req.method !== 'GET') return json(405, { error_msg: 'not supported here' });
+    return json(200, { total: stored.length, list: stored.length === 0 ? {} : stored.map(read) });
+  }
+  const at = stored.findIndex((s) => idOf(kind, s.value) === id);
+  const current = stored[at];
   switch (req.method) {
     case 'GET':
-      return at < 0 ? json(404, { message: 'Key not found' }) : json(200, entry(stored[at] as Obj));
+      return current ? json(200, read(current)) : json(404, { message: 'Key not found' });
     case 'PUT': {
       const value = { ...body, ...(kind === 'consumers' ? {} : { id }) };
-      if (at < 0) stored.push(value);
-      else stored[at] = value;
-      return json(at < 0 ? 201 : 200, entry(value));
+      if (current) {
+        current.value = value;
+        current.index = ++revision.n;
+      } else stored.push({ value, index: ++revision.n });
+      return json(current ? 200 : 201, entry(value));
     }
     case 'PATCH': {
-      if (at < 0) return json(404, { message: 'Key not found' });
-      const value = { ...(stored[at] as Obj), ...body };
-      stored[at] = value;
-      return json(200, entry(value));
+      if (!current) return json(404, { message: 'Key not found' });
+      current.value = merge(current.value, body);
+      current.index = ++revision.n;
+      return json(200, entry(current.value));
     }
     case 'DELETE':
       if (at < 0) return json(404, { message: 'Key not found' });

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
-import type { Item, Kind, Obj, Parent } from '../api/types';
+import type { Item, Kind, Obj, Parent, PluginInfo } from '../api/types';
+import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import type { FilterDef } from '../table/filter';
 import type { Ctx } from './ctx';
@@ -22,21 +23,38 @@ export interface ColumnDef {
   mono?: boolean;
 }
 
+/**
+ * What the editor frame hands each tab. The draft is the whole object; a tab writes only its own
+ * fields (with setPath / setPathRaw from editor/draft.ts) and calls setDraft once per change with the
+ * complete next object. Everything a tab shows comes from the draft: only the active tab is mounted.
+ */
 export interface TabProps {
   draft: Obj;
-  setDraft(next: Obj): void;
+  setDraft: (next: Obj) => void;
   kind: Kind;
   isNew: boolean;
   ctx: Ctx;
   parent?: Parent;
+  /** The issues attributed to this tab: client-side ones from `validate`, and APISIX's error once it names one of its fields. */
+  issues: Issue[];
+  /** The stored object as loaded (timestamps included); undefined for a new object. */
+  original?: Item;
 }
 
 export interface TabDef {
   id: string;
   label: string;
   render(p: TabProps): ReactNode;
-  /** Top-level keys this tab owns (for error badges). */
+  /** Top-level keys this tab owns: an issue or APISIX error about one of them badges this tab. */
   fields: string[];
+}
+
+/** What `validate` may consult besides the draft. */
+export interface ValidateEnv {
+  isNew: boolean;
+  ctx: Ctx;
+  /** Every http plugin with its schemas (useAllPlugins().data); undefined until loaded. */
+  plugins?: Record<string, PluginInfo>;
 }
 
 /** A way to group a list's rows (a toggle on the list page); one item can sit in several groups. */
@@ -73,6 +91,13 @@ export interface ResourceDef {
   filters?: FilterDef[];
   /** Row groupings the list page offers, one at a time. */
   groupings?: Grouping[];
+  /**
+   * Client-side checks of a draft, run on every change; Save is blocked while any issue remains.
+   * Pure. Set `tab` on an issue when its path's first segment is not in that tab's `fields`.
+   */
+  validate?(draft: Obj, env: ValidateEnv): Issue[];
+  /** For kinds whose id is a field of the body (a consumer's `username`): the frame shows no ID input. */
+  idFromDraft?(draft: Obj): string | undefined;
 }
 
 /** name → username → desc → id. */

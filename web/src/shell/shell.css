@@ -350,28 +350,6 @@
   color: var(--text-2);
 }
 
-/* Placeholder editor page (until Task 7). */
-.shell-facts {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 6px var(--s5);
-  margin: 0;
-}
-
-.shell-facts dt {
-  color: var(--text-2);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 18px;
-}
-
-.shell-facts dd {
-  margin: 0;
-  line-height: 18px;
-  overflow-wrap: anywhere;
-}
-
-
 /* --- Error page and splash ----------------------------------------------------------------- */
 
 .shell-error {

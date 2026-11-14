@@ -1,0 +1,445 @@
+/*
+ * Editor frame. Class prefix ed-; colours from the tokens only; nothing is ever faded.
+ *
+ * The page: a sticky header (.ed-head) over the body (.ed-body: error banner, ID field, tabs).
+ * Locked and editing differ in the header's badge and actions, and in one rule: while editing, an
+ * accent bar runs along the header's bottom edge. It is drawn over the border, so it takes no space
+ * and unlocking moves nothing.
+ *
+ * Hooks for tab bodies (later tasks):
+ *   .ed-grid           two columns of fields (32px rows, 16px / 24px gaps), at most 880px wide
+ *   .ed-grid--single   one column, same width
+ *   .ed-wide           a grid child spanning both columns (a table, a code editor)
+ *   .ed-stack          a vertical stack of groups (fields, sections, tables) 16px apart
+ *   .ed-note           secondary explanatory text under or between fields
+ */
+
+.ed {
+  min-height: 100%;
+}
+
+/* --- Header -------------------------------------------------------------------------------- */
+
+.ed-head {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s4);
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.ed-head::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: transparent;
+  content: '';
+}
+
+.ed-head--editing::after {
+  background: var(--accent);
+}
+
+.ed-head__main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ed-head__line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  min-height: var(--control-h);
+}
+
+.ed-back {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  margin-left: -6px;
+  border-radius: var(--radius);
+  color: var(--text-2);
+}
+
+.ed-back:hover {
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+
+.ed-title {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ed-id {
+  flex: 0 1 auto;
+  min-width: 48px;
+  max-width: 280px;
+  color: var(--text-2);
+}
+
+.ed-status {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* Updated · Created · Unsaved changes, aligned under the title. Always one line high, so the
+   "Unsaved changes" mark appearing changes nothing around it. */
+.ed-meta {
+  display: flex;
+  flex-wrap: wrap;
+  min-height: 18px;
+  padding-left: 30px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.ed-meta__item + .ed-meta__item::before {
+  margin: 0 var(--s2);
+  color: var(--text-2);
+  font-weight: 400;
+  content: '·';
+}
+
+.ed-meta__dirty {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.ed-actions {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--control-h);
+}
+
+/* The E key cap inside the Edit button. */
+.ed-kbd {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  margin-left: 6px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Unsaved changes: beside Save's label and a tab's name. */
+.ed-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: middle;
+}
+
+/* Holds the tooltip of a disabled Edit button (a read-only key). */
+.ed-tipwrap {
+  display: inline-flex;
+  border-radius: var(--radius);
+}
+
+/* --- Body ---------------------------------------------------------------------------------- */
+
+.ed-body {
+  padding: var(--s4) var(--s5) var(--s6);
+}
+
+/* APISIX's refusal, verbatim, until the next save or discard. */
+.ed-banner {
+  display: flex;
+  gap: 10px;
+  margin-bottom: var(--s4);
+  padding: 10px var(--s3);
+  border: 1px solid var(--danger);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--text);
+}
+
+.ed-banner > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--danger);
+}
+
+.ed-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ed-banner__title {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.ed-banner__message {
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ed-newid {
+  max-width: 420px;
+  margin-bottom: var(--s4);
+}
+
+/* --- JSON tab ------------------------------------------------------------------------------ */
+
+.ed-json {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+}
+
+.ed-json__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: var(--control-h-sm);
+}
+
+.ed-json__hint {
+  min-width: 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.ed-json__tools {
+  display: flex;
+  flex: none;
+  gap: var(--s1);
+}
+
+.ed-json__error {
+  color: var(--danger);
+  overflow-wrap: anywhere;
+}
+
+.ed-issues {
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.ed-issues__title {
+  margin-bottom: var(--s1);
+  font-size: 12px;
+}
+
+.ed-issues__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ed-issues__item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+}
+
+.ed-issues__path {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* --- Conflict dialog ------------------------------------------------------------------------ */
+
+.ed-conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ed-conflict__legend {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.ed-diff {
+  max-height: 50vh;
+  padding: 6px 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  line-height: 18px;
+}
+
+.ed-diff__line {
+  display: flex;
+  min-width: max-content;
+  padding-right: 10px;
+  color: var(--text);
+  text-decoration: none;
+  white-space: pre;
+}
+
+.ed-diff__line--del {
+  background: var(--danger-bg);
+}
+
+.ed-diff__line--add {
+  background: var(--ok-bg);
+}
+
+.ed-diff__mark {
+  flex: none;
+  width: 24px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.ed-diff__line--del .ed-diff__mark {
+  color: var(--danger);
+}
+
+.ed-diff__line--add .ed-diff__mark {
+  color: var(--ok);
+}
+
+.ed-diff__skip {
+  padding: 2px 10px 2px 24px;
+  color: var(--text-2);
+  font-family: var(--font-sans);
+}
+
+/* --- Load states --------------------------------------------------------------------------- */
+
+.ed-state {
+  max-width: 600px;
+  margin: 10vh auto var(--s6);
+  padding: 0 var(--s4);
+}
+
+.ed-state__icon {
+  margin-bottom: var(--s2);
+  color: var(--text-2);
+}
+
+.ed-state--error .ed-state__icon {
+  color: var(--danger);
+}
+
+.ed-state__body {
+  margin-top: var(--s1);
+  color: var(--text-2);
+}
+
+.ed-state__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--s4);
+}
+
+.ed-state__message {
+  margin: var(--s3) 0 var(--s4);
+  padding: var(--s2) var(--s3);
+  border-left: 3px solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ed-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ed-skel__bar {
+  display: block;
+  max-width: 100%;
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.ed-skel__bar--title {
+  width: 280px;
+  height: 24px;
+  margin: 4px 0;
+}
+
+.ed-skel__bar--meta {
+  width: 340px;
+  height: 14px;
+}
+
+.ed-skel__bar--tabs {
+  width: 300px;
+  height: 30px;
+}
+
+.ed-skel__bar--block {
+  width: 100%;
+  height: 320px;
+}
+
+/* --- Tab body hooks ------------------------------------------------------------------------ */
+
+.ed-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s4) var(--s5);
+  max-width: 880px;
+}
+
+.ed-grid--single {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ed-wide {
+  grid-column: 1 / -1;
+}
+
+.ed-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+}
+
+.ed-note {
+  color: var(--text-2);
+  font-size: 12px;
+}

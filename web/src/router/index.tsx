@@ -1,84 +1,14 @@
 import { lazy, Suspense } from 'react';
-import { createHashRouter, Link, Navigate, useLocation, useParams, type RouteObject } from 'react-router';
-import { useList } from '../api/hooks';
-import type { Kind, Parent } from '../api/types';
+import { createHashRouter, Navigate, type RouteObject } from 'react-router';
 import { ConnectPage } from '../connection/ConnectPage';
-import { t } from '../i18n';
-import { ListPage } from '../pages/ListPage';
 import { RouteErrorPage } from '../shell/ErrorPage';
 import { Shell } from '../shell/Shell';
 import { TooltipProvider } from '../ui';
-import { kindFromSegment, pathFor } from './paths';
+import { pathFor } from './paths';
+import { CredentialRoute, EditorRoute, ListRoute, NotFound } from './routeElements';
 
 // The UI kit showcase, in development builds only (the import is dropped from production bundles).
 const Gallery = import.meta.env.DEV ? lazy(() => import('../ui/Gallery')) : null;
-
-/** Placeholder editor page (Task 7 replaces it). `id` is decoded; undefined on the create page. */
-export function EditorPlaceholder({ kind, id, parent }: { kind: Kind; id?: string; parent?: Parent }) {
-  const list = useList(kind, parent);
-  const singular = t(`kind.${kind}.singular`);
-  return (
-    <div className="shell-page">
-      <div className="shell-page__head">
-        <h1>{id === undefined ? t('page.new', { kind: singular }) : singular}</h1>
-      </div>
-      <dl className="shell-facts">
-        {parent && (
-          <>
-            <dt>{t('page.consumer')}</dt>
-            <dd className="mono">{parent.consumer}</dd>
-          </>
-        )}
-        {id !== undefined && (
-          <>
-            <dt>{t('page.id')}</dt>
-            <dd className="mono">{id}</dd>
-          </>
-        )}
-        <dt>{t(`kind.${kind}.plural`)}</dt>
-        <dd>{list.data ? t('page.count', { count: list.data.length }) : t('ui.empty')}</dd>
-      </dl>
-      <p className="shell-note">{t('page.placeholder')}</p>
-    </div>
-  );
-}
-
-function NotFound() {
-  const { pathname } = useLocation();
-  return (
-    <div className="shell-page">
-      <div className="shell-page__head">
-        <h1>{t('notFound.title')}</h1>
-      </div>
-      <p>
-        {t('notFound.body')} <code className="mono">{pathname}</code>
-      </p>
-      <p className="shell-note">
-        <Link to={pathFor('routes')}>{t('notFound.back')}</Link>
-      </p>
-    </div>
-  );
-}
-
-function ListRoute() {
-  const kind = kindFromSegment(useParams().kind);
-  return kind ? <ListPage key={kind} kind={kind} /> : <NotFound />;
-}
-
-function EditorRoute({ creating }: { creating?: boolean }) {
-  const params = useParams();
-  const kind = kindFromSegment(params.kind);
-  if (!kind) return <NotFound />;
-  const id = creating ? undefined : params.id;
-  // Keyed, so opening another object starts a fresh page instead of reusing this one's state.
-  return <EditorPlaceholder key={`${kind}/${id ?? ''}`} kind={kind} id={id} />;
-}
-
-function CredentialRoute({ creating }: { creating?: boolean }) {
-  const { username = '', id } = useParams();
-  const credentialId = creating ? undefined : id;
-  return <EditorPlaceholder key={`${username}/${credentialId ?? ''}`} kind="credentials" id={credentialId} parent={{ consumer: username }} />;
-}
 
 const routes: RouteObject[] = [
   {
@@ -126,7 +56,6 @@ const routes: RouteObject[] = [
  * The app's hash router: #/connect, #/:kind (with ?q= and f.<filter>= for the list's search), #/:kind/new, #/:kind/:id,
  * #/consumers/:username/credentials/new|:id, and #/__kit in development.
  */
-// eslint-disable-next-line react-refresh/only-export-components -- the route table lives beside the placeholder editor it renders (Task 7 replaces it)
 export function createAppRouter() {
   return createHashRouter(routes);
 }

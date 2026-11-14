@@ -61,6 +61,8 @@ describe('ListPage', () => {
     await rowAction(user, 'slashy', t('action.duplicate'));
     await waitFor(() => expect(window.location.hash).toBe('#/routes/new?from=a%2Fb'));
     window.history.back();
+    // The copy is unsaved work (a duplicate starts dirty), so leaving it asks first.
+    await user.click(await screen.findByRole('button', { name: t('editor.leave.confirm') }));
     await rowAction(user, 'slashy', t('action.edit'));
     await waitFor(() => expect(window.location.hash).toBe('#/routes/a%2Fb'));
   });
