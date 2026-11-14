@@ -5,7 +5,8 @@
 
 /* --- Toolbar -------------------------------------------------------------------------------- */
 
-.tbl-toolbar {
+/* `.tbl` raises it above .shell-toolbar's wrap: the start wraps its chips, the end stays on the first row. */
+.tbl .tbl-toolbar {
   flex: none;
   flex-wrap: nowrap;
   align-items: flex-start;

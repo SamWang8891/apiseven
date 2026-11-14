@@ -75,6 +75,39 @@ export function isEnabled(value: Obj): boolean {
   return value.status !== 0;
 }
 
+/** The Ctx list each kind it carries lives in. */
+const CTX_LISTS = {
+  routes: 'routes',
+  stream_routes: 'streamRoutes',
+  services: 'services',
+  upstreams: 'upstreams',
+  ssls: 'ssls',
+  plugin_configs: 'pluginConfigs',
+  consumer_groups: 'consumerGroups',
+  consumers: 'consumers',
+} as const satisfies Partial<Record<Kind, keyof Ctx>>;
+
+/** Kinds whose objects the Ctx holds, so a reference to one can be resolved. */
+export type CtxKind = keyof typeof CTX_LISTS;
+
+export interface RefTarget {
+  id: string;
+  /** Undefined when no object has the id: a dangling reference. */
+  item?: Item;
+}
+
+/** What a reference field (`service_id`, `plugin_config_id`, `upstream_id`, …) points at; undefined when unset. */
+export function resolveRef(kind: CtxKind, value: unknown, ctx: Ctx): RefTarget | undefined {
+  const id = idOf(value);
+  return id === undefined ? undefined : { id, item: find(ctx[CTX_LISTS[kind]], id) };
+}
+
+/** `labels` as [key, value] pairs, in stored order; anything but a string value is skipped. */
+export function labelPairs(labels: unknown): [string, string][] {
+  if (!isObj(labels)) return [];
+  return Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === 'string');
+}
+
 /** The route's own `hosts` / `host`, else its service's `hosts` (apisix/http/route.lua). */
 export function routeHosts(route: Obj, ctx: Ctx): { hosts: string[]; viaService: boolean } {
   const own = strings(route.hosts);

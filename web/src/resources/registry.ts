@@ -4,6 +4,9 @@ import { t } from '../i18n';
 import type { FilterDef } from '../table/filter';
 import type { Ctx } from './ctx';
 import { nameOfValue } from './resolve';
+import { routeColumns } from './routes/columns';
+import { routeFilters } from './routes/filters';
+import { hostGrouping } from './routes/grouping';
 
 export type { Ctx } from './ctx';
 export { useCtx } from './ctx';
@@ -36,6 +39,19 @@ export interface TabDef {
   fields: string[];
 }
 
+/** A way to group a list's rows (a toggle on the list page); one item can sit in several groups. */
+export interface Grouping {
+  id: string;
+  /** The toggle's text, e.g. "Group by host". */
+  label: string;
+  /** The groups an item belongs to; [] puts it in the ungrouped group, which comes last. */
+  groupBy(item: Item, ctx: Ctx): string[];
+  /** A named group's header row content; default: the group name and its item count. */
+  header?(group: string, items: Item[], ctx: Ctx): ReactNode;
+  /** The ungrouped group's name; default i18n `table.ungrouped`. */
+  ungroupedLabel?: string;
+}
+
 export interface ResourceDef {
   kind: Kind;
   group: 'traffic' | 'access' | 'plugins' | 'other';
@@ -55,6 +71,8 @@ export interface ResourceDef {
   idMode: 'optional' | 'required' | 'fixed-list';
   /** Quick-filter chips on the list page. */
   filters?: FilterDef[];
+  /** Row groupings the list page offers, one at a time. */
+  groupings?: Grouping[];
 }
 
 /** name → username → desc → id. */
@@ -114,6 +132,9 @@ export const registry: Record<Kind, ResourceDef> = {
     hasStatus: true,
     idMode: 'optional',
     blank: () => ({ uri: '/*', status: 1 }),
+    columns: routeColumns,
+    filters: routeFilters,
+    groupings: [hostGrouping],
   }),
   stream_routes: define('stream_routes', { group: 'traffic', hasStatus: false, idMode: 'optional' }),
   services: define('services', { group: 'traffic', hasStatus: false, idMode: 'optional' }),

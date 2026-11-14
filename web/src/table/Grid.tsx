@@ -11,8 +11,9 @@ import { HeaderCell } from './HeaderCell';
 import type { TableRow } from './rows';
 import type { SortRule } from './sort';
 
-const CHECK_WIDTH = 40;
-const ACTIONS_WIDTH = 48;
+// The checkbox (16px) and the ⋯ button (26px) with the cell padding.
+const CHECK_WIDTH = 34;
+const ACTIONS_WIDTH = 40;
 const SKELETON_ROWS = 8;
 
 export interface GridProps extends Pick<DataTableProps, 'kind' | 'ctx' | 'parent' | 'rowActions' | 'groupHeader' | 'ungroupedLabel'> {

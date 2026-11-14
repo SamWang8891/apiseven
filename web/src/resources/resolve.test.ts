@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
 import { EC_IPV6, FAR } from '../test/certs';
 import { ctxOf, itemOf } from '../test/ctx';
-import { effectivePlugins, nameOfValue, referencesTo, routeHosts, sslForHost, upstreamSummary } from './resolve';
+import { effectivePlugins, labelPairs, nameOfValue, referencesTo, resolveRef, routeHosts, sslForHost, upstreamSummary } from './resolve';
 
 describe('nameOfValue', () => {
   it('takes name, then username, then desc, skipping empty strings', () => {
@@ -412,5 +412,29 @@ describe('referencesTo', () => {
     expect(referencesTo('consumers', 'alice', ctx)).toEqual([]);
     expect(referencesTo('global_rules', 'g', ctx)).toEqual([]);
     expect(referencesTo('secrets', 'vault/1', ctx)).toEqual([]);
+  });
+});
+
+describe('resolveRef', () => {
+  const ctx = ctxOf({ services: [itemOf('s1', { name: 'web' }), itemOf('7')], pluginConfigs: [itemOf('pc1')] });
+
+  it('finds the object a reference field names, numeric ids included', () => {
+    expect(resolveRef('services', 's1', ctx)).toEqual({ id: 's1', item: ctx.services[0] });
+    expect(resolveRef('services', 7, ctx)).toEqual({ id: '7', item: ctx.services[1] });
+    expect(resolveRef('plugin_configs', 'pc1', ctx)?.item).toBe(ctx.pluginConfigs[0]);
+  });
+
+  it('keeps the id of a dangling reference, and is undefined for an unset one', () => {
+    expect(resolveRef('services', 'gone', ctx)).toEqual({ id: 'gone', item: undefined });
+    expect(resolveRef('services', undefined, ctx)).toBeUndefined();
+    expect(resolveRef('services', '', ctx)).toBeUndefined();
+  });
+});
+
+describe('labelPairs', () => {
+  it('lists string labels in stored order and skips anything else', () => {
+    expect(labelPairs({ team: 'core', env: 'dev', n: 1 })).toEqual([['team', 'core'], ['env', 'dev']]);
+    expect(labelPairs(undefined)).toEqual([]);
+    expect(labelPairs(['a'])).toEqual([]);
   });
 });

@@ -4,7 +4,8 @@
  * both directions, so the header sticks to its top, the checkbox column to its left and the actions
  * column to its right. Rows: comfortable ~40px, compact ~30px (one 20px text line plus padding);
  * data cells align on their first line's baseline, so stacked values start level with single ones.
- * State is a badge with words, never a faded row.
+ * State is a badge with words, never a faded row. Cells keep 10px a side: a dense tool, and the
+ * routes list's default columns fit beside the sidebar at 1280px.
  */
 
 .tbl {
@@ -75,7 +76,7 @@
   height: 100%;
   min-height: inherit;
   margin: 0;
-  padding: 0 12px;
+  padding: 0 10px;
   border: 0;
   background: transparent;
   color: inherit;
@@ -157,7 +158,7 @@
 /* Body rows */
 
 .tbl-row > td {
-  padding: 10px 12px;
+  padding: 10px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-raised);
   color: var(--text);
@@ -264,7 +265,7 @@
 
 .tbl-table thead > tr > .tbl-cell-check {
   z-index: 3;
-  padding-left: 12px;
+  padding-left: 10px;
 }
 
 .tbl-cell-check > .tbl-check {
@@ -309,7 +310,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--s2);
-  padding: 12px 12px 6px;
+  padding: 12px 10px 6px;
 }
 
 .tbl-group__name {

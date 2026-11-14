@@ -1,0 +1,182 @@
+/*
+ * Cells shared by the resource lists (cells.tsx, expiry.tsx) and the host group header. Class
+ * prefix cell-; colours from the tokens. Every cell starts with a text line or a chip row whose
+ * first chip holds text, so it sits on the row's shared baseline (table.css). Chip rows step 20px,
+ * like stacked text lines: an 18px chip plus a 2px gap.
+ */
+
+/* A second, quieter line under a value: a description. */
+.cell-sub {
+  display: block;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-muted {
+  color: var(--text-2);
+}
+
+/* A tag on its own line under the values it qualifies ("via service"). */
+.cell-under {
+  display: flex;
+  margin-top: 2px;
+}
+
+/* Links to other objects: plain weight, so the row's own name stays the strongest link. */
+.cell-link {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--accent);
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: top;
+}
+
+.cell-link:hover {
+  text-decoration: underline;
+}
+
+.cell-time {
+  white-space: nowrap;
+}
+
+/* --- Chips ----------------------------------------------------------------------------------- */
+
+.cell-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 4px;
+  min-width: 0;
+}
+
+.cell-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  height: 18px;
+  padding: 0 5px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* Methods: outlined monospace tokens. ANY (no restriction) recedes, so a real limit stands out. */
+.cell-method {
+  padding: 0 4px;
+  border-color: var(--border-strong);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cell-method--any {
+  border-color: var(--border);
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+/* Plugins: filled when the object sets them; a dashed outline when inherited. */
+.cell-plugin {
+  background: var(--neutral-bg);
+}
+
+.cell-plugin--inherited {
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+}
+
+/* "off" after a hairline: the plugin is configured but does not run. */
+.cell-plugin__off {
+  padding-left: 5px;
+  border-left: 1px solid var(--border-strong);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.cell-label {
+  gap: 0;
+  border-color: var(--border);
+}
+
+.cell-label__key {
+  color: var(--text-2);
+}
+
+.cell-tip-list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Id with its copy button ----------------------------------------------------------------- */
+
+.cell-id {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  height: 20px;
+}
+
+.cell-id__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cell-copy {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cell-copy:hover {
+  background: var(--neutral-bg);
+  color: var(--text);
+}
+
+.cell-copy:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+/* --- Certificate expiry and the host group header -------------------------------------------- */
+
+/* Inside the badge the days lead; the date follows in regular weight. */
+.cell-expiry__date {
+  font-weight: 400;
+}
+
+.cell-group__host {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cell-group__cert {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: var(--s2);
+  color: var(--text-2);
+}

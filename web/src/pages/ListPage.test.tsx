@@ -222,3 +222,79 @@ describe('read-only key', () => {
     return main().findByRole('switch', { name: t('table.status.toggle', { name }) });
   }
 });
+
+describe('group by host', () => {
+  const DAY = 86_400_000;
+  const objects = {
+    routes: [
+      { id: 'r1', name: 'both', hosts: ['b.example', 'a.example'] },
+      { id: 'r2', name: 'only-a', host: 'a.example' },
+      { id: 'r3', name: 'anywhere', uri: '/*' },
+    ],
+    ssls: [{ id: 'c1', snis: ['a.example'], validity_end: Math.floor((Date.now() + 10 * DAY) / 1000) }],
+  };
+  const groupSwitch = () => main().findByRole('switch', { name: t('group.byHost') });
+  /** Group headers and route names, top to bottom. */
+  const layout = () =>
+    within(main().getByRole('table'))
+      .getAllByRole('row')
+      .slice(1)
+      .map((row) => {
+        const head = within(row).queryByRole('rowheader');
+        return head ? `# ${head.textContent}` : (row.querySelector('.tbl-name')?.textContent ?? '');
+      });
+
+  it('lists a route under each of its hosts, host-less ones under (any host), and keeps the choice', async () => {
+    const { user, unmount } = await open('#/routes', { objects });
+    await main().findByRole('link', { name: 'anywhere' });
+    expect(main().queryByRole('rowheader')).not.toBeInTheDocument();
+    expect(await groupSwitch()).not.toBeChecked();
+
+    await user.click(await groupSwitch());
+    expect(await groupSwitch()).toBeChecked();
+    expect(localStorage.getItem('apiseven.table.routes.group')).toBe('host');
+    const heads = layout().filter((line) => line.startsWith('# '));
+    expect(heads).toHaveLength(3);
+    expect(heads[0]).toMatch(/^# a\.example2/);
+    expect(heads[1]).toMatch(/^# b\.example1/);
+    expect(heads[2]).toBe(`# ${t('group.anyHost')}1`);
+    expect(layout().filter((line) => !line.startsWith('# '))).toEqual(['both', 'only-a', 'both', 'anywhere']);
+
+    // Remounted (a reload): still grouped.
+    unmount();
+    await open('#/routes', { objects });
+    expect(await groupSwitch()).toBeChecked();
+    await main().findByRole('link', { name: 'anywhere' });
+    expect(main().getAllByRole('rowheader')).toHaveLength(3);
+  });
+
+  it("heads a host's group with its certificate expiry", async () => {
+    const { user } = await open('#/routes', { objects });
+    await user.click(await groupSwitch());
+    const [a, b] = await main().findAllByRole('rowheader');
+    expect(a?.querySelector('.ui-badge')).toHaveClass('expiry--warn');
+    expect(b?.querySelector('.ui-badge')).toBeNull();
+    expect(b).toHaveTextContent(t('ui.empty'));
+  });
+
+  it('switching it off forgets the choice', async () => {
+    localStorage.setItem('apiseven.table.routes.group', 'host');
+    const { user } = await open('#/routes', { objects });
+    expect(await groupSwitch()).toBeChecked();
+    await user.click(await groupSwitch());
+    expect(await groupSwitch()).not.toBeChecked();
+    expect(main().queryByRole('rowheader')).not.toBeInTheDocument();
+    expect(localStorage.getItem('apiseven.table.routes.group')).toBeNull();
+  });
+
+  it('ignores a stored grouping the kind does not have, and kinds without groupings show no switch', async () => {
+    localStorage.setItem('apiseven.table.routes.group', 'nope');
+    const { user } = await open('#/routes', { objects });
+    expect(await groupSwitch()).not.toBeChecked();
+    await main().findByRole('link', { name: 'anywhere' });
+    expect(main().queryByRole('rowheader')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('link', { name: /^Upstreams/ }));
+    expect(await main().findByRole('heading', { level: 1, name: t('kind.upstreams.plural') })).toBeInTheDocument();
+    expect(main().queryByRole('switch', { name: t('group.byHost') })).not.toBeInTheDocument();
+  });
+});

@@ -4,6 +4,9 @@ import { en } from '../i18n/en';
 import { t } from '../i18n';
 import { ctxOf, itemOf } from '../test/ctx';
 import { registry } from './registry';
+import { routeColumns } from './routes/columns';
+import { routeFilters } from './routes/filters';
+import { hostGrouping } from './routes/grouping';
 
 const KINDS: Kind[] = [
   'routes', 'services', 'upstreams', 'consumers', 'credentials', 'consumer_groups', 'ssls',
@@ -65,8 +68,14 @@ describe('registry', () => {
     expect(registry.ssls.plural).toBe(t('kind.ssls.plural'));
   });
 
-  it('starts every kind with no tabs and an id + name column pair', () => {
-    for (const kind of KINDS) {
+  it('gives routes their list columns, quick filters and the host grouping', () => {
+    expect(registry.routes.columns).toBe(routeColumns);
+    expect(registry.routes.filters).toBe(routeFilters);
+    expect(registry.routes.groupings).toEqual([hostGrouping]);
+  });
+
+  it('starts every other kind with no tabs and an id + name column pair', () => {
+    for (const kind of KINDS.filter((k) => k !== 'routes')) {
       const def = registry[kind];
       expect(def.tabs).toEqual([]);
       expect(def.columns.map((c) => [c.id, c.header, c.defaultVisible])).toEqual([
@@ -102,6 +111,7 @@ describe('registry strings', () => {
     en['kind.routes.plural'] = 'Rutas';
     en['column.name'] = 'Nombre';
     expect(registry.routes.plural).toBe('Rutas');
-    expect(registry.routes.columns[1]?.header).toBe('Nombre');
+    expect(registry.services.columns[1]?.header).toBe('Nombre');
+    expect(registry.routes.columns.find((c) => c.id === 'name')?.header).toBe('Nombre');
   });
 });

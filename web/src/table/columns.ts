@@ -3,7 +3,7 @@ import type { Kind } from '../api/types';
 import { t } from '../i18n';
 import type { ColumnDef } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
-import { StatusCell } from './cells';
+import { StatusCell } from './StatusCell';
 
 /** Width of a column that names none and that the user has not resized. */
 export const DEFAULT_WIDTH = 160;
@@ -23,7 +23,8 @@ function statusColumn(kind: Kind): ColumnDef {
     accessor: (item) => (isEnabled(item.value) ? 1 : 0),
     cell: (item) => createElement(StatusCell, { kind, item }),
     defaultVisible: true,
-    width: 150,
+    // A switch and "Disabled" with the cell padding.
+    width: 126,
   };
 }
 

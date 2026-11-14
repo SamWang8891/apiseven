@@ -18,6 +18,35 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* A grouping toggle in the table toolbar: a control-height pill holding a switch and its name. */
+.list-toggle {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+  height: var(--control-h);
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.list-toggle:hover {
+  border-color: var(--text-2);
+}
+
+.list-toggle--on,
+.list-toggle--on:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+
 .list-delete {
   display: flex;
   flex-direction: column;

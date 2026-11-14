@@ -4,12 +4,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-// Checks on the table's and the list page's CSS source (Vitest blanks CSS imports, so read from disk).
+// Checks on the CSS source of the table, the list page and the list cells (Vitest blanks CSS imports, so read from disk).
 const src = join(dirname(fileURLToPath(import.meta.url)), '..');
 const files = [
   { name: 'table/table.css', prefix: 'tbl-' },
   { name: 'table/toolbar.css', prefix: 'tbl-' },
   { name: 'pages/list.css', prefix: 'list-' },
+  { name: 'resources/cells.css', prefix: 'cell-' },
 ].map(({ name, prefix }) => ({
   name,
   prefix,

@@ -6,11 +6,14 @@ export interface BadgeProps {
   /** Always text: colour never carries the state alone. */
   children: ReactNode;
   icon?: ReactNode;
+  /** Extra classes, e.g. a hook for tests or a page's own styles. */
+  className?: string;
+  title?: string;
 }
 
-export function Badge({ tone, children, icon }: BadgeProps) {
+export function Badge({ tone, children, icon, className, title }: BadgeProps) {
   return (
-    <span className={`ui-badge ui-badge--${tone}`}>
+    <span className={className ? `ui-badge ui-badge--${tone} ${className}` : `ui-badge ui-badge--${tone}`} title={title}>
       {icon && (
         <span className="ui-badge__icon" aria-hidden="true">
           {icon}
