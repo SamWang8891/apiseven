@@ -249,3 +249,83 @@ describe('what a field shows is what gets saved', () => {
   });
 });
 
+describe("held JSON text in a card is never replaced by the card's other controls", () => {
+  async function brokenCard() {
+    const app = await editRoute({ 'limit-count': { count: 2, time_window: 60 } }, 'limit-count');
+    await app.user.click(within(app.card).getByRole('button', { name: t('pl.card.json') }));
+    const box = await within(app.card).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) });
+    await replaceCode(app.user, box, '{"count": 3,');
+    return { ...app, box };
+  }
+  const held = t('ui.pending.json', { field: 'limit-count' });
+
+  it('the enable switch is refused while the JSON view holds text; fixed, the PUT has the fixed config and no switch change', async () => {
+    const { user, admin, card, box } = await brokenCard();
+    const enabled = within(card).getByRole('switch', { name: t('pl.card.enable', { name: 'limit-count' }) });
+    await user.click(enabled);
+    expect(enabled).toBeChecked();
+    expect(getToasts().at(-1)?.message).toBe(t('ui.pending.refused', { message: held }));
+    expect(box.textContent).toBe('{"count": 3,');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: held }));
+    expect(writesOf(admin)).toEqual([]);
+
+    await replaceCode(user, box, '{"count": 3, "time_window": 60}');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.plugins).toEqual({ 'limit-count': { count: 3, time_window: 60 } });
+  });
+
+  it('_meta cannot be edited while the JSON view holds text (it is part of that JSON); fixed, the PUT is the fixed config', async () => {
+    const { user, admin, card, box } = await brokenCard();
+    await user.click(within(card).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
+    expect(within(card).queryByRole('spinbutton', { name: 'priority' })).not.toBeInTheDocument();
+    expect(within(card).getByText(t('pl.meta.heldByJson'))).toBeInTheDocument();
+    expect(box.textContent).toBe('{"count": 3,');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    expect(writesOf(admin)).toEqual([]);
+
+    await replaceCode(user, box, '{"count": 3, "time_window": 60}');
+    const priority = await within(card).findByRole('spinbutton', { name: 'priority' });
+    await user.type(priority, '5');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.plugins).toEqual({ 'limit-count': { count: 3, time_window: 60, _meta: { priority: 5 } } });
+  });
+});
+
+describe('editing state ends with Save', () => {
+  it('a secret revealed in a plugin form is masked in the locked view after Save, and on the next Edit', async () => {
+    const { user, admin } = await openEditor('#/consumers/jo', { objects: { consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'secret-one' } } }] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'jo' });
+    await user.keyboard('e');
+    const card = await main().findByRole('group', { name: 'key-auth' });
+    await user.click(within(card).getByRole('button', { name: 'key-auth' }));
+    const key = within(card).getByLabelText(/^key\b(?!-)/);
+    await user.clear(key);
+    await user.type(key, 'secret-two');
+    await user.click(within(card).getByRole('button', { name: t('ui.secret.show') }));
+    expect(key).toHaveAttribute('type', 'text');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    await main().findByRole('button', { name: t('editor.edit') });
+    expect(screen.getByRole('main').textContent).not.toContain('secret-two');
+
+    await user.keyboard('e');
+    expect(within(main().getByRole('group', { name: 'key-auth' })).getByLabelText(/^key\b(?!-)/)).toHaveAttribute('type', 'password');
+  });
+
+  it('a blank map row added while editing is not in the locked view after Save', async () => {
+    const { user, admin, card } = await editRoute({ 'kafka-logger': { broker_list: { '10.0.0.1': 9092 }, kafka_topic: 't' } }, 'kafka-logger');
+    const brokers = within(within(card).getByRole('group', { name: /^broker_list/ }));
+    await user.click(brokers.getByRole('button', { name: t('sf.map.add') }));
+    await user.type(within(card).getByRole('textbox', { name: /^kafka_topic/ }), '2');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    await main().findByRole('button', { name: t('editor.edit') });
+    const locked = main().getByRole('group', { name: /^broker_list/ });
+    expect(locked.querySelectorAll('.sf-map__row')).toHaveLength(1);
+    expect(within(locked).getByText('10.0.0.1')).toBeInTheDocument();
+  });
+});
+

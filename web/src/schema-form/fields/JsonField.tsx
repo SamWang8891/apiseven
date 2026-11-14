@@ -2,7 +2,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
-import { CodeEditor, Field, Textarea, useLocked, usePending } from '../../ui';
+import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '../../ui';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
 import { redactSecrets } from '../model';
@@ -66,15 +66,13 @@ export function JsonField({
   const [invalid, setInvalid] = useState<{ error: string; held: string }>();
   usePending(locked ? undefined : invalid?.held);
   const [synced, setSynced] = useState(value);
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useReveal();
   const encrypt = useEncryptPaths();
   const hidden = useMemo(() => (locked ? redactSecrets(value, path, encrypt) : undefined), [locked, value, path, encrypt]);
+  // A new value from outside replaces the text, unless the text holds Save: what was typed stays.
   if (!Object.is(value, synced)) {
     setSynced(value);
-    if (!says(text, value)) {
-      setText(toText(value));
-      setInvalid(undefined);
-    }
+    if (invalid === undefined && !says(text, value)) setText(toText(value));
   }
 
   const key = prop?.key ?? ariaLabel ?? path;

@@ -1,9 +1,9 @@
 import { X } from 'lucide-react';
-import { useRef, useState, type ClipboardEvent, type ComponentProps, type KeyboardEvent } from 'react';
+import { useRef, type ClipboardEvent, type ComponentProps, type KeyboardEvent } from 'react';
 import { t } from '../i18n';
 import { Field, type FieldProps } from './Field';
 import { nameOfField, useFieldIds } from './fieldIds';
-import { useLocked } from './LockContext';
+import { useEditingState, useLocked } from './LockContext';
 import { usePending } from './PendingContext';
 import { ReadOnlyValue } from './ReadOnly';
 import './collection.css';
@@ -28,8 +28,8 @@ export function TagInput({
   label, help, error, required, htmlFor, id, value, onChange, validate, mono, placeholder, className, disabled, onBlur, fieldName, ...native
 }: TagInputProps) {
   const locked = useLocked();
-  const [draft, setDraft] = useState('');
-  const [rejected, setRejected] = useState<string>();
+  const [draft, setDraft] = useEditingState('');
+  const [rejected, setRejected] = useEditingState<string | undefined>(undefined);
   // Text still being typed is added when the box is left (an editor's Save leaves it first); text
   // that was refused cannot be, so Save waits for it.
   const text = draft.trim();

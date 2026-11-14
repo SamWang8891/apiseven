@@ -60,9 +60,10 @@ function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id, 
   const locked = useLocked();
   /** `invalid` (shown) and `held` (for Save) are set while the text is not emitted. */
   const [state, setState] = useState(() => ({ text: pretty(value), synced: value, invalid: undefined as string | undefined, held: undefined as string | undefined }));
+  // A value changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
   let current = state;
   if (!Object.is(value, state.synced)) {
-    current = says(state.text, value) ? { ...state, synced: value } : { text: pretty(value), synced: value, invalid: undefined, held: undefined };
+    current = state.held !== undefined || says(state.text, value) ? { ...state, synced: value } : { text: pretty(value), synced: value, invalid: undefined, held: undefined };
     setState(current);
   }
   usePending(locked ? undefined : current.held);

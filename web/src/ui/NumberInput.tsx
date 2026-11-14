@@ -25,18 +25,37 @@ export type NumberInputProps = Omit<
     fieldName?: string;
   };
 
-type Parsed = { ok: true; value: number | undefined } | { ok: false; message: string; whole?: boolean };
+type Problem = 'invalid' | 'whole' | 'inexact';
+type Parsed = { ok: true; value: number | undefined } | { ok: false; message: string; problem: Problem };
 
 const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+const DECIMAL = /^([+-]?)(\d*)\.?(\d*)(?:e([+-]?\d+))?$/i;
+
+/**
+ * The number a decimal text denotes, written one way: its significant digits and a power of ten
+ * ("1.50", "15e-1" and "1.5" are all "15e-1"). Two texts are the same number when these match.
+ */
+function decimalOf(text: string): string {
+  const [, sign = '', int = '', frac = '', exp = '0'] = DECIMAL.exec(text) ?? [];
+  const all = (int + frac).replace(/^0+/, '');
+  if (all === '') return '0';
+  const digits = all.replace(/0+$/, '');
+  return `${sign === '-' ? '-' : ''}${digits}e${Number(exp) - frac.length + (all.length - digits.length)}`;
+}
 
 function parse(text: string, integer: boolean | undefined): Parsed {
   const s = text.trim();
   if (s === '') return { ok: true, value: undefined };
   const n = Number(s);
-  if (!NUMBER.test(s) || !Number.isFinite(n)) return { ok: false, message: t('ui.number.invalid') };
-  if (integer && !Number.isInteger(n)) return { ok: false, message: t('ui.number.integer'), whole: true };
+  if (!NUMBER.test(s) || !Number.isFinite(n)) return { ok: false, message: t('ui.number.invalid'), problem: 'invalid' };
+  if (integer && !Number.isInteger(n)) return { ok: false, message: t('ui.number.integer'), problem: 'whole' };
+  // The number emitted must be the one shown: not a rounded one (an integer past 2^53, more digits
+  // than a double keeps). Ordinary text ("1.50", "1e3", ".5") reads back as the same number.
+  if ((integer && !Number.isSafeInteger(n)) || decimalOf(s) !== decimalOf(String(n))) return { ok: false, message: t('ui.number.inexact'), problem: 'inexact' };
   return { ok: true, value: n };
 }
+
+const HELD: Record<Problem, string> = { invalid: 'ui.pending.notNumber', whole: 'ui.pending.notInteger', inexact: 'ui.pending.inexact' };
 
 const format = (n: number | undefined): string => (n === undefined ? '' : String(n));
 
@@ -53,15 +72,14 @@ export function NumberInput({
   if (!Object.is(value, shown)) {
     setShown(value);
     const parsed = parse(draft, integer);
-    if (!(parsed.ok && Object.is(parsed.value, value))) setDraft(format(value));
+    // Text that holds Save stays as typed: a value from outside never replaces it behind the user's back.
+    if (parsed.ok && !Object.is(parsed.value, value)) setDraft(format(value));
   }
 
   const parsed = parse(draft, integer);
   // Text that is not a number is shown but not emitted: Save waits until it is one, or is cleared.
   const named = nameOfField(fieldName, label, native['aria-label']);
-  usePending(
-    locked || parsed.ok ? undefined : t(parsed.whole ? 'ui.pending.notInteger' : 'ui.pending.notNumber', { field: named, text: draft.trim() }),
-  );
+  usePending(locked || parsed.ok ? undefined : t(HELD[parsed.problem], { field: named, text: draft.trim() }));
   const rangeError =
     parsed.ok && parsed.value !== undefined
       ? min !== undefined && parsed.value < min

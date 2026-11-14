@@ -170,3 +170,33 @@ describe('the upstream list', () => {
     expect(within(idle).getByText(t('cell.unused'))).toBeInTheDocument();
   });
 });
+
+describe('editing state ends with Save', () => {
+  const TLS: Obj = { ...POOL, tls: { client_cert: 'CERT-1', client_key: 'KEY-1' } };
+
+  it('a replaced key: after Save and Edit, the stored-key view (no key text); Keep the stored key keeps the saved one, never the one before', async () => {
+    const { user, admin } = await openEditor('#/upstreams/web-pool?tab=tls', { objects: { upstreams: [TLS] } });
+    await main().findByRole('heading', { level: 1, name: 'web-pool' });
+    await user.keyboard('e');
+    await user.click(await main().findByRole('button', { name: t('up.tls.replaceKey') }));
+    await user.type(main().getByRole('textbox', { name: t('up.tls.key') }), 'KEY-2');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect((writesOf(admin)[0]?.body?.tls as Obj).client_key).toBe('KEY-2');
+    await main().findByRole('button', { name: t('editor.edit') });
+
+    await user.keyboard('e');
+    expect(await main().findByText(t('up.tls.keyStored'))).toBeInTheDocument();
+    expect(main().queryByRole('textbox', { name: t('up.tls.key') })).not.toBeInTheDocument();
+    expect(screen.getByRole('main').textContent).not.toMatch(/KEY-[12]/);
+
+    // Replace, then think better of it: the key kept is the stored one (KEY-2).
+    await user.click(main().getByRole('button', { name: t('up.tls.replaceKey') }));
+    await user.click(main().getByRole('button', { name: t('up.tls.keepKey') }));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await main().findByRole('button', { name: t('editor.edit') });
+    expect(getToasts().at(-1)?.message).toBe(t('editor.nothingToSave'));
+    expect(writesOf(admin)).toHaveLength(1);
+  });
+});
+

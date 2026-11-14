@@ -4,7 +4,7 @@ import { t } from '../i18n';
 import { Button } from './Button';
 import { Field, type FieldProps } from './Field';
 import { nameOfField } from './fieldIds';
-import { useLocked } from './LockContext';
+import { useEditingState, useLocked } from './LockContext';
 import { usePending } from './PendingContext';
 import { ReadOnlyValue } from './ReadOnly';
 import './collection.css';
@@ -55,6 +55,17 @@ function withheld(rows: Row[]): boolean[] {
   });
 }
 
+/** A row the map leaves out though it holds something: a blank row holds nothing. */
+const heldRow = (row: Row, out: boolean): boolean => out && !(row.key === '' && row.value === '');
+
+/** The rows for a map that came from outside, then the rows that hold something the map left out (never dropped). */
+function rowsFor(map: Record<string, string>, rows: Row[]): Row[] {
+  const out = withheld(rows);
+  const kept = rows.filter((row, i) => heldRow(row, out[i] ?? false));
+  if (kept.length === 0) return toRows(map);
+  return [...Object.entries(map).map(([k, v]) => newRow(k, v, k)), ...kept];
+}
+
 function toMap(rows: Row[]): Record<string, string> {
   const map: Record<string, string> = {};
   const out = withheld(rows);
@@ -74,7 +85,7 @@ function sameMap(a: Record<string, string>, b: Record<string, string>): boolean 
 function heldRows(rows: Row[], field: string): string | undefined {
   const out = withheld(rows);
   const messages = rows.flatMap((row, i) => {
-    if (!out[i] || (row.key === '' && row.value === '')) return [];
+    if (!heldRow(row, out[i] ?? false)) return [];
     return [row.key === '' ? t('ui.pending.noKey', { field, n: i + 1 }) : t('ui.pending.duplicateKey', { field, key: row.key })];
   });
   return messages.length > 0 ? messages.join('; ') : undefined;
@@ -86,12 +97,14 @@ function heldRows(rows: Row[], field: string): string | undefined {
  */
 export function KeyValueInput({ label, help, error, required, value, onChange, keyPlaceholder, valuePlaceholder, mono, disabled, fieldName }: KeyValueInputProps) {
   const locked = useLocked();
-  const [rows, setRows] = useState(() => toRows(value));
-  // A value from outside that differs from what the rows say replaces the rows.
+  // Rows being typed belong to the editing session: Save and Discard start them over from the value.
+  const [rows, setRows] = useEditingState(() => toRows(value));
+  // A value from outside that differs from what the rows say replaces the rows, but for rows that
+  // hold something the map left out: those stay, as typed.
   const [synced, setSynced] = useState(value);
   if (value !== synced) {
     setSynced(value);
-    if (!sameMap(toMap(rows), value)) setRows(toRows(value));
+    if (!sameMap(toMap(rows), value)) setRows(rowsFor(value, rows));
   }
   const [focus, setFocus] = useState<{ row: number } | { removedAt: number }>();
   const groupRef = useRef<HTMLDivElement>(null);

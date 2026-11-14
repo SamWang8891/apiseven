@@ -133,4 +133,21 @@ describe('_meta', () => {
     expect(harness.value()).toEqual({ 'key-auth': { _meta: { error_response: { message: 'Denied' } } } });
     expect(lastToast()).toBe(t('ui.pending.refused', { message: t('ui.pending.json', { field: 'key-auth._meta.error_response' }) }));
   });
+
+  it("held filter text stays when the card's JSON view changes _meta; fixed, it is saved with the JSON view's other change", async () => {
+    const harness = renderPluginsTab({ scope: 'route', value: LIMIT });
+    const el = await openCard(harness, 'limit-count');
+    await harness.user.click(within(el).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
+    const filter = await within(el).findByRole('textbox', { name: t('pl.meta.filterLabel') });
+    await replaceCode(harness.user, filter, '[["a", ');
+    await harness.user.click(within(el).getByRole('button', { name: t('pl.card.json') }));
+    const box = await within(el).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) });
+    await replaceCode(harness.user, box, '{"count": 9, "time_window": 60, "_meta": {"filter": [["b", "==", "1"]]}}');
+    expect(filter.textContent).toBe('[["a", ');
+    expect(harness.held()).toEqual([t('ui.pending.json', { field: 'limit-count._meta.filter' })]);
+    await replaceCode(harness.user, filter, '[["c", "==", "2"]]');
+    expect(harness.held()).toEqual([]);
+    expect(harness.value()).toEqual({ 'limit-count': { count: 9, time_window: 60, _meta: { filter: [['c', '==', '2']] } } });
+  });
 });
+

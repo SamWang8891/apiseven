@@ -17,14 +17,14 @@ function withProvider(ui: ReactNode) {
   return { ...result, user, held };
 }
 
-function Number({ label = 'Port', integer }: { label?: string; integer?: boolean }) {
+function Num({ label = 'Port', integer }: { label?: string; integer?: boolean }) {
   const [value, setValue] = useState<number | undefined>(80);
   return <NumberInput label={label} integer={integer} value={value} onChange={setValue} />;
 }
 
 describe('NumberInput', () => {
   it('holds text that is not a number: named after its label, until it is a number or empty', async () => {
-    const { user, held } = withProvider(<Number />);
+    const { user, held } = withProvider(<Num />);
     const input = screen.getByRole('spinbutton', { name: 'Port' });
     await user.clear(input);
     expect(held()).toEqual([]);
@@ -44,7 +44,7 @@ describe('NumberInput', () => {
   });
 
   it('holds a fraction in an integer field', async () => {
-    const { user, held } = withProvider(<Number integer />);
+    const { user, held } = withProvider(<Num integer />);
     const input = screen.getByRole('spinbutton', { name: 'Port' });
     await user.clear(input);
     await user.type(input, '1.5');
@@ -52,7 +52,7 @@ describe('NumberInput', () => {
   });
 
   it('keeps focus and caret while the hold comes and goes', async () => {
-    const { user, held } = withProvider(<Number />);
+    const { user, held } = withProvider(<Num />);
     const input = screen.getByRole<HTMLInputElement>('spinbutton', { name: 'Port' });
     await user.click(input);
     input.setSelectionRange(1, 1);
@@ -250,5 +250,106 @@ describe('dialogs answer for their own fields', () => {
     await user.type(field, '4');
     await user.click(screen.getByRole('button', { name: 'Scale' }));
     expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('NumberInput: what is emitted is what the field shows', () => {
+  it('an integer beyond 2^53 is held (it would be saved rounded); the largest safe one is emitted', async () => {
+    const onChange = vi.fn<(v: number | undefined) => void>();
+    function Big() {
+      const [value, setValue] = useState<number | undefined>(undefined);
+      return (
+        <NumberInput
+          label="Id"
+          integer
+          value={value}
+          onChange={(v) => {
+            onChange(v);
+            setValue(v);
+          }}
+        />
+      );
+    }
+    const { user, held } = withProvider(<Big />);
+    const input = screen.getByRole('spinbutton', { name: 'Id' });
+    await user.type(input, '12345678901234567890');
+    expect(held()).toEqual([t('ui.pending.inexact', { field: 'Id', text: '12345678901234567890' })]);
+    expect(onChange.mock.calls.flat().every((v) => v === undefined || Number.isSafeInteger(v))).toBe(true);
+    expect(input).toHaveAttribute('aria-invalid', 'true');
+    await user.clear(input);
+    await user.type(input, '9007199254740991');
+    expect(held()).toEqual([]);
+    expect(onChange).toHaveBeenLastCalledWith(9007199254740991);
+  });
+
+  it('a decimal with more digits than a number holds is held; ordinary ones (1.50, 1e3, .5) are emitted', async () => {
+    const onChange = vi.fn<(v: number | undefined) => void>();
+    function Dec() {
+      const [value, setValue] = useState<number | undefined>(undefined);
+      return (
+        <NumberInput
+          label="Rate"
+          value={value}
+          onChange={(v) => {
+            onChange(v);
+            setValue(v);
+          }}
+        />
+      );
+    }
+    const { user, held } = withProvider(<Dec />);
+    const input = screen.getByRole('spinbutton', { name: 'Rate' });
+    for (const [text, emitted] of [['1.50', 1.5], ['1e3', 1000], ['.5', 0.5], ['-0.25', -0.25], ['0.1', 0.1]] as const) {
+      await user.clear(input);
+      await user.type(input, text);
+      expect(held()).toEqual([]);
+      expect(onChange).toHaveBeenLastCalledWith(emitted);
+    }
+    await user.clear(input);
+    await user.type(input, '0.30000000000000000444');
+    expect(held()).toEqual([t('ui.pending.inexact', { field: 'Rate', text: '0.30000000000000000444' })]);
+  });
+});
+
+describe('held input is never replaced by a value from outside', () => {
+  it('NumberInput keeps "-" when its value changes from outside; Save stays held', async () => {
+    function Outside() {
+      const [value, setValue] = useState<number | undefined>(1);
+      return (
+        <>
+          <NumberInput label="Send" value={value} onChange={setValue} />
+          <button type="button" onClick={() => setValue(60)}>
+            Fill
+          </button>
+        </>
+      );
+    }
+    const { user, held } = withProvider(<Outside />);
+    const input = screen.getByRole('spinbutton', { name: 'Send' });
+    await user.clear(input);
+    await user.type(input, '-');
+    await user.click(screen.getByRole('button', { name: 'Fill' }));
+    expect(input).toHaveValue('-');
+    expect(held()).toEqual([t('ui.pending.notNumber', { field: 'Send', text: '-' })]);
+  });
+
+  it('KeyValueInput keeps a held row when the map changes from outside', async () => {
+    function Outside() {
+      const [value, setValue] = useState<Record<string, string>>({ env: 'prod' });
+      return (
+        <>
+          <KeyValueInput label="Labels" value={value} onChange={setValue} />
+          <button type="button" onClick={() => setValue({ env: 'prod', team: 'a' })}>
+            Elsewhere
+          </button>
+        </>
+      );
+    }
+    const { user, held } = withProvider(<Outside />);
+    await user.click(screen.getByRole('button', { name: t('ui.kv.add') }));
+    await user.type(screen.getByRole('textbox', { name: t('ui.kv.valueN', { n: 2 }) }), 'kept');
+    await user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect(screen.getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['env', 'prod', 'team', 'a', '', 'kept']);
+    expect(held()).toEqual([t('ui.pending.noKey', { field: 'Labels', n: 3 })]);
   });
 });

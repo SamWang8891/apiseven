@@ -4,12 +4,12 @@
 // keeps focus while the node appears. A map-shaped list stays a map through edits (see NodesTable
 // and nodes.ts). Locked, it is a plain table.
 import { Copy, X } from 'lucide-react';
-import { useEffect, useRef, useState, type ClipboardEvent } from 'react';
+import { useEffect, useRef, type ClipboardEvent } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { issueAt } from '../editor/issues';
 import { t } from '../i18n';
-import { Button, Input, NumberInput, useLocked, usePending, type InputProps } from '../ui';
+import { Button, Input, NumberInput, useEditingState, useLocked, usePending, type InputProps } from '../ui';
 import { IssueLine } from './fields';
 import { Head, LockedNodes, ShareCell } from './NodeCells';
 import {
@@ -67,16 +67,12 @@ function HostInput(props: Omit<InputProps, 'mono' | 'autoComplete'>) {
  */
 export function NodesTable({ value, onChange, issues }: SectionProps) {
   const locked = useLocked();
+  // Both end with the editing session (Save, Discard): nothing held may come back on the next Edit.
   /** Addresses typed into map rows (or the new-node field) that the map can't take yet. */
-  const [held, setHeld] = useState<Record<number, Address>>({});
-  const [skipped, setSkipped] = useState<string[]>([]);
+  const [held, setHeld] = useEditingState<Record<number, Address>>({});
+  const [skipped, setSkipped] = useEditingState<string[]>([]);
   /** Each map row's address before the edit in progress; 'new' for a row this edit added. */
   const start = useRef<Record<number, Address | 'new'>>({});
-  // Locking (Save, Discard) ends the editing: nothing held may come back on the next Edit.
-  if (locked && (Object.keys(held).length > 0 || skipped.length > 0)) {
-    setHeld({});
-    setSkipped([]);
-  }
   useEffect(() => {
     if (locked) start.current = {};
   }, [locked]);

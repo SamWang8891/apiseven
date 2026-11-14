@@ -1,9 +1,9 @@
 import { Eye, EyeOff } from 'lucide-react';
-import { useState, type ComponentProps } from 'react';
+import type { ComponentProps } from 'react';
 import { t } from '../i18n';
 import { Field, type FieldProps } from './Field';
 import { useFieldIds } from './fieldIds';
-import { useLocked } from './LockContext';
+import { useLocked, useReveal } from './LockContext';
 import { ReadOnlyValue } from './ReadOnly';
 import './input.css';
 
@@ -21,7 +21,7 @@ export type InputProps = Omit<ComponentProps<'input'>, 'value' | 'children'> &
 export function Input({ label, help, error, required, htmlFor, mono, secret, id, value, className, type, ...native }: InputProps) {
   const locked = useLocked();
   const ids = useFieldIds(id ?? htmlFor, { help, error });
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useReveal();
   const field = { label, help, error, required, htmlFor: locked ? undefined : ids.id };
 
   const reveal = secret && (

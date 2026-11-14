@@ -2,11 +2,15 @@
 // (a number that doesn't parse, refused tag text, a withheld map row, JSON that doesn't parse or is
 // not the schema's type) is declared through usePending, named by the field's dotted path (after
 // the form's `name`, when it has one).
-import { screen, within } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { renderSchemaForm } from '../test/schemaForm';
+import { PendingProvider, type PendingEntry } from '../ui';
+import { SchemaForm } from './SchemaForm';
 import { getToasts } from '../ui/toast';
 
 const SCHEMA: Obj = {
@@ -151,3 +155,67 @@ describe('a part that would hide a field holding input stays as it is', () => {
     expect(form.value()).toEqual({ target: { kind: 'upstream', host: 'h' } });
   });
 });
+
+/** The form, and a button that replaces the value from outside (as another control of the page would). */
+function renderWithOutside(initial: Obj, outside: (value: Obj) => Obj) {
+  let pending: PendingEntry[] = [];
+  let current: unknown = initial;
+  function Page() {
+    const [value, setValue] = useState<Obj>(initial);
+    const set = (v: Obj) => {
+      current = v;
+      setValue(v);
+    };
+    return (
+      <PendingProvider onChange={(entries) => (pending = entries)}>
+        <SchemaForm schema={SCHEMA} value={value} onChange={(v) => set(v as Obj)} />
+        <button type="button" onClick={() => set(outside(value))}>
+          Elsewhere
+        </button>
+      </PendingProvider>
+    );
+  }
+  const user = userEvent.setup();
+  render(<Page />);
+  return { user, held: () => pending.map((e) => e.message), value: () => current };
+}
+
+describe('held input is never replaced by a value from outside', () => {
+  it('JSON text that does not parse stays when the value changes from outside; fixed, it is what is emitted', async () => {
+    const page = renderWithOutside({ body_schema: { type: 'string' } }, (v) => ({ ...v, body_schema: { type: 'number' } }));
+    const editor = await screen.findByRole('textbox', { name: t('sf.json.label', { key: 'body_schema' }) });
+    await page.user.click(editor);
+    await page.user.keyboard('{Control>}a{/Control}');
+    await page.user.paste('{"type": ');
+    await page.user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect(editor.textContent).toBe('{"type": ');
+    expect(page.held()).toEqual([t('ui.pending.json', { field: 'body_schema' })]);
+    await page.user.click(editor);
+    await page.user.keyboard('{Control>}a{/Control}');
+    await page.user.paste('{"type": "object"}');
+    expect(page.held()).toEqual([]);
+    expect(page.value()).toEqual({ body_schema: { type: 'object' } });
+  });
+
+  it('a held map row stays when the map changes from outside', async () => {
+    const page = renderWithOutside({ limits: { a: 1 } }, (v) => ({ ...v, limits: { a: 1, c: 3 } }));
+    await page.user.click(group('limits').getByRole('button', { name: t('sf.map.add') }));
+    await page.user.type(group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n: 2 }) }), 'b');
+    await page.user.click(screen.getByRole('button', { name: 'Elsewhere' }));
+    expect(group('limits').getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['a', 'c', 'b']);
+    expect(page.held()).toEqual([t('ui.pending.noValue', { field: 'limits', key: 'b' })]);
+  });
+});
+
+describe('editing state ends on lock', () => {
+  it('a blank map row added while editing is gone from the locked view and the next edit', async () => {
+    const form = renderSchemaForm(SCHEMA, { limits: { a: 1 } });
+    await form.user.click(group('limits').getByRole('button', { name: t('sf.map.add') }));
+    expect(group('limits').getAllByRole('textbox')).toHaveLength(2);
+    form.update({ locked: true });
+    expect(screen.getByRole('group', { name: /^limits/ }).querySelectorAll('.sf-map__row')).toHaveLength(1);
+    form.update({ locked: false });
+    expect(group('limits').getAllByRole('textbox')).toHaveLength(1);
+  });
+});
+

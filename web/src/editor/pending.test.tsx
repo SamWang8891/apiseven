@@ -265,3 +265,44 @@ describe('the JSON tab holds text that does not parse', () => {
   });
 });
 
+describe('the JSON tab: Save and the controls around it', () => {
+  async function brokenJsonTab() {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB], hasStatus: true }));
+    const app = await openEditor('#/routes/r1?tab=json', { objects: { routes: [{ ...ROUTE, status: 1 }] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await app.user.keyboard('e');
+    const editor = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Route' }) });
+    await app.user.click(editor);
+    await app.user.keyboard('{Control>}{End}{/Control}x');
+    return { ...app, editor };
+  }
+  const held = t('ui.pending.json', { field: t('editor.json.tab') });
+
+  it('Ctrl-S with text that does not parse: no write, and the toast names the JSON', async () => {
+    const { admin } = await brokenJsonTab();
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: held })));
+    await new Promise((r) => setTimeout(r, 20));
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it("the header's status switch is refused while the JSON holds text; fixed, the PUT is what the JSON shows", async () => {
+    const { user, admin, editor } = await brokenJsonTab();
+    const status = main().getByRole('switch', { name: t('table.status.toggle', { name: 'web' }) });
+    await user.click(status);
+    expect(status).toBeChecked();
+    expect(getToasts().at(-1)?.message).toBe(t('ui.pending.refused', { message: held }));
+    expect(editor.textContent).toMatch(/}x$/);
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(writesOf(admin)).toEqual([]);
+
+    await user.click(editor);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(JSON.stringify({ ...ROUTE, status: 1, uri: '/fixed' }));
+    await user.click(button(t('editor.save')));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toEqual({ ...ROUTE, status: 1, uri: '/fixed' });
+  });
+});
+

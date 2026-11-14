@@ -4,7 +4,7 @@
 // A field that holds input it has not emitted (usePending) keeps what shows it on screen: the card,
 // `_meta` and the Form/JSON view refuse to close or switch until it is fixed or cleared.
 import { BookOpen, ChevronRight, Eye, EyeOff, Trash2 } from 'lucide-react';
-import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj, PluginInfo } from '../api/types';
 import { deepEqual } from '../editor/draft';
@@ -13,7 +13,7 @@ import { t } from '../i18n';
 import { ErrorLine } from '../schema-form/fields/chrome';
 import { redactSecrets } from '../schema-form/model';
 import { SchemaForm } from '../schema-form/SchemaForm';
-import { Button, CodeEditor, PendingScope, Switch, useHeld, useLocked, usePending } from '../ui';
+import { Button, CodeEditor, LockProvider, PendingScope, Switch, useHeld, useLocked, usePending, useReveal } from '../ui';
 import { catalog } from './catalog';
 import { MetaForm } from './MetaForm';
 import { formSchemaOf, isDisabled, META, metaOf, setDisabled, withMeta, withoutMeta } from './meta';
@@ -64,6 +64,11 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
   const ref = useCallback((el: HTMLDivElement | null) => cardRef?.(name, el), [cardRef, name]);
   const held = useHeld();
   const bodyRef = useRef<HTMLDivElement>(null);
+  /** The JSON view holds text: the config it says is not the stored one, so nothing else may change it. */
+  const jsonHeld = useRef(false);
+  const onJsonHeld = useCallback((h: boolean) => {
+    jsonHeld.current = h;
+  }, []);
   const ids = useId();
   const nameId = `${ids}-name`;
   const bodyId = `${ids}-body`;
@@ -108,7 +113,9 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
             <Switch
               aria-label={t('pl.card.enable', { name })}
               checked={!off}
-              onChange={(on) => onChange(setDisabled(config, !on))}
+              onChange={(on) => {
+                if (!(jsonHeld.current && held.refuse(bodyRef.current))) onChange(setDisabled(config, !on));
+              }}
             />
           )}
           {catalog[name] && (
@@ -122,7 +129,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
       {open && (
         <div id={bodyId} ref={bodyRef} className="pl-card__body">
           <PendingScope onChange={held.track}>
-            <CardBody name={name} conf={conf} info={info} list={list} schema={schema} encrypt={encrypt} issues={issues} onChange={onChange} />
+            <CardBody name={name} conf={conf} info={info} list={list} schema={schema} encrypt={encrypt} issues={issues} onChange={onChange} onJsonHeld={onJsonHeld} />
           </PendingScope>
         </div>
       )}
@@ -130,7 +137,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
   );
 }, sameCard);
 
-function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange }: {
+function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, onJsonHeld }: {
   name: string;
   conf: unknown;
   info: PluginInfo | undefined;
@@ -139,7 +146,10 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange }:
   encrypt: string[];
   issues: Issue[];
   onChange: (conf: unknown) => void;
+  /** Whether the JSON view holds text (the card's own switch waits meanwhile). */
+  onJsonHeld: (held: boolean) => void;
 }) {
+  const locked = useLocked();
   const [view, setView] = useState<'form' | 'json'>('form');
   // Open from the start when it holds a problem (a card opens itself when Save finds one).
   const [metaOpen, setMetaOpen] = useState(() => issues.some((issue) => isMetaPath(issue.path)));
@@ -148,6 +158,16 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange }:
   const viewRef = useRef<HTMLDivElement>(null);
   const metaHeld = useHeld();
   const metaRef = useRef<HTMLDivElement>(null);
+  // While the JSON view holds text, `_meta` (part of that JSON) is read-only here: a change made
+  // beside it would be undone when the text is fixed.
+  const [jsonHeld, setJsonHeld] = useState(false);
+  const jsonHeldChange = useCallback(
+    (h: boolean) => {
+      setJsonHeld(h);
+      onJsonHeld(h);
+    },
+    [onJsonHeld],
+  );
   const config = isObj(conf) ? conf : undefined;
   const meta = metaOf(conf);
   const hasForm = schema !== undefined;
@@ -199,7 +219,15 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange }:
               name={name}
             />
           ) : (
-            <ConfigJson name={name} conf={conf} schema={schema} encrypt={encrypt} issues={issues.filter((issue) => issue.path !== '')} onChange={onChange} />
+            <ConfigJson
+              name={name}
+              conf={conf}
+              schema={schema}
+              encrypt={encrypt}
+              issues={issues.filter((issue) => issue.path !== '')}
+              onChange={onChange}
+              onHeld={jsonHeldChange}
+            />
           )}
         </PendingScope>
       </div>
@@ -221,8 +249,11 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange }:
           </button>
           {metaOpen && (
             <div id={`${ids}-meta`} ref={metaRef} className="pl-metabox__body">
+              {jsonHeld && !locked && <p className="pl-note">{t('pl.meta.heldByJson')}</p>}
               <PendingScope onChange={metaHeld.track}>
-                <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} />
+                <LockProvider locked={locked || jsonHeld}>
+                  <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} />
+                </LockProvider>
               </PendingScope>
             </div>
           )}
@@ -244,25 +275,30 @@ function says(text: string, value: unknown): boolean {
 }
 
 /** The config as JSON (`_meta` included), linted against the plugin's schema. Locked, secrets are masked behind a reveal. */
-function ConfigJson({ name, conf, schema, encrypt, issues, onChange }: {
+function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHeld }: {
   name: string;
   conf: unknown;
   schema: Obj | undefined;
   encrypt: string[];
   issues: Issue[];
   onChange: (conf: unknown) => void;
+  onHeld: (held: boolean) => void;
 }) {
   const locked = useLocked();
   /** `error` (shown) and `held` (for Save) are set while the text is not emitted. */
   const [state, setState] = useState(() => ({ text: pretty(conf), synced: conf, error: undefined as string | undefined, held: undefined as string | undefined }));
-  const [revealed, setRevealed] = useState(false);
+  const [revealed, setRevealed] = useReveal();
+  // A config changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
   let current = state;
   if (!Object.is(conf, state.synced)) {
-    current = says(state.text, conf) ? { ...state, synced: conf } : { text: pretty(conf), synced: conf, error: undefined, held: undefined };
+    current = state.held !== undefined || says(state.text, conf) ? { ...state, synced: conf } : { text: pretty(conf), synced: conf, error: undefined, held: undefined };
     setState(current);
   }
   const hidden = useMemo(() => (locked ? redactSecrets(conf, '', encrypt) : undefined), [locked, conf, encrypt]);
-  usePending(locked ? undefined : current.held);
+  const holding = !locked && current.held !== undefined;
+  usePending(holding ? current.held : undefined);
+  useLayoutEffect(() => onHeld(holding), [onHeld, holding]);
+  useLayoutEffect(() => () => onHeld(false), [onHeld]);
 
   function change(text: string) {
     let parsed: unknown;

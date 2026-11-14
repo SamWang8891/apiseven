@@ -41,9 +41,10 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   /** `error` (shown) and `held` (for Save) are set while the text does not parse to an object. */
   const [state, setState] = useState(() => ({ text: pretty(draft), synced: draft, error: undefined as string | undefined, held: undefined as string | undefined }));
 
+  // A draft changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
   let current = state;
   if (draft !== state.synced) {
-    current = represents(state.text, draft) ? { ...state, synced: draft } : { text: pretty(draft), synced: draft, error: undefined, held: undefined };
+    current = state.held !== undefined || represents(state.text, draft) ? { ...state, synced: draft } : { text: pretty(draft), synced: draft, error: undefined, held: undefined };
     setState(current);
   }
   usePending(locked ? undefined : current.held);

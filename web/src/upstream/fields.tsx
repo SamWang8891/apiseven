@@ -4,7 +4,7 @@
 import { CircleAlert, Upload } from 'lucide-react';
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
-import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, useLocked, type InputProps, type NumberInputProps } from '../ui';
+import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, useEditingState, useLocked, type InputProps, type NumberInputProps } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import { certLine } from './values';
 
@@ -236,8 +236,11 @@ export function PemField({
   extra?: ReactNode;
 }) {
   const locked = useLocked();
-  /** While replacing a stored secret: the value it had, kept until something else is typed. */
-  const [replacing, setReplacing] = useState<string>();
+  /**
+   * While replacing a stored secret: the value it had, kept until something else is typed. It ends
+   * with the editing session (Save, Discard): the next Edit starts from the stored-key view again.
+   */
+  const [replacing, setReplacing] = useEditingState<string | undefined>(undefined);
   const parsed = secret ? undefined : certLine(value);
   const upload = <UploadButton label={label} onText={(text) => onChange(text.trim() === '' ? undefined : text)} />;
 

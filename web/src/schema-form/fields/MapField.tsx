@@ -3,7 +3,7 @@ import { useCallback, useState, type ReactNode } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
-import { Button, Input, KeyValueInput, useLocked, usePending } from '../../ui';
+import { Button, Input, KeyValueInput, useEditingState, useLocked, usePending } from '../../ui';
 import type { MapNode } from '../analyze';
 import { useFieldError, useFieldId, useFieldName, useLatest } from '../context';
 import { blankOf, isEmpty, joinPath, mapMode, type Key } from '../model';
@@ -70,6 +70,16 @@ function toMap(node: MapNode, rows: Row[]): Obj {
   return out;
 }
 
+/** Whether a row holds something the map leaves out (`refusal` is its key's, from keyRefusals); a blank new row holds nothing. */
+const holds = (row: Row, refusal: string | undefined): boolean => !((refusal === undefined && row.value !== undefined) || (row.key === '' && isEmpty(row.value)));
+
+/** The rows for a map that came from outside, then the rows that hold something the map left out (never dropped). */
+function rowsFor(node: MapNode, map: Obj, rows: Row[]): Row[] {
+  const refused = keyRefusals(node, rows);
+  const kept = rows.filter((row, i) => holds(row, refused[i]));
+  return [...toRows(map), ...kept];
+}
+
 /**
  * What the map leaves out of rows that hold something, as one message: a value without a key, a
  * refused key, a key without a value. A new row with nothing typed in it holds nothing.
@@ -77,7 +87,7 @@ function toMap(node: MapNode, rows: Row[]): Obj {
 function heldRows(rows: Row[], refused: (string | undefined)[], field: string): string | undefined {
   const messages = rows.flatMap((row, i) => {
     const refusal = refused[i];
-    if ((refusal === undefined && row.value !== undefined) || (row.key === '' && isEmpty(row.value))) return [];
+    if (!holds(row, refusal)) return [];
     if (refusal === '') return [t('ui.pending.noKey', { field, n: i + 1 })];
     if (refusal !== undefined) return [t('ui.pending.problem', { field, problem: refusal })];
     return [t('ui.pending.noValue', { field, key: row.key })];
@@ -108,11 +118,14 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   error: string | undefined;
 }) {
   const locked = useLocked();
-  const [rows, setRows] = useState(() => toRows(value));
+  // Rows being typed belong to the editing session (the locked view shows them): Save and Discard
+  // start them over from the value.
+  const [rows, setRows] = useEditingState(() => toRows(value));
+  // A value from outside replaces the rows, but for rows that hold something: those stay, as typed.
   const [synced, setSynced] = useState(value);
   if (value !== synced) {
     setSynced(value);
-    if (!sameMap(toMap(node, rows), value)) setRows(toRows(value));
+    if (!sameMap(toMap(node, rows), value)) setRows(rowsFor(node, value, rows));
   }
   const latestRef = useLatest({ rows, value, emit });
 
@@ -124,7 +137,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
       const map = toMap(node, next);
       if (!sameMap(map, cur)) send(map);
     },
-    [latestRef, node],
+    [latestRef, node, setRows],
   );
   const onValue = useCallback(
     (id: Key, v: unknown) => update(latestRef.current.rows.map((r) => (r.id === id ? { ...r, value: v } : r))),

@@ -84,6 +84,12 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
    * the scroll position stay as they were.
    */
   const [epoch, setEpoch] = useState(0);
+  /**
+   * Bumped on every lock: the end of an editing session, after which what fields keep for one
+   * (useEditingState: a key being replaced, rows being typed) starts over. A save in flight locks
+   * the fields too, but is not the end of one.
+   */
+  const [session, setSession] = useState(0);
   const editRef = useRef<HTMLButtonElement>(null);
   const idRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -156,6 +162,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   function lock(remount: boolean) {
     focusNext.current = 'edit';
     setLocked(true);
+    setSession((n) => n + 1);
     if (remount) {
       setEpoch((n) => n + 1);
       tabState.dropPending();
@@ -282,8 +289,22 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? content : null },
   ];
 
+  // The status is part of the JSON tab's text: while that text holds Save, the switch would change a
+  // draft the text no longer follows, and fixing the text would undo it. It waits instead.
   const status = def.hasStatus
-    ? { enabled: isEnabled(draft), name, onChange: (on: boolean) => edit(setPath(draft, ['status'], on ? 1 : 0)) }
+    ? {
+        enabled: isEnabled(draft),
+        name,
+        onChange: (on: boolean) => {
+          const first = pending[0];
+          if (active === JSON_TAB && first) {
+            toast.error(t('ui.pending.refused', { message: first.message }));
+            bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden]) [aria-invalid="true"]')?.focus();
+            return;
+          }
+          edit(setPath(draft, ['status'], on ? 1 : 0));
+        },
+      }
     : undefined;
 
   return (
@@ -333,7 +354,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
             />
           </div>
         )}
-        <LockProvider locked={!editable}>
+        <LockProvider locked={!editable} session={session}>
           <PendingProvider key={epoch} onChange={tabState.onPending}>
             <Tabs tabs={tabs} active={active} onChange={tabState.chooseTab} />
           </PendingProvider>
