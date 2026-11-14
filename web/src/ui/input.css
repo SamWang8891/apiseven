@@ -1,0 +1,131 @@
+/* Text-like controls: Input, Input secret, NumberInput, Textarea, and KeyValueInput's cells. */
+
+.ui-input {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  height: var(--control-h);
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ui-input.mono {
+  font-size: 12px;
+}
+
+.ui-input::placeholder,
+.ui-input__bare::placeholder {
+  color: var(--text-2);
+  opacity: 1;
+}
+
+.ui-input:hover {
+  border-color: var(--text-2);
+}
+
+.ui-input:focus,
+.ui-input--group:focus-within {
+  outline: none;
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.ui-input[aria-invalid='true'],
+.ui-input--group:has([aria-invalid='true']) {
+  border-color: var(--danger);
+}
+
+.ui-input:disabled,
+.ui-input--group[data-disabled] {
+  border-color: var(--border);
+  background: var(--bg-sunken);
+  color: var(--text-2);
+  cursor: not-allowed;
+}
+
+/* Grows with its text (where supported) up to 12 lines, like its locked value; min-height comes from `rows`. */
+.ui-textarea {
+  height: auto;
+  max-height: calc(12 * 18px + 14px);
+  padding: 6px 8px;
+  resize: vertical;
+  field-sizing: content;
+}
+
+.ui-number {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Input with a trailing button (secret reveal). */
+.ui-input--group {
+  display: flex;
+  align-items: stretch;
+  padding: 0;
+}
+
+.ui-input__bare {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius) 0 0 var(--radius);
+  background: transparent;
+  color: inherit;
+  font-size: 13px;
+  outline: none;
+}
+
+.ui-input__bare.mono {
+  font-size: 12px;
+}
+
+.ui-input__bare:disabled {
+  cursor: not-allowed;
+}
+
+.ui-input__affix {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.ui-input__affix:hover {
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+
+.ui-input__affix:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+/* Locked secret: the masked value and its reveal button on one line. */
+.ui-secret-ro {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.ui-secret-ro .ui-input__affix {
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+}

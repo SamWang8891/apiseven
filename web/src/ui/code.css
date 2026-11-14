@@ -1,0 +1,45 @@
+/* CodeEditor frame. Editable: an input-like box. Read-only/locked: a code block on the sunken surface. */
+
+.ui-code {
+  --code-line: 18px;
+
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  overflow: hidden;
+}
+
+.ui-code:focus-within {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 1px var(--focus);
+}
+
+.ui-code--readonly {
+  border-color: var(--border);
+  background: var(--bg-sunken);
+}
+
+.ui-code .cm-content,
+.ui-code .cm-gutter {
+  min-height: calc(var(--code-min-lines) * var(--code-line) + 12px);
+}
+
+.ui-code .cm-scroller {
+  max-height: calc(var(--code-max-lines) * var(--code-line) + 12px);
+  overflow: auto;
+}
+
+/* Shown while CodeMirror loads: the same text, metrics and height bounds. */
+.ui-code__fallback {
+  min-height: calc(var(--code-min-lines) * var(--code-line) + 12px);
+  max-height: calc(var(--code-max-lines) * var(--code-line) + 12px);
+  margin: 0;
+  padding: 6px 10px 6px 44px;
+  overflow: auto;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: var(--code-line);
+  white-space: pre;
+}

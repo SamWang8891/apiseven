@@ -1,0 +1,281 @@
+/* Floating surfaces: Dialog, ConfirmDialog, popovers (Select list, Menu), Tooltip, toasts. */
+
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: start center;
+  padding: 12vh var(--s4) var(--s4);
+  overflow-y: auto;
+  background: var(--scrim);
+}
+
+.ui-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: 76vh;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  outline: none;
+}
+
+.ui-dialog--sm {
+  max-width: 440px;
+}
+
+.ui-dialog--md {
+  max-width: 620px;
+}
+
+.ui-dialog--lg {
+  max-width: 900px;
+}
+
+.ui-dialog__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: 48px;
+  padding: var(--s2) var(--s3) var(--s2) var(--s4);
+  border-bottom: 1px solid var(--border);
+}
+
+.ui-dialog__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+.ui-dialog__body {
+  padding: var(--s4);
+  overflow-y: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.ui-dialog__footer {
+  display: flex;
+  flex: none;
+  justify-content: flex-end;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+  background: var(--bg-sunken);
+}
+
+/* ConfirmDialog is a short question: no rule under its title. */
+[role='alertdialog'].ui-dialog .ui-dialog__header {
+  min-height: 0;
+  padding-top: var(--s4);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.ui-popover {
+  z-index: 50;
+  min-width: 160px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  outline: none;
+}
+
+.ui-menu {
+  min-width: 180px;
+}
+
+.ui-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 10px 0 8px;
+  border-radius: 3px;
+  color: var(--text);
+  cursor: pointer;
+  outline: none;
+  user-select: none;
+}
+
+.ui-menu__item[data-highlighted] {
+  background: var(--accent-bg);
+}
+
+.ui-menu__item--danger {
+  color: var(--danger);
+}
+
+.ui-menu__item--danger[data-highlighted] {
+  background: var(--danger-bg);
+}
+
+.ui-menu__item[data-disabled] {
+  color: var(--text-2);
+  cursor: not-allowed;
+}
+
+.ui-menu__icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 16px;
+}
+
+.ui-menu__separator {
+  height: 1px;
+  margin: 4px -4px;
+  background: var(--border);
+}
+
+.ui-tooltip {
+  z-index: 60;
+  max-width: 280px;
+  padding: 5px 8px;
+  border-radius: var(--radius);
+  background: var(--text);
+  color: var(--bg-raised);
+  font-size: 12px;
+  line-height: 16px;
+  box-shadow: var(--shadow);
+}
+
+.ui-toast-viewport {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  width: 400px;
+  max-width: 100vw;
+  margin: 0;
+  padding: var(--s4);
+  list-style: none;
+  outline: none;
+}
+
+.ui-toast {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--s2);
+  padding: 10px 8px 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-left-width: 4px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ui-toast__icon {
+  margin-top: 1px;
+}
+
+.ui-toast--success {
+  border-left-color: var(--ok);
+}
+
+.ui-toast--success .ui-toast__icon {
+  color: var(--ok);
+}
+
+.ui-toast--error {
+  border-left-color: var(--danger);
+}
+
+.ui-toast--error .ui-toast__icon {
+  color: var(--danger);
+}
+
+.ui-toast--info {
+  border-left-color: var(--accent);
+}
+
+.ui-toast--info .ui-toast__icon {
+  color: var(--accent);
+}
+
+.ui-toast__message {
+  overflow-wrap: anywhere;
+}
+
+.ui-toast__close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.ui-toast__close:hover {
+  background: var(--bg-sunken);
+  color: var(--text);
+}
+
+.ui-toast__close:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
+}
+
+.ui-toast[data-swipe='move'] {
+  transform: translateX(var(--radix-toast-swipe-move-x));
+}
+
+.ui-toast[data-swipe='cancel'] {
+  transform: translateX(0);
+  transition: transform 150ms ease-out;
+}
+
+/* Motion only answers an action: something opening. */
+.ui-dialog[data-state='open'],
+.ui-popover[data-state='open'] {
+  animation: ui-rise 120ms ease-out;
+}
+
+.ui-toast[data-state='open'] {
+  animation: ui-slide-in 160ms ease-out;
+}
+
+@keyframes ui-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@keyframes ui-slide-in {
+  from {
+    transform: translateX(calc(100% + 16px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-dialog[data-state='open'],
+  .ui-popover[data-state='open'],
+  .ui-toast[data-state='open'] {
+    animation: none;
+  }
+}

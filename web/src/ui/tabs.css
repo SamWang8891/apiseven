@@ -1,0 +1,85 @@
+/* Tabs: an underlined strip. The active tab is body text with an accent rule beneath it. */
+
+.ui-tabs {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ui-tabs__list {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.ui-tabs__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  height: 36px;
+  margin: 0;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-tabs__tab:hover {
+  color: var(--text);
+  background: var(--bg-sunken);
+}
+
+.ui-tabs__tab[data-state='active'] {
+  color: var(--text);
+  background: transparent;
+}
+
+.ui-tabs__tab[data-state='active']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--accent);
+}
+
+.ui-tabs__tab:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.ui-tabs__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--danger);
+  color: var(--on-danger);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ui-tabs__panel {
+  padding-top: var(--s4);
+  outline: none;
+}
+
+.ui-tabs__panel:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}

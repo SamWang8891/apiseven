@@ -1,0 +1,68 @@
+/// <reference types="node" />
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+// Checks on the UI kit's CSS source. Vitest blanks CSS imports, so the files are read from disk.
+// A string, not `new URL(...)`: under jsdom the global URL class is not Node's.
+const dir = dirname(fileURLToPath(import.meta.url));
+const files = readdirSync(dir)
+  .filter((f) => f.endsWith('.css'))
+  .map((name) => ({ name, css: readFileSync(join(dir, name), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '') }));
+
+/** Removes `@keyframes name { … }` blocks, braces nested one level deep. */
+function withoutKeyframes(css: string): string {
+  return css.replace(/@keyframes[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}/g, '');
+}
+
+/** [selector list, declarations] for every innermost rule. */
+function rules(css: string): [string, string][] {
+  return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [(m[1] ?? '').trim(), m[2] ?? '']);
+}
+
+describe('ui CSS', () => {
+  it('exists', () => {
+    expect(files.length).toBeGreaterThan(0);
+  });
+
+  it('gives .ro-value the body text colour', () => {
+    const roValue = files.flatMap((f) => rules(f.css)).filter(([sel]) => sel.split(',').some((s) => s.trim() === '.ro-value'));
+    expect(roValue.length).toBeGreaterThan(0);
+    expect(roValue.some(([, body]) => /(^|;|\s)color:\s*var\(--text\)\s*(;|$)/.test(body))).toBe(true);
+    // ...and nothing else recolours it.
+    for (const [sel, body] of files.flatMap((f) => rules(f.css))) {
+      if (!sel.includes('.ro-value')) continue;
+      const colour = /(?:^|[;\s])color:\s*([^;]+)/.exec(body)?.[1]?.trim();
+      if (colour) expect(colour, sel).toBe('var(--text)');
+    }
+  });
+
+  it('never lowers opacity outside an animation (opacity: 1, which undoes a browser default, is fine)', () => {
+    for (const { name, css } of files) {
+      const values = [...withoutKeyframes(css).matchAll(/(?:^|[;{\s])opacity\s*:\s*([^;}]+)/g)].map((m) => m[1]?.trim());
+      for (const value of values) expect(value, name).toBe('1');
+    }
+  });
+
+  it('never styles a locked, read-only or off state with opacity or filters', () => {
+    for (const { name, css } of files) {
+      for (const [sel, body] of rules(css)) {
+        if (!/ro-value|locked|read-?only|unchecked|\boff\b|disabled/i.test(sel)) continue;
+        expect(body, `${name}: ${sel}`).not.toMatch(/opacity\s*:\s*(?!1\s*(?:;|$))|filter\s*:|grayscale/);
+      }
+    }
+  });
+
+  it('uses only ui- prefixed classes, plus ro-value and the shared mono helper', () => {
+    for (const { name, css } of files) {
+      for (const [sel] of rules(withoutKeyframes(css))) {
+        for (const cls of sel.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) {
+          const c = cls[1] ?? '';
+          if (c.startsWith('cm-')) continue; // CodeMirror's own classes, styled inside .ui-code
+          expect(c.startsWith('ui-') || c.startsWith('ro-value') || c === 'mono', `${name}: .${c}`).toBe(true);
+        }
+      }
+    }
+  });
+});

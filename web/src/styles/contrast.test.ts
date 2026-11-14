@@ -44,7 +44,8 @@ const themes = {
 const COLOR_TOKENS = [
   '--bg', '--bg-raised', '--bg-sunken', '--text', '--text-2', '--border', '--border-strong',
   '--accent', '--accent-text', '--ok', '--ok-bg', '--warn', '--warn-bg', '--danger', '--danger-bg',
-  '--neutral-bg', '--focus',
+  '--neutral-bg', '--focus', '--accent-bg', '--on-danger', '--code-key', '--code-string',
+  '--code-literal',
 ];
 const OTHER_TOKENS = [
   '--font-sans', '--font-mono', '--radius', '--s1', '--s2', '--s3', '--s4', '--s5', '--s6',
@@ -82,6 +83,21 @@ const MORE_PAIRS: [string, string, number][] = [
   ['--focus', '--bg-raised', 3],
 ];
 
+// UI kit (web/src/ui): accent badges and highlighted options, solid danger buttons and count
+// pills, and CodeMirror syntax colours on the editor surface and its gutter.
+const KIT_PAIRS: [string, string, number][] = [
+  ['--accent', '--accent-bg', 4.5],
+  ['--text', '--accent-bg', 4.5],
+  ['--text-2', '--accent-bg', 4.5],
+  ['--on-danger', '--danger', 4.5],
+  ['--code-key', '--bg-raised', 4.5],
+  ['--code-string', '--bg-raised', 4.5],
+  ['--code-literal', '--bg-raised', 4.5],
+  ['--code-key', '--bg-sunken', 4.5],
+  ['--code-string', '--bg-sunken', 4.5],
+  ['--code-literal', '--bg-sunken', 4.5],
+];
+
 describe('contrast()', () => {
   it('matches known WCAG values', () => {
     expect(contrast('#000000', '#ffffff')).toBeCloseTo(21, 5);
@@ -106,7 +122,7 @@ describe('tokens.css', () => {
 
   for (const [theme, vars] of Object.entries(themes)) {
     describe(`${theme} theme`, () => {
-      for (const [fg, bg, min] of [...PAIRS, ...MORE_PAIRS]) {
+      for (const [fg, bg, min] of [...PAIRS, ...MORE_PAIRS, ...KIT_PAIRS]) {
         it(`${fg} on ${bg} has contrast >= ${min}`, () => {
           const ratio = contrast(vars.get(fg) ?? 'missing', vars.get(bg) ?? 'missing');
           expect(ratio, `${fg} ${vars.get(fg)} on ${bg} ${vars.get(bg)}`).toBeGreaterThanOrEqual(min);

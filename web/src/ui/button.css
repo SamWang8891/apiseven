@@ -1,0 +1,122 @@
+/* Button. md matches the 32px control height so buttons line up with inputs; sm is 26px. */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  height: var(--control-h);
+  margin: 0;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ui-btn--sm {
+  gap: 4px;
+  height: var(--control-h-sm);
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.ui-btn--icon-only {
+  width: var(--control-h);
+  padding: 0;
+}
+
+.ui-btn--sm.ui-btn--icon-only {
+  width: var(--control-h-sm);
+}
+
+.ui-btn__icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+
+.ui-btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.ui-btn--primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.ui-btn--primary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 85%, var(--text));
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+}
+
+.ui-btn--secondary {
+  border-color: var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text);
+}
+
+.ui-btn--secondary:hover:not(:disabled) {
+  border-color: var(--text-2);
+  background: var(--bg-sunken);
+}
+
+.ui-btn--ghost {
+  background: transparent;
+  color: var(--text);
+}
+
+.ui-btn--ghost:hover:not(:disabled) {
+  background: var(--bg-sunken);
+}
+
+.ui-btn--danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--on-danger);
+}
+
+.ui-btn--danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 85%, var(--text));
+  background: color-mix(in srgb, var(--danger) 85%, var(--text));
+}
+
+/* Disabled is its own look (sunken, secondary text), never a faded copy of the enabled one. */
+.ui-btn:disabled:not([aria-busy='true']) {
+  border-color: var(--border);
+  background: var(--bg-sunken);
+  color: var(--text-2);
+  cursor: not-allowed;
+}
+
+.ui-btn--ghost:disabled:not([aria-busy='true']) {
+  border-color: transparent;
+  background: transparent;
+}
+
+.ui-btn[aria-busy='true'] {
+  cursor: progress;
+}
+
+.ui-spin {
+  animation: ui-spin 0.8s linear infinite;
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-spin {
+    animation-duration: 2.4s;
+  }
+}
