@@ -11,6 +11,8 @@ export interface ConfirmDialogProps {
   body?: ReactNode;
   /** The action, as a verb: "Delete route". */
   confirmLabel: string;
+  /** The other choice; default "Cancel". */
+  cancelLabel?: string;
   danger?: boolean;
   /** Spinner on the confirm button; cancel and Escape are blocked meanwhile. */
   busy?: boolean;
@@ -19,7 +21,7 @@ export interface ConfirmDialogProps {
 }
 
 /** Asks before an action. Stays open until the caller closes it, so it can show `busy`. Focus starts on Cancel. */
-export function ConfirmDialog({ open, title, body, confirmLabel, danger, busy, onConfirm, onCancel }: ConfirmDialogProps) {
+export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, danger, busy, onConfirm, onCancel }: ConfirmDialogProps) {
   return (
     <AlertDialog.Root open={open} onOpenChange={(next) => !next && !busy && onCancel()}>
       <AlertDialog.Portal>
@@ -40,7 +42,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel, danger, busy, o
             <footer className="ui-dialog__footer">
               <AlertDialog.Cancel asChild>
                 <Button variant="secondary" disabled={busy}>
-                  {t('ui.cancel')}
+                  {cancelLabel ?? t('ui.cancel')}
                 </Button>
               </AlertDialog.Cancel>
               <Button variant={danger ? 'danger' : 'primary'} loading={busy} onClick={onConfirm}>

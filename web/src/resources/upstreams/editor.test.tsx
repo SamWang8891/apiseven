@@ -116,6 +116,45 @@ describe('the upstream editor', () => {
   });
 });
 
+describe('fields holding input that is not in the draft', () => {
+  const MAP: Obj = { id: 'm1', name: 'map-pool', type: 'roundrobin', nodes: { 'a.example:80': 1, 'b.example:80': 1, 'c.example:80': 1 } };
+  const host = (n: number) => main().getByRole('textbox', { name: t('up.nodes.hostN', { n }) });
+
+  it('a held duplicate address blocks Save, badges Nodes, and names the right node after a row above it goes', async () => {
+    const { user, admin } = await openEditor('#/upstreams/m1?tab=nodes', { objects: { upstreams: [MAP] } });
+    await main().findByRole('heading', { level: 1, name: 'map-pool' });
+    await user.keyboard('e');
+    await user.clear(await main().findByRole('textbox', { name: t('up.nodes.hostN', { n: 3 }) }));
+    await user.type(host(3), 'b.example');
+    expect(host(3)).toHaveAccessibleDescription(t('up.nodes.dupOf', { n: 2 }));
+    expect(tab(t('up.section.nodes'))).toHaveAccessibleName(`${t('up.section.nodes')} ${t('ui.tabs.errors', { count: 1 })}`);
+
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
+    expect(writesOf(admin)).toEqual([]);
+
+    await user.click(main().getByRole('button', { name: t('up.nodes.removeN', { n: 1 }) }));
+    expect(host(2)).toHaveValue('b.example');
+    expect(host(2)).toHaveAccessibleDescription(t('up.nodes.dupOf', { n: 1 }));
+
+    // Changed to a free address, it is written, and Save goes through.
+    await user.type(host(2), '2');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.nodes).toEqual({ 'b.example:80': 1, 'b.example2:80': 1 });
+  });
+
+  it('Cmd/Ctrl-S writes an all-digit host still held in its field', async () => {
+    const { user, admin } = await openEditor('#/upstreams/m1?tab=nodes', { objects: { upstreams: [{ ...MAP, nodes: { 'a.example': 1 } }] } });
+    await main().findByRole('heading', { level: 1, name: 'map-pool' });
+    await user.keyboard('e');
+    await user.type(await main().findByRole('textbox', { name: t('up.nodes.new') }), '42');
+    await user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.nodes).toEqual({ 'a.example': 1, 42: 1 });
+  });
+});
+
 describe('the upstream list', () => {
   it('counts what uses each upstream', async () => {
     await openEditor('#/upstreams', {

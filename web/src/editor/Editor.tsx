@@ -15,18 +15,19 @@ import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
-import { Input, LockProvider, Tabs, toast } from '../ui';
+import { Input, LockProvider, PendingProvider, Tabs, toast, type PendingEntry } from '../ui';
 import { backOf } from './back';
 import { ConflictDialog } from './ConflictDialog';
-import { DiscardDialog } from './DiscardDialog';
+import { DiscardDialog, PendingDialog } from './DiscardDialog';
 import { deepEqual, setPath, useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
-import { issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
+import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
 import { JSON_TAB, JsonErrorContext } from './json';
 import { JsonTab } from './JsonTab';
 import { saveResource } from './save';
 import { useEditorKeys } from './useEditorKeys';
 import { useLeaveGuard } from './useLeaveGuard';
+import { useSaveRequest } from './useSaveRequest';
 import { useTabParam } from './useTabParam';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
@@ -77,8 +78,15 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const [conflict, setConflict] = useState<Item>();
   const [jsonError, setJsonError] = useState<string>();
   const [dialog, setDialog] = useState<'json' | 'delete' | 'discard'>();
-  /** Bumped on every lock: remounts the JSON tab, so text that never parsed can't outlive Discard. */
-  const [jsonEpoch, setJsonEpoch] = useState(0);
+  /**
+   * Bumped on every lock: remounts the tab area, so nothing a field held without putting it in the
+   * draft (text that never parsed, a flagged node address) can outlive Save or Discard.
+   */
+  const [epoch, setEpoch] = useState(0);
+  /** What fields of the active tab hold that is not in the draft (usePending): Save waits for it. */
+  const [pending, setPending] = useState<PendingEntry[]>([]);
+  /** A tab the user chose while the active one holds pending input: asked about first. */
+  const [switchTo, setSwitchTo] = useState<string>();
   const editRef = useRef<HTMLButtonElement>(null);
   const idRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -116,25 +124,16 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const name = isNew ? t('page.new', { kind: def.singular }) : def.nameOf({ id: id ?? '', value: draft });
   const back = backOf(kind, parent);
   const listPath = back.to;
-  // A typed ID and JSON text that doesn't parse are work to lose as well, though not in the draft.
-  const unsaved = dirty || (isNew && newId !== '') || jsonError !== undefined;
+  // A typed ID, JSON text that doesn't parse and input a field holds are work to lose as well,
+  // though not in the draft.
+  const unsaved = dirty || (isNew && newId !== '') || jsonError !== undefined || pending.length > 0;
   const guard = useLeaveGuard(unsaved);
 
   // --- Issues ------------------------------------------------------------------------------------
   const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins }), [isNew, ctx, plugins, streamPlugins]);
   const checked = useMemo(() => def.validate?.(draft, env) ?? [], [def, draft, env]);
   const typedId = typeof draft.id === 'string' || typeof draft.id === 'number' ? String(draft.id) : undefined;
-  const frameIssues = useMemo(() => {
-    const list: Issue[] = [];
-    if (!isNew && id !== undefined) {
-      const own = def.idFromDraft ? def.idFromDraft(draft) : typedId;
-      if (own !== undefined && own !== id) list.push({ path: def.idFromDraft ? '' : 'id', message: t('editor.id.changed', { id, kind: def.singular }) });
-    }
-    if (isNew && !def.idFromDraft && newId.trim() !== '' && typedId !== undefined && typedId !== newId.trim()) {
-      list.push({ path: 'id', message: t('editor.id.mismatch', { json: typedId, id: newId.trim() }) });
-    }
-    return list;
-  }, [def, draft, id, isNew, newId, typedId]);
+  const frameIssues = useMemo(() => idIssues(def, draft, { id, isNew, newId, typedId }), [def, draft, id, isNew, newId, typedId]);
   const issues = useMemo(() => [...checked, ...frameIssues], [checked, frameIssues]);
   // A new object's id: the body field for kinds that have one (a consumer's username); else the ID
   // field, else an id typed into the JSON (POST refuses an id in the body).
@@ -146,17 +145,23 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const byTab = useMemo(() => issuesByTab(issues, tabFields, JSON_TAB), [issues, tabFields]);
   const failureIssue: Issue | undefined = failure?.path !== undefined ? { path: failure.path, message: failure.message } : undefined;
   const failureTab = failureIssue && tabOfIssue(failureIssue, tabFields, JSON_TAB);
-  const problems = issues.length + (idMissing ? 1 : 0) + (jsonError !== undefined ? 1 : 0);
+  const problems = issues.length + (idMissing ? 1 : 0) + (jsonError !== undefined ? 1 : 0) + pending.length;
 
   // --- Tabs --------------------------------------------------------------------------------------
   const [requested, setTab] = useTabParam();
   const active = requested !== null && tabIds.includes(requested) ? requested : (tabIds[0] ?? JSON_TAB);
+  /** A tab chosen by the user: asked about first while the active tab holds pending input. */
+  function chooseTab(next: string) {
+    if (next !== active && pending.length > 0) setSwitchTo(next);
+    else setTab(next);
+  }
 
   // --- Lock and focus ------------------------------------------------------------------------------
   function lock() {
     focusNext.current = 'edit';
     setLocked(true);
-    setJsonEpoch((n) => n + 1);
+    setEpoch((n) => n + 1);
+    setPending([]);
     setSaveAttempts(0);
     setFailure(undefined);
   }
@@ -175,14 +180,18 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   }, [locked]);
 
   // --- Save --------------------------------------------------------------------------------------
-  async function save(force = false) {
+  async function save(force = false, left?: HTMLElement) {
     if (saving || locked) return;
     if (problems > 0) {
       setSaveAttempts((n) => n + 1);
       toast.error(problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems }));
-      const first = jsonError !== undefined ? JSON_TAB : tabIds.find((tab) => byTab.has(tab));
-      if (first) setTab(first);
-      else if (idMissing) idRef.current?.focus();
+      // Input this tab holds comes first: stay here, on the field that holds it.
+      const holding = pending.length > 0 ? bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"] [aria-invalid="true"]') : undefined;
+      const first = pending.length > 0 ? active : jsonError !== undefined ? JSON_TAB : tabIds.find((tab) => byTab.has(tab));
+      if (first !== undefined && first !== active) setTab(first);
+      else if (holding) holding.focus();
+      else if (first === undefined && idMissing) idRef.current?.focus();
+      else if (left?.isConnected) left.focus();
       return;
     }
     if (!isNew && !dirty && !force) {
@@ -224,6 +233,9 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     }
   }
 
+  // Save from the button, Cmd/Ctrl-S or the conflict dialog: after the focused field is left.
+  const requestSave = useSaveRequest(bodyRef, save, !saving && !locked);
+
   function discard() {
     if (isNew) {
       // The leave guard asks when there is something to lose.
@@ -243,7 +255,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     toast.info(t('editor.conflict.reloaded', { name: def.nameOf(theirs) }));
   }
 
-  useEditorKeys({ locked, canEdit: !readOnly, onEdit: unlock, onSave: () => void save() });
+  useEditorKeys({ locked, canEdit: !readOnly, onEdit: unlock, onSave: () => requestSave() });
 
   // --- Tabs' content -----------------------------------------------------------------------------
   const tabProps = (tab: string): TabProps => ({
@@ -265,7 +277,10 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     </>
   );
   const badge = (tab: string) =>
-    (byTab.get(tab)?.length ?? 0) + (failureTab === tab ? 1 : 0) + (tab === JSON_TAB && jsonError !== undefined ? 1 : 0);
+    (byTab.get(tab)?.length ?? 0) +
+    (failureTab === tab ? 1 : 0) +
+    (tab === JSON_TAB && jsonError !== undefined ? 1 : 0) +
+    (tab === active ? pending.length : 0);
   // Only the active panel is mounted, so only its content is built.
   const tabs = [
     ...def.tabs.map((tab) => ({
@@ -274,7 +289,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       badge: badge(tab.id),
       content: tab.id === active ? tab.render(tabProps(tab.id)) : null,
     })),
-    { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? <JsonTab key={jsonEpoch} {...tabProps(JSON_TAB)} /> : null },
+    { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? <JsonTab {...tabProps(JSON_TAB)} /> : null },
   ];
 
   const status = def.hasStatus
@@ -298,7 +313,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         saveBlocked={jsonError !== undefined}
         editRef={editRef}
         onEdit={unlock}
-        onSave={() => void save()}
+        onSave={() => requestSave()}
         onDiscard={discard}
         onDuplicate={() => id !== undefined && void navigate(`${newPathFor(kind, parent)}?from=${encodeURIComponent(id)}`)}
         onViewJson={() => setDialog('json')}
@@ -330,12 +345,24 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         )}
         <LockProvider locked={!editable}>
           <JsonErrorContext value={setJsonError}>
-            <Tabs tabs={tabs} active={active} onChange={setTab} />
+            <PendingProvider key={epoch} onChange={setPending}>
+              <Tabs tabs={tabs} active={active} onChange={chooseTab} />
+            </PendingProvider>
           </JsonErrorContext>
         </LockProvider>
       </div>
 
       <DiscardDialog open={guard.blocked} name={name} onConfirm={guard.leave} onCancel={guard.stay} />
+      <PendingDialog
+        open={switchTo !== undefined}
+        kind={def.singular}
+        pending={pending}
+        onConfirm={() => {
+          if (switchTo !== undefined) setTab(switchTo);
+          setSwitchTo(undefined);
+        }}
+        onCancel={() => setSwitchTo(undefined)}
+      />
       <DiscardDialog
         open={dialog === 'discard'}
         name={name}
@@ -354,7 +381,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
           theirs={conflict.value}
           onOverwrite={() => {
             setConflict(undefined);
-            void save(true);
+            requestSave(true);
           }}
           onReload={() => reloadTheirs(conflict)}
           onCancel={() => setConflict(undefined)}

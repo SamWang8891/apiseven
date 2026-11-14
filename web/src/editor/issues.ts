@@ -1,5 +1,7 @@
 // Problems with a draft, found in the browser (ResourceDef.validate, the frame's own checks) or named
 // by APISIX's answer to a save. Each one is attributed to a tab, which shows its count as a badge.
+import type { Obj } from '../api/types';
+import { t } from '../i18n';
 
 export interface Issue {
   /** Dotted path into the draft, e.g. 'uri', 'plugins.limit-count.count'; '' for the object as a whole. */
@@ -93,4 +95,27 @@ export function pathOfError(message: string | undefined): string | undefined {
     if (m) return path(m) || undefined;
   }
   return undefined;
+}
+
+/** What idIssues needs of a kind's registry entry. */
+interface IdRules {
+  singular: string;
+  idFromDraft?(draft: Obj): string | undefined;
+}
+
+/**
+ * The frame's own checks of the id: a stored object's id can't change (path `id`, or `''` for kinds
+ * whose id is a body field); a new object's id typed into the JSON must match the ID field.
+ */
+export function idIssues(def: IdRules, draft: Obj, a: { id?: string; isNew: boolean; newId: string; typedId?: string }): Issue[] {
+  const list: Issue[] = [];
+  const { id, isNew, newId, typedId } = a;
+  if (!isNew && id !== undefined) {
+    const own = def.idFromDraft ? def.idFromDraft(draft) : typedId;
+    if (own !== undefined && own !== id) list.push({ path: def.idFromDraft ? '' : 'id', message: t('editor.id.changed', { id, kind: def.singular }) });
+  }
+  if (isNew && !def.idFromDraft && newId.trim() !== '' && typedId !== undefined && typedId !== newId.trim()) {
+    list.push({ path: 'id', message: t('editor.id.mismatch', { json: typedId, id: newId.trim() }) });
+  }
+  return list;
 }

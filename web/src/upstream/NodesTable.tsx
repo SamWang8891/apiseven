@@ -9,11 +9,13 @@ import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { issueAt } from '../editor/issues';
 import { t } from '../i18n';
-import { Button, Input, NumberInput, useLocked, type InputProps } from '../ui';
+import { Button, Input, NumberInput, useLocked, usePending, type InputProps } from '../ui';
 import { IssueLine } from './fields';
+import { Head, LockedNodes, ShareCell } from './NodeCells';
 import {
   addMapNode,
   addNodes,
+  addrOf,
   canDuplicate,
   duplicateNode,
   isNodeList,
@@ -28,99 +30,8 @@ import {
   sharesOf,
   type Address,
   type NodeRow,
-  type Share,
 } from './nodes';
 import type { SectionProps } from './values';
-
-/** `75%`, `<1%` for a sliver, `0%`. */
-function percent(share: number): string {
-  const pct = Math.round(share * 100);
-  return pct === 0 && share > 0 ? '<1%' : `${pct}%`;
-}
-
-function ShareCell({ share }: { share: Share }) {
-  if (share === undefined) return <span className="up-share up-share--none">{t('ui.empty')}</span>;
-  if (share === 'standby') {
-    return (
-      <span className="up-share up-share--standby" title={t('up.nodes.standbyTitle')}>
-        {t('up.nodes.standby')}
-      </span>
-    );
-  }
-  const text = percent(share);
-  return (
-    <span className="up-share" title={t('up.nodes.shareTitle', { share: text })}>
-      <span className="up-share__track" aria-hidden="true">
-        <span className="up-share__fill" style={{ width: `${Math.min(100, share * 100)}%` }} />
-      </span>
-      <span className="up-share__pct">{text}</span>
-    </span>
-  );
-}
-
-function Head({ priority, shares, actions }: { priority: boolean; shares: boolean; actions: boolean }) {
-  return (
-    <thead>
-      <tr>
-        <th scope="col" className="up-table__host">
-          {t('up.nodes.host')}
-        </th>
-        <th scope="col" className="up-table__num">
-          {t('up.nodes.port')}
-        </th>
-        <th scope="col" className="up-table__num">
-          {t('up.nodes.weight')}
-        </th>
-        {priority && (
-          <th scope="col" className="up-table__num">
-            {t('up.nodes.priority')}
-          </th>
-        )}
-        {shares && (
-          <th scope="col" className="up-table__share">
-            {t('up.nodes.share')}
-          </th>
-        )}
-        {actions && (
-          <th scope="col" className="up-table__actions">
-            <span className="up-sr-only">{t('up.nodes.actions')}</span>
-          </th>
-        )}
-      </tr>
-    </thead>
-  );
-}
-
-/** The table as it reads locked: values only; the priority column only when a node sets one. */
-function LockedNodes({ rows, shares }: { rows: NodeRow[]; shares: Share[] | undefined }) {
-  if (rows.length === 0) return <p className="up-empty">{t('up.nodes.empty')}</p>;
-  const priority = rows.some((row) => row.priority !== undefined);
-  return (
-    <table className="up-table up-table--locked">
-      <Head priority={priority} shares={shares !== undefined} actions={false} />
-      <tbody>
-        {rows.map((row, i) => (
-          <tr key={i}>
-            <td className="up-table__host mono">{row.host ?? t('ui.empty')}</td>
-            <td className="up-table__num mono">{row.port ?? t('ui.empty')}</td>
-            <td className="up-table__num">{row.weight ?? t('ui.empty')}</td>
-            {priority && <td className="up-table__num">{row.priority ?? 0}</td>}
-            {shares && (
-              <td className="up-table__share">
-                <ShareCell share={shares[i]} />
-              </td>
-            )}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-/** An address typed into a map row that the map can't take yet; `other` is the row that has it. */
-interface Held extends Address {
-  other?: number;
-}
 
 /** `record` with the key `at` removed and the keys after it moved down one (a removed row). */
 function afterRemove<T>(record: Record<number, T>, at: number): Record<number, T> {
@@ -156,7 +67,8 @@ function HostInput(props: Omit<InputProps, 'mono' | 'autoComplete'>) {
  */
 export function NodesTable({ value, onChange, issues }: SectionProps) {
   const locked = useLocked();
-  const [held, setHeld] = useState<Record<number, Held>>({});
+  /** Addresses typed into map rows (or the new-node field) that the map can't take yet. */
+  const [held, setHeld] = useState<Record<number, Address>>({});
   const [skipped, setSkipped] = useState<string[]>([]);
   /** Each map row's address before the edit in progress; 'new' for a row this edit added. */
   const start = useRef<Record<number, Address | 'new'>>({});
@@ -169,15 +81,35 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     if (locked) start.current = {};
   }, [locked]);
   const rows = rowsOf(value.nodes);
+  const fresh = rows.length;
+  /** The row that already has what row `i` holds (computed from the rows now, so it follows removals); -1 if none. */
+  const otherOf = (i: number): number => {
+    const h = held[i];
+    if (!h) return -1;
+    const key = addrOf(h.host, h.port);
+    return rows.findIndex((row, j) => j !== i && (row.addr ?? addrOf(row.host ?? '', row.port)) === key);
+  };
+  // What the fields show but the upstream doesn't have yet: Save waits for it (usePending).
+  usePending(
+    Object.keys(held).length === 0
+      ? undefined
+      : Object.entries(held)
+          .map(([key, h]) => {
+            const i = Number(key);
+            const node = i === fresh ? t('up.pending.newNode') : t('up.pending.node', { n: i + 1 });
+            const addr = addrOf(h.host, h.port);
+            return otherOf(i) >= 0 ? t('up.pending.duplicate', { node, addr }) : t('up.pending.unsaved', { node, addr });
+          })
+          .join('; '),
+  );
   const shares = sharesOf(rows, typeof value.type === 'string' ? value.type : undefined);
   if (locked) return <LockedNodes rows={rows} shares={shares} />;
 
   const map = isObj(value.nodes);
-  const fresh = rows.length;
   const issue = (i: number, field: string) => issueAt(issues, `nodes.${i}.${field}`);
   const stored = (i: number): Address => ({ host: rows[i]?.host ?? '', port: rows[i]?.port });
   const shown = (i: number): Address => held[i] ?? stored(i);
-  const hold = (i: number, h: Held | undefined) =>
+  const hold = (i: number, h: Address | undefined) =>
     setHeld((prev) => {
       const next = { ...prev };
       if (h) next[i] = h;
@@ -198,7 +130,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
       write(edit.up);
       return true;
     }
-    hold(i, edit.reason === 'duplicate' ? { ...address, other: edit.other } : address);
+    hold(i, address);
     if (edit.reason === 'duplicate') {
       const before = start.current[i];
       if (before === 'new') write(removeNode(value, i));
@@ -222,7 +154,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     }
     const edit = addMapNode(value, { host: text, port: undefined }, { commitDigits });
     if (!edit.ok) {
-      hold(fresh, { host: text, port: undefined, other: edit.reason === 'duplicate' ? edit.other : undefined });
+      hold(fresh, { host: text, port: undefined });
       return false;
     }
     hold(fresh, undefined);
@@ -231,10 +163,13 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     return true;
   }
 
-  /** Leaving a row's address fields: an all-digit host waiting there is written now. */
+  /**
+   * Leaving a row's address fields: what waits there is written now if the map can take it (an
+   * all-digit host, or an address whose other row has gone); a duplicate stays held and flagged.
+   */
   function settle(i: number) {
     const h = held[i];
-    const done = h && h.other === undefined ? (i === fresh ? editNew(h.host, true) : editAddress(i, h, true)) : !h;
+    const done = h ? (i === fresh ? editNew(h.host, true) : editAddress(i, h, true)) : true;
     if (done) delete start.current[i];
   }
 
@@ -273,11 +208,11 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
 
   /** A held duplicate's message on the host field, and the button that keeps both. */
   const duplicateOf = (i: number) => {
-    const other = held[i]?.other;
-    return other === undefined ? undefined : t('up.nodes.dupOf', { n: other + 1 });
+    const other = otherOf(i);
+    return other < 0 ? undefined : t('up.nodes.dupOf', { n: other + 1 });
   };
   const keepButton = (i: number) =>
-    held[i]?.other !== undefined && (
+    otherOf(i) >= 0 && (
       <Button
         size="sm"
         className="up-keep"

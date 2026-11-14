@@ -475,3 +475,13 @@
   color: var(--text-2);
   font-size: 12px;
 }
+
+/* The unfinished input a tab switch would discard, as listed in the dialog that asks. */
+.ed-pending {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: var(--s2) 0 0;
+  padding-left: var(--s4);
+  color: var(--text);
+}
