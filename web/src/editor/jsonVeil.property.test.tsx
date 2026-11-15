@@ -2,8 +2,9 @@
 // editor/JsonTab.tsx): random sequences of edits to the JSON text of an SSL with a main key and two
 // or three extra pairs, each with its own key: pairs swapped or removed in the text, a pair with a new
 // key added from outside the tab, an unrelated field edited, Format, leaving the tab and coming back,
-// the JSON broken and repaired. After every step: each certificate in the draft has the key it was
-// entered with or none, no key in the draft is (or holds) a note, and no key text is in the page.
+// the JSON broken and repaired. After every step: the draft holds exactly the certificates it should,
+// in order (a model of the edits, kept apart from the text), each with the key it was entered with or
+// none; no key in the draft is (or holds) a note; and no key text is in the page.
 import { act, cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { EditorView } from '@codemirror/view';
 import { useEffect, useState } from 'react';
@@ -102,6 +103,8 @@ describe('the editing JSON tab never moves, loses or sends a private key (proper
       const keyless = new Set<string>();
       const names = Array.from({ length: pairs }, (_, i) => `x${i}`);
       for (const n of names) truth.set(cert(n), key(n));
+      // The extra certificates that should be in the draft, in order: each edit below applied to this list too.
+      const expected = names.map(cert);
       const tab = mount({ snis: ['a.test'], cert: cert('main'), key: key('main'), certs: names.map(cert), keys: names.map(key) });
       await waitFor(() => expect(document.querySelector('.cm-content')).not.toBeNull());
       let added = 0;
@@ -113,6 +116,7 @@ describe('the editing JSON tab never moves, loses or sends a private key (proper
         expect(d.key, `${where}: the main key`).toBe(key('main'));
         const certs = (Array.isArray(d.certs) ? d.certs : []) as string[];
         const keys = (Array.isArray(d.keys) ? d.keys : []) as unknown[];
+        expect(certs, `${where}: the certificates present`).toEqual(expected);
         // Each certificate has exactly the key it was entered with; none only when it was added without one.
         certs.forEach((c, i) => {
           if (keyless.has(c)) expect(keys[i] ?? null, `${where}: pair ${i} had no key`).toBeNull();
@@ -136,6 +140,7 @@ describe('the editing JSON tab never moves, loses or sends a private key (proper
           const j = (i + 1) % certs.length;
           [certs[i], certs[j]] = [certs[j], certs[i]];
           [keys[i], keys[j]] = [keys[j], keys[i]];
+          [expected[i], expected[j]] = [expected[j] as string, expected[i] as string];
           tab.type(written({ ...shown, certs, keys }, r));
           reordered = true;
           count(op);
@@ -143,6 +148,7 @@ describe('the editing JSON tab never moves, loses or sends a private key (proper
           const i = r.int(certs.length);
           certs.splice(i, 1);
           keys.splice(i, 1);
+          expected.splice(i, 1);
           tab.type(written({ ...shown, certs, keys }, r));
           reordered = true;
           count(op);
@@ -156,6 +162,7 @@ describe('the editing JSON tab never moves, loses or sends a private key (proper
           const dc = (Array.isArray(d.certs) ? d.certs : []) as unknown[];
           const dk = (Array.isArray(d.keys) ? d.keys : dc.map(() => null)) as unknown[];
           tab.outside({ ...d, certs: [...dc, cert(n)], keys: [...dk, withKey ? key(n) : null] });
+          expected.push(cert(n));
           count(withKey ? 'add' : 'add without a key');
         } else if (op === 'desc') {
           if (reordered) afterReorder++;
