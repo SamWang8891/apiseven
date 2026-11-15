@@ -58,6 +58,8 @@ describe('health checks', () => {
     expect(h.value()).toEqual({ x_future: 1, checks: { active: {}, passive: {} } });
 
     const passive = screen.getByRole('group', { name: t('up.hc.passive') });
+    // "Count as unhealthy" is a closed section at first: opened as a user would.
+    await h.user.click(within(passive).getByRole('button', { name: t('up.hc.passiveUnhealthy') }));
     await h.user.type(within(passive).getByRole('spinbutton', { name: t('up.hc.httpFailures') }), '3');
     expect(h.value().checks).toEqual({ active: {}, passive: { unhealthy: { http_failures: 3 } } });
 
@@ -73,9 +75,58 @@ describe('health checks', () => {
 
   it('edits status lists as numbers', async () => {
     const h = renderUpstream({ checks: { active: {} } }, { section: 'health' });
-    const healthy = screen.getByRole('group', { name: t('up.hc.healthy') });
+    await h.user.click(screen.getByRole('button', { name: t('up.hc.healthy') }));
+    const healthy = screen.getByRole('region', { name: t('up.hc.healthy') });
     await h.user.type(within(healthy).getByRole('textbox', { name: t('up.hc.statuses') }), '200,204,');
     expect(h.value().checks).toEqual({ active: { healthy: { http_statuses: [200, 204] } } });
+  });
+
+  // Fix round 1, R1: the groups are collapsible sections with a one-line summary.
+  describe('collapsible sections', () => {
+    const toggle = (name: string) => screen.getByRole('button', { name });
+    const CHECKS = {
+      active: { type: 'http', http_path: '/healthz', timeout: 2, healthy: { interval: 2, successes: 2 }, unhealthy: { interval: 1, http_failures: 3, timeouts: 3 } },
+      passive: { healthy: { successes: 4 }, unhealthy: { http_statuses: [500, 503] } },
+    };
+
+    it('the probe opens, the "Mark … after" and passive sections start closed with what is set in one line', () => {
+      renderUpstream({ checks: CHECKS }, { section: 'health' });
+      expect(toggle(t('up.hc.probe'))).toHaveAttribute('aria-expanded', 'true');
+      for (const name of ['up.hc.healthy', 'up.hc.unhealthy', 'up.hc.passiveHealthy', 'up.hc.passiveUnhealthy']) {
+        expect(toggle(t(name)), name).toHaveAttribute('aria-expanded', 'false');
+      }
+      expect(toggle(t('up.hc.healthy'))).toHaveAccessibleDescription('every 2 s · 2 successes');
+      expect(toggle(t('up.hc.unhealthy'))).toHaveAccessibleDescription('every 1 s · 3 HTTP failures · 3 timeouts');
+      expect(toggle(t('up.hc.passiveHealthy'))).toHaveAccessibleDescription('4 successes');
+      expect(toggle(t('up.hc.passiveUnhealthy'))).toHaveAccessibleDescription('statuses 500, 503');
+      expect(screen.queryByRole('spinbutton', { name: t('up.hc.successes') })).not.toBeInTheDocument();
+    });
+
+    it('a section that sets nothing says "defaults"; the locked view shows the same sections and summaries', async () => {
+      const h = renderUpstream({ checks: { active: { http_path: '/h' } } }, { section: 'health', locked: true });
+      expect(toggle(t('up.hc.healthy'))).toHaveAccessibleDescription(t('up.hc.sum.defaults'));
+      expect(toggle(t('up.hc.unhealthy'))).toHaveAccessibleDescription(t('up.hc.sum.defaults'));
+      await h.user.click(toggle(t('up.hc.probe')));
+      expect(toggle(t('up.hc.probe'))).toHaveAccessibleDescription('/h');
+    });
+
+    it('a problem inside a closed section opens it and counts beside its title', () => {
+      const h = renderUpstream({ checks: { active: {} } }, { section: 'health' });
+      expect(toggle(t('up.hc.unhealthy'))).toHaveAttribute('aria-expanded', 'false');
+      h.update({ issues: [{ path: 'checks.active.unhealthy.timeouts', message: 'too many' }] });
+      expect(toggle(t('up.hc.unhealthy'))).toHaveAttribute('aria-expanded', 'true');
+      expect(within(toggle(t('up.hc.unhealthy'))).getByText(t('ui.tabs.errors', { count: 1 }))).toBeInTheDocument();
+      expect(toggle(t('up.hc.healthy'))).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('a section whose field holds unfinished input does not close', async () => {
+      const h = renderUpstream({ checks: { active: {} } }, { section: 'health' });
+      await h.user.click(toggle(t('up.hc.healthy')));
+      await h.user.type(screen.getByRole('spinbutton', { name: t('up.hc.interval') }), '1x');
+      await h.user.click(toggle(t('up.hc.healthy')));
+      expect(toggle(t('up.hc.healthy'))).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('spinbutton', { name: t('up.hc.interval') })).toHaveValue('1x');
+    });
   });
 });
 

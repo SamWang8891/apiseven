@@ -141,7 +141,7 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
         </div>
         <p className="ed-meta">
           {p.owner && (
-            <span className="ed-meta__item">
+            <span className="ed-meta__item ed-meta__item--shrink" {...clipTitle(`${p.owner.kind} ${p.owner.name}`)}>
               {p.owner.kind}{' '}
               <Link className="ed-owner mono" to={p.owner.to}>
                 {p.owner.name}
@@ -149,7 +149,11 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
             </span>
           )}
           {p.original && <Times item={p.original} />}
-          {p.note !== undefined && <span className="ed-meta__item">{p.note}</span>}
+          {p.note !== undefined && (
+            <span className="ed-meta__item ed-meta__item--shrink" {...clipTitle(p.note)}>
+              {p.note}
+            </span>
+          )}
           {p.dirty && <span className="ed-meta__item ed-meta__dirty">{t('editor.unsaved')}</span>}
         </p>
       </div>

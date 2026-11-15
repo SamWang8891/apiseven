@@ -137,7 +137,7 @@ export function useHeld(): Held {
           setTimeout(() => {
             refusing = false;
           });
-          toast.error(t('ui.pending.refused', { message: first.message }));
+          toast.error(t('ui.pending.refused', { message: first.message }), { pageBound: true });
         }
         return true;
       },

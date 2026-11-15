@@ -41,8 +41,12 @@ export function ViaService() {
   return <Badge tone="accent">{t('cell.viaService')}</Badge>;
 }
 
-/** Hosts one per line in monospace, tagged when they come from the service; "any host" with none. */
-export function HostsCell({ hosts, viaService }: { hosts: string[]; viaService?: boolean }) {
+/**
+ * Hosts one per line in monospace, tagged when they come from the service; "any host" with none;
+ * "loading…" while they would come from a service list that has not loaded.
+ */
+export function HostsCell({ hosts, viaService, loading }: { hosts: string[]; viaService?: boolean; loading?: boolean }) {
+  if (loading) return <span className="cell-muted">{t('picker.loading')}</span>;
   if (hosts.length === 0) return <span className="cell-muted">{t('cell.anyHost')}</span>;
   return (
     <>
@@ -104,7 +108,9 @@ function FitChips({ chips, all, signature }: { chips: ReactNode[]; all: ReactNod
         used = next;
         n = i + 1;
       }
-      setFit({ signature, count: Math.max(1, room > 0 ? n : widths.length) });
+      const count = Math.max(1, room > 0 ? n : widths.length);
+      // The same fit as before (most resize callbacks, a column drag frame by frame): no re-render.
+      setFit((now) => (now.signature === signature && now.count === count ? now : { signature, count }));
     };
     place();
     if (typeof ResizeObserver !== 'function') return;

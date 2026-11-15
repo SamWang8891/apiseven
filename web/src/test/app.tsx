@@ -2,6 +2,7 @@ import { render } from '@testing-library/react';
 import { vi } from 'vitest';
 import type { Connection } from '../api/types';
 import App from '../App';
+import { resetReachability } from '../api/reachability';
 import { STORAGE_KEYS } from '../connection/store';
 import { fakeAdmin, type FakeAdminOptions } from './fakeAdmin';
 
@@ -24,6 +25,7 @@ export function renderApp(opts: FakeAdminOptions & { hash?: string } = {}) {
 }
 
 export function resetApp(): void {
+  resetReachability();
   localStorage.clear();
   sessionStorage.clear();
   window.history.replaceState(null, '', '/');

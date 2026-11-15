@@ -84,6 +84,15 @@ describe('routeFilters', () => {
     expect(filter('host').options(items, ctx).at(-1)?.label).toBe(t('filter.anyHost'));
   });
 
+  it('host, while the services load: a route that takes its hosts from one is neither offered nor matched as Any host (fix round 1, R4.1)', () => {
+    const items = [itemOf('h1', { name: 'own', host: 'a.example' }), itemOf('h2', { name: 'via', service_id: 'sh' }), itemOf('h3', { name: 'anywhere' })];
+    const ctx = ctxOf({ routes: items, loaded: { services: false } });
+    expect(filter('host').options(items, ctx).map((o) => o.value)).toEqual(['a.example', ANY_HOST]);
+    const pick = (values: string[]) => applyFilters(items, '', routeFilters, { host: values }, ctx).map((i) => i.value.name);
+    expect(pick([ANY_HOST])).toEqual(['anywhere']);
+    expect(pick(['a.example', ANY_HOST])).toEqual(['own', 'anywhere']);
+  });
+
   it('method: each method in use, ANY for routes that set none (acceptance: filter by method)', () => {
     const items = [itemOf('m1', { name: 'get', methods: ['GET'] }), itemOf('m2', { name: 'write', methods: ['POST', 'PUT'] }), itemOf('m3', { name: 'any' })];
     expect(filter('method').options(items, ctxOf()).map((o) => o.value)).toEqual(['ANY', 'GET', 'POST', 'PUT']);

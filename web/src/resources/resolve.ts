@@ -131,6 +131,14 @@ export function routeHosts(route: Obj, ctx: Ctx): { hosts: string[]; viaService:
   return { hosts: inherited, viaService: inherited.length > 0 };
 }
 
+/**
+ * Whether a route's hosts can't be known yet: it sets none of its own and takes them from a service
+ * whose list has not loaded (until then "any host" would be a guess: addendum rule 12).
+ */
+export function routeHostsLoading(route: Obj, ctx: Ctx): boolean {
+  return strings(route.hosts).length === 0 && nonEmpty(route.host) === undefined && idOf(route.service_id) !== undefined && !ctx.loaded.services;
+}
+
 function discoveryOf(upstream: Obj): string | undefined {
   const type = nonEmpty(upstream.discovery_type);
   const service = nonEmpty(upstream.service_name);

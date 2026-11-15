@@ -72,6 +72,8 @@
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+  /* Not selectable: selected, its light text would sit on the light --selection tint. */
+  user-select: none;
 }
 
 .ui-tabs__panel {

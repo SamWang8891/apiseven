@@ -50,7 +50,7 @@ function Explainer() {
     <section className="res-explain" aria-label={t('gr.explainer.title')}>
       <div className="res-explain__head">
         <h3 className="res-explain__title">{t('gr.explainer.title')}</h3>
-        <button type="button" className="res-explain__toggle" aria-expanded={open} aria-controls={detailsId} onClick={toggle}>
+        <button type="button" className="res-explain__toggle" aria-expanded={open} aria-controls={open ? detailsId : undefined} onClick={toggle}>
           <ChevronRight className="res-explain__chevron" size={14} aria-hidden="true" />
           {t('gr.explainer.how')}
         </button>

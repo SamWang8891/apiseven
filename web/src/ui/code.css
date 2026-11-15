@@ -30,7 +30,12 @@
   overflow: auto;
 }
 
-/* Shown while CodeMirror loads: the same text, metrics and height bounds. */
+/* Shown while CodeMirror loads: the same text, metrics and height bounds. Focused, the frame rings it
+   (:focus-within above): no second ring inside. */
+.ui-code__fallback:focus-visible {
+  outline: none;
+}
+
 .ui-code__fallback {
   min-height: calc(var(--code-min-lines) * var(--code-line) + 12px);
   max-height: calc(var(--code-max-lines) * var(--code-line) + 12px);

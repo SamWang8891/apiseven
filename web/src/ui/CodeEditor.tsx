@@ -1,4 +1,4 @@
-import { lazy, Suspense, type CSSProperties } from 'react';
+import { lazy, Suspense, useRef, type CSSProperties } from 'react';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { useLocked } from './LockContext';
@@ -27,6 +27,8 @@ const CodeEditorImpl = lazy(() => import('./codemirror/CodeEditorImpl'));
 
 export function CodeEditor(props: CodeEditorProps) {
   const locked = useLocked();
+  // Whether the stand-in had focus when CodeMirror arrived: then the editor takes it, not <body>.
+  const fallbackFocused = useRef(false);
   const readOnly = locked || props.readOnly === true;
   const { minLines = 4, maxLines = 30 } = props;
   const size = { '--code-min-lines': minLines, '--code-max-lines': Math.max(minLines, maxLines) } as CSSProperties;
@@ -34,12 +36,28 @@ export function CodeEditor(props: CodeEditorProps) {
     <div className={readOnly ? 'ui-code ui-code--readonly' : 'ui-code'} style={size}>
       <Suspense
         fallback={
-          <pre className="ui-code__fallback" tabIndex={0} aria-label={props['aria-label']} aria-busy="true" title={t('ui.code.loading')}>
+          <pre
+            className="ui-code__fallback"
+            tabIndex={0}
+            aria-label={props['aria-label']}
+            aria-busy="true"
+            title={t('ui.code.loading')}
+            onFocus={() => (fallbackFocused.current = true)}
+            onBlur={() => (fallbackFocused.current = false)}
+          >
             {props.value}
           </pre>
         }
       >
-        <CodeEditorImpl {...props} readOnly={readOnly} />
+        <CodeEditorImpl
+          {...props}
+          readOnly={readOnly}
+          takeFocus={() => {
+            const had = fallbackFocused.current;
+            fallbackFocused.current = false;
+            return had;
+          }}
+        />
       </Suspense>
     </div>
   );

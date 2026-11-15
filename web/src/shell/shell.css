@@ -194,10 +194,21 @@
   white-space: nowrap;
 }
 
+/* A kind's name keeps its width; an id gives way (the longest the most), its whole text in a title. */
 .shell-crumbs__item {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.shell-crumbs__item:not(.shell-crumbs__item--id) {
+  flex-shrink: 0;
+}
+
+/* The page's own id (the last crumb) gives way after the ids before it. */
+.shell-crumbs__item--id:last-child {
+  flex-shrink: 0.2;
 }
 
 .shell-crumbs__item a {

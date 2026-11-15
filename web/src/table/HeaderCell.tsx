@@ -41,7 +41,7 @@ export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, 
     let current = width;
     handle.setPointerCapture?.(e.pointerId);
     const move = (ev: PointerEvent) => {
-      current = Math.max(MIN_COLUMN_WIDTH, Math.round(width + ev.clientX - startX));
+      current = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(width + ev.clientX - startX)));
       onResizing(current);
     };
     const end = () => {
@@ -60,7 +60,8 @@ export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, 
     const by = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
     if (by !== 0) {
       e.preventDefault();
-      const next = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width + by));
+      // A width stored before the cap (wider) only narrows from where it is: no jump on the first key.
+      const next = Math.min(Math.max(width, MAX_COLUMN_WIDTH), Math.max(MIN_COLUMN_WIDTH, width + by));
       if (next !== width) onResize(next);
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -98,7 +99,7 @@ export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, 
         aria-label={t('table.resizeLabel', { column: column.header })}
         aria-valuenow={width}
         aria-valuemin={MIN_COLUMN_WIDTH}
-        aria-valuemax={MAX_COLUMN_WIDTH}
+        aria-valuemax={Math.max(width, MAX_COLUMN_WIDTH)}
         aria-valuetext={t('table.resizeValue', { width })}
         tabIndex={0}
         title={t('table.resize', { column: column.header })}

@@ -1,13 +1,19 @@
 // Health checks (`checks`, the schema's health_checker): active probes, and passive checks that
 // watch real responses. Each is behind a switch that adds or removes its block; passive checks need
 // active ones (the schema requires `active`, and only a probe can bring a node back), so turning
-// active off removes `checks` altogether. Fields that only apply to HTTP hide for TCP.
+// active off removes `checks` altogether. Fields that only apply to HTTP hide for TCP. Inside each
+// block the groups are collapsible sections (resources/Section) with a one-line summary of what is
+// set (hcSummary.ts): the probe opens by default, the "Mark … after" sections do not; a section with
+// a problem inside opens, and one whose field holds unfinished input does not close.
+import type { ReactNode } from 'react';
 import type { Obj } from '../api/types';
 import { getPath, setPath } from '../editor/draft';
-import { issueAt } from '../editor/issues';
+import { issueAt, type Issue } from '../editor/issues';
 import { t } from '../i18n';
+import { Section } from '../resources/Section';
 import { Switch } from '../ui';
-import { ChoiceSelect, Group, IssueLine, LinesInput, NumberField, StatusesInput, SwitchBlock, TextField } from './fields';
+import { ChoiceSelect, IssueLine, LinesInput, NumberField, StatusesInput, SwitchBlock, TextField } from './fields';
+import { healthySummary, passiveHealthySummary, passiveUnhealthySummary, probeSummary, unhealthySummary } from './hcSummary';
 import { byDefault, num, obj, str, type SectionProps } from './values';
 
 const PROTOCOLS = ['http', 'https', 'tcp'];
@@ -17,6 +23,24 @@ function without(o: Obj, ...keys: string[]): Obj {
   return Object.fromEntries(Object.entries(o).filter(([key]) => !keys.includes(key)));
 }
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE', 'PURGE'];
+
+/** The probe's own keys in `checks.active` (the rest of the block is `healthy` / `unhealthy`). */
+const PROBE_KEYS = new Set(['type', 'http_method', 'http_path', 'host', 'port', 'timeout', 'concurrency', 'https_verify_certificate', 'http_req_body', 'req_headers']);
+
+/** How many issues sit under `checks.<which>.<first>` for a first key `first` picks. */
+function countUnder(issues: Issue[], which: string, first: (key: string) => boolean): number {
+  const prefix = `checks.${which}.`;
+  return issues.filter((i) => i.path.startsWith(prefix) && first(i.path.slice(prefix.length).split('.')[0] ?? '')).length;
+}
+
+/** A collapsible group of fields inside a block: its fields in the two-column grid (`three`: three to a row). */
+function Part({ title, summary, issues, open, three, children }: { title: string; summary: string; issues: number; open?: boolean; three?: boolean; children: ReactNode }) {
+  return (
+    <Section title={title} summary={summary} issues={issues} defaultOpen={open}>
+      <div className={three ? 'up-row3' : 'ed-grid'}>{children}</div>
+    </Section>
+  );
+}
 
 export function HealthChecks({ value, onChange, issues }: SectionProps) {
   const checks = obj(value.checks);
@@ -84,8 +108,9 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
       >
         <IssueLine message={issueAt(issues, 'checks') ?? issueAt(issues, 'checks.active')} />
         {active !== undefined && (
-          <>
-            <Group title={t('up.hc.probe')}>
+          <div className="up-sections">
+            {/* Three to a row: the probe is open by default, and the tab stays about one screen. */}
+            <Part title={t('up.hc.probe')} summary={probeSummary(active)} issues={countUnder(issues, 'active', (k) => PROBE_KEYS.has(k))} open three>
               {protocol(a)}
               {http && (
                 <ChoiceSelect
@@ -115,7 +140,7 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
                 />
               )}
               {http && (
-                <div className="ed-wide">
+                <div className="up-span2">
                   <TextField label={t('up.hc.body')} mono value={str(active.http_req_body) ?? ''} error={a.issue('http_req_body')} onChange={(e) => a.set(['http_req_body'], e.target.value)} />
                 </div>
               )}
@@ -130,20 +155,20 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
                   />
                 </div>
               )}
-            </Group>
-            <Group title={t('up.hc.healthy')}>
+            </Part>
+            <Part title={t('up.hc.healthy')} summary={healthySummary(active)} issues={countUnder(issues, 'active', (k) => k === 'healthy')}>
               {number(a, ['healthy', 'interval'], t('up.hc.interval'), { min: 1, byDefault: 1, help: t('up.conn.seconds') })}
               {number(a, ['healthy', 'successes'], t('up.hc.successes'), { min: 1, max: 254, byDefault: 2 })}
               {http && statuses(a, ['healthy', 'http_statuses'], '200, 302')}
-            </Group>
-            <Group title={t('up.hc.unhealthy')}>
+            </Part>
+            <Part title={t('up.hc.unhealthy')} summary={unhealthySummary(active)} issues={countUnder(issues, 'active', (k) => k === 'unhealthy')}>
               {number(a, ['unhealthy', 'interval'], t('up.hc.interval'), { min: 1, byDefault: 1, help: t('up.conn.seconds') })}
               {http && number(a, ['unhealthy', 'http_failures'], t('up.hc.httpFailures'), { min: 1, max: 254, byDefault: 5 })}
               {number(a, ['unhealthy', 'tcp_failures'], t('up.hc.tcpFailures'), { min: 1, max: 254, byDefault: 2 })}
               {number(a, ['unhealthy', 'timeouts'], t('up.hc.timeouts'), { min: 1, max: 254, byDefault: 3 })}
               {http && statuses(a, ['unhealthy', 'http_statuses'], '429, 404, 500, 501, 502, 503, 504, 505')}
-            </Group>
-          </>
+            </Part>
+          </div>
         )}
       </SwitchBlock>
 
@@ -158,16 +183,18 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
         {passive !== undefined && (
           <>
             <div className="ed-grid">{protocol(p)}</div>
-            <Group title={t('up.hc.passiveHealthy')}>
-              {number(p, ['healthy', 'successes'], t('up.hc.successes'), { min: 0, max: 254, byDefault: 5 })}
-              {passiveType !== 'tcp' && statuses(p, ['healthy', 'http_statuses'], '200–208, 226, 300–308')}
-            </Group>
-            <Group title={t('up.hc.passiveUnhealthy')}>
-              {passiveType !== 'tcp' && number(p, ['unhealthy', 'http_failures'], t('up.hc.httpFailures'), { min: 0, max: 254, byDefault: 5 })}
-              {number(p, ['unhealthy', 'tcp_failures'], t('up.hc.tcpFailures'), { min: 0, max: 254, byDefault: 2 })}
-              {number(p, ['unhealthy', 'timeouts'], t('up.hc.timeouts'), { min: 0, max: 254, byDefault: 7 })}
-              {passiveType !== 'tcp' && statuses(p, ['unhealthy', 'http_statuses'], '429, 500, 503')}
-            </Group>
+            <div className="up-sections">
+              <Part title={t('up.hc.passiveHealthy')} summary={passiveHealthySummary(passive)} issues={countUnder(issues, 'passive', (k) => k === 'healthy')}>
+                {number(p, ['healthy', 'successes'], t('up.hc.successes'), { min: 0, max: 254, byDefault: 5 })}
+                {passiveType !== 'tcp' && statuses(p, ['healthy', 'http_statuses'], '200–208, 226, 300–308')}
+              </Part>
+              <Part title={t('up.hc.passiveUnhealthy')} summary={passiveUnhealthySummary(passive)} issues={countUnder(issues, 'passive', (k) => k === 'unhealthy')}>
+                {passiveType !== 'tcp' && number(p, ['unhealthy', 'http_failures'], t('up.hc.httpFailures'), { min: 0, max: 254, byDefault: 5 })}
+                {number(p, ['unhealthy', 'tcp_failures'], t('up.hc.tcpFailures'), { min: 0, max: 254, byDefault: 2 })}
+                {number(p, ['unhealthy', 'timeouts'], t('up.hc.timeouts'), { min: 0, max: 254, byDefault: 7 })}
+                {passiveType !== 'tcp' && statuses(p, ['unhealthy', 'http_statuses'], '429, 500, 503')}
+              </Part>
+            </div>
           </>
         )}
       </SwitchBlock>

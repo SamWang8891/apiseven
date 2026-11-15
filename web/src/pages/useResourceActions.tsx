@@ -38,7 +38,8 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
 
   const rowActions: MenuItemFor = (item) => [
     { id: 'edit', label: t('action.edit'), icon: <Pencil size={14} />, onSelect: () => void navigate(pathFor(kind, item.id, parent)) },
-    ...(def.noDuplicate
+    // Not with a key that turned out read-only: the copy could not be saved (as New, table/Toolbar NewLink).
+    ...(def.noDuplicate || readOnly
       ? []
       : [
           {

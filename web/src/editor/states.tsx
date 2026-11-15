@@ -8,6 +8,8 @@ import { registry } from '../resources/registry';
 import { Button } from '../ui';
 import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { backOf } from './back';
+import { useOwnUnreachable } from '../api/reachability';
+import { Unreached } from '../table/states';
 
 /** The header and body outlines while the object loads. */
 export function EditorSkeleton({ kind, id }: { kind: Kind; id?: string }) {
@@ -49,12 +51,16 @@ export function NotFoundState({ kind, id, parent, copying }: { kind: Kind; id: s
 }
 
 /** The read failed for another reason (auth errors excepted: they send the app to Connect). */
-export function LoadErrorState({ kind, id, error, retrying, onRetry }: { kind: Kind; id: string; error: ApiError; retrying: boolean; onRetry: () => void }) {
-  useDocumentTitle(objectTitle(id, registry[kind].singular));
+export function LoadErrorState({ kind, id, error, retrying, onRetry, copying }: { kind: Kind; id: string; error: ApiError; retrying: boolean; onRetry: () => void; copying?: boolean }) {
+  // A copy's source that failed to load leaves a create page: titled as one.
+  useDocumentTitle(copying ? pageTitle(t('page.new', { kind: registry[kind].singular })) : objectTitle(id, registry[kind].singular));
+  // Nothing loaded, its own retry: the shell's unreachable banner stands down (api/reachability.ts).
+  useOwnUnreachable(error);
   return (
     <div className="ed-state ed-state--error" role="alert">
       <CircleAlert className="ed-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />
       <h1>{t('editor.loadFailed', { kind: registry[kind].singular, id })}</h1>
+      <Unreached error={error} className="ed-state__body" />
       <p className="ed-state__message mono">{error.message}</p>
       <Button onClick={onRetry} loading={retrying}>
         {t('table.retry')}

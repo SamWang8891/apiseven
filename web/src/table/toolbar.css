@@ -26,7 +26,18 @@
   min-width: 0;
 }
 
-/* Padding inside, margin outside: the chips' focus rings stay inside the scrolling box. */
+/* The chips and, when some are hidden, a scroll button at each end that hides some. */
+.tbl-toolbar__chips {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/*
+ * Padding inside, margin outside: the chips' focus rings stay inside the scrolling box. Scroll padding
+ * keeps a focused chip clear of the faded end and its button.
+ */
 .tbl-toolbar__filters {
   display: flex;
   flex: 0 1 auto;
@@ -36,6 +47,7 @@
   margin: -4px;
   padding: 4px;
   overflow-x: auto;
+  scroll-padding-inline: 32px;
   scrollbar-width: thin;
 }
 
@@ -44,7 +56,32 @@
 }
 
 .tbl-toolbar__filters--more {
-  mask-image: linear-gradient(to right, var(--text) calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, var(--text) calc(100% - 36px), transparent);
+}
+
+.tbl-toolbar__filters--before {
+  mask-image: linear-gradient(to left, var(--text) calc(100% - 36px), transparent);
+}
+
+.tbl-toolbar__filters--before.tbl-toolbar__filters--more {
+  mask-image: linear-gradient(to right, transparent, var(--text) 36px, var(--text) calc(100% - 36px), transparent);
+}
+
+.tbl-toolbar__chips .tbl-toolbar__scroll {
+  position: absolute;
+  top: 50%;
+  z-index: 1;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-raised);
+  transform: translateY(-50%);
+}
+
+.tbl-toolbar__scroll--start {
+  left: -2px;
+}
+
+.tbl-toolbar__scroll--end {
+  right: -2px;
 }
 
 .tbl-toolbar__end {

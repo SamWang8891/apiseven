@@ -21,7 +21,7 @@ export interface TableState {
 }
 
 export const MIN_COLUMN_WIDTH = 60;
-/** The widest a column gets from the keyboard (a drag is not capped). */
+/** The widest a column gets, dragged or from the keyboard. */
 export const MAX_COLUMN_WIDTH = 1200;
 
 /** localStorage key of a table's state; `key` is the kind, or an embedded table's stateKey. */

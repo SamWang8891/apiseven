@@ -80,11 +80,11 @@ describe('Save anyway', () => {
     // Nothing is offered before a Save was refused.
     expect(offer()).toBeNull();
     await refusedWithOffer(user, admin);
-    expect(offer()).toHaveTextContent(t('editor.anyway.bodyOne', { kind: 'Route' }));
+    expect(offer()).toHaveTextContent(t('editor.anyway.bodyOne'));
     // The action sits beside Save in the sticky header (in view however far down the refused field
     // is), described by the notice above the tabs.
     expect(anywayButton().closest('header')).toContainElement(main().getByRole('button', { name: t('editor.save') }));
-    expect(anywayButton()).toHaveAccessibleDescription(t('editor.anyway.bodyOne', { kind: 'Route' }));
+    expect(anywayButton()).toHaveAccessibleDescription(t('editor.anyway.bodyOne'));
 
     await user.click(anywayButton());
     const dialog = await screen.findByRole('alertdialog', { name: t('editor.anyway.confirmTitle') });

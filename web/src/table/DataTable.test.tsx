@@ -269,6 +269,26 @@ describe('column widths (known item 9: the edge works from the keyboard)', () =>
     expect(edge('Host')).toHaveAttribute('aria-valuenow', '160');
   });
 
+  it('a drag is capped like the keys, and a wider stored width moves from where it is (fix round 1, R6.5)', async () => {
+    const { fireEvent } = await import('@testing-library/react');
+    renderTable({ items });
+    const handle = edge('Host');
+    fireEvent.pointerDown(handle, { button: 0, clientX: 100, pointerId: 1 });
+    fireEvent.pointerMove(handle, { clientX: 5000, pointerId: 1 });
+    fireEvent.pointerUp(handle, { clientX: 5000, pointerId: 1 });
+    expect(stored()).toEqual({ host: 1200 });
+    expect(edge('Host')).toHaveAttribute('aria-valuenow', '1200');
+    expect(Number(edge('Host').getAttribute('aria-valuenow'))).toBeLessThanOrEqual(Number(edge('Host').getAttribute('aria-valuemax')));
+    // A width stored before the cap existed.
+    localStorage.setItem(tableStorageKey('upstreams'), JSON.stringify({ ...JSON.parse(localStorage.getItem(tableStorageKey('upstreams')) ?? '{}'), widths: { host: 1500 } }));
+    const again = renderTable({ items });
+    const wide = within(screen.getAllByRole('table')[1] as HTMLElement).getByRole('separator', { name: t('table.resizeLabel', { column: 'Host' }) });
+    expect(wide).toHaveAttribute('aria-valuemax', '1500');
+    wide.focus();
+    await again.user.keyboard('{ArrowLeft}');
+    expect(wide).toHaveAttribute('aria-valuenow', '1490');
+  });
+
   it('never goes below the narrowest width', async () => {
     const { user } = renderTable({ items });
     edge('Priority').focus();

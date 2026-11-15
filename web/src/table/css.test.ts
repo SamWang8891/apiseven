@@ -33,6 +33,16 @@ describe('table and list page CSS', () => {
     }
   });
 
+  // Fix round 1, R6.2 and R6.3: what keyboard focus brings into view is never under the sticky header
+  // or the chip row's faded end.
+  it('scroll padding clears the sticky header (both densities) and the chip row\'s faded ends', () => {
+    const all = files.flatMap(({ css }) => rules(css));
+    const body = (selector: string) => all.filter(([sel]) => sel === selector).map(([, b]) => b).join(';');
+    expect(body('.tbl-scroll')).toMatch(/scroll-padding-top:\s*36px/);
+    expect(body('.tbl--compact .tbl-scroll')).toMatch(/scroll-padding-top:\s*32px/);
+    expect(body('.tbl-toolbar__filters')).toMatch(/scroll-padding-inline:\s*32px/);
+  });
+
   it('takes colours from the tokens only', () => {
     for (const { name, css } of files) {
       for (const [sel, body] of rules(css)) {

@@ -38,6 +38,15 @@
   border-radius: var(--radius-lg);
 }
 
+/* A row brought into view by the keyboard is never left under the sticky header. */
+.tbl-scroll {
+  scroll-padding-top: 36px;
+}
+
+.tbl--compact .tbl-scroll {
+  scroll-padding-top: 32px;
+}
+
 /*
  * A table in the page flow (credentials under their consumer, routes under their service): taller
  * than the window, it scrolls inside its own frame, so its header stays in view (sticky, above).

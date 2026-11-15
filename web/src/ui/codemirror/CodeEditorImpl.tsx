@@ -54,14 +54,17 @@ export default function CodeEditorImpl({
   readOnly = false,
   'aria-label': ariaLabel,
   'aria-invalid': invalid = false,
-}: CodeEditorProps) {
+  takeFocus,
+}: CodeEditorProps & { takeFocus?: () => boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onChange);
+  const takeFocusRef = useRef(takeFocus);
 
   useLayoutEffect(() => {
     onChangeRef.current = onChange;
-  }, [onChange]);
+    takeFocusRef.current = takeFocus;
+  }, [onChange, takeFocus]);
 
   // Create the view once; the effects below configure it and keep it in step with the props.
   useLayoutEffect(() => {
@@ -84,6 +87,8 @@ export default function CodeEditorImpl({
       }),
     });
     viewRef.current = view;
+    // The loading stand-in had focus: the editor that replaces it takes it.
+    if (takeFocusRef.current?.()) view.focus();
     return () => {
       view.destroy();
       viewRef.current = null;

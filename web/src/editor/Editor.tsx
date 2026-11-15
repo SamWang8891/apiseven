@@ -214,7 +214,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       // Input a field holds comes first: the toast names it, as its own error may not ("Not valid JSON");
       // a refusal on Save anyway's grounds names that way out.
       const named = pending[0]?.message ?? idRefused;
-      toast.error(named ? t('editor.fixHeld', { fix, message: named }) : anywayGrounds ? t('editor.fixAnyway', { fix }) : fix);
+      // About this page's form: it ends with the page (ui/toast.ts pageBound).
+      toast.error(named ? t('editor.fixHeld', { fix, message: named }) : anywayGrounds ? t('editor.fixAnyway', { fix }) : fix, { pageBound: true });
       saveAnyway.refused(anywayGrounds);
       // Input this tab holds comes first: stay here, on the field that holds it.
       const holding = pending.length > 0 ? bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"] [aria-invalid="true"]') : undefined;
@@ -337,14 +338,14 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         onEdit={unlock}
         onSave={() => requestSave()}
         onDiscard={discard}
-        onDuplicate={def.noDuplicate ? undefined : () => id !== undefined && void navigate(`${newPathFor(kind, parent)}?from=${encodeURIComponent(id)}`)}
+        onDuplicate={def.noDuplicate || readOnly ? undefined : () => id !== undefined && void navigate(`${newPathFor(kind, parent)}?from=${encodeURIComponent(id)}`)}
         deleteLabel={def.resets ? t('action.reset') : undefined}
         onViewJson={() => setDialog('json')}
         onDelete={() => setDialog('delete')}
       />
       <div className="ed-body" ref={bodyRef}>
         {failure && <FailureBanner failure={failure} onShow={showStored} />}
-        {saveAnyway.offered && <SaveAnywayNotice count={checked.length} kind={def.singular} />}
+        {saveAnyway.offered && <SaveAnywayNotice count={checked.length} />}
         {notice}
         {isNew && start?.copy && <CopyNotice notes={start.copy} />}
         {isNew && !def.idFromDraft && fixedId === undefined && (

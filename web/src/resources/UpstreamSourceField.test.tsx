@@ -149,11 +149,16 @@ describe('"Resolves to" follows the subsystem (Ruling 4): a service with both an
 });
 
 describe('a stream route (allowService, kind stream_routes)', () => {
-  it('offers the service\'s upstream, and says what having none means for a stream route', () => {
-    renderTab('stream_routes', StreamSource, { server_port: 9100 }, inlineIssues, { ctx: CTX });
+  it('offers the service\'s upstream, and says what having none means for a stream route', async () => {
+    const h = renderTab('stream_routes', StreamSource, { server_port: 9100 }, inlineIssues, { ctx: CTX });
     expect(screen.getByRole('combobox', { name: t('rt.up.service') })).toBeInTheDocument();
-    // Disabled, still readable (aria-disabled, known item 17).
+    // Disabled, still readable (aria-disabled, known item 17), and not chosen by a click.
     expect(radio('service')).toHaveAttribute('aria-disabled', 'true');
+    const checked = screen.getAllByRole('radio').find((r) => r.getAttribute('aria-checked') === 'true');
+    await h.user.click(radio('service'));
+    expect(radio('service')).not.toBeChecked();
+    expect(screen.getAllByRole('radio').find((r) => r.getAttribute('aria-checked') === 'true')).toBe(checked);
+    expect(h.changes).not.toHaveBeenCalled();
     expect(screen.getByText(t('sr.up.noneNote'))).toBeInTheDocument();
     expect(within(screen.getByRole('group', { name: t('rt.up.resolves') })).getByText(t('rt.up.resolvesNone'))).toHaveClass('res-resolves__label--none');
   });

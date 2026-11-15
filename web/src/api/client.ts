@@ -3,6 +3,7 @@ import { ApiError } from './errors';
 import { isObj } from './sanitize';
 import { idSegments, isSegment } from './segments';
 import type { Connection, Item, Kind, Obj, Parent, PluginInfo } from './types';
+import { noteAnswered, noteUnreached } from './reachability';
 
 /**
  * Methods each kind accepts besides GET / PUT / DELETE, from `unsupported_methods` in
@@ -214,10 +215,14 @@ export class AdminClient {
       });
       text = await res.text();
     } catch (err) {
-      throw new ApiError('network', `Network error: ${err instanceof Error ? err.message : 'request failed'}`, {
+      const error = new ApiError('network', `Network error: ${err instanceof Error ? err.message : 'request failed'}`, {
         cause: err,
       });
+      noteUnreached(this.conn.id, error);
+      throw error;
     }
+    // An answer, whatever it says: the Admin API is reachable (api/reachability.ts).
+    noteAnswered(this.conn.id);
 
     const status = res.status;
     const parsed = parseJson(text);

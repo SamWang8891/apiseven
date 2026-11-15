@@ -255,6 +255,53 @@ describe('plugins', () => {
   });
 });
 
+describe('methods on one line (fix round 1, R6.8)', () => {
+  it('a resize that leaves the fit as it was re-renders nothing', async () => {
+    const { Profiler } = await import('react');
+    const callbacks: (() => void)[] = [];
+    const Original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(cb: () => void) {
+        callbacks.push(cb);
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      let commits = 0;
+      renderWithProviders(
+        <Profiler id="methods" onRender={() => commits++}>
+          {col('methods').cell?.(route({ methods: ['GET', 'POST', 'PUT'] }), ctxOf())}
+        </Profiler>,
+        { counts: {} },
+      );
+      const settled = commits;
+      const { act } = await import('@testing-library/react');
+      act(() => {
+        for (let i = 0; i < 5; i++) for (const cb of callbacks) cb();
+      });
+      expect(commits).toBe(settled);
+    } finally {
+      globalThis.ResizeObserver = Original;
+    }
+  });
+});
+
+describe('hosts while the services load (fix round 1, R4.1)', () => {
+  it('a route that takes its hosts from a service says loading…, not "any host", until the services are in', () => {
+    const loading = cell('hosts', route({ service_id: 's1' }), ctxOf({ services: [], loaded: { services: false } }));
+    expect(loading.el).toHaveTextContent(t('picker.loading'));
+    expect(loading.el).not.toHaveTextContent(t('cell.anyHost'));
+    loading.unmount();
+    const own = cell('hosts', route({ service_id: 's1', host: 'own.example' }), ctxOf({ loaded: { services: false } }));
+    expect(own.el).toHaveTextContent('own.example');
+    own.unmount();
+    const loaded = cell('hosts', route({ service_id: 's2' }), CTX);
+    expect(loaded.el).toHaveTextContent('b.example');
+  });
+});
+
 describe('times', () => {
   it('sorts on the stored epoch seconds', () => {
     expect(value('updated', route({ update_time: 1_700_000_000 }))).toBe(1_700_000_000);

@@ -9,7 +9,8 @@ import { HostsCell, IdCell, LabelChips, MethodChips, NameDescCell, PluginChips, 
 import type { Ctx } from '../ctx';
 import { ExpiryBadge } from '../expiry';
 import type { ColumnDef } from '../registry';
-import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, sslExpiries, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
+import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, routeHostsLoading, sslExpiries, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
+import { methodsOf } from './methods';
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v !== '') : [];
@@ -23,10 +24,6 @@ function oneOrMany(value: Obj, many: string, one: string): string[] {
 }
 
 /** The methods a route matches; `ANY` when it sets none. */
-function methodsOf(route: Obj): string[] {
-  const methods = strings(route.methods);
-  return methods.length > 0 ? methods : ['ANY'];
-}
 
 const LOGICAL = new Set(['AND', 'OR', '!AND', '!OR']);
 
@@ -112,7 +109,7 @@ export const routeColumns: ColumnDef[] = [
     accessor: (item, ctx) => routeHosts(item.value, ctx).hosts,
     cell: (item, ctx) => {
       const { hosts, viaService } = routeHosts(item.value, ctx);
-      return <HostsCell hosts={hosts} viaService={viaService} />;
+      return <HostsCell hosts={hosts} viaService={viaService} loading={routeHostsLoading(item.value, ctx)} />;
     },
     defaultVisible: true,
     width: 164,

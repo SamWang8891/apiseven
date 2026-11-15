@@ -226,9 +226,14 @@ describe('Upstream: where requests go', () => {
   const radio = (key: string) => screen.getByRole('radio', { name: t(`rt.up.source.${key}`) });
 
   it('a new route starts on Inline, with the node table ready', async () => {
-    renderRouteTab(UpstreamTab, { uri: '/*', status: 1 }, { isNew: true, ctx: CTX });
+    const h = renderRouteTab(UpstreamTab, { uri: '/*', status: 1 }, { isNew: true, ctx: CTX });
     expect(radio('inline')).toBeChecked();
     expect(radio('service')).toHaveAttribute('aria-disabled', 'true');
+    // Without a service, a click on "Service's upstream" chooses nothing (fix round 1, R4.5).
+    await h.user.click(radio('service'));
+    expect(radio('inline')).toBeChecked();
+    expect(radio('service')).not.toBeChecked();
+    expect(h.value()).toEqual({ uri: '/*', status: 1 });
     expect(await screen.findByRole('textbox', { name: t('up.nodes.new') })).toBeInTheDocument();
   });
 

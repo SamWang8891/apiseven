@@ -33,7 +33,7 @@ export function useHeaderStatus({ def, draft, name, held, body, edit }: HeaderSt
     name,
     onChange: (on: boolean) => {
       if (held) {
-        toast.error(t('ui.pending.refused', { message: held.message }));
+        toast.error(t('ui.pending.refused', { message: held.message }), { pageBound: true });
         body.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden]) [aria-invalid="true"]')?.focus();
         return;
       }

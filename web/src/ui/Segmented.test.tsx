@@ -64,6 +64,16 @@ describe('Segmented', () => {
     expect(off).not.toBeChecked();
   });
 
+  it('the reason is the disabled option\'s accessible description, the tooltip closed (fix round 1, R6.7)', () => {
+    render(
+      <TooltipProvider>
+        <Harness />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole('radio', { name: 'Off' })).toHaveAccessibleDescription('Nothing to turn off yet');
+    expect(screen.getByRole('radio', { name: 'Nodes' })).not.toHaveAccessibleDescription();
+  });
+
   it('without a TooltipProvider the reason is the native title', () => {
     render(<Harness />);
     expect(screen.getByRole('radio', { name: 'Off' })).toHaveAttribute('title', 'Nothing to turn off yet');

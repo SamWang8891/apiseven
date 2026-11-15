@@ -66,6 +66,16 @@ describe('ui CSS', () => {
     }
   });
 
+  // Fix round 1, F2: a tooltip only names its trigger; it never takes a click meant for a control under it.
+  it('tooltips take no pointer events (nor their positioned wrapper), and sit above the toasts', () => {
+    const all = files.flatMap((f) => rules(f.css));
+    const body = (selector: string) => all.filter(([sel]) => sel.split(',').some((s) => s.trim() === selector)).map(([, b]) => b).join(';');
+    expect(body('.ui-tooltip')).toMatch(/pointer-events:\s*none/);
+    expect(body('[data-radix-popper-content-wrapper]:has(> .ui-tooltip)')).toMatch(/pointer-events:\s*none/);
+    const z = (selector: string) => Number(/z-index:\s*(\d+)/.exec(body(selector))?.[1]);
+    expect(z('.ui-tooltip')).toBeGreaterThan(z('.ui-toast-viewport'));
+  });
+
   // Known item 16: base.css's global :focus-visible outline loads after the kit's CSS, so a field that
   // sits in a box which rings itself (:focus-within) must say "no outline" for :focus-visible too, or
   // it draws a second ring inside the box's.

@@ -232,6 +232,46 @@ describe('read-only key', () => {
     expect(within(empty).queryByRole('link')).not.toBeInTheDocument();
   });
 
+  // Fix round 1, R3: Duplicate goes where New goes; both come back on a connection whose key can write.
+  it('a read-only key: no Duplicate in the row menu or the editor menu; another connection has them again', async () => {
+    const prod = { id: 'prod', name: 'prod', baseUrl: 'https://prod.test:9180', key: 'k' };
+    saveConnections([DEV_CONN, prod], DEV_CONN.id);
+    const user = userEvent.setup();
+    renderApp({
+      hash: '#/routes',
+      counts: {},
+      objects: { routes: ROUTES, upstreams: [{ id: 'u1', name: 'backend' }] },
+      replies: { 'routes/r1': (req) => (req.method === 'PATCH' && req.url.origin === 'http://apisix.test:9180' ? json(401, { error_msg: 'invalid method for role viewer' }) : undefined) },
+    });
+    await screen.findByRole('main');
+    const rowMenu = async (name: string) => {
+      await user.click(within(await rowOf(name)).getByRole('button', { name: t('table.actionsFor', { name }) }));
+      const items = (await screen.findAllByRole('menuitem')).map((item) => item.textContent);
+      await user.keyboard('{Escape}');
+      return items;
+    };
+    expect(await rowMenu('beta')).toContain(t('action.duplicate'));
+    await user.click(await toggle('alpha'));
+    expect(await screen.findByText(t('readOnly.banner'))).toBeInTheDocument();
+    expect(await rowMenu('beta')).not.toContain(t('action.duplicate'));
+    // The editor's ⋯ menu.
+    await user.click(main().getByRole('link', { name: 'beta' }));
+    await main().findByRole('heading', { level: 1, name: 'beta' });
+    await user.click(main().getByRole('button', { name: t('editor.more') }));
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).not.toContain(t('action.duplicate'));
+    await user.keyboard('{Escape}');
+    // Another connection, whose key can write: both are back.
+    await user.click(screen.getByRole('button', { name: /^Connection: dev/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /prod/ }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /^Connection: prod/ })).toBeInTheDocument());
+    expect(screen.queryByText(t('readOnly.banner'))).not.toBeInTheDocument();
+    expect(await rowMenu('beta')).toContain(t('action.duplicate'));
+    await user.click(main().getByRole('link', { name: 'beta' }));
+    await main().findByRole('heading', { level: 1, name: 'beta' });
+    await user.click(main().getByRole('button', { name: t('editor.more') }));
+    expect((await screen.findAllByRole('menuitem')).map((item) => item.textContent)).toContain(t('action.duplicate'));
+  });
+
   async function toggle(name: string) {
     return main().findByRole('switch', { name: t('table.status.toggle', { name }) });
   }

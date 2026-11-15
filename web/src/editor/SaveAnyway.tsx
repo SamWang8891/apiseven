@@ -15,13 +15,13 @@ import type { SaveAnyway } from './useSaveAnyway';
  * header (EditorHeader), which a refusal that scrolls to a field far down never hides. It describes
  * that button (`ed-anyway-why`).
  */
-export function SaveAnywayNotice({ count, kind }: { count: number; kind: string }) {
+export function SaveAnywayNotice({ count }: { count: number }) {
   return (
     <section className="ed-anyway" aria-label={t('editor.anyway.title')}>
       <ShieldQuestion size={16} aria-hidden="true" />
       <div className="ed-anyway__text">
         <p className="ed-anyway__title">{t('editor.anyway.title')}</p>
-        <p id="ed-anyway-why">{count === 1 ? t('editor.anyway.bodyOne', { kind }) : t('editor.anyway.bodyMany', { kind, count })}</p>
+        <p id="ed-anyway-why">{count === 1 ? t('editor.anyway.bodyOne') : t('editor.anyway.bodyMany', { count })}</p>
       </div>
     </section>
   );

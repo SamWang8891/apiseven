@@ -40,6 +40,8 @@ describe('held input in the upstream form', () => {
   it('tag text refused only as the box is left (by the click on another inner tab) still stops the switch', async () => {
     const form = renderUpstream({ ...UPSTREAM, checks: { active: { http_path: '/healthz' } } }, { layout: 'tabs' });
     await form.user.click(screen.getByRole('tab', { name: t('up.section.health') }));
+    // "Mark healthy after" is a closed section at first (fix round 1, R1): opened as a user would.
+    await form.user.click(screen.getByRole('button', { name: t('up.hc.healthy') }));
     const statuses = screen.getAllByRole('textbox', { name: t('up.hc.statuses') })[0];
     if (!statuses) throw new Error('no statuses box');
     await form.user.type(statuses, '99');

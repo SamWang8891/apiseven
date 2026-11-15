@@ -162,7 +162,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
               danger={signIn?.state === 'stillSignsIn'}
               runNote={runNote}
               switchless={role !== undefined}
-              offerErrorResponse={role === undefined && subsystemOf(scope) === undefined}
+              errorResponseIgnored={subsystemOf(scope) === 'stream' ? 'stream' : role !== undefined ? 'signIn' : undefined}
               unchecked={unchecked}
               onChange={onChange}
               onJsonHeld={onJsonHeld}
@@ -174,7 +174,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
   );
 }, sameCard);
 
-function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, note, danger, runNote, switchless, offerErrorResponse, unchecked, onChange, onJsonHeld }: {
+function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, note, danger, runNote, switchless, errorResponseIgnored, unchecked, onChange, onJsonHeld }: {
   name: string;
   conf: unknown;
   stored: unknown;
@@ -191,8 +191,8 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
   runNote: string | undefined;
   /** No on/off switch (signInRole): the unchecked note speaks of the mark, and the run options have no disable. */
   switchless: boolean;
-  /** MetaForm's error_response: every plugin on an HTTP request, but not a sign-in plugin's credential. */
-  offerErrorResponse: boolean;
+  /** Where APISIX never sends MetaForm's error_response (a stream route; a sign-in plugin's credential). */
+  errorResponseIgnored: 'stream' | 'signIn' | undefined;
   /** What APISIX would refuse in this switched-off plugin's settings once it is switched on. */
   unchecked: { path: string; message: string }[];
   onChange: (conf: unknown) => void;
@@ -349,7 +349,7 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
                     idPrefix={`pl-${name}`}
                     name={name}
                     noDisable={switchless}
-                    offerErrorResponse={offerErrorResponse}
+                    errorResponseIgnored={errorResponseIgnored}
                   />
                 </LockProvider>
               </PendingScope>

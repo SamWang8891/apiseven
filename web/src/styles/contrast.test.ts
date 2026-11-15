@@ -1,3 +1,7 @@
+/// <reference types="node" />
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import tokensCss from './tokens.css?raw';
 
@@ -104,6 +108,17 @@ const SELECTION_PAIRS: [string, string, number][] = [
   '--text', '--text-2', '--accent', '--ok', '--warn', '--danger', '--code-key', '--code-string', '--code-literal',
 ].map((fg): [string, string, number] => [fg, '--selection', 4.5]);
 
+// Light text on a solid fill would be unreadable on --selection, so what carries it can't be selected
+// (fix round 1, R6.1): --accent-text and --on-danger on buttons (.ui-btn, which a primary link-button
+// and a filter chip's count pill are or sit in), --on-danger on the tab and plugin-card problem pills,
+// and a tooltip's --bg-raised text on --text. Checked below against the CSS.
+const UNSELECTABLE: [file: string, selector: string][] = [
+  ['ui/button.css', '.ui-btn'],
+  ['ui/tabs.css', '.ui-tabs__badge'],
+  ['plugins/plugins.css', '.pl-card__problems'],
+  ['ui/overlay.css', '.ui-tooltip'],
+];
+
 // Shell and Connect page: the detail line of an error box is body text on the danger tint.
 const SHELL_PAIRS: [string, string, number][] = [['--text', '--danger-bg', 4.5]];
 
@@ -116,6 +131,16 @@ describe('contrast()', () => {
     expect(contrast('#fff', '#000')).toBeCloseTo(21, 5);
     expect(contrast('#767676', '#ffffff')).toBeGreaterThanOrEqual(4.5); // 4.54, the classic AA grey
     expect(contrast('#777777', '#ffffff')).toBeLessThan(4.5); // 4.48
+  });
+});
+
+describe('what --selection would make unreadable', () => {
+  it('can not be selected', () => {
+    for (const [file, selector] of UNSELECTABLE) {
+      const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', file), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+      const body = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find((m) => (m[1] ?? '').split(',').some((s) => s.trim() === selector))?.[2] ?? '';
+      expect(body, `${file} ${selector}`).toMatch(/user-select:\s*none/);
+    }
   });
 });
 

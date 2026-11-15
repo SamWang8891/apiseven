@@ -6,8 +6,8 @@
  *            table headers, code, sidebar.
  * Text:      --text body and read-only values · --text-2 secondary text (still >= 4.5:1).
  * Lines:     --border dividers (decorative) · --border-strong input and control outlines (>= 3:1).
- * Accent:    links, primary buttons (--accent-text on --accent), selection. Indigo, kept away
- *            from the state hues so colour keeps meaning state.
+ * Accent:    links, primary buttons (--accent-text on --accent). Indigo, kept away from the state
+ *            hues so colour keeps meaning state.
  * State:     --ok / --warn / --danger are text colours readable on their -bg tint and on plain
  *            surfaces; badges are the -bg fill with the matching text. --neutral-bg is the fill
  *            for "off" badges, with --text on it.

@@ -25,7 +25,8 @@ export type SegmentedProps = Omit<FieldProps, 'htmlFor'> & {
 /**
  * One of a few exclusive choices side by side (a radio group): click, or the arrow keys, which move
  * and choose at once; Tab stops on the chosen option only. Locked: the chosen label as text. A
- * disabled option stays readable and hoverable (aria-disabled), its `reason` in a tooltip.
+ * disabled option stays readable and hoverable (aria-disabled), its `reason` in a tooltip and in its
+ * accessible description (so a screen reader user, whom the arrow keys never take there, hears it too).
  */
 export function Segmented({ label, help, error, required, value, onChange, options, id }: SegmentedProps) {
   const locked = useLocked();
@@ -81,6 +82,7 @@ export function Segmented({ label, help, error, required, value, onChange, optio
               aria-checked={option.value === value}
               tabIndex={i === tabStop ? 0 : -1}
               aria-disabled={option.disabled || undefined}
+              aria-describedby={option.disabled && option.reason ? `${labelId}-why-${i}` : undefined}
               title={option.disabled && !tooltips ? option.reason : undefined}
               className="ui-segmented__option"
               onClick={() => !option.disabled && onChange(option.value)}
@@ -98,6 +100,14 @@ export function Segmented({ label, help, error, required, value, onChange, optio
           );
         })}
       </div>
+      {/* A disabled option's reason, for its accessible description: there whether or not its tooltip is open. */}
+      {options.map((option, i) =>
+        option.disabled && option.reason ? (
+          <span key={option.value} id={`${labelId}-why-${i}`} className="ui-sr-only">
+            {option.reason}
+          </span>
+        ) : null,
+      )}
     </Field>
   );
 }

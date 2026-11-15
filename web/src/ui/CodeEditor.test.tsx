@@ -11,6 +11,19 @@ async function editor(name: string): Promise<HTMLElement> {
 }
 
 describe('CodeEditor', () => {
+  it('focus on the loading stand-in moves to the editor when it arrives, not to the page (fix round 1, R6.4)', async () => {
+    render(<CodeEditor value="a: 1" language="yaml" onChange={() => {}} aria-label="While loading" />);
+    const fallback = document.querySelector<HTMLElement>('.ui-code__fallback');
+    // The first render of a test file shows the stand-in while CodeMirror's chunk loads.
+    if (fallback) {
+      fallback.focus();
+      expect(fallback).toHaveFocus();
+    }
+    const content = await editor('While loading');
+    if (fallback) expect(content).toHaveFocus();
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
   it('renders the value', async () => {
     render(<CodeEditor value={'{\n  "uri": "/v1/*"\n}'} language="json" onChange={() => {}} aria-label="Route JSON" />);
     const content = await editor('Route JSON');

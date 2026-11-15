@@ -90,7 +90,7 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
       .catch(() => {
         onUnreadable?.();
         setFileProblem(t('ssl.pem.readFailed'));
-        toast.error(t('ssl.pem.readFailed'));
+        toast.error(t('ssl.pem.readFailed'), { pageBound: true });
       });
   };
   const change = (text: string) => {

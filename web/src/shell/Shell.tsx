@@ -95,10 +95,11 @@ function Breadcrumb() {
   const kind = kindFromSegment(segments[0]);
   if (!kind) return null;
 
-  // `text`: the crumb as plain text, its title while a narrow header cuts it off.
-  const crumbs: { label: ReactNode; text: string; to?: string }[] = [{ label: t(`kind.${kind}.plural`), text: t(`kind.${kind}.plural`), to: pathFor(kind) }];
-  const item = (raw: string, singular: string): { label: ReactNode; text: string } =>
-    raw === 'new' ? { label: t('page.new', { kind: singular }), text: t('page.new', { kind: singular }) } : { label: <span className="mono">{decode(raw)}</span>, text: decode(raw) };
+  // `text`: the crumb as plain text, its title while a narrow header cuts it off. `id`: an object's id,
+  // which gives way first; the kinds' names keep their width.
+  const crumbs: { label: ReactNode; text: string; to?: string; id?: boolean }[] = [{ label: t(`kind.${kind}.plural`), text: t(`kind.${kind}.plural`), to: pathFor(kind) }];
+  const item = (raw: string, singular: string): { label: ReactNode; text: string; id?: boolean } =>
+    raw === 'new' ? { label: t('page.new', { kind: singular }), text: t('page.new', { kind: singular }) } : { label: <span className="mono">{decode(raw)}</span>, text: decode(raw), id: true };
 
   if (segments[1] !== undefined) crumbs.push({ ...item(segments[1], t(`kind.${kind}.singular`)), to: `/${segments[0]}/${segments[1]}` });
   if (kind === 'consumers' && segments[2] === 'credentials' && segments[3] !== undefined) {
@@ -120,7 +121,7 @@ function Breadcrumb() {
                   /
                 </li>
               )}
-              <li className="shell-crumbs__item" {...clipTitle(c.text)}>
+              <li className={c.id ? 'shell-crumbs__item shell-crumbs__item--id' : 'shell-crumbs__item'} {...clipTitle(c.text)}>
                 {last || !c.to ? (
                   <span aria-current={last ? 'page' : undefined}>{c.label}</span>
                 ) : (

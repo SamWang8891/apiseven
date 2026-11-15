@@ -19,12 +19,13 @@ export interface MetaFormProps {
   /** The plugin (its default priority). */
   info?: PluginInfo;
   /**
-   * Whether to offer error_response (a stored one is always shown). APISIX sends it in place of the
-   * body of any plugin that rejects an HTTP request (plugin.lua run_plugin, `code >= 400`), so it is
-   * offered for every plugin except where it is never used: the stream subsystem (the session is
-   * closed) and a consumer's or credential's sign-in plugin (its config is the credential).
+   * Where APISIX never sends error_response: then it is not offered, and a stored one shows with a
+   * line saying so. APISIX sends it in place of the body of any plugin that rejects an HTTP request
+   * (plugin.lua run_plugin, `code >= 400`, the `is_http` branch, 1486–1506), so it is used everywhere
+   * except in the stream subsystem (`stream`: the session is closed, ngx_exit) and for a consumer's or
+   * credential's sign-in plugin (`signIn`: its config there is the credential; it runs on the route).
    */
-  offerErrorResponse?: boolean;
+  errorResponseIgnored?: 'stream' | 'signIn';
   /** Issues with paths relative to `_meta` (`priority`, `filter`, …). */
   issues: Issue[];
   /** Prefix of the fields' DOM ids. */
@@ -113,7 +114,7 @@ function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id, 
 const arrayOnly: Check = (v) => (Array.isArray(v) ? undefined : t('pl.meta.filterNotArray'));
 const objectOnly: Check = (v) => (isObj(v) ? undefined : t('pl.meta.errorNotObject'));
 
-export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisable, offerErrorResponse }: MetaFormProps) {
+export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisable, errorResponseIgnored }: MetaFormProps) {
   const locked = useLocked();
   const current = meta ?? {};
   const set = (key: string, v: unknown) => {
@@ -124,7 +125,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisab
   };
 
   const errorResponse = current.error_response;
-  const offerError = offerErrorResponse === true || errorResponse !== undefined;
+  const offerError = errorResponseIgnored === undefined || errorResponse !== undefined;
   // How error_response is written: follows the stored value, else the user's pick.
   const [pick, setPick] = useState<'text' | 'json'>(isObj(errorResponse) ? 'json' : 'text');
   const kind = isObj(errorResponse) ? 'json' : typeof errorResponse === 'string' ? 'text' : pick;
@@ -199,6 +200,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisab
               onChange={(v) => switchKind(v === 'json' ? 'json' : 'text')}
             />
           )}
+          {errorResponseIgnored !== undefined && <p className="pl-note">{t(`pl.meta.errorIgnored.${errorResponseIgnored}`)}</p>}
           <PendingScope onChange={errorHeld.track}>
             {kind === 'json' ? (
               <JsonValue

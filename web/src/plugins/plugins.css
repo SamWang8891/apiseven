@@ -228,6 +228,8 @@
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
+  /* Not selectable: selected, its light text would sit on the light --selection tint. */
+  user-select: none;
 }
 
 .pl-card__docs {

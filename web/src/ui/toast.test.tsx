@@ -1,20 +1,36 @@
-import { act, render, within } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
-import { ConfirmDialog } from './ConfirmDialog';
 import { Dialog } from './Dialog';
 import { Toaster } from './Toaster';
-import { dismissToast, getToasts, MAX_TOASTS, setToastPage, toast, toastsRaised } from './toast';
+import { dismissToast, getToasts, MAX_VISIBLE, setToastPage, toast, toastsRaised } from './toast';
 
-// Known item 8: identical toasts do not stack, at most three show, none covers a dialog's buttons, and
-// a refusal does not linger over the next page.
+// Known item 8 and fix round 1 (F3, R5): identical toasts do not stack; at most three show and older
+// ones wait collapsed, never dropped; only a visible toast's time runs; none covers a dialog's
+// buttons; only a page-bound refusal ends with its page.
 
 beforeEach(() => {
   for (const item of getToasts()) dismissToast(item.id);
 });
+afterEach(() => vi.useRealTimers());
 
-/** The toasts on screen (a collapsed one is in the page, not shown). */
-const toastEls = () => document.querySelectorAll('.ui-toast:not(.ui-toast--collapsed)');
+/** The toasts on screen, by message, in the order they show (CSS `order`: raised order, whatever the mount order). */
+const shown = () =>
+  [...document.querySelectorAll<HTMLElement>('.ui-toast:not(.ui-toast--more)')]
+    .sort((a, b) => Number(a.style.order) - Number(b.style.order))
+    .map((el) => el.querySelector('.ui-toast__message')?.firstChild?.textContent);
+const moreRow = () => document.querySelector<HTMLElement>('.ui-toast--more');
+
+function withDialog(open: boolean) {
+  return (
+    <>
+      <Toaster />
+      <Dialog open={open} onClose={() => {}} title="Replace certificate" footer={<button type="button">Use this pair</button>}>
+        body
+      </Dialog>
+    </>
+  );
+}
 
 describe('toasts', () => {
   it('a toast saying the same as one still showing replaces it and counts the repeat', () => {
@@ -31,84 +47,98 @@ describe('toasts', () => {
       ['Saved', 1],
       ['Fix 1 problem before saving', 3],
     ]);
-    expect(toastEls()).toHaveLength(2);
-    const repeated = [...toastEls()].find((el) => el.textContent?.includes('Fix 1 problem')) as HTMLElement;
+    expect(shown()).toEqual(['Saved', 'Fix 1 problem before saving']);
+    const repeated = [...document.querySelectorAll<HTMLElement>('.ui-toast')].find((el) => el.textContent?.includes('Fix 1 problem')) as HTMLElement;
     expect(within(repeated).getByText(t('ui.toast.repeat', { count: 3 }))).toBeInTheDocument();
     // The same words in another tone are another notice.
     act(() => toast.info('Saved'));
     expect(getToasts().filter((item) => item.message === 'Saved')).toHaveLength(2);
   });
 
-  it(`shows at most ${MAX_TOASTS}: a new one pushes the oldest out`, () => {
+  it(`shows the newest ${MAX_VISIBLE}; older ones wait behind "+N more", which shows them (none is dropped)`, () => {
     render(<Toaster />);
     act(() => {
       for (const n of [1, 2, 3, 4, 5]) toast.info(`Notice ${n}`);
     });
-    expect(getToasts().map((item) => item.message)).toEqual(['Notice 3', 'Notice 4', 'Notice 5']);
-    expect([...toastEls()].map((el) => el.textContent)).toEqual(['Notice 3', 'Notice 4', 'Notice 5']);
+    expect(getToasts()).toHaveLength(5);
+    expect(shown()).toEqual(['Notice 3', 'Notice 4', 'Notice 5']);
+    expect(moreRow()).toHaveTextContent(t('ui.toast.more', { count: 2 }));
+    fireEvent.click(within(moreRow() as HTMLElement).getByRole('button', { name: t('ui.toast.show') }));
+    expect(shown()).toEqual(['Notice 1', 'Notice 2', 'Notice 3', 'Notice 4', 'Notice 5']);
+    expect(moreRow()).toBeNull();
   });
 
-  it('while a dialog is open only the newest shows, under it; the others come back when it closes', () => {
-    const { rerender } = render(
-      <>
-        <Toaster />
-        <Dialog open={false} onClose={() => {}} title="Replace certificate" footer={<button type="button">Use this pair</button>}>
-          body
-        </Dialog>
-      </>,
-    );
+  it('a waiting toast\'s time does not run: it gets its whole time once it shows', () => {
+    vi.useFakeTimers();
+    render(<Toaster />);
     act(() => {
-      toast.error('Fix 1 problem before saving');
+      toast.error('APISIX refused: etcd down');
+      for (const n of [1, 2, 3]) toast.info(`Notice ${n}`);
+    });
+    expect(shown()).toEqual(['Notice 1', 'Notice 2', 'Notice 3']);
+    act(() => {
+      vi.advanceTimersByTime(4000);
+    });
+    // The infos ran out (5 s); the error was waiting all along.
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(shown()).toEqual(['APISIX refused: etcd down']);
+    act(() => {
+      vi.advanceTimersByTime(9000);
+    });
+    expect(shown()).toEqual(['APISIX refused: etcd down']);
+    act(() => {
+      vi.advanceTimersByTime(1500);
+    });
+    expect(shown()).toEqual([]);
+  });
+
+  it('while a dialog is open only the newest shows; an error raised then shows, for its whole time, after it closes', () => {
+    vi.useFakeTimers();
+    const { rerender } = render(withDialog(true));
+    act(() => {
+      toast.error('APISIX refused: etcd down');
       toast.info('Copied');
     });
-    expect(toastEls()).toHaveLength(2);
-    const viewport = () => document.querySelector('.ui-toast-viewport');
-    expect(viewport()).not.toHaveClass('ui-toast-viewport--modal');
-    rerender(
-      <>
-        <Toaster />
-        <Dialog open onClose={() => {}} title="Replace certificate" footer={<button type="button">Use this pair</button>}>
-          body
-        </Dialog>
-      </>,
-    );
-    expect([...toastEls()].map((el) => el.textContent)).toEqual(['Copied']);
-    expect(viewport()).toHaveClass('ui-toast-viewport--modal');
-    rerender(
-      <>
-        <Toaster />
-        <Dialog open={false} onClose={() => {}} title="Replace certificate">
-          body
-        </Dialog>
-        <ConfirmDialog open title="Save anyway?" confirmLabel="Save anyway" onConfirm={() => {}} onCancel={() => {}} />
-      </>,
-    );
-    expect(toastEls()).toHaveLength(1);
-    rerender(
-      <>
-        <Toaster />
-        <ConfirmDialog open={false} title="Save anyway?" confirmLabel="Save anyway" onConfirm={() => {}} onCancel={() => {}} />
-      </>,
-    );
-    expect([...toastEls()].map((el) => el.textContent)).toEqual(['Fix 1 problem before saving', 'Copied']);
-    expect(viewport()).not.toHaveClass('ui-toast-viewport--modal');
+    expect(shown()).toEqual(['Copied']);
+    expect(document.querySelector('.ui-toast-viewport')).toHaveClass('ui-toast-viewport--modal');
+    expect(moreRow()).toBeNull();
+    act(() => {
+      vi.advanceTimersByTime(11000);
+    });
+    // The reviewer's sequence: 11 s later the error was never shown, so it is still to come.
+    expect(getToasts().map((item) => item.message)).toEqual(['APISIX refused: etcd down']);
+    rerender(withDialog(false));
+    expect(shown()).toEqual(['APISIX refused: etcd down']);
+    expect(document.querySelector('.ui-toast-viewport')).not.toHaveClass('ui-toast-viewport--modal');
+    act(() => {
+      vi.advanceTimersByTime(9500);
+    });
+    expect(shown()).toEqual(['APISIX refused: etcd down']);
+    act(() => {
+      vi.advanceTimersByTime(1000);
+    });
+    expect(shown()).toEqual([]);
   });
 
-  it('an error raised on one page goes when the user moves to another; success and info stay', () => {
+  it('a page-bound refusal goes when the user moves to another page; every other toast stays, errors included', () => {
     render(<Toaster />);
     act(() => setToastPage('/routes/new'));
     act(() => {
       toast.success('Created route web');
-      toast.error('Fix 1 problem before saving');
+      toast.error('Fix 1 problem before saving', { pageBound: true });
+      toast.error("Can't delete: used by route shop");
       toast.info('Copied');
     });
     act(() => setToastPage('/routes/r1'));
-    expect(getToasts().map((item) => item.message)).toEqual(['Created route web', 'Copied']);
-    // An error raised on the page the user is on stays while they are there.
-    act(() => toast.error('etcd down'));
+    expect(getToasts().map((item) => item.message)).toEqual(['Created route web', "Can't delete: used by route shop", 'Copied']);
+    // A page-bound one raised on the page the user is on stays while they are there.
+    act(() => toast.error('Fix 2 problems before saving', { pageBound: true }));
     act(() => setToastPage('/routes/r1'));
-    expect(getToasts().map((item) => item.message)).toContain('etcd down');
+    expect(getToasts().map((item) => item.message)).toContain('Fix 2 problems before saving');
     act(() => setToastPage('/services'));
-    expect(getToasts().map((item) => item.message)).not.toContain('etcd down');
+    expect(getToasts().map((item) => item.message)).not.toContain('Fix 2 problems before saving');
+    expect(screen.getByText("Can't delete: used by route shop")).toBeInTheDocument();
   });
 });

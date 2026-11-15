@@ -31,6 +31,6 @@ function DuplicateEditor({ kind, from, parent }: { kind: Kind; from: string; par
   const source = useItem(kind, from, parent);
   if (source.data) return <EditorFrame kind={kind} parent={parent} duplicateFrom={source.data} />;
   if (source.error?.status === 404) return <NotFoundState kind={kind} id={from} parent={parent} copying />;
-  if (source.error) return <LoadErrorState kind={kind} id={from} error={source.error} retrying={source.isFetching} onRetry={() => void source.refetch()} />;
+  if (source.error) return <LoadErrorState kind={kind} id={from} error={source.error} retrying={source.isFetching} onRetry={() => void source.refetch()} copying />;
   return <EditorSkeleton kind={kind} />;
 }

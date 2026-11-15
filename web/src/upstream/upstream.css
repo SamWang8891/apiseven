@@ -265,6 +265,12 @@
   line-height: 18px;
 }
 
+/* Collapsible sections inside a block (health checks): stacked, their rules touching. */
+.up-sections {
+  display: flex;
+  flex-direction: column;
+}
+
 .up-group {
   display: flex;
   flex-direction: column;
@@ -290,6 +296,11 @@
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s4) var(--s5);
   max-width: 880px;
+}
+
+/* A field two columns wide in a row of three (the probe's request body beside its concurrency). */
+.up-span2 {
+  grid-column: span 2;
 }
 
 /* Fields that belong to the choice above them sit behind a rule. */

@@ -145,8 +145,19 @@
   background: var(--border);
 }
 
+/*
+ * Tooltips only name or describe their trigger: they take no clicks, so one drawn over a neighbour
+ * (the row above's ⋯) never swallows the click meant for it (fix round 1, F2). Radix wraps the content
+ * in a positioned box of its own size: that box lets clicks through too. Above the toasts, so a
+ * toast's Dismiss tooltip is not drawn under the toast above it.
+ */
+[data-radix-popper-content-wrapper]:has(> .ui-tooltip) {
+  pointer-events: none;
+}
+
 .ui-tooltip {
-  z-index: 60;
+  z-index: 80;
+  pointer-events: none;
   max-width: 280px;
   padding: 5px 8px;
   border-radius: var(--radius);
@@ -155,6 +166,8 @@
   font-size: 12px;
   line-height: 16px;
   box-shadow: var(--shadow);
+  /* Not selectable: selected, its light text would sit on the light --selection tint. */
+  user-select: none;
 }
 
 /*
@@ -240,8 +253,36 @@
   overflow-wrap: anywhere;
 }
 
-.ui-toast--collapsed {
-  display: none;
+/* The older toasts waiting behind the visible ones: one quiet row that shows them. */
+.ui-toast--more {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  border-left-color: var(--border-strong);
+  color: var(--text-2);
+}
+
+.ui-toast__show {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ui-toast__show:hover {
+  text-decoration: underline;
+}
+
+.ui-toast__show:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 0;
 }
 
 /* "×3": the same notice raised again while it showed. */

@@ -8,19 +8,28 @@ export interface ToastAction {
   href: string;
 }
 
+export interface ToastOptions {
+  action?: ToastAction;
+  /**
+   * About the page's own form (an editor's "Fix 2 problems before saving", a field that holds input):
+   * it ends when the user leaves that page (setToastPage). Every other toast lives out its time.
+   */
+  pageBound?: boolean;
+}
+
 export interface ToastItem {
   id: number;
   tone: ToastTone;
   message: string;
   action?: ToastAction;
-  /** How many times this same notice was raised while it showed (shown as ×N from 2). */
+  /** How many times this same notice was raised while it was there (shown as ×N from 2). */
   count: number;
-  /** The page it was raised on (setToastPage), if the app says which. */
+  /** The page it was raised on (setToastPage), when it is page-bound. */
   page?: string;
 }
 
-/** At most this many toasts at once; a new one pushes the oldest out. */
-export const MAX_TOASTS = 3;
+/** How many toasts show at once; older ones wait, collapsed, behind a "+N more" row (Toaster). */
+export const MAX_VISIBLE = 3;
 
 let items: ToastItem[] = [];
 let lastId = 0;
@@ -34,23 +43,36 @@ function emit(): void {
 const same = (a: ToastItem, tone: ToastTone, message: string, action?: ToastAction): boolean =>
   a.tone === tone && a.message === message && a.action?.label === action?.label && a.action?.href === action?.href;
 
+function optionsOf(opts: ToastAction | ToastOptions | undefined): ToastOptions {
+  if (!opts) return {};
+  return 'href' in opts ? { action: opts } : opts;
+}
+
 /**
- * Adds a toast. One that says the same as a toast still showing replaces it (a new id, so its timer
- * starts again and it is announced again) and counts the repeat, so a refusal raised four times is one
- * toast, not four. Beyond MAX_TOASTS the oldest go.
+ * Adds a toast. One that says the same as a toast still there replaces it (a new id, so its time
+ * starts again and it is announced again) and counts the repeat, so a refusal raised four times is
+ * one toast, not four. None is ever dropped for being too many: the Toaster collapses older ones.
  */
-function push(tone: ToastTone, message: string, action?: ToastAction): void {
+function push(tone: ToastTone, message: string, opts?: ToastAction | ToastOptions): void {
+  const { action, pageBound } = optionsOf(opts);
   const repeat = items.find((item) => same(item, tone, message, action));
   const rest = items.filter((item) => item !== repeat);
-  const next: ToastItem = { id: ++lastId, tone, message, count: (repeat?.count ?? 0) + 1, ...(action ? { action } : {}), ...(page !== undefined ? { page } : {}) };
-  items = [...rest, next].slice(-MAX_TOASTS);
+  const next: ToastItem = {
+    id: ++lastId,
+    tone,
+    message,
+    count: (repeat?.count ?? 0) + 1,
+    ...(action ? { action } : {}),
+    ...(pageBound && page !== undefined ? { page } : {}),
+  };
+  items = [...rest, next];
   emit();
 }
 
 export const toast = {
-  success: (message: string, action?: ToastAction): void => push('success', message, action),
-  error: (message: string, action?: ToastAction): void => push('error', message, action),
-  info: (message: string, action?: ToastAction): void => push('info', message, action),
+  success: (message: string, opts?: ToastAction | ToastOptions): void => push('success', message, opts),
+  error: (message: string, opts?: ToastAction | ToastOptions): void => push('error', message, opts),
+  info: (message: string, opts?: ToastAction | ToastOptions): void => push('info', message, opts),
 };
 
 export function dismissToast(id: number): void {
@@ -59,14 +81,14 @@ export function dismissToast(id: number): void {
 }
 
 /**
- * The page the user is on (the router's pathname). Toasts raised from now on belong to it; error
- * toasts raised on another page go, so a refusal never lingers over the next page. Success and info
- * toasts stay: they often report what a navigation was for ("Deleted route web").
+ * The page the user is on (the router's pathname). A page-bound toast raised on another page goes:
+ * a refusal about a form never lingers over the next page. Every other toast stays for its time,
+ * so one the user is acting on ("can't delete: used by route X", then a click on X) is still there.
  */
 export function setToastPage(next: string): void {
   if (next === page) return;
   page = next;
-  const kept = items.filter((item) => item.tone !== 'error' || item.page === undefined || item.page === next);
+  const kept = items.filter((item) => item.page === undefined || item.page === next);
   if (kept.length === items.length) return;
   items = kept;
   emit();

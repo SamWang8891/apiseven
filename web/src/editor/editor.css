@@ -102,9 +102,10 @@
   gap: var(--s2);
 }
 
-/* Updated · Created · Unsaved changes, aligned under the title. Always one line high, so the
-   "Unsaved changes" mark appearing changes nothing around it: in a narrow header the creation time
-   gives way first (an ellipsis, the whole of it in its title), never the mark. */
+/* Owner · Updated · Created · Note · Unsaved changes, aligned under the title. Always one line high,
+   so the "Unsaved changes" mark appearing changes nothing around it. In a narrow header the owner,
+   the creation time and the note give way (an ellipsis, the whole of each in its title while cut
+   off); "Updated …" and the mark never shrink, so the mark is the last thing on the line to go. */
 .ed-meta {
   display: flex;
   flex-wrap: nowrap;

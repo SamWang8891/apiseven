@@ -1,50 +1,34 @@
 import { useQueryClient, type Query } from '@tanstack/react-query';
 import { CloudOff } from 'lucide-react';
-import { useCallback, useState, useSyncExternalStore } from 'react';
-import { ApiError } from '../api/errors';
+import { useState } from 'react';
 import { useClient } from '../api/hooks';
+import { usePageOwnsUnreachable, useUnreachable } from '../api/reachability';
 import { t } from '../i18n';
 import { Button } from '../ui';
 
 /**
- * The newest read of this connection that got no answer at all (kind `network`), unless a read has
- * succeeded since: then APISIX is reachable again. Undefined while all is well.
- */
-function unreachableError(queries: Query[]): ApiError | undefined {
-  let failedAt = 0;
-  let failure: ApiError | undefined;
-  let okAt = 0;
-  for (const query of queries) {
-    const { error, errorUpdatedAt, dataUpdatedAt, status } = query.state;
-    if (status === 'error' && error instanceof ApiError && error.kind === 'network' && errorUpdatedAt > failedAt) {
-      failedAt = errorUpdatedAt;
-      failure = error;
-    }
-    okAt = Math.max(okAt, dataUpdatedAt);
-  }
-  return failedAt > okAt ? failure : undefined;
-}
-
-/**
- * Under the header on every page while the Admin API does not answer: which address, the error, and
- * Retry (which asks again for everything on screen). A page keeps showing what it loaded before, so
- * this says that it may be out of date; the banner goes by itself once a read succeeds.
+ * Under the header on every page while the Admin API does not answer (api/reachability.ts: a request
+ * got no response, and none got one since): which address, the error, and Try again. A page keeps
+ * showing what it loaded before, so this says that it may be out of date; the banner goes by itself
+ * once any request is answered, an HTTP error included. On a page that shows its own load error with
+ * its own retry (nothing loaded), the banner stands down: one message, one retry.
+ *
+ * Try again refetches the connection's queries that something on screen observes (lists, the object
+ * an editor shows, counts). An editor never takes a refetched object over its draft while editing
+ * (editor/Editor.tsx: a background refresh shows only on a locked, unchanged page), so nothing typed
+ * is lost.
  */
 export function UnreachableBanner() {
   const client = useClient();
   const queryClient = useQueryClient();
   const connId = client.conn.id;
-  const cache = queryClient.getQueryCache();
-  const ofConn = useCallback((q: Query) => q.queryKey[0] === connId, [connId]);
-  const error = useSyncExternalStore(
-    useCallback((listener) => cache.subscribe(listener), [cache]),
-    () => unreachableError(cache.findAll({ predicate: ofConn })),
-  );
+  const error = useUnreachable(connId);
+  const pageSaysSo = usePageOwnsUnreachable();
   const [retrying, setRetrying] = useState(false);
-  if (!error) return null;
+  if (!error || pageSaysSo) return null;
   const retry = () => {
     setRetrying(true);
-    void queryClient.refetchQueries({ predicate: ofConn, type: 'active' }).finally(() => setRetrying(false));
+    void queryClient.refetchQueries({ predicate: (q: Query) => q.queryKey[0] === connId, type: 'active' }).finally(() => setRetrying(false));
   };
   return (
     <div className="shell-unreachable" role="alert">
