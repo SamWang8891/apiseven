@@ -144,10 +144,13 @@ export function learnKey(text: string): Promise<void> {
   const id = keyId(text);
   if (known.has(id) || asked.has(id) || isSecretRef(text.trim())) return Promise.resolve();
   asked.add(id);
-  return publicOfKey(text).then((part) => {
-    asked.delete(id);
-    if (part !== undefined) file(id, part);
-  });
+  // Anything WebCrypto throws (an Error or not) means the form could not be read.
+  return publicOfKey(text)
+    .then((part) => {
+      if (part !== undefined) file(id, part);
+    })
+    .catch(() => file(id, 'unreadable'))
+    .finally(() => asked.delete(id));
 }
 
 /** What can be said of the pair (cert, key), or undefined: nothing (see the head of this file). */
@@ -159,6 +162,9 @@ export function verdictOf(cert: string | undefined, key: string | undefined): Ve
   if (part === 'unreadable' || ofCert === undefined) return 'unknown';
   return part === ofCert ? 'match' : 'mismatch';
 }
+
+/** How many components listen for a key's part becoming known (tests: unmounting ends a subscription). */
+export const listenerCount = (): number => listeners.size;
 
 const subscribe = (listener: () => void) => {
   listeners.add(listener);

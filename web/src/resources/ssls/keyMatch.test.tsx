@@ -4,7 +4,7 @@ import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { EC_PAIR, EC_PARAMS_KEY, EC_SEC1_KEY, RSA_OTHER_KEY, RSA_PAIR, RSA_PKCS1_KEY } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
-import { learnKey, publicOfKey, useKeyVerdict, verdictOf } from './keyMatch';
+import { learnKey, listenerCount, publicOfKey, useKeyVerdict, verdictOf } from './keyMatch';
 import { parseCert } from './parseCert';
 
 afterEach(() => {
@@ -91,17 +91,26 @@ describe('useKeyVerdict', () => {
     expect(screen.getByText('match')).toBeInTheDocument();
   });
 
-  it('a result arriving after the page that asked is gone sets nothing (no update on an unmounted component)', async () => {
-    const errors = vi.spyOn(console, 'error');
+  it('a result arriving after the page that asked is gone reaches no component: unmounting ends the subscription', async () => {
     const key = RSA_PAIR.key.replace('-----END', '\n\n\n-----END');
+    const before = listenerCount();
     const { unmount } = render(<Verdict cert={RSA_PAIR.cert} keyText={key} />);
+    expect(listenerCount()).toBe(before + 1);
     const pending = learnKey(key);
     unmount();
+    expect(listenerCount()).toBe(before);
     await pending;
-    expect(errors).not.toHaveBeenCalled();
     // The part stays known: a page that shows the pair later says it at once.
     render(<Verdict cert={RSA_PAIR.cert} keyText={key} />);
     expect(screen.getByText('match')).toBeInTheDocument();
-    errors.mockRestore();
+  });
+
+  it('a rejection that is not an Error files the key as unreadable: no unhandled rejection, and the key is not stuck as asked (fix round 1, R10)', async () => {
+    const key = EC_PAIR.key.replace('-----END', '\n\n\n\n-----END');
+    // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- the case under test: a WebCrypto that rejects with something that is not an Error
+    const reject = () => Promise.reject('not an Error');
+    vi.stubGlobal('crypto', { subtle: { importKey: reject, exportKey: reject } });
+    await expect(learnKey(key)).resolves.toBeUndefined();
+    expect(verdictOf(EC_PAIR.cert, key)).toBe('unknown');
   });
 });
