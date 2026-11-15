@@ -246,8 +246,11 @@ test.describe('writes from the list', () => {
     await toggle.click();
     await expect.poll(async () => (await admin.raw(`routes/${id}`))?.status).toBe(0);
     await expect(toggle).not.toBeChecked();
+    // While its write is out (until the list has reloaded) the switch is busy and takes no click.
+    await expect(toggle).not.toHaveAttribute('aria-busy', 'true');
     await toggle.click();
     await expect.poll(async () => (await admin.raw(`routes/${id}`))?.status).toBe(1);
+    await expect(toggle).toBeChecked();
     await admin.del(`routes/${id}`);
   });
 
