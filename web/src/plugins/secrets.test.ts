@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MASK } from '../schema/secrets';
 import { pluginFixture } from '../test/pluginFixture';
 import { copiedWithout, copiedWithoutKey, MASK_CHANGED, newKeyNotes, redactObject, redactPair, unveilKeys, veilKeys, type KeyNotes } from './secrets';
@@ -199,6 +199,25 @@ describe('veilKeys / unveilKeys: the editing JSON tab never shows an SSL key, an
     expect(unveilKeys('ssls', { ...shown, keys: [(shown.keys as string[])[0], (shown.keys as string[])[0]] }, notes)).toEqual({ ok: false, problem: t('json.note.twice') });
     // A client certificate's extra keys too (APISIX doesn't parse them, so nothing else would stop a note).
     expect(unveilKeys('ssls', { type: 'client', keys: [`${'•'.repeat(80)}`] }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+  });
+
+  it('a note from another page load (another browser tab, a reload) never resolves to this page\'s keys', async () => {
+    // Two module instances, as two page loads have: each starts its sessions afresh.
+    vi.resetModules();
+    const one = await import('./secrets');
+    vi.resetModules();
+    const two = await import('./secrets');
+    const sslA = { cert: 'CERT-A', key: 'KEY-OF-SSL-A', certs: ['XA'], keys: ['XKEY-A'] };
+    const sslB = { cert: 'CERT-B', key: 'KEY-OF-SSL-B', certs: ['XB'], keys: ['XKEY-B'] };
+    const a = one.veilKeys('ssls', sslA, one.newKeyNotes());
+    const b = two.veilKeys('ssls', sslB, two.newKeyNotes());
+    expect(a.notes.session).not.toBe(b.notes.session);
+    // A's text, pasted into B's editor: refused, never B's keys under A's certificates.
+    expect(two.unveilKeys('ssls', a.value, b.notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+    // The session part is random, not a count: fresh sessions of one page differ in more than a counter would.
+    const ids = Array.from({ length: 5 }, () => one.newKeyNotes().session);
+    expect(new Set(ids).size).toBe(5);
+    expect(ids.every((id) => /^[0-9a-z]{8,}$/.test(id))).toBe(true);
   });
 
   it('a key block stored inside a certificate text is a note there too, and comes back in its place', () => {

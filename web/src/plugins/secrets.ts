@@ -190,21 +190,31 @@ export function redactPair(
 
 /**
  * The notes the editing JSON tab shows in place of private keys: each note is a token for one key text,
- * made in one editing session (`session`, unique on the page) and never reused, so a note resolves to
- * the key it was made for or to nothing: never to another key by its position, never to itself.
+ * made in one editing session (`session`, random, so unique across page loads) and never reused, so a
+ * note resolves to the key it was made for or to nothing: never to another key by its position, never
+ * to itself.
  */
 export interface KeyNotes {
-  readonly session: number;
+  /** Random (randomId): a note made on another page load never names this session. */
+  readonly session: string;
   /** note text → the key text it stands for */
   readonly keys: ReadonlyMap<string, string>;
 }
 
-let sessions = 0;
+/**
+ * A session id no other page load (another browser tab, a reload) makes: 8 base-36 characters from
+ * crypto.getRandomValues, which browsers offer on any origin (crypto.subtle only on secure ones). A
+ * counter would start again at 1 on every load, so a note copied between tabs would name the same
+ * session and resolve to the other SSL's keys.
+ */
+function randomId(): string {
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(8));
+  return Array.from(bytes, (b) => (b % 36).toString(36)).join('');
+}
 
 /** A new, empty set of notes for an editing session. */
 export function newKeyNotes(): KeyNotes {
-  sessions += 1;
-  return { session: sessions, keys: new Map() };
+  return { session: randomId(), keys: new Map() };
 }
 
 /** The slots of an SSL that hold a private key: `key` and each of `keys` whole; a key block inside `cert`, an entry of `certs`, `client.ca`. */
@@ -236,7 +246,7 @@ function slotsOf(value: Obj): Slot[] {
 }
 
 /** What the editing JSON tab shows for a private key's text, or a note made in another session. */
-const notePattern = (): RegExp => new RegExp(t('json.keyNote', { id: '\u0000' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\u0000', '[0-9.]+'), 'g');
+const notePattern = (): RegExp => new RegExp(t('json.keyNote', { id: '\u0000' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\u0000', '[0-9a-z.]+'), 'g');
 
 /**
  * The draft as the editing JSON tab shows it: an SSL's private keys (`key`, each of `keys`) and any
