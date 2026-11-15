@@ -11,7 +11,7 @@ import { deepEqual } from '../editor/draft';
 import { withinPath, type Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { ErrorLine } from '../schema-form/fields/chrome';
-import { redactSecrets } from '../schema-form/model';
+import { redactSecrets } from '../schema/secrets';
 import { SchemaForm } from '../schema-form/SchemaForm';
 import { Button, CodeEditor, LockProvider, PendingScope, Switch, useHeld, useLocked, usePending, useReveal, type PendingEntry } from '../ui';
 import { catalog } from './catalog';

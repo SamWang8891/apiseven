@@ -24,6 +24,16 @@ import { upstreamColumns } from './upstreams/columns';
 import { upstreamFilters } from './upstreams/filters';
 import { upstreamTabs } from './upstreams/tabs';
 import { upstreamIssues } from '../upstream/validate';
+import { consumerColumns } from './consumers/columns';
+import { consumerFilters } from './consumers/filters';
+import { consumerTabs } from './consumers/tabs';
+import { consumerIssues } from './consumers/validate';
+import { credentialColumns } from './credentials/columns';
+import { credentialTabs } from './credentials/tabs';
+import { credentialIssues } from './credentials/validate';
+import { consumerGroupColumns } from './consumer_groups/columns';
+import { consumerGroupTabs } from './consumer_groups/tabs';
+import { consumerGroupIssues } from './consumer_groups/validate';
 
 export type { Ctx } from './ctx';
 export { useCtx } from './ctx';
@@ -37,6 +47,8 @@ export interface ColumnDef {
   defaultVisible: boolean;
   width?: number;
   mono?: boolean;
+  /** false: the header is not a sort button (a value each row fetches on its own has none to sort by). */
+  sortable?: boolean;
 }
 
 /**
@@ -68,6 +80,11 @@ export interface TabDef {
   render(p: TabProps): ReactNode;
   /** Top-level keys this tab owns: an issue or APISIX error about one of them badges this tab. */
   fields: string[];
+  /**
+   * A kind the tab lists or edits that older APISIX versions lack (a consumer's credentials, 3.11+):
+   * the frame leaves the tab out once useSupports(kind) says false, and shows it while that is unknown.
+   */
+  requires?: Kind;
 }
 
 /** What `validate` may consult besides the draft. */
@@ -232,16 +249,38 @@ export const registry: Record<Kind, ResourceDef> = {
     filters: upstreamFilters,
     validate: (draft) => upstreamIssues(draft),
   }),
-  // A consumer's id is its username.
+  // A consumer's id is its username: the frame shows no ID field and creates PUT consumers/<username>.
   consumers: define('consumers', {
     group: 'access',
     hasStatus: false,
     idMode: 'required',
-    ...withPlugins('consumer'),
+    tabs: consumerTabs,
+    // Includes the plugin checks (the consumer schemas).
+    validate: (draft, env) => consumerIssues(draft, env),
     idFromDraft: (draft) => (typeof draft.username === 'string' && draft.username !== '' ? draft.username : undefined),
+    // A group's "New consumer in this group" starts a consumer in it.
+    prefill: ['group_id'],
+    columns: consumerColumns,
+    filters: consumerFilters,
   }),
-  credentials: define('credentials', { group: 'access', hasStatus: false, idMode: 'required', ...withPlugins('credential') }),
-  consumer_groups: define('consumer_groups', { group: 'access', hasStatus: false, idMode: 'required', ...withPlugins('consumer_group') }),
+  // Lives under its consumer (EditorFrame's `parent`): /consumers/<username>/credentials/<id>.
+  credentials: define('credentials', {
+    group: 'access',
+    hasStatus: false,
+    idMode: 'required',
+    tabs: credentialTabs,
+    validate: (draft, env) => credentialIssues(draft, env),
+    columns: credentialColumns,
+  }),
+  consumer_groups: define('consumer_groups', {
+    group: 'access',
+    hasStatus: false,
+    idMode: 'required',
+    blank: plugins,
+    tabs: consumerGroupTabs,
+    validate: (draft, env) => consumerGroupIssues(draft, env),
+    columns: consumerGroupColumns,
+  }),
   ssls: define('ssls', { group: 'access', hasStatus: true, idMode: 'optional', blank: () => ({ status: 1 }) }),
   secrets: define('secrets', { group: 'access', hasStatus: false, idMode: 'required' }),
   global_rules: define('global_rules', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins, ...withPlugins('global_rule') }),

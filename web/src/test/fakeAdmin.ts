@@ -37,6 +37,13 @@ export interface FakeAdminOptions {
    * listed here ignores `counts`. The id is `username` for consumers, else `id`.
    */
   objects?: Partial<Record<Kind, Obj[]>>;
+  /**
+   * Stored credentials by consumer username, answered at `consumers/<username>/credentials[/<id>]`
+   * like `objects`. A consumer without an entry has no credentials directory: its list is a 404, as
+   * in APISIX. The bare `credentials` path answers as APISIX 3.11+ does (a listing), so the kind is
+   * supported; replace it with a 404 reply for an older APISIX.
+   */
+  credentials?: Record<string, Obj[]>;
 }
 
 export interface FakeRequest {
@@ -78,6 +85,9 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
   const objects = new Map<string, Stored[]>(
     Object.entries(opts.objects ?? {}).map(([kind, list]) => [kind, list.map((value) => ({ value: { ...value }, index: ++revision.n }))]),
   );
+  const credentials = new Map<string, Stored[]>(
+    Object.entries(opts.credentials ?? {}).map(([consumer, list]) => [consumer, list.map((value) => ({ value: { ...value }, index: ++revision.n }))]),
+  );
 
   const fetchImpl: typeof fetch = (input, init) => {
     const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, document.baseURI);
@@ -108,6 +118,13 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
     }
 
     const [kind = '', ...rest] = path.split('/');
+    if (kind === 'consumers' && rest[1] === 'credentials') return credentialsOf(rest, req);
+    if (path === 'credentials') {
+      const all = [...credentials.entries()].flatMap(([consumer, list]) =>
+        list.map((s) => ({ key: `/apisix/consumers/${consumer}/credentials/${String(s.value.id)}`, value: s.value })),
+      );
+      return json(200, { total: all.length, list: all.length === 0 ? {} : all });
+    }
     const stored = objects.get(kind);
     if (stored) return answer(kind, stored, rest.length ? decodeURIComponent(rest.join('/')) : undefined, req, revision);
 
@@ -124,8 +141,24 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
     return json(404, { error_msg: 'Unsupported resource type' });
   }
 
-  /** The stored objects of a kind as APISIX holds them now (SSL keys included). */
-  const stored = (kind: Kind): Obj[] => (objects.get(kind) ?? []).map((entry) => entry.value);
+  /** `consumers/<username>/credentials[/<id>]`: a consumer's credentials, created by the first PUT. */
+  function credentialsOf(rest: string[], req: FakeRequest): Response {
+    const consumer = decodeURIComponent(rest[0] ?? '');
+    const id = rest[2] === undefined ? undefined : decodeURIComponent(rest.slice(2).join('/'));
+    let list = credentials.get(consumer);
+    if (!list && req.method === 'PUT') {
+      const consumers = objects.get('consumers');
+      if (consumers && !consumers.some((c) => c.value.username === consumer)) return json(404, { error_msg: 'consumer not found' });
+      list = [];
+      credentials.set(consumer, list);
+    }
+    if (!list) return json(404, { message: 'Key not found' });
+    return answer('credentials', list, id, req, revision, `/apisix/consumers/${consumer}/credentials`);
+  }
+
+  /** The stored objects of a kind as APISIX holds them now (SSL keys included); credentials need their consumer. */
+  const stored = (kind: Kind, consumer?: string): Obj[] =>
+    ((kind === 'credentials' ? credentials.get(consumer ?? '') : objects.get(kind)) ?? []).map((entry) => entry.value);
 
   /** Changes a stored object behind the editor's back (another user's save): raises its modifiedIndex. */
   function touch(kind: Kind, id: string, change: Obj): void {
@@ -160,6 +193,29 @@ function merge(origin: Obj, extend: Obj): Obj {
 
 const isPlain = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+/**
+ * The auth plugins' `encrypt_fields` (their consumer schemas in APISIX 3.20). APISIX stores them
+ * encrypted and echoes the ciphertext in a write's response, while a GET returns the clear text.
+ */
+const ENCRYPTED: Record<string, string[]> = { 'key-auth': ['key'], 'basic-auth': ['password'], 'jwt-auth': ['secret'], 'hmac-auth': ['secret_key'] };
+
+/** What a write's response shows: for consumers and credentials, the auth plugins' secrets as ciphertext. */
+function echoed(kind: string, value: Obj): Obj {
+  if ((kind !== 'consumers' && kind !== 'credentials') || !isPlain(value.plugins)) return value;
+  const plugins = Object.fromEntries(
+    Object.entries(value.plugins).map(([name, conf]) => {
+      if (!isPlain(conf)) return [name, conf];
+      const out = { ...conf };
+      for (const field of ENCRYPTED[name] ?? []) {
+        const v = out[field];
+        if (typeof v === 'string') out[field] = `$ENC$v1$${btoa(encodeURIComponent(v))}`;
+      }
+      return [name, out];
+    }),
+  );
+  return { ...value, plugins };
+}
+
 /** What a GET shows: SSL private keys never leave APISIX. */
 function shown(kind: string, value: Obj): Obj {
   if (kind !== 'ssls') return value;
@@ -169,16 +225,21 @@ function shown(kind: string, value: Obj): Obj {
   return copy;
 }
 
-/** The Admin API over a kind's stored objects: list, get, POST, PUT, PATCH, DELETE. */
-function answer(kind: string, stored: Stored[], id: string | undefined, req: FakeRequest, revision: { n: number }): Response {
-  const entry = (value: Obj) => ({ key: `/apisix/${kind}/${idOf(kind, value)}`, value });
+/**
+ * The Admin API over a kind's stored objects: list, get, POST, PUT, PATCH, DELETE. `prefix` is the
+ * collection's etcd key (a consumer's credentials live under the consumer).
+ */
+function answer(kind: string, stored: Stored[], id: string | undefined, req: FakeRequest, revision: { n: number }, prefix = `/apisix/${kind}`): Response {
+  const entry = (value: Obj) => ({ key: `${prefix}/${idOf(kind, value)}`, value });
+  // A write's response, as APISIX sends it: secrets as ciphertext (echoed), and no modifiedIndex.
+  const written = (value: Obj) => entry(echoed(kind, value));
   const read = (s: Stored) => ({ ...entry(shown(kind, s.value)), modifiedIndex: s.index, createdIndex: s.index });
   const body = (req.body ?? {}) as Obj;
   if (id === undefined) {
     if (req.method === 'POST') {
       const value = { ...body, id: String(revision.n + 1).padStart(20, '0') };
       stored.push({ value, index: ++revision.n });
-      return json(201, entry(value));
+      return json(201, written(value));
     }
     if (req.method !== 'GET') return json(405, { error_msg: 'not supported here' });
     return json(200, { total: stored.length, list: stored.length === 0 ? {} : stored.map(read) });
@@ -194,18 +255,18 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
         current.value = value;
         current.index = ++revision.n;
       } else stored.push({ value, index: ++revision.n });
-      return json(current ? 200 : 201, entry(value));
+      return json(current ? 200 : 201, written(value));
     }
     case 'PATCH': {
       if (!current) return json(404, { message: 'Key not found' });
       current.value = merge(current.value, body);
       current.index = ++revision.n;
-      return json(200, entry(current.value));
+      return json(200, written(current.value));
     }
     case 'DELETE':
       if (at < 0) return json(404, { message: 'Key not found' });
       stored.splice(at, 1);
-      return json(200, { deleted: '1', key: `/apisix/${kind}/${id}` });
+      return json(200, { deleted: '1', key: `${prefix}/${id}` });
     default:
       return json(405, { error_msg: 'not supported here' });
   }

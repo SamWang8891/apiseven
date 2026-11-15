@@ -11,6 +11,10 @@ import { hostGrouping } from './routes/grouping';
 import { serviceColumns } from './services/columns';
 import { serviceFilters } from './services/filters';
 import { streamRouteColumns } from './stream_routes/columns';
+import { consumerColumns } from './consumers/columns';
+import { consumerFilters } from './consumers/filters';
+import { credentialColumns } from './credentials/columns';
+import { consumerGroupColumns } from './consumer_groups/columns';
 
 const KINDS: Kind[] = [
   'routes', 'services', 'upstreams', 'consumers', 'credentials', 'consumer_groups', 'ssls',
@@ -54,6 +58,8 @@ describe('registry', () => {
     expect(registry.upstreams.blank()).toEqual({ type: 'roundrobin', nodes: [] });
     expect(registry.global_rules.blank()).toEqual({ plugins: {} });
     expect(registry.plugin_configs.blank()).toEqual({ plugins: {} });
+    // APISIX requires `plugins` in a consumer group (schema_def.lua: required = {"id", "plugins"}).
+    expect(registry.consumer_groups.blank()).toEqual({ plugins: {} });
     for (const kind of ['services', 'consumers', 'credentials', 'secrets', 'protos', 'stream_routes'] as const) {
       expect(registry[kind].blank()).toEqual({});
     }
@@ -79,7 +85,7 @@ describe('registry', () => {
   });
 
   it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but the kinds with their own tabs) no tabs', () => {
-    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes'].includes(k))) {
+    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups'].includes(k))) {
       const def = registry[kind];
       if (scopeOfKind[kind]) {
         expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields]), kind).toEqual([['plugins', t('pl.tab'), ['plugins']]]);
@@ -153,6 +159,39 @@ describe('registry', () => {
     expect(def.validate?.({ server_port: 0 }, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['server_port']);
   });
 
+  it('gives consumers their own tabs, columns, filters, checks, id and prefill', () => {
+    const def = registry.consumers;
+    expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields, tab.requires])).toEqual([
+      ['general', t('cs.tab.general'), ['username', 'desc', 'labels', 'group_id'], undefined],
+      ['plugins', t('pl.tab'), ['plugins'], undefined],
+      ['credentials', t('cs.tab.credentials'), [], 'credentials'],
+    ]);
+    expect(def.columns).toBe(consumerColumns);
+    expect(def.filters).toBe(consumerFilters);
+    expect(def.prefill).toEqual(['group_id']);
+    expect(def.idFromDraft?.({ username: 'jo' })).toBe('jo');
+    expect(def.idFromDraft?.({})).toBeUndefined();
+    expect(def.validate?.({}, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['username']);
+    expect(def.validate?.({ username: 'jo' }, { isNew: true, ctx: ctxOf() })).toEqual([]);
+  });
+
+  it('gives credentials and consumer groups their own tabs, columns and checks', () => {
+    expect(registry.credentials.tabs.map((tab) => [tab.id, tab.fields])).toEqual([
+      ['general', ['name', 'desc', 'labels']],
+      ['plugins', ['plugins']],
+    ]);
+    expect(registry.credentials.columns).toBe(credentialColumns);
+    expect(registry.credentials.validate?.({ plugins: { a: {}, b: {} } }, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['plugins']);
+    expect(registry.consumer_groups.tabs.map((tab) => [tab.id, tab.fields])).toEqual([
+      ['general', ['name', 'desc', 'labels']],
+      ['plugins', ['plugins']],
+      ['members', []],
+    ]);
+    expect(registry.consumer_groups.columns).toBe(consumerGroupColumns);
+    expect(registry.consumer_groups.validate?.({}, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['plugins']);
+    expect(registry.consumer_groups.validate?.({ plugins: {} }, { isNew: true, ctx: ctxOf() })).toEqual([]);
+  });
+
   it('gives upstreams their own tabs, columns and checks', () => {
     const def = registry.upstreams;
     expect(def.tabs.map((tab) => tab.id)).toEqual(['general', 'nodes', 'balancing', 'health', 'connection', 'tls']);
@@ -163,7 +202,7 @@ describe('registry', () => {
   });
 
   it('starts every kind without columns of its own with an id + name column pair', () => {
-    for (const kind of KINDS.filter((k) => !['routes', 'upstreams', 'services', 'stream_routes'].includes(k))) {
+    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups'].includes(k))) {
       const def = registry[kind];
       expect(def.columns.map((c) => [c.id, c.header, c.defaultVisible])).toEqual([
         ['id', t('column.id'), true],

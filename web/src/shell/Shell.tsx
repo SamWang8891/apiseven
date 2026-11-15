@@ -74,7 +74,7 @@ function Breadcrumb() {
 
   if (segments[1] !== undefined) crumbs.push({ label: item(segments[1], t(`kind.${kind}.singular`)), to: `/${segments[0]}/${segments[1]}` });
   if (kind === 'consumers' && segments[2] === 'credentials' && segments[3] !== undefined) {
-    crumbs.push({ label: t('kind.credentials.plural') }, { label: item(segments[3], t('kind.credentials.singular')) });
+    crumbs.push({ label: t('kind.credentials.plural'), to: `/${segments[0]}/${segments[1]}?tab=credentials` }, { label: item(segments[3], t('kind.credentials.singular')) });
   }
 
   return (

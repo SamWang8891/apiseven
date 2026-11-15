@@ -2,8 +2,7 @@
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
-import { isSecretName } from '../schema-form/analyze-scalars';
-import { MASK } from '../schema-form/model';
+import { isSecretName, MASK } from '../schema/secrets';
 import { META } from './meta';
 
 const MAX = 80;

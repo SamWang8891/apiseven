@@ -59,9 +59,9 @@ describe('a route with an incomplete limit-count', () => {
 
 describe('every plugin-bearing kind has the Plugins tab', () => {
   it.each([
-    // Services and stream routes open on General (Task 12): land on Plugins through the URL.
+    // Services, stream routes and consumers open on General (Tasks 12, 13): land on Plugins through the URL.
     ['services', '#/services/s1?tab=plugins', { services: [{ id: 's1', name: 'svc', plugins: { cors: {} } }] }, 'cors'],
-    ['consumers', '#/consumers/jo', { consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'k' } } }] }, 'key-auth'],
+    ['consumers', '#/consumers/jo?tab=plugins', { consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'k' } } }] }, 'key-auth'],
     ['global rules', '#/global_rules/g1', { global_rules: [{ id: 'g1', plugins: { prometheus: {} } }] }, 'prometheus'],
     ['stream routes', '#/stream_routes/sr1?tab=plugins', { stream_routes: [{ id: 'sr1', plugins: { 'limit-conn': { conn: 1, burst: 0, default_conn_delay: 1, key: 'remote_addr' } } }] }, 'limit-conn'],
   ] satisfies [string, string, FakeAdminOptions['objects'], string][])('%s', async (_, hash, objects, plugin) => {
@@ -302,7 +302,7 @@ describe("held JSON text in a card is never replaced by the card's other control
 
 describe('editing state ends with Save', () => {
   it('a secret revealed in a plugin form is masked in the locked view after Save, and on the next Edit', async () => {
-    const { user, admin } = await openEditor('#/consumers/jo', { objects: { consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'secret-one' } } }] }, replies: pluginReplies() });
+    const { user, admin } = await openEditor('#/consumers/jo?tab=plugins', { objects: { consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'secret-one' } } }] }, replies: pluginReplies() });
     await main().findByRole('heading', { level: 1, name: 'jo' });
     await user.keyboard('e');
     const card = await main().findByRole('group', { name: 'key-auth' });

@@ -46,12 +46,14 @@ function asApiError(err: unknown): ApiError {
 
 /**
  * The stored object after a write, read back with GET: write responses carry no modifiedIndex (the
- * next conflict check needs it), and an SSL write response echoes the encrypted `key`, which must
- * never enter a draft (saved again, it would be encrypted twice). When the read fails, the write
- * response stands in, without `key` / `keys` and without a modifiedIndex (so the next save of it
+ * next conflict check needs it), and they echo secrets encrypted (an SSL's `key`, a plugin's
+ * `encrypt_fields`, such as an auth plugin's key in a consumer or credential), which must never
+ * enter a draft (saved again, they would be encrypted twice, and the real key lost). When the read
+ * fails, the write response stands in, without `key` / `keys`, with the `plugins` that were sent
+ * (in clear) instead of the echoed ones, and without a modifiedIndex (so the next save of it
  * reports a conflict instead of overwriting blindly).
  */
-async function reread(client: AdminClient, kind: Kind, written: Item, parent?: Parent): Promise<Item> {
+async function reread(client: AdminClient, kind: Kind, written: Item, sent: Obj, parent?: Parent): Promise<Item> {
   try {
     return await client.get(kind, written.id, parent);
   } catch {
@@ -60,6 +62,8 @@ async function reread(client: AdminClient, kind: Kind, written: Item, parent?: P
       delete value.key;
       delete value.keys;
     }
+    if (sent.plugins === undefined) delete value.plugins;
+    else value.plugins = sent.plugins;
     return { id: written.id, value };
   }
 }
@@ -77,7 +81,7 @@ export async function saveResource(client: AdminClient, a: SaveArgs): Promise<Sa
   try {
     if (a.isNew) {
       const created = await client.create(a.kind, body, a.id, a.parent);
-      return { ok: true, item: await reread(client, a.kind, created, a.parent) };
+      return { ok: true, item: await reread(client, a.kind, created, body, a.parent) };
     }
     if (a.id === undefined) throw new Error('saving an existing object needs its id');
     const current = await client.get(a.kind, a.id, a.parent);
@@ -86,7 +90,7 @@ export async function saveResource(client: AdminClient, a: SaveArgs): Promise<Sa
       a.kind === 'ssls' && !Object.hasOwn(body, 'key')
         ? await client.patch(a.kind, a.id, mergePatch(stripTimestamps(current.value), body))
         : await client.replace(a.kind, a.id, body, a.parent);
-    return { ok: true, item: await reread(client, a.kind, written, a.parent) };
+    return { ok: true, item: await reread(client, a.kind, written, body, a.parent) };
   } catch (err) {
     return { ok: false, error: asApiError(err) };
   }

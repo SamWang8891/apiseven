@@ -89,6 +89,15 @@
   color: var(--text);
 }
 
+/* A column that does not sort: the same label, not a button. */
+.tbl-sort--off {
+  cursor: default;
+}
+
+.tbl-sort--off:hover {
+  color: inherit;
+}
+
 .tbl-sort:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: -2px;

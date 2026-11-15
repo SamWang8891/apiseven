@@ -195,3 +195,9 @@
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
+
+/* A count that could not be fetched: a mark in the danger colour, the reason in its tooltip. */
+.cell-count--error {
+  color: var(--danger);
+  font-weight: 600;
+}

@@ -5,7 +5,7 @@ import { t } from '../../i18n';
 import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '../../ui';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
-import { redactSecrets } from '../model';
+import { redactSecrets } from '../../schema/secrets';
 import { jsonType } from '../node';
 import { FieldLabel } from './chrome';
 import { useFieldHelp } from './help';

@@ -1,10 +1,13 @@
 // The frame's JSON tab: the whole draft as text. It is every resource's full editor until a kind has
 // form tabs, and stays the place where fields no form models are seen and changed.
-import { Copy, WandSparkles } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
+import { Copy, Eye, EyeOff, WandSparkles } from 'lucide-react';
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useAllPlugins } from '../api/hooks';
 import { t } from '../i18n';
+import { scopeOfKind, subsystemOf } from '../plugins/scope';
+import { redactObject } from '../plugins/secrets';
 import { registry, type TabProps } from '../resources/registry';
-import { Button, CodeEditor, toast, useLocked, usePending } from '../ui';
+import { Button, CodeEditor, toast, useLocked, usePending, useReveal } from '../ui';
 import { parse, pretty, represents } from './json';
 
 const LINE = 18;
@@ -32,7 +35,9 @@ function useFitLines(ref: RefObject<HTMLElement | null>): number {
  * draft; text that doesn't parse stays as typed, with the parser's message, and holds Save
  * (usePending: it counts as unsaved, and a tab switch asks first). When the draft changes from
  * elsewhere (a form tab, Discard) the text follows. Locked: read-only, still selectable and
- * copyable. `issues` (those no form tab owns) are listed under it.
+ * copyable, its secrets masked (an auth plugin's key: redactObject) behind "Show secrets", which
+ * hides them again on every lock change. While editing, the text is the real one: it is what Save
+ * sends. `issues` (those no form tab owns) are listed under it.
  */
 export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   const locked = useLocked();
@@ -49,6 +54,14 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   }
   usePending(locked ? undefined : current.held);
 
+  const scope = scopeOfKind[kind];
+  const plugins = useAllPlugins(scope && subsystemOf(scope)).data;
+  const hidden = useMemo(() => (locked ? redactObject(draft, kind, plugins) : undefined), [locked, draft, kind, plugins]);
+  const [revealed, setRevealed] = useReveal();
+  const masked = hidden?.redacted === true && !revealed;
+  // What the editor shows, and what Copy copies.
+  const shown = masked ? pretty(hidden.value) : current.text;
+
   function change(text: string) {
     const parsed = parse(text);
     if (parsed.ok) {
@@ -64,7 +77,7 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   async function copy() {
     try {
       if (!navigator.clipboard) throw new Error('clipboard unavailable');
-      await navigator.clipboard.writeText(current.text);
+      await navigator.clipboard.writeText(shown);
       toast.success(t('json.copied'));
     } catch (err) {
       toast.error(t('json.copyFailed', { error: err instanceof Error ? err.message : String(err) }));
@@ -78,6 +91,11 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
       <div className="ed-json__bar">
         <p className="ed-json__hint">{t('editor.json.hint', { kind: singular })}</p>
         <div className="ed-json__tools">
+          {hidden?.redacted && (
+            <Button size="sm" variant="ghost" icon={revealed ? <EyeOff size={13} /> : <Eye size={13} />} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
+              {revealed ? t('pl.card.secrets.hide') : t('pl.card.secrets.show')}
+            </Button>
+          )}
           {!locked && (
             <Button size="sm" variant="ghost" icon={<WandSparkles size={13} />} disabled={formatted || current.error !== undefined} onClick={() => change(pretty(draft))}>
               {t('editor.json.format')}
@@ -90,7 +108,7 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
       </div>
       <div ref={hostRef}>
         <CodeEditor
-          value={current.text}
+          value={shown}
           onChange={change}
           language="json"
           minLines={Math.min(MIN_LINES, maxLines)}

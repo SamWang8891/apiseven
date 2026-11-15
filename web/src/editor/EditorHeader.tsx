@@ -21,6 +21,8 @@ export interface EditorHeaderProps {
   original?: Item;
   /** For a copy: what it was copied from ("Copy of Route web"). */
   note?: string;
+  /** The object this one belongs to (a credential's consumer), linked: "Consumer jo". */
+  owner?: { kind: string; name: string; to: string };
   /** Kinds with a status: whether the draft is enabled, and the switch's handler. */
   status?: { enabled: boolean; name: string; onChange: (enabled: boolean) => void };
   readOnly: boolean;
@@ -126,6 +128,14 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
           )}
         </div>
         <p className="ed-meta">
+          {p.owner && (
+            <span className="ed-meta__item">
+              {p.owner.kind}{' '}
+              <Link className="ed-owner mono" to={p.owner.to}>
+                {p.owner.name}
+              </Link>
+            </span>
+          )}
           {p.original && <Times item={p.original} />}
           {p.note !== undefined && <span className="ed-meta__item">{p.note}</span>}
           {p.dirty && <span className="ed-meta__item ed-meta__dirty">{t('editor.unsaved')}</span>}

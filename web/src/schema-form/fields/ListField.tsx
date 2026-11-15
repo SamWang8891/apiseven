@@ -5,7 +5,7 @@ import { t } from '../../i18n';
 import { isObj } from '../../schema/refs';
 import { Button, useLocked } from '../../ui';
 import type { ArrayNode, Node, ObjectPart } from '../analyze';
-import { isSecretName } from '../analyze-scalars';
+import { isSecretName } from '../../schema/secrets';
 import { useFieldError, useFieldId, useLatest } from '../context';
 import { blankOf, joinPath, type Key } from '../model';
 import { ErrorLine, FieldLabel, RequiredMark } from './chrome';

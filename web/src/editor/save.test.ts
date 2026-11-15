@@ -169,6 +169,34 @@ describe('saveResource, SSL', () => {
   });
 });
 
+describe('a write APISIX answers with its secrets encrypted (consumers, credentials)', () => {
+  const JO: Obj = { username: 'jo', plugins: { 'key-auth': { key: 'jo-key' } } };
+
+  it('the saved item is the re-read one: the key in clear, never the ciphertext the PUT echoed', async () => {
+    const { client } = setup({ objects: { consumers: [JO] } });
+    const { original, draft } = await load(client, 'consumers', 'jo');
+    const result = await saveResource(client, { kind: 'consumers', id: 'jo', isNew: false, draft: { ...draft, desc: 'Jo' }, original });
+    if (!result.ok || !('item' in result)) throw new Error('expected a saved item');
+    expect(result.item.value.plugins).toEqual({ 'key-auth': { key: 'jo-key' } });
+  });
+
+  it('when the re-read fails, the plugins stand in as sent, not as echoed (encrypted again on a later save, the key would be lost)', async () => {
+    let reads = 0;
+    const { client } = setup({
+      credentials: { jo: [{ id: 'c1', plugins: { 'key-auth': { key: 'c1-key' } } }] },
+      // The editor's conflict check reads first; the read after the PUT fails.
+      replies: { 'consumers/jo/credentials/c1': (req) => (req.method === 'GET' && ++reads > 2 ? json(503, { error_msg: 'etcd busy' }) : undefined) },
+    });
+    const original = await client.get('credentials', 'c1', { consumer: 'jo' });
+    const draft = { ...stripTimestamps(original.value), desc: 'CI' };
+    const result = await saveResource(client, { kind: 'credentials', id: 'c1', isNew: false, draft, original, parent: { consumer: 'jo' } });
+    if (!result.ok || !('item' in result)) throw new Error('expected a saved item');
+    expect(result.item.value.plugins).toEqual({ 'key-auth': { key: 'c1-key' } });
+    expect(result.item.value.desc).toBe('CI');
+    expect(result.item.modifiedIndex).toBeUndefined();
+  });
+});
+
 describe('mergePatch', () => {
   it('holds only the changed top-level keys, removed ones as null', () => {
     expect(mergePatch({ a: 1, b: [1], c: 'x' }, { a: 1, b: [1, 2], d: true })).toEqual({ b: [1, 2], c: null, d: true });

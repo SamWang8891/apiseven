@@ -17,7 +17,7 @@ import { ErrorLine } from '../schema-form/fields/chrome';
 import { Button, useLocked } from '../ui';
 import { inheritLoading } from '../resources/routes/inherit';
 import { asStreamRoute } from '../resources/resolve';
-import { inheritedPlugins, streamInheritedPlugins } from './inherited';
+import { consumerGroupLoading, consumerInheritedPlugins, inheritedPlugins, streamInheritedPlugins } from './inherited';
 import { PluginCard } from './PluginCard';
 import { PluginPicker } from './PluginPicker';
 import { emptyPlugins, subsystemOf, type Scope } from './scope';
@@ -25,9 +25,15 @@ import './plugins.css';
 
 export interface InheritedPlugin {
   name: string;
-  from: 'service' | 'plugin_config';
+  from: 'service' | 'plugin_config' | 'consumer_group';
   disabled: boolean;
 }
+
+const FROM = {
+  service: 'pl.inherited.fromService',
+  plugin_config: 'pl.inherited.fromPluginConfig',
+  consumer_group: 'pl.inherited.fromConsumerGroup',
+} as const satisfies Record<InheritedPlugin['from'], string>;
 
 export interface PluginsTabProps {
   value: Record<string, Obj> | undefined;
@@ -153,6 +159,8 @@ export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues
         )}
       </div>
       {full && !locked && <p className="pl-note">{t('pl.credentialOne')}</p>}
+      {/* APISIX stores a credential without a plugin, but nobody can sign in with it. */}
+      {scope === 'credential' && names.length === 0 && <p className="pl-note pl-note--warn">{t('pl.credentialNone')}</p>}
       {names.length > 0 && (
         <div className="pl-list">
           {names.map((name) => (
@@ -192,7 +200,7 @@ function Inherited({ rows, local }: { rows: InheritedPlugin[]; local: string[] }
         {rows.map((row) => (
           <li key={`${row.from}:${row.name}`} className="pl-inherited__row">
             <span className="pl-inherited__name mono">{row.name}</span>
-            <span className="pl-inherited__from">{row.from === 'service' ? t('pl.inherited.fromService') : t('pl.inherited.fromPluginConfig')}</span>
+            <span className="pl-inherited__from">{t(FROM[row.from])}</span>
             {row.disabled && <span className="pl-inherited__tag">{t('pl.inherited.off')}</span>}
             {local.includes(row.name) && <span className="pl-inherited__tag pl-inherited__tag--over">{t('pl.inherited.overridden')}</span>}
           </li>
@@ -202,15 +210,29 @@ function Inherited({ rows, local }: { rows: InheritedPlugin[]; local: string[] }
   );
 }
 
+/** What an object of `scope` inherits, and whether that is still loading (a service, a consumer group). */
+function inheritance(scope: Scope, draft: Obj, ctx: TabProps['ctx']): { inherited?: InheritedPlugin[]; waiting?: string } {
+  switch (scope) {
+    case 'route':
+      return { inherited: inheritedPlugins(draft, ctx) };
+    case 'stream_route':
+      return { inherited: streamInheritedPlugins(draft, ctx), waiting: inheritLoading(asStreamRoute(draft), ctx).service ? t('pl.inherited.loading') : undefined };
+    case 'consumer':
+      return { inherited: consumerInheritedPlugins(draft, ctx), waiting: consumerGroupLoading(draft, ctx) ? t('pl.inherited.groupLoading') : undefined };
+    default:
+      return {};
+  }
+}
+
 /**
  * PluginsTab bound to an editor draft's `plugins` (what makePluginsTab renders). A route lists what it
  * inherits from its service and plugin config; a stream route what it takes from a service it merges
- * with (streamInheritedPlugins), and says so while that service is still loading.
+ * with (streamInheritedPlugins); a consumer its group's (consumerInheritedPlugins). Each says so while
+ * the object it inherits from is still loading.
  */
 export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, scope }: TabProps & { scope: Scope }) {
   const value = isObj(draft.plugins) ? (draft.plugins as Record<string, Obj>) : undefined;
-  const inherited = scope === 'route' ? inheritedPlugins(draft, ctx) : scope === 'stream_route' ? streamInheritedPlugins(draft, ctx) : undefined;
-  const waiting = scope === 'stream_route' && inheritLoading(asStreamRoute(draft), ctx).service;
+  const { inherited, waiting } = inheritance(scope, draft, ctx);
   return (
     <>
       <PluginsTab
@@ -222,7 +244,7 @@ export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, sc
         inherited={inherited}
         saveAttempts={saveAttempts}
       />
-      {waiting && <p className="pl-note">{t('pl.inherited.loading')}</p>}
+      {waiting && <p className="pl-note">{waiting}</p>}
     </>
   );
 }

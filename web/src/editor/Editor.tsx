@@ -16,7 +16,7 @@ import { registry, useCtx, type TabProps } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
 import { Input, LockProvider, PendingProvider, Tabs, toast } from '../ui';
-import { backOf } from './back';
+import { backOf, ownerPath } from './back';
 import { ConflictDialog } from './ConflictDialog';
 import { DiscardDialog, PendingDialog } from './DiscardDialog';
 import { deepEqual, setPath, useDraft } from './draft';
@@ -29,6 +29,7 @@ import { useEditorKeys } from './useEditorKeys';
 import { useActiveTab } from './useActiveTab';
 import { useLeaveGuard } from './useLeaveGuard';
 import { useSaveRequest } from './useSaveRequest';
+import { useShownTabs } from './useShownTabs';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
 const valueOf = (item: Item): Obj => stripTimestamps(item.value);
@@ -139,8 +140,9 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const createId = def.idFromDraft ? def.idFromDraft(draft) : newId.trim() || typedId;
   const idMissing = isNew && !def.idFromDraft && def.idMode !== 'optional' && createId === undefined;
 
-  const tabFields = useMemo(() => def.tabs.map((tab) => ({ id: tab.id, fields: tab.fields })), [def]);
-  const tabIds = [...def.tabs.map((tab) => tab.id), JSON_TAB];
+  const shownTabs = useShownTabs(def.tabs);
+  const tabFields = useMemo(() => shownTabs.map((tab) => ({ id: tab.id, fields: tab.fields })), [shownTabs]);
+  const tabIds = [...shownTabs.map((tab) => tab.id), JSON_TAB];
   const byTab = useMemo(() => issuesByTab(issues, tabFields, JSON_TAB), [issues, tabFields]);
   const failureIssue = useMemo<Issue | undefined>(() => (failure?.path !== undefined ? { path: failure.path, message: failure.message } : undefined), [failure]);
   const failureTab = failureIssue && tabOfIssue(failureIssue, tabFields, JSON_TAB);
@@ -273,9 +275,9 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   );
   const content = useMemo(() => {
     const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues };
-    const tab = def.tabs.find((candidate) => candidate.id === active);
+    const tab = shownTabs.find((candidate) => candidate.id === active);
     return tab ? tab.render(props) : <JsonTab {...props} />;
-  }, [def, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues]);
+  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues]);
   const changedHere = (fields: string[]) => fields.some((field) => !deepEqual(draft[field], baseline[field]));
   const label = (text: string, changed: boolean) => (
     <>
@@ -285,7 +287,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   );
   const badge = (tab: string) => (byTab.get(tab)?.length ?? 0) + (failureTab === tab ? 1 : 0) + (tab === active ? pending.length : 0);
   const tabs = [
-    ...def.tabs.map((tab) => ({ id: tab.id, label: label(tab.label, changedHere(tab.fields)), badge: badge(tab.id), content: tab.id === active ? content : null })),
+    ...shownTabs.map((tab) => ({ id: tab.id, label: label(tab.label, changedHere(tab.fields)), badge: badge(tab.id), content: tab.id === active ? content : null })),
     { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? content : null },
   ];
 
@@ -318,6 +320,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         dirty={unsaved}
         original={original}
         note={copyOf ? t('editor.copyOf', { kind: def.singular, name: def.nameOf(copyOf) }) : undefined}
+        owner={kind === 'credentials' && parent ? { kind: registry.consumers.singular, name: parent.consumer, to: ownerPath(parent) } : undefined}
         status={status}
         readOnly={readOnly}
         saving={saving}
@@ -394,7 +397,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         />
       )}
       {original && dialog === 'json' && (
-        <ViewJsonDialog open onClose={() => setDialog(undefined)} title={t('json.title', { kind: def.singular, name })} value={original.value} />
+        <ViewJsonDialog open onClose={() => setDialog(undefined)} title={t('json.title', { kind: def.singular, name })} kind={kind} value={original.value} />
       )}
       {original && dialog === 'delete' && (
         <DeleteResourceDialog

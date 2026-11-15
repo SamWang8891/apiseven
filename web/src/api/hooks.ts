@@ -1,4 +1,4 @@
-import { skipToken, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
+import { skipToken, useQueries, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import { createContext, createElement, useCallback, useContext, type FC, type ReactNode } from 'react';
 import type { AdminClient } from './client';
 import type { ApiError } from './errors';
@@ -96,6 +96,19 @@ export function useSupports(kind: Kind): boolean | undefined {
     // Endpoints only change with an APISIX upgrade.
     staleTime: Infinity,
   }).data;
+}
+
+/** useSupports for each of `kinds` (the same queries, so answers are shared): kind → its answer. */
+export function useSupportsAll(kinds: Kind[]): Partial<Record<Kind, boolean>> {
+  const client = useClient();
+  const answers = useQueries({
+    queries: kinds.map((kind) => ({
+      queryKey: scopedKey(client.conn.id, ['supports', kind]),
+      queryFn: () => client.supports(kind),
+      staleTime: Infinity,
+    })),
+  });
+  return Object.fromEntries(kinds.flatMap((kind, i) => (answers[i]?.data === undefined ? [] : [[kind, answers[i].data]])));
 }
 
 /** Checks the connection; `version` comes from APISIX's Server header. */

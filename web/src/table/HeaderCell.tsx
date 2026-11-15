@@ -19,7 +19,10 @@ export interface HeaderCellProps {
   onResetWidth: () => void;
 }
 
-/** A sortable header (click; shift-click adds a rule) with a draggable right edge (double-click resets). */
+/**
+ * A sortable header (click; shift-click adds a rule) with a draggable right edge (double-click resets);
+ * a column with `sortable: false` has a plain label instead of the sort button.
+ */
 export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, onResizing, onResize, onResetWidth }: HeaderCellProps) {
   const sorted = sortIndex >= 0;
   const Arrow = !sorted ? ArrowUpDown : desc ? ArrowDown : ArrowUp;
@@ -46,16 +49,23 @@ export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, 
     handle.addEventListener('pointercancel', end);
   }
 
+  const sortable = column.sortable !== false;
   return (
-    <th scope="col" className={sorted ? 'tbl-th tbl-th--sorted' : 'tbl-th'} aria-sort={sorted ? (desc ? 'descending' : 'ascending') : 'none'}>
-      <button type="button" className="tbl-sort" onClick={(e) => onSort(e.shiftKey)}>
-        <span className="tbl-sort__label">{column.header}</span>
-        <span className="tbl-sort__mark" aria-hidden="true">
-          <Arrow size={13} strokeWidth={2.25} />
-          {sorted && multiSort && <span className="tbl-sort__rank">{sortIndex + 1}</span>}
+    <th scope="col" className={sorted ? 'tbl-th tbl-th--sorted' : 'tbl-th'} aria-sort={sortable ? (sorted ? (desc ? 'descending' : 'ascending') : 'none') : undefined}>
+      {sortable ? (
+        <button type="button" className="tbl-sort" onClick={(e) => onSort(e.shiftKey)}>
+          <span className="tbl-sort__label">{column.header}</span>
+          <span className="tbl-sort__mark" aria-hidden="true">
+            <Arrow size={13} strokeWidth={2.25} />
+            {sorted && multiSort && <span className="tbl-sort__rank">{sortIndex + 1}</span>}
+          </span>
+          {sorted && multiSort && <span className="ui-sr-only">{t('table.sort.priority', { n: sortIndex + 1 })}</span>}
+        </button>
+      ) : (
+        <span className="tbl-sort tbl-sort--off">
+          <span className="tbl-sort__label">{column.header}</span>
         </span>
-        {sorted && multiSort && <span className="ui-sr-only">{t('table.sort.priority', { n: sortIndex + 1 })}</span>}
-      </button>
+      )}
       <span
         className="tbl-resize"
         aria-hidden="true"

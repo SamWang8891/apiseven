@@ -1,19 +1,30 @@
-import { Copy, TriangleAlert } from 'lucide-react';
+import { Copy, Eye, EyeOff, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
-import type { Item, Kind, Parent } from '../api/types';
+import { useAllPlugins } from '../api/hooks';
+import type { Item, Kind, Obj, Parent } from '../api/types';
 import { useWrite } from '../api/write';
 import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
+import { scopeOfKind, subsystemOf } from '../plugins/scope';
+import { redactObject } from '../plugins/secrets';
 import { registry } from '../resources/registry';
 import { referencesTo } from '../resources/resolve';
 import { pathFor } from '../router/paths';
-import { Button, CodeEditor, ConfirmDialog, Dialog, toast } from '../ui';
+import { Button, CodeEditor, ConfirmDialog, Dialog, toast, useReveal } from '../ui';
 import './list.css';
 
-/** A stored object as pretty JSON, read-only, with a Copy button. */
-export function ViewJsonDialog({ open, onClose, title, value }: { open: boolean; onClose: () => void; title: string; value: unknown }) {
-  const text = JSON.stringify(value, null, 2);
+/**
+ * A stored object as pretty JSON, read-only, with a Copy button. Its secrets (an auth plugin's key:
+ * redactObject) are masked until "Show secrets"; Copy copies what is shown.
+ */
+export function ViewJsonDialog({ open, onClose, title, kind, value }: { open: boolean; onClose: () => void; title: string; kind: Kind; value: Obj }) {
+  const scope = scopeOfKind[kind];
+  const plugins = useAllPlugins(scope && subsystemOf(scope)).data;
+  const hidden = redactObject(value, kind, plugins);
+  // Each opening starts masked (the dialog is mounted only while open), and a lock change hides them.
+  const [revealed, setRevealed] = useReveal();
+  const text = JSON.stringify(hidden.redacted && !revealed ? hidden.value : value, null, 2);
 
   async function copy() {
     try {
@@ -33,6 +44,11 @@ export function ViewJsonDialog({ open, onClose, title, value }: { open: boolean;
       size="lg"
       footer={
         <>
+          {hidden.redacted && (
+            <Button icon={revealed ? <EyeOff size={15} /> : <Eye size={15} />} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
+              {revealed ? t('pl.card.secrets.hide') : t('pl.card.secrets.show')}
+            </Button>
+          )}
           <Button icon={<Copy size={15} />} onClick={() => void copy()}>
             {t('json.copy')}
           </Button>

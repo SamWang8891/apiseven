@@ -302,6 +302,15 @@
   line-height: 18px;
 }
 
+/* What the list is and how an object gets into it, under the title. */
+.res-embedded__help {
+  max-width: 880px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+
 .res-embedded__empty {
   display: flex;
   flex-direction: column;

@@ -115,6 +115,7 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
           open
           onClose={() => setViewing(undefined)}
           title={t('json.title', { kind: def.singular, name: def.nameOf(viewing) })}
+          kind={kind}
           value={viewing.value}
         />
       )}

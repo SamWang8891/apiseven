@@ -42,10 +42,10 @@ describe('editor routes', () => {
     renderApp({ hash: `#${newPathFor('credentials', { consumer: 'jo e' })}` });
     const main = await mainRegion();
     expect(main.getByRole('heading', { level: 1, name: t('page.new', { kind: t('kind.credentials.singular') }) })).toBeInTheDocument();
-    // Back leads to the owning consumer.
+    // Back leads to the owning consumer's Credentials tab (Task 13).
     expect(main.getByRole('link', { name: t('editor.backTo', { kind: t('kind.consumers.singular'), name: 'jo e' }) })).toHaveAttribute(
       'href',
-      `#${pathFor('consumers', 'jo e')}`,
+      `#${pathFor('consumers', 'jo e')}?tab=credentials`,
     );
   });
 

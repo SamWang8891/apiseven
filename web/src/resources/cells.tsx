@@ -17,13 +17,13 @@ import './cells.css';
 /** Chips shown before `+N`. */
 const SHOWN_CHIPS = 4;
 
-/** The object's name linking to its editor, its description underneath when it has a name of its own. */
-export function NameDescCell({ kind, item, parent }: { kind: Kind; item: Item; parent?: Parent }) {
+/** The object's name linking to its editor, its description underneath when it has a name of its own; `mono` for a name that is an id (a username). */
+export function NameDescCell({ kind, item, parent, mono }: { kind: Kind; item: Item; parent?: Parent; mono?: boolean }) {
   const name = nameOfValue(item.value) ?? item.id;
   const { desc } = item.value;
   return (
     <>
-      <NameCell kind={kind} item={item} value={name} parent={parent} />
+      <NameCell kind={kind} item={item} value={name} parent={parent} mono={mono} />
       {typeof desc === 'string' && desc !== '' && desc !== name && (
         <span className="cell-sub" title={desc}>
           {desc}
@@ -160,9 +160,19 @@ export function MissingRef({ kind, id }: { kind: CtxKind; id: string }) {
   return <Badge tone="danger">{t(`cell.missing.${kind}`, { id })}</Badge>;
 }
 
-/** A link to the referenced object by its name (else id), a danger badge when it is gone, — when unset. */
-export function RefCell({ kind, target }: { kind: CtxKind; target: RefTarget | undefined }) {
+/**
+ * A link to the referenced object by its name (else id), a danger badge when it is gone, — when unset.
+ * While the list it is looked up in is `loading`, an id it doesn't hold yet shows as it is.
+ */
+export function RefCell({ kind, target, loading }: { kind: CtxKind; target: RefTarget | undefined; loading?: boolean }) {
   if (!target) return <Empty />;
+  if (!target.item && loading) {
+    return (
+      <span className="tbl-line mono" title={target.id}>
+        {target.id}
+      </span>
+    );
+  }
   if (!target.item) return <MissingRef kind={kind} id={target.id} />;
   const name = nameOfValue(target.item.value) ?? target.id;
   return (

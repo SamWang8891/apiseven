@@ -72,11 +72,11 @@ export function DefaultCell({ value, mono }: { value: unknown; mono?: boolean })
   );
 }
 
-/** The name column without a cell of its own: a link to the editor (the id when there is no name). */
-export function NameCell({ kind, item, value, parent }: { kind: Kind; item: Item; value: unknown; parent?: Parent }) {
+/** The name column without a cell of its own: a link to the editor (the id when there is no name); `mono` for a name that is an id (a username). */
+export function NameCell({ kind, item, value, parent, mono }: { kind: Kind; item: Item; value: unknown; parent?: Parent; mono?: boolean }) {
   const text = isEmptyValue(value) ? item.id : line(value);
   return (
-    <Link className="tbl-name" to={pathFor(kind, item.id, parent)} title={text}>
+    <Link className={mono ? 'tbl-name mono' : 'tbl-name'} to={pathFor(kind, item.id, parent)} title={text}>
       {text}
     </Link>
   );
