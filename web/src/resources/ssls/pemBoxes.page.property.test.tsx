@@ -270,7 +270,9 @@ const wouldSend = (place: Place, m: Model): boolean =>
   !held(m) && !m.otherHeld && !schemaRefuses(place.kind, m.value) && !pairRefuses(m) && (m.text.trim() === '' || takes(m.kind, m.text));
 
 describe('every PEM box follows one rule through the real editor frame (property, seeded, page level)', () => {
-  const SEEDS = 6;
+  // 8 seeds since fix round 1 of Task 16b: the other box's offer and the files read late share the
+  // steps, and this box's own split keeps its floor.
+  const SEEDS = 8;
   const STEPS = 12;
   it(`${SEEDS} sequences of up to ${STEPS} steps in each of ${PLACES.length} places`, async () => {
     const cov = new Coverage();
@@ -296,9 +298,18 @@ describe('every PEM box follows one rule through the real editor frame (property
           check();
           cov.add(`place ${place.name}`);
           for (let step = 0; step < STEPS; step++) {
-            // The frame's own actions, now and then: a remount, a save APISIX refuses late.
-            // A save is likelier once the box has taken a value over one it cannot show (A1's case).
-            const frame = m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden ? r.int(2) : r.int(5);
+            if (await run.settleRead(r)) {
+              where = `step ${step} (a pending read finished)`;
+              check();
+            }
+            // The frame's own actions, now and then: a remount, a save APISIX refuses late. Once the box
+            // has taken a value over one it cannot show (A1's case), a refused-late save is likelier, and
+            // a user action keeps a quarter: 0 a remount, 1–2 a save refused late, 3 a user action (fix
+            // round 1, F3); otherwise a fifth each for the two, three fifths for a user action.
+            const over = m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden;
+            const draw = over ? r.int(4) : r.int(5);
+            const frame = draw === 0 ? 0 : (over ? draw <= 2 : draw === 1) ? 1 : 2;
+            if (over) cov.add(frame === 2 ? 'over a hidden value: a user action drawn' : 'over a hidden value: a frame action drawn');
             if (frame === 0 && !held(m) && !m.otherHeld) {
               where = `step ${step} (remount)`;
               await user.click(tab(t('ssl.tab.general')));
@@ -376,6 +387,7 @@ describe('every PEM box follows one rule through the real editor frame (property
               await waitFor(() => expect(writesOf(admin).length, `${where}: a request`).toBe(writes + 1));
               place.sent(writesOf(admin).at(-1) as { method: string; body?: Obj }, m);
               if (m.pair && m.other !== initialOther) cov.add('save: sent after a split');
+              if (m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden) cov.add('save: sent, body checked, over a value the box cannot show');
               cov.add('save: sent');
               break;
             }
@@ -404,6 +416,10 @@ describe('every PEM box follows one rule through the real editor frame (property
     expect(cov.get('refusedSave: a value taken over one the box cannot show')).toBeGreaterThan(2);
     expect(cov.get('unfocused arrival of key material not taken')).toBeGreaterThan(20);
     expect(cov.get('split from the cert box') + cov.get('split from the key box')).toBeGreaterThan(8);
+    expect(cov.get("split by the cert box's action") + cov.get("split by the key box's action")).toBeGreaterThan(8);
+    // F3 (fix round 1): user actions keep a share over a hidden value, and a body-checked save goes out there.
+    expect(cov.get('over a hidden value: a user action drawn')).toBeGreaterThan(5);
+    expect(cov.get('save: sent, body checked, over a value the box cannot show')).toBeGreaterThan(0);
     expect(cov.get('save: sent after a split')).toBeGreaterThan(2);
     expect(cov.get('a refused combined file over held text')).toBeGreaterThan(2);
     expect(cov.get('save: refused, the other box held')).toBeGreaterThan(2);

@@ -209,6 +209,10 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
           check();
           cov.add(`place ${place.name}`);
           for (let step = 0; step < STEPS; step++) {
+            if (await run.settleRead(r)) {
+              where = `step ${step} (a pending read finished)`;
+              check();
+            }
             const action = run.next(r, side !== undefined);
             where = `step ${step} (${action})`;
             if (action === 'save') {
@@ -249,6 +253,9 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
     expect(cov.get('save: applied')).toBeGreaterThan(8);
     expect(cov.get('split from the cert box')).toBeGreaterThan(10);
     expect(cov.get('split from the key box')).toBeGreaterThan(10);
+    // By the box whose action it is, this box's or the other's (fix round 1, R3.4).
+    expect(cov.get("split by the cert box's action")).toBeGreaterThan(10);
+    expect(cov.get("split by the key box's action")).toBeGreaterThan(10);
     expect(cov.get('split offered for a refused file')).toBeGreaterThan(5);
     expect(cov.get('a refused combined file over held text')).toBeGreaterThan(5);
     for (const kind of ['cert', 'key']) {
@@ -266,6 +273,8 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
     expect(cov.get('upload: read left pending')).toBeGreaterThan(40);
     expect(cov.get('a pending read finished')).toBeGreaterThan(10);
     expect(cov.get('a stale read ignored')).toBeGreaterThan(10);
+    expect(cov.get('a pending read finished, unreadable')).toBeGreaterThan(0);
+    expect(cov.get("a refused file's reason in full")).toBeGreaterThan(50);
     expect(cov.get('text:late file')).toBeGreaterThan(3);
     for (const kind of ['cert', 'key']) expect(cov.get(`the ${kind} box's split names a value and text in the other box`), kind).toBeGreaterThan(3);
     for (const place of PLACES) expect(cov.get(`place ${place.name}`), place.name).toBe(SEEDS);
