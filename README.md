@@ -182,8 +182,9 @@ Put Basic auth (or your own authentication) in front of it. Without Basic auth t
 
 The image runs as UID 65532, so the two files must be readable by that user: `chmod 0444` them,
 or `chown 65532` them and keep `0400`. On Linux, a `0600` file of your own is unreadable through
-the mount, and apiseven stops with "cannot read … as UID 65532" (Docker on macOS maps the file's
-owner, so there such a file is readable).
+the mount, and apiseven stops with "APISIX_ADMIN_KEY_FILE: the file it names cannot be read as UID
+65532: permission denied" (Docker on macOS maps the file's owner, so there such a file is
+readable).
 
 ### Joining APISIX's network
 
@@ -267,7 +268,9 @@ with a message naming the variable.
 | `SSL_CERT_FILE` | Optional. A CA certificate (PEM) to trust for an `https://` Admin API; see [An `https://` Admin API](#an-https-admin-api). |
 
 Errors about a variable name it and say what is wrong, but never repeat a key, a password, or
-anything in a URL beyond `scheme://host:port`.
+anything in a URL beyond `scheme://host:port`. Nor do they repeat the value of a `_FILE` variable,
+not even the path: a secret pasted there by mistake can look like one. The error names the variable
+and says why: the file it names does not exist, cannot be read as UID 65532, or is empty.
 
 The server answers:
 

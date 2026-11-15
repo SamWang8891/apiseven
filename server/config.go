@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 // Config is the server's settings, read once from the environment at start. Every variable is
@@ -106,30 +107,34 @@ func parseListen(raw string) (string, error) {
 
 // secret reads NAME_FILE (which wins; an absolute path, the file's contents trimmed) or NAME
 // (trimmed). Empty means unset, except for a file: a file that is named but empty or unreadable is
-// an error. A value that cannot travel in an HTTP header is an error too; no error message repeats
-// the value.
+// an error. A value that cannot travel in an HTTP header is an error too. No error message repeats
+// the value of either variable: NAME_FILE may hold the secret itself, pasted in by mistake, and a
+// base64 secret can look like an absolute path ("/q7Z9eX+…/k2Lw==").
 func secret(getenv func(string) string, name string) (string, error) {
 	value := strings.TrimSpace(getenv(name))
 	source := name
 	if file := getenv(name + "_FILE"); file != "" {
 		source = name + "_FILE"
+		hint := fmt.Sprintf("it takes the absolute path to a file that holds the value, such as /run/secrets/%s", strings.ToLower(name))
 		if !strings.HasPrefix(file, "/") {
-			// Not an absolute path: possibly the value itself pasted in (a base64 key has slashes too),
-			// so it is not repeated.
-			return "", fmt.Errorf("%s: it takes the absolute path to a file that holds the value, such as /run/secrets/%s", source, strings.ToLower(name))
+			return "", fmt.Errorf("%s: %s", source, hint)
 		}
 		data, err := os.ReadFile(file)
-		if err != nil {
-			// Only the path and the reason: a *PathError's text is "open <path>: <reason>".
-			var pathErr *fs.PathError
-			if errors.As(err, &pathErr) {
-				err = pathErr.Err
+		switch {
+		case errors.Is(err, fs.ErrNotExist):
+			return "", fmt.Errorf("%s: the file it names does not exist; %s", source, hint)
+		case err != nil:
+			// The image runs as UID 65532: a 0600 file of another user is the usual cause. Only the
+			// system's fixed reason ("permission denied"): the error's own text holds the path.
+			reason := ""
+			var errno syscall.Errno
+			if errors.As(err, &errno) {
+				reason = ": " + errno.Error()
 			}
-			// The image runs as UID 65532: a 0600 file of another user is the usual cause.
-			return "", fmt.Errorf("%s: cannot read %s as UID %d: %v", source, file, os.Getuid(), err)
+			return "", fmt.Errorf("%s: the file it names cannot be read as UID %d%s", source, os.Getuid(), reason)
 		}
 		if value = strings.TrimSpace(string(data)); value == "" {
-			return "", fmt.Errorf("%s: %s is empty", source, file)
+			return "", fmt.Errorf("%s: the file it names is empty", source)
 		}
 	}
 	if strings.ContainsFunc(value, func(r rune) bool { return r < ' ' && r != '\t' || r == 0x7f }) {

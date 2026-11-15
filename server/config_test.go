@@ -268,9 +268,46 @@ func TestConfigUnreadableFileNamesTheUserTheServerRunsAs(t *testing.T) {
 	for _, name := range []string{"APISIX_ADMIN_KEY_FILE", "BASIC_AUTH_PASSWORD_FILE"} {
 		vars := map[string]string{"APISIX_ADMIN_URL": adminURL, name: path, "BASIC_AUTH_USER": "ops"}
 		msg := loadErr(t, vars)
-		want := fmt.Sprintf("UID %d", os.Getuid())
-		if !strings.Contains(msg, name) || !strings.Contains(msg, path) || !strings.Contains(msg, want) || strings.Contains(msg, "TOPSECRET") {
-			t.Errorf("%s: error %q should name the variable, the file and %q, and not its content", name, msg, want)
+		want := fmt.Sprintf("cannot be read as UID %d", os.Getuid())
+		if !strings.Contains(msg, name) || !strings.Contains(msg, want) || strings.Contains(msg, path) || strings.Contains(msg, "TOPSECRET") {
+			t.Errorf("%s: error %q should name the variable and say %q, without the path or the content", name, msg, want)
+		}
+	}
+}
+
+// A _FILE variable's value is never repeated, not even when it is an absolute path: a secret pasted
+// there can start with "/" (base64 can). Each error names the variable and the reason only.
+func TestConfigFileVariableValueIsNeverRepeated(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "TOPSECRET")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	empty := filepath.Join(dir, "empty")
+	if err := os.WriteFile(empty, []byte(" \n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct{ value, reason string }{
+		{"/q7Z9eX+TOPSECRET/k2Lw==", "the file it names does not exist"},
+		{filepath.Join(dir, "missing"), "the file it names does not exist"},
+		{empty, "the file it names is empty"},
+		{dir, fmt.Sprintf("the file it names cannot be read as UID %d", os.Getuid())},
+	}
+	if os.Getuid() != 0 {
+		locked := filepath.Join(dir, "locked")
+		if err := os.WriteFile(locked, []byte("pw"), 0); err != nil {
+			t.Fatal(err)
+		}
+		cases = append(cases, struct{ value, reason string }{locked, fmt.Sprintf("the file it names cannot be read as UID %d", os.Getuid())})
+	}
+	for _, tc := range cases {
+		for _, name := range []string{"APISIX_ADMIN_KEY_FILE", "BASIC_AUTH_PASSWORD_FILE"} {
+			msg := loadErr(t, map[string]string{"APISIX_ADMIN_URL": adminURL, "BASIC_AUTH_USER": "ops", name: tc.value})
+			if strings.Contains(msg, "TOPSECRET") || strings.Contains(msg, tc.value) {
+				t.Errorf("%s=%q: the error repeats the value: %q", name, tc.value, msg)
+			}
+			if !strings.HasPrefix(msg, name+": ") || !strings.Contains(msg, tc.reason) {
+				t.Errorf("%s=%q: error %q should name the variable and say %q", name, tc.value, msg, tc.reason)
+			}
 		}
 	}
 }
@@ -289,10 +326,5 @@ func TestConfigFileVariableHoldingAKeyIsNotRepeated(t *testing.T) {
 				t.Errorf("%s=%q: error %q should name the variable and say it takes an absolute path to a file", name, value, msg)
 			}
 		}
-	}
-	// A missing file given as a path is still named: a path is not a secret.
-	missing := filepath.Join(t.TempDir(), "apisix_admin_key")
-	if msg := loadErr(t, map[string]string{"APISIX_ADMIN_URL": adminURL, "APISIX_ADMIN_KEY_FILE": missing}); !strings.Contains(msg, missing) {
-		t.Errorf("error %q does not name the missing file", msg)
 	}
 }

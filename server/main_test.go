@@ -79,6 +79,23 @@ func TestRunFailsFastOnBadConfig(t *testing.T) {
 	}
 }
 
+// A password pasted into BASIC_AUTH_PASSWORD_FILE that starts with "/" (base64 can) passes for a
+// path; the error that stops the server names the variable and the reason, never the value.
+func TestRunNeverPrintsTheValueOfAFileVariable(t *testing.T) {
+	const pasted = "/q7Z9eX+TOPSECRET/k2Lw=="
+	var stdout, stderr bytes.Buffer
+	code := run(nil, env(map[string]string{"APISIX_ADMIN_URL": adminURL, "BASIC_AUTH_USER": "ops", "BASIC_AUTH_PASSWORD_FILE": pasted}), &stdout, &stderr)
+	if code != 2 {
+		t.Errorf("exit code %d, want 2", code)
+	}
+	if want := "apiseven: BASIC_AUTH_PASSWORD_FILE: the file it names does not exist"; !strings.HasPrefix(stderr.String(), want) {
+		t.Errorf("stderr %q, want it to start with %q", stderr.String(), want)
+	}
+	if out := stderr.String() + stdout.String(); strings.Contains(out, "TOPSECRET") || strings.Contains(out, "k2Lw") {
+		t.Errorf("the output repeats the value: %q", out)
+	}
+}
+
 func TestRunRefusesABinaryWithoutTheWebApp(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	code := runWith(nil, env(map[string]string{"APISIX_ADMIN_URL": adminURL, "LISTEN": "127.0.0.1:1"}), &stdout, &stderr, emptyDist{})
