@@ -19,7 +19,7 @@
 //   E2E_IMAGE             the apiseven image (proxy mode)            apiseven:local (make docker)
 // proxy-mode.spec.ts needs Docker and that image; single-file.spec.ts needs `npm run build:single`.
 // Each skips with the reason when what it needs is missing.
-import { defineConfig, devices } from '@playwright/test';
+import { defineConfig } from '@playwright/test';
 import { env } from './e2e/env';
 
 export default defineConfig({
@@ -37,7 +37,9 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   reporter: [['list'], ['html', { open: 'never' }]],
   use: {
-    ...devices['Desktop Chrome'],
+    // Chromium with this machine's own user agent, so the app's Cmd-K / Ctrl-K matches ControlOrMeta.
+    browserName: 'chromium',
+    locale: 'en-US',
     baseURL: env.baseURL,
     viewport: { width: 1280, height: 800 },
     colorScheme: 'light',

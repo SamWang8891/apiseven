@@ -145,20 +145,23 @@ export class Admin {
    * a spec's afterAll, so a failed test leaves nothing behind.
    */
   async removePrefixed(prefix: string): Promise<void> {
+    // Consumer usernames are written with underscores where ids have hyphens.
+    const prefixes = [prefix, prefix.replace(/-/g, '_')];
+    const matches = (name: string) => prefixes.some((p) => name.startsWith(p));
     for (const kind of KINDS) {
       for (const { key, value } of await this.list(kind)) {
         const snis = Array.isArray(value.snis) ? (value.snis as unknown[]) : [];
         const names = [value.id, value.name, value.username, value.sni, ...snis].map((v) => (typeof v === 'string' ? v : ''));
         const tail = key.replace(/^\/apisix\/[^/]+\//, '');
         const path = key.replace(/^\/apisix\//, '').split('/').map(encodeURIComponent).join('/');
-        if (names.some((n) => n.startsWith(prefix)) || tail.split('/').some((part) => part.startsWith(prefix))) {
+        if (names.some(matches) || tail.split('/').some(matches)) {
           await this.del(path);
         } else if (kind === 'consumers') {
           // A kept consumer may hold this spec's credentials.
           for (const cred of await this.list(`${path}/credentials`)) {
             const id = cred.key.split('/').pop() ?? '';
             const name = typeof cred.value.name === 'string' ? cred.value.name : '';
-            if (id.startsWith(prefix) || name.startsWith(prefix)) await this.del(`${path}/credentials/${encodeURIComponent(id)}`);
+            if (matches(id) || matches(name)) await this.del(`${path}/credentials/${encodeURIComponent(id)}`);
           }
         }
       }

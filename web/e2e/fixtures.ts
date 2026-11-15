@@ -258,9 +258,16 @@ export async function operableControls(page: Page): Promise<string[]> {
   });
 }
 
-/** The toast that says `text` (a toast's text may carry more after it). */
+/**
+ * The toast that says `text` (a toast's text may carry more after it). While a modal dialog is open
+ * the page behind it, toasts included, is hidden from the accessibility tree (Radix announces toasts
+ * through a live region of its own), so hidden elements are included here.
+ */
 export function toast(page: Page, text: string | RegExp): Locator {
-  return page.getByRole('region', { name: /^Notifications/ }).getByRole('listitem').filter({ hasText: text });
+  return page
+    .getByRole('region', { name: /^Notifications/, includeHidden: true })
+    .getByRole('listitem', { includeHidden: true })
+    .filter({ hasText: text });
 }
 
 /** The editor's banner (APISIX's refusal, "Not created", …). */
