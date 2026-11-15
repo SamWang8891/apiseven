@@ -10,15 +10,13 @@ import { stripTimestamps } from '../api/sanitize';
 import type { Item, Kind, Obj, Parent } from '../api/types';
 import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
 import { t } from '../i18n';
-import { DeleteResourceDialog, ViewJsonDialog } from '../pages/RowActions';
 import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
 import { Input, LockProvider, PendingProvider, Tabs, toast } from '../ui';
 import { backOf, ownerPath } from './back';
-import { ConflictDialog } from './ConflictDialog';
-import { DiscardDialog, PendingDialog } from './DiscardDialog';
+import { EditorDialogs } from './EditorDialogs';
 import { deepEqual, setPath, useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
 import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
@@ -364,55 +362,35 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         </LockProvider>
       </div>
 
-      <DiscardDialog open={guard.blocked === 'leave'} name={name} onConfirm={guard.leave} onCancel={guard.stay} />
-      <PendingDialog
-        open={tabState.asking || guard.blocked === 'tab'}
-        kind={def.singular}
-        pending={pending}
-        onConfirm={guard.blocked === 'tab' ? guard.leave : tabState.confirmSwitch}
-        onCancel={guard.blocked === 'tab' ? guard.stay : tabState.cancelSwitch}
-      />
-      <DiscardDialog
-        open={dialog === 'discard'}
+      <EditorDialogs
+        kind={kind}
+        parent={parent}
+        ctx={ctx}
         name={name}
-        onConfirm={() => {
+        original={original}
+        plugins={streamKind ? streamSet : plugins}
+        guard={guard}
+        tabState={tabState}
+        pending={pending}
+        dialog={dialog}
+        closeDialog={() => setDialog(undefined)}
+        onDiscard={() => {
           setDialog(undefined);
           reset();
           lock(true);
         }}
-        onCancel={() => setDialog(undefined)}
+        conflict={conflict}
+        onOverwrite={() => {
+          setConflict(undefined);
+          requestSave(true);
+        }}
+        onReload={reloadTheirs}
+        onCancelConflict={() => setConflict(undefined)}
+        onDeleted={() => {
+          guard.leaveFreely();
+          void navigate(listPath);
+        }}
       />
-      {conflict && original && (
-        <ConflictDialog
-          kind={def.singular}
-          name={name}
-          loaded={original.value}
-          theirs={conflict.value}
-          onOverwrite={() => {
-            setConflict(undefined);
-            requestSave(true);
-          }}
-          onReload={() => reloadTheirs(conflict)}
-          onCancel={() => setConflict(undefined)}
-        />
-      )}
-      {original && dialog === 'json' && (
-        <ViewJsonDialog open onClose={() => setDialog(undefined)} title={t('json.title', { kind: def.singular, name })} kind={kind} value={original.value} />
-      )}
-      {original && dialog === 'delete' && (
-        <DeleteResourceDialog
-          open
-          kind={kind}
-          item={original}
-          parent={parent}
-          ctx={ctx}
-          onClose={() => setDialog(undefined)}
-          onDeleted={() => {
-            guard.leaveFreely();
-            void navigate(listPath);
-          }}
-        />
-      )}
     </div>
   );
 }

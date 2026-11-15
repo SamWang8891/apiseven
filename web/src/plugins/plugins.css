@@ -582,3 +582,8 @@
 .pl-inherited__tag--over {
   background: var(--accent-bg);
 }
+
+/* Why an inherited plugin is not applied, after its tag. */
+.pl-inherited__why {
+  color: var(--text-2);
+}

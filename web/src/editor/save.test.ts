@@ -197,6 +197,106 @@ describe('a write APISIX answers with its secrets encrypted (consumers, credenti
   });
 });
 
+describe('when the read after a write fails, what was sent stands in: never a value the write response echoed', () => {
+  /** A reply that fails the first GET after each write to `path` (the frame's re-read). */
+  function failReadAfterWrite() {
+    let wrote = false;
+    return (req: { method: string }) => {
+      if (req.method !== 'GET') {
+        wrote = true;
+        return undefined;
+      }
+      if (!wrote) return undefined;
+      wrote = false;
+      return json(503, { error_msg: 'etcd busy' });
+    };
+  }
+  /** The saved item (or a failure), and the item's next save (force: the stand-in has no modifiedIndex). */
+  function saved(result: Awaited<ReturnType<typeof saveResource>>) {
+    if (!result.ok || !('item' in result)) throw new Error('expected a saved item');
+    return result.item;
+  }
+  const SECRET = 'Bearer plain-secret';
+  const logger = { 'http-logger': { uri: 'http://127.0.0.1:1/log', auth_header: SECRET } };
+  const PEM = '-----BEGIN PRIVATE KEY-----\nMIGHAgEA\n-----END PRIVATE KEY-----';
+
+  it.each(['routes', 'services', 'global_rules', 'plugin_configs', 'consumer_groups'] as const)(
+    "%s: a plugin's encrypt_fields (http-logger auth_header) stand in as sent; the next Save sends the original secret",
+    async (kind) => {
+      const { client, writes } = setup({ objects: { [kind]: [{ id: 'x1', uri: '/x', plugins: logger, x_future: 1 }] }, replies: { [`${kind}/x1`]: failReadAfterWrite() } });
+      const { original, draft } = await load(client, kind, 'x1');
+      const item = saved(await saveResource(client, { kind, id: 'x1', isNew: false, draft: { ...draft, desc: 'one' }, original }));
+      // The PUT's response echoed the secret encrypted; the stand-in has it as sent.
+      expect(item.value.plugins).toEqual(logger);
+      expect(item.modifiedIndex).toBeUndefined();
+      await saveResource(client, { kind, id: 'x1', isNew: false, draft: { ...stripTimestamps(item.value), desc: 'two' }, original: item, force: true });
+      expect(writes().map((w) => (w.body as Obj).plugins)).toEqual([logger, logger]);
+      expect(JSON.stringify(writes())).not.toContain('$ENC$');
+    },
+  );
+
+  it("an upstream's tls.client_key: a new PEM key stands in as sent (APISIX echoes its AES ciphertext); the next Save sends it again", async () => {
+    const { client, admin, writes } = setup({ objects: { upstreams: [{ id: 'u1', nodes: [{ host: 'a', port: 443, weight: 1 }], tls: { client_cert: 'CERT', client_key: 'AES:stored' } }] }, replies: { 'upstreams/u1': failReadAfterWrite() } });
+    const { original, draft } = await load(client, 'upstreams', 'u1');
+    const item = saved(await saveResource(client, { kind: 'upstreams', id: 'u1', isNew: false, draft: { ...draft, tls: { client_cert: 'CERT', client_key: PEM } }, original }));
+    expect((item.value.tls as Obj).client_key).toBe(PEM);
+    await saveResource(client, { kind: 'upstreams', id: 'u1', isNew: false, draft: { ...stripTimestamps(item.value), desc: 'again' }, original: item, force: true });
+    expect(writes().map((w) => ((w.body as Obj).tls as Obj).client_key)).toEqual([PEM, PEM]);
+    // Stored encrypted once, as APISIX does with a PEM key.
+    expect((admin.stored('upstreams')[0]?.tls as Obj).client_key).toBe(`AES:${btoa(encodeURIComponent(PEM))}`);
+  });
+
+  it("an upstream's stored client_key (GET returns APISIX's ciphertext): an unrelated save sends it back as loaded", async () => {
+    const { client, admin, writes } = setup({ objects: { upstreams: [{ id: 'u1', nodes: [{ host: 'a', port: 443, weight: 1 }], tls: { client_cert: 'CERT', client_key: 'AES:stored' } }] } });
+    const { original, draft } = await load(client, 'upstreams', 'u1');
+    await saveResource(client, { kind: 'upstreams', id: 'u1', isNew: false, draft: { ...draft, desc: 'x' }, original });
+    expect(((writes()[0]?.body as Obj).tls as Obj).client_key).toBe('AES:stored');
+    expect((admin.stored('upstreams')[0]?.tls as Obj).client_key).toBe('AES:stored');
+  });
+
+  it("a route's inline upstream client_key: the same", async () => {
+    const { client, writes } = setup({ objects: { routes: [{ id: 'r1', uri: '/a', upstream: { nodes: [{ host: 'a', port: 443, weight: 1 }], scheme: 'https' } }] }, replies: { 'routes/r1': failReadAfterWrite() } });
+    const { original, draft } = await load(client, 'routes', 'r1');
+    const upstream = { ...(draft.upstream as Obj), tls: { client_cert: 'CERT', client_key: PEM } };
+    const item = saved(await saveResource(client, { kind: 'routes', id: 'r1', isNew: false, draft: { ...draft, upstream }, original }));
+    expect(((item.value.upstream as Obj).tls as Obj).client_key).toBe(PEM);
+    await saveResource(client, { kind: 'routes', id: 'r1', isNew: false, draft: stripTimestamps(item.value), original: item, force: true });
+    expect(writes().map((w) => (((w.body as Obj).upstream as Obj).tls as Obj).client_key)).toEqual([PEM, PEM]);
+  });
+
+  it("an SSL's key: left out of the stand-in, as a GET leaves it out; the next Save is a PATCH without it, the stored key untouched", async () => {
+    const { client, admin, writes } = setup({ objects: { ssls: [{ id: 's1', cert: 'CERT', key: 'AES:old', snis: ['a.test'] }] }, replies: { 'ssls/s1': failReadAfterWrite() } });
+    const { original, draft } = await load(client, 'ssls', 's1');
+    const item = saved(await saveResource(client, { kind: 'ssls', id: 's1', isNew: false, draft: { ...draft, cert: 'NEW CERT', key: PEM }, original }));
+    expect(item.value.key).toBeUndefined();
+    expect(item.value.cert).toBe('NEW CERT');
+    await saveResource(client, { kind: 'ssls', id: 's1', isNew: false, draft: { ...stripTimestamps(item.value), snis: ['b.test'] }, original: item, force: true });
+    expect(writes().map((w) => w.method)).toEqual(['PUT', 'PATCH']);
+    expect(writes()[1]?.body).toEqual({ snis: ['b.test'] });
+    expect(admin.stored('ssls')[0]?.key).toBe(`AES:${btoa(encodeURIComponent(PEM))}`);
+  });
+
+  it('a POST: the id APISIX generated comes from the response (nothing else does); the secret stands in as sent', async () => {
+    let wrote = false;
+    const { client } = setup({
+      objects: { routes: [] },
+      replies: {
+        routes: (req) => {
+          wrote ||= req.method === 'POST';
+          return undefined;
+        },
+      },
+    });
+    // Fail every read of the new route (its id is not known in advance).
+    const fetchImpl = (client as unknown as { fetchImpl: typeof fetch }).fetchImpl;
+    (client as unknown as { fetchImpl: typeof fetch }).fetchImpl = (input, init) =>
+      wrote && (init?.method ?? 'GET') === 'GET' ? Promise.resolve(json(503, { error_msg: 'etcd busy' })) : fetchImpl(input, init);
+    const item = saved(await saveResource(client, { kind: 'routes', isNew: true, draft: { uri: '/new', plugins: logger } }));
+    expect(item.id).toMatch(/^\d{20}$/);
+    expect(item.value).toEqual({ uri: '/new', plugins: logger, id: item.id });
+  });
+});
+
 describe('mergePatch', () => {
   it('holds only the changed top-level keys, removed ones as null', () => {
     expect(mergePatch({ a: 1, b: [1], c: 'x' }, { a: 1, b: [1, 2], d: true })).toEqual({ b: [1, 2], c: null, d: true });

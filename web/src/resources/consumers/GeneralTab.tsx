@@ -3,8 +3,8 @@
 // its group, and how many credentials it has), each line linking to its tab. Locked, this is the
 // consumer's spec sheet; it names plugins, never their configs (they hold the consumer's keys).
 import { useMemo, type ReactNode } from 'react';
-import { useList, useSupports } from '../../api/hooks';
-import type { Obj } from '../../api/types';
+import { useAllPlugins, useList, useSupports } from '../../api/hooks';
+import type { Obj, PluginInfo } from '../../api/types';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -20,15 +20,19 @@ import { servicePlugins as ownPlugins } from '../services/columns';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String(v) : typeof v === 'string' && v !== '' ? v : undefined);
-const named = (p: { name: string; disabled?: boolean }) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name);
+const named = (p: { name: string; disabled?: boolean; notApplied?: boolean }) =>
+  p.notApplied ? t('cs.overview.notApplied', { name: p.name }) : p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name;
 
-/** Its own plugins, then those of its group ("loading…" while the groups load); "None" only when neither has any. */
-function plugins(draft: Obj, ctx: Ctx) {
+/**
+ * Its own plugins, then those of its group ("loading…" while the groups load), a group's auth plugin
+ * marked as not applied; "None" only when neither has any.
+ */
+function plugins(draft: Obj, ctx: Ctx, all: Record<string, PluginInfo> | undefined) {
   const own = ownPlugins(draft).map(named);
   const parts: ReactNode[] = own.length > 0 ? [<Mono key="own" values={own} />] : [];
   if (consumerGroupLoading(draft, ctx)) parts.push(t('picker.loading'));
   else {
-    const inherited = consumerInheritedPlugins(draft, ctx).map(named);
+    const inherited = consumerInheritedPlugins(draft, ctx, all).map(named);
     if (inherited.length > 0) parts.push(t('cs.overview.fromGroup', { names: inherited.join(', ') }));
   }
   return parts.length > 0 ? <Parts parts={parts} /> : t('cs.overview.noPlugins');
@@ -48,6 +52,7 @@ function Credentials({ username }: { username: string }) {
 export function GeneralTab({ draft, setDraft, issues, ctx, isNew, original, saveAttempts }: TabProps) {
   const locked = useLocked();
   const credentialsOn = useSupports('credentials') !== false;
+  const all = useAllPlugins().data;
   const username = text(draft.username);
   // "Enter a username" waits for a Save attempt; a username APISIX refuses is flagged as it is typed.
   const usernameError = username !== '' || saveAttempts > 0 ? issueAt(issues, 'username') : undefined;
@@ -100,7 +105,7 @@ export function GeneralTab({ draft, setDraft, issues, ctx, isNew, original, save
       <Overview
         title={t('cs.overview')}
         rows={[
-          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft, ctx) },
+          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft, ctx, all) },
           ...(credentialsOn
             ? [{ tab: 'credentials', label: t('cs.tab.credentials'), value: stored === undefined ? t('cs.overview.credentialsNew') : <Credentials username={stored} /> }]
             : []),

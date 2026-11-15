@@ -112,6 +112,25 @@ describe('a save from each tab sends every field the tab does not own exactly as
   });
 });
 
+describe('an auth plugin in a group', () => {
+  it('the Plugins tab says APISIX never runs it from a group; Save is not refused (APISIX stores it)', async () => {
+    const { user, admin } = await openGroup('#/consumer_groups/partners?tab=plugins');
+    await settled();
+    expect(main().queryByRole('note')).not.toBeInTheDocument();
+    await user.keyboard('e');
+    await user.click(main().getByRole('button', { name: t('pl.add') }));
+    const picker = await screen.findByRole('dialog', { name: t('pl.picker.title') });
+    await user.type(within(picker).getByRole('combobox', { name: t('pl.picker.search') }), 'key-auth');
+    await user.click(within(picker).getByRole('option', { name: /^key-auth\b/ }));
+    expect(main().getByRole('note')).toHaveTextContent(t('pl.groupAuth', { names: 'key-auth' }));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect((writesOf(admin)[0]?.body?.plugins as Obj)['key-auth']).toEqual({});
+    await main().findByRole('button', { name: t('editor.edit') });
+    expect(main().getByRole('note')).toHaveTextContent(t('pl.groupAuth', { names: 'key-auth' }));
+  });
+});
+
 describe('creating a consumer group', () => {
   it('asks for an ID; Create PUTs consumer_groups/<id> with an empty plugins object', async () => {
     const { user, admin } = await openEditor('#/consumer_groups/new', { objects: { consumer_groups: [], consumers: [] }, replies: pluginReplies() });

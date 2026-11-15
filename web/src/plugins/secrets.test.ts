@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MASK } from '../schema/secrets';
 import { pluginFixture } from '../test/pluginFixture';
-import { redactObject } from './secrets';
+import { MASK_CHANGED, redactObject, redactPair } from './secrets';
 
 const all = () => pluginFixture().http;
 
@@ -36,6 +36,76 @@ describe('redactObject: what a locked view of a whole object shows', () => {
   it('leaves an object without secrets as it is, and says nothing was masked', () => {
     const value = { id: 'g', plugins: { 'limit-count': { count: 1, time_window: 1 } } };
     const out = redactObject(value, 'consumer_groups', all());
-    expect(out).toEqual({ value, redacted: false });
+    expect(out).toEqual({ value, revealed: value, redacted: false, revealable: false });
+    expect(out.value).toBe(value);
+  });
+});
+
+describe('redactObject, per kind', () => {
+  const logger = { 'http-logger': { uri: 'http://log.test', auth_header: 'Bearer s3' } };
+  const masked = { 'http-logger': { uri: 'http://log.test', auth_header: MASK } };
+
+  it.each(['routes', 'services', 'global_rules', 'plugin_configs', 'consumer_groups', 'consumers'] as const)(
+    "%s: a plugin's encrypt_fields (http-logger auth_header) are masked, and shown on reveal",
+    (kind) => {
+      const out = redactObject({ plugins: logger }, kind, all());
+      expect(out.value).toEqual({ plugins: masked });
+      expect(out.revealed).toEqual({ plugins: logger });
+      expect(out.revealable).toBe(true);
+    },
+  );
+
+  it("a stream route's plugins against the stream set", () => {
+    const stream = pluginFixture().stream;
+    expect(redactObject({ plugins: { 'limit-conn': { conn: 1, burst: 0, default_conn_delay: 1, key: 'remote_addr' } } }, 'stream_routes', stream).redacted).toBe(false);
+  });
+
+  it("an upstream's tls.client_key (APISIX's ciphertext) is never shown, not even on reveal; nothing else to reveal, so no toggle", () => {
+    const up = { nodes: [{ host: 'a', port: 443, weight: 1 }], tls: { client_cert: 'CERT', client_key: 'AES-ciphertext' } };
+    const out = redactObject(up, 'upstreams', all());
+    expect(out.value).toEqual({ ...up, tls: { client_cert: 'CERT', client_key: MASK } });
+    expect(out.revealed).toEqual(out.value);
+    expect(out).toMatchObject({ redacted: true, revealable: false });
+  });
+
+  it("a route's inline upstream client_key too; its plugin secret is revealable", () => {
+    const route = { uri: '/', upstream: { tls: { client_cert: 'C', client_key: 'AES-x' } }, plugins: logger };
+    const out = redactObject(route, 'routes', all());
+    expect(JSON.stringify(out.value)).not.toContain('AES-x');
+    expect(JSON.stringify(out.revealed)).not.toContain('AES-x');
+    expect(JSON.stringify(out.revealed)).toContain('Bearer s3');
+  });
+
+  it("a secret manager's token, and an SSL's (never returned) key fields by name", () => {
+    expect(redactObject({ uri: 'https://vault', prefix: 'kv', token: 'hvs.x' }, 'secrets', all()).value).toEqual({ uri: 'https://vault', prefix: 'kv', token: MASK });
+    expect(redactObject({ secret_access_key: 'k', access_key_id: 'AKIA' }, 'secrets', all()).value).toEqual({ secret_access_key: MASK, access_key_id: 'AKIA' });
+  });
+
+  it("plugin metadata: its plugin's metadata encrypt_fields (azure-functions master_apikey); everything while loading", () => {
+    expect(redactObject({ id: 'azure-functions', master_apikey: 'k1', other: 'x' }, 'plugin_metadata', all()).value).toEqual({ id: 'azure-functions', master_apikey: MASK, other: 'x' });
+    expect(redactObject({ id: 'azure-functions', master_apikey: 'k1' }, 'plugin_metadata', undefined).value).toEqual({ id: 'azure-functions', master_apikey: MASK });
+  });
+});
+
+describe('redactPair: the two sides of a conflict', () => {
+  it('a secret that differs reads as changed on their side, without either value; an equal one does not', () => {
+    const mine = { id: 'c1', name: 'a', plugins: { 'key-auth': { key: 'mine' } } };
+    const theirs = { id: 'c1', name: 'b', plugins: { 'key-auth': { key: 'theirs' } } };
+    const pair = redactPair(mine, theirs, 'credentials', all());
+    expect(pair.masked).toEqual([
+      { id: 'c1', name: 'a', plugins: { 'key-auth': { key: MASK } } },
+      { id: 'c1', name: 'b', plugins: { 'key-auth': { key: MASK_CHANGED } } },
+    ]);
+    expect(JSON.stringify(pair.masked)).not.toMatch(/mine|theirs/);
+    expect(pair.revealed).toEqual([mine, theirs]);
+    expect(redactPair(mine, { ...mine, name: 'b' }, 'credentials', all()).masked[1]).toEqual({ id: 'c1', name: 'b', plugins: { 'key-auth': { key: MASK } } });
+  });
+
+  it('a never-shown key that differs reads as changed in the revealed view too', () => {
+    const a = { tls: { client_cert: 'C', client_key: 'AES-1' } };
+    const b = { tls: { client_cert: 'C', client_key: 'AES-2' } };
+    const pair = redactPair(a, b, 'upstreams', all());
+    expect(pair.revealed[1]).toEqual({ tls: { client_cert: 'C', client_key: MASK_CHANGED } });
+    expect(pair.revealable).toBe(false);
   });
 });

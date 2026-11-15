@@ -50,6 +50,15 @@ describe('consumer group columns', () => {
     expect(cell('consumers', PARTNERS, loading)).toHaveTextContent(t('picker.loading'));
   });
 
+  it("plugins: an auth plugin is marked not applied (APISIX never runs one from a group), the others are not", () => {
+    const group = itemOf('g', { plugins: { 'key-auth': {}, 'limit-count': { count: 1, time_window: 1 } } });
+    expect(col('plugins').accessor(group, CTX)).toEqual(['key-auth', 'limit-count']);
+    const el = cell('plugins', group);
+    const chips = [...el.querySelectorAll('.cell-plugin')];
+    expect(chips.map((c) => c.textContent)).toEqual([`key-auth${t('cell.plugin.notApplied')}`, 'limit-count']);
+    expect(chips[0]).toHaveAttribute('title', `key-auth: ${t('cell.plugin.notAppliedWhy')}`);
+  });
+
   it('plugins by name; the id in monospace', () => {
     expect(col('plugins').accessor(PARTNERS, CTX)).toEqual(['limit-count']);
     expect(cell('plugins', STAFF)).toHaveTextContent(t('ui.empty'));

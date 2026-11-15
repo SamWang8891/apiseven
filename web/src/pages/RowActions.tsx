@@ -24,7 +24,7 @@ export function ViewJsonDialog({ open, onClose, title, kind, value }: { open: bo
   const hidden = redactObject(value, kind, plugins);
   // Each opening starts masked (the dialog is mounted only while open), and a lock change hides them.
   const [revealed, setRevealed] = useReveal();
-  const text = JSON.stringify(hidden.redacted && !revealed ? hidden.value : value, null, 2);
+  const text = JSON.stringify(revealed ? hidden.revealed : hidden.value, null, 2);
 
   async function copy() {
     try {
@@ -44,7 +44,7 @@ export function ViewJsonDialog({ open, onClose, title, kind, value }: { open: bo
       size="lg"
       footer={
         <>
-          {hidden.redacted && (
+          {hidden.revealable && (
             <Button icon={revealed ? <EyeOff size={15} /> : <Eye size={15} />} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
               {revealed ? t('pl.card.secrets.hide') : t('pl.card.secrets.show')}
             </Button>

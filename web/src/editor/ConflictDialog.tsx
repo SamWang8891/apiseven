@@ -1,9 +1,11 @@
 // Shown when a save finds the object changed on the server since it was loaded.
+import { Eye, EyeOff } from 'lucide-react';
 import { useMemo } from 'react';
 import { stripTimestamps } from '../api/sanitize';
-import type { Obj } from '../api/types';
+import type { Kind, Obj, PluginInfo } from '../api/types';
 import { t } from '../i18n';
-import { Button, Dialog } from '../ui';
+import { redactPair } from '../plugins/secrets';
+import { Button, Dialog, useReveal } from '../ui';
 import { hunks, lineDiff, type Hunk } from './diff';
 import { canonical, pretty } from './json';
 
@@ -11,6 +13,9 @@ export interface ConflictDialogProps {
   /** Kind singular and object name, for the title. */
   kind: string;
   name: string;
+  /** The object's kind, and its scope's plugin list (undefined while loading): which values are secret. */
+  resource: Kind;
+  plugins: Record<string, PluginInfo> | undefined;
   /** The stored value the draft was loaded from, and the server's current one. */
   loaded: Obj;
   theirs: Obj;
@@ -55,12 +60,15 @@ function DiffLine({ hunk }: { hunk: Hunk }) {
  * Someone else saved the object after it was loaded. Shows what changed between the loaded version
  * and theirs (pretty JSON with sorted keys, timestamps left out, unchanged stretches folded) and lets the user keep
  * their draft by overwriting, take the server's version, or go back to editing.
+ * Secrets on both sides are masked as in the locked JSON view (redactPair), behind "Show secrets"; a
+ * masked value that differs reads "(changed)" on their side. Only the display is masked: Overwrite
+ * saves the draft and Reload takes the server's item, both with their real values.
  */
-export function ConflictDialog({ kind, name, loaded, theirs, onOverwrite, onReload, onCancel }: ConflictDialogProps) {
-  const lines = useMemo(
-    () => hunks(lineDiff(pretty(canonical(stripTimestamps(loaded))), pretty(canonical(stripTimestamps(theirs))))),
-    [loaded, theirs],
-  );
+export function ConflictDialog({ kind, name, resource, plugins, loaded, theirs, onOverwrite, onReload, onCancel }: ConflictDialogProps) {
+  const pair = useMemo(() => redactPair(stripTimestamps(loaded), stripTimestamps(theirs), resource, plugins), [loaded, theirs, resource, plugins]);
+  const [revealed, setRevealed] = useReveal();
+  const [mine, others] = revealed ? pair.revealed : pair.masked;
+  const lines = useMemo(() => hunks(lineDiff(pretty(canonical(mine)), pretty(canonical(others)))), [mine, others]);
   const changed = lines.some((line) => line.op === 'add' || line.op === 'del');
   return (
     <Dialog
@@ -84,7 +92,14 @@ export function ConflictDialog({ kind, name, loaded, theirs, onOverwrite, onRelo
         <p>{t('editor.conflict.body')}</p>
         {changed ? (
           <>
-            <p className="ed-conflict__legend">{t('editor.conflict.legend')}</p>
+            <div className="ed-conflict__bar">
+              <p className="ed-conflict__legend">{t('editor.conflict.legend')}</p>
+              {pair.revealable && (
+                <Button size="sm" variant="ghost" icon={revealed ? <EyeOff size={13} /> : <Eye size={13} />} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
+                  {revealed ? t('pl.card.secrets.hide') : t('pl.card.secrets.show')}
+                </Button>
+              )}
+            </div>
             <div className="ed-diff mono">
               {lines.map((hunk, i) => (
                 <DiffLine key={i} hunk={hunk} />

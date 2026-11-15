@@ -301,8 +301,17 @@
 }
 
 .ed-conflict__legend {
+  margin: 0;
   color: var(--text-2);
   font-size: 12px;
+}
+
+/* The legend, and "Show secrets" at the end of its line. */
+.ed-conflict__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
 }
 
 .ed-diff {

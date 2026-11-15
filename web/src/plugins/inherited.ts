@@ -1,9 +1,10 @@
 // The plugins an object also runs from the objects it uses: a route's service and plugin config, a
 // stream route's service, a consumer's group.
 import { isObj } from '../api/sanitize';
-import type { Obj } from '../api/types';
+import type { Obj, PluginInfo } from '../api/types';
 import type { Ctx } from '../resources/ctx';
 import { asStreamRoute, effectivePlugins, resolveRef } from '../resources/resolve';
+import { isAuthPlugin } from './auth';
 import { runsOnStream } from './stream';
 import type { InheritedPlugin } from './PluginsTab';
 
@@ -28,13 +29,18 @@ export function streamInheritedPlugins(route: Obj, ctx: Ctx): InheritedPlugin[] 
  * (merge_consumer_route, apisix/plugin.lua 818–867), so the consumer wins a name it sets too
  * ("overridden here"). Nothing comes from its credentials: a request signed with one runs as a copy
  * of the consumer with that credential as its auth config only (apisix/consumer.lua 103–118, 144).
+ * A group's auth plugin is merged too, but never runs (isAuthPlugin, plugins/auth.ts): it is marked
+ * `notApplied`. `all` is the plugin list, when it has loaded (else the source's auth list decides).
  * Empty while the group is unknown (missing, or the groups still loading: consumerGroupLoading).
  */
-export function consumerInheritedPlugins(consumer: Obj, ctx: Ctx): InheritedPlugin[] {
+export function consumerInheritedPlugins(consumer: Obj, ctx: Ctx, all?: Record<string, PluginInfo>): InheritedPlugin[] {
   const plugins = resolveRef('consumer_groups', consumer.group_id, ctx)?.item?.value.plugins;
   if (!isObj(plugins)) return [];
   return Object.entries(plugins)
-    .map(([name, conf]): InheritedPlugin => ({ name, from: 'consumer_group', disabled: isObj(conf) && isObj(conf._meta) && conf._meta.disable === true }))
+    .map(([name, conf]): InheritedPlugin => {
+      const plugin: InheritedPlugin = { name, from: 'consumer_group', disabled: isObj(conf) && isObj(conf._meta) && conf._meta.disable === true };
+      return isAuthPlugin(name, all) ? { ...plugin, notApplied: true } : plugin;
+    })
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 

@@ -58,9 +58,8 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   const plugins = useAllPlugins(scope && subsystemOf(scope)).data;
   const hidden = useMemo(() => (locked ? redactObject(draft, kind, plugins) : undefined), [locked, draft, kind, plugins]);
   const [revealed, setRevealed] = useReveal();
-  const masked = hidden?.redacted === true && !revealed;
   // What the editor shows, and what Copy copies.
-  const shown = masked ? pretty(hidden.value) : current.text;
+  const shown = hidden?.redacted ? pretty(revealed ? hidden.revealed : hidden.value) : current.text;
 
   function change(text: string) {
     const parsed = parse(text);
@@ -91,7 +90,7 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
       <div className="ed-json__bar">
         <p className="ed-json__hint">{t('editor.json.hint', { kind: singular })}</p>
         <div className="ed-json__tools">
-          {hidden?.redacted && (
+          {hidden?.revealable && (
             <Button size="sm" variant="ghost" icon={revealed ? <EyeOff size={13} /> : <Eye size={13} />} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
               {revealed ? t('pl.card.secrets.hide') : t('pl.card.secrets.show')}
             </Button>

@@ -91,6 +91,13 @@ describe('General', () => {
     expect(overview).toHaveTextContent(`${t('pl.tab')}${t('cs.overview.fromGroup', { names: 'cors (off), limit-count' })}`);
   });
 
+  it("at a glance, a group's auth plugin reads as not applied", () => {
+    const ctx = ctxOf({ consumerGroups: [itemOf('auth-group', { plugins: { 'key-auth': {}, 'limit-count': { count: 1, time_window: 1 } } })] });
+    tab(GeneralTab, { username: 'jo', group_id: 'auth-group' }, { locked: true, ctx });
+    const overview = screen.getByRole('region', { name: t('cs.overview') });
+    expect(overview).toHaveTextContent(t('cs.overview.fromGroup', { names: `${t('cs.overview.notApplied', { name: 'key-auth' })}, limit-count` }));
+  });
+
   it('at a glance says "loading…" for the group\'s plugins while the groups load', () => {
     tab(GeneralTab, JO, { locked: true, ctx: ctxOf({ loaded: { consumerGroups: false } }) });
     const overview = screen.getByRole('region', { name: t('cs.overview') });
@@ -105,6 +112,17 @@ describe('Plugins', () => {
     const inherited = await screen.findByRole('list', { name: t('pl.inherited.title') });
     const rows = within(inherited).getAllByRole('listitem').map((li) => li.textContent);
     expect(rows).toEqual([`cors${t('pl.inherited.fromConsumerGroup')}${t('pl.inherited.off')}`, `limit-count${t('pl.inherited.fromConsumerGroup')}${t('pl.inherited.overridden')}`]);
+  });
+
+  it("a group's auth plugin is listed as not applied, with the reason; the consumer's own key-auth does not make it \"overridden\"", async () => {
+    const ctx = ctxOf({ consumerGroups: [itemOf('auth-group', { plugins: { 'key-auth': {}, 'limit-count': { count: 1, time_window: 1 } } })] });
+    tab(Plugins, { username: 'jo', group_id: 'auth-group', plugins: { 'key-auth': { key: 'jo-key' } } }, { locked: true, ctx });
+    const inherited = await screen.findByRole('list', { name: t('pl.inherited.title') });
+    const rows = within(inherited).getAllByRole('listitem').map((li) => li.textContent);
+    expect(rows).toEqual([
+      `key-auth${t('pl.inherited.fromConsumerGroup')}${t('pl.inherited.notApplied')}${t('pl.inherited.notAppliedWhy')}`,
+      `limit-count${t('pl.inherited.fromConsumerGroup')}`,
+    ]);
   });
 
   it('says "loading…" while the groups load, and lists nothing as inherited meanwhile', async () => {

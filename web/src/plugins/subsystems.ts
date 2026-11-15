@@ -137,3 +137,16 @@ export const STREAM_PLUGINS: readonly string[] = [
   "syslog",
   "traffic-split",
 ];
+
+/** The http plugins whose module declares `type = 'auth'`. */
+export const AUTH_PLUGINS: readonly string[] = [
+  "basic-auth",
+  "hmac-auth",
+  "jwe-decrypt",
+  "jwt-auth",
+  "key-auth",
+  "ldap-auth",
+  "ldap-auth-advanced",
+  "multi-auth",
+  "wolf-rbac",
+];

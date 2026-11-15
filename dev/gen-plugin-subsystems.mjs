@@ -4,6 +4,8 @@
 // limit-conn, are both). A module is <name>.lua, or <name>/init.lua when that file declares
 // `plugin_name = "<name>"` (proxy-cache; other directories hold helpers). The lists let the stream route views name only the plugins that can
 // run there, without the Admin API's plugin list (which needs a request and reflects config.yaml).
+// AUTH_PLUGINS are the http plugins whose module declares `type = 'auth'`: APISIX never runs one
+// that reaches a route through a consumer or its group (apisix/plugin.lua 612–614).
 //
 //   node dev/gen-plugin-subsystems.mjs [path/to/apisix]    default ~/apiseven-ref/apisix
 //
@@ -32,6 +34,11 @@ function modules(dir) {
 
 const http = modules('plugins');
 const stream = modules(join('stream', 'plugins'));
+const source = (name) => {
+  const file = join(ROOT, 'apisix', 'plugins', `${name}.lua`);
+  return readFileSync(existsSync(file) ? file : join(ROOT, 'apisix', 'plugins', name, 'init.lua'), 'utf8');
+};
+const auth = http.filter((name) => /^\s*type\s*=\s*["']auth["']\s*,?\s*$/m.test(source(name)));
 const list = (names) => `[\n${names.map((n) => `  ${JSON.stringify(n)},`).join('\n')}\n]`;
 
 writeFileSync(
@@ -45,6 +52,9 @@ export const HTTP_PLUGINS: readonly string[] = ${list(http)};
 
 /** The stream subsystem's plugins (apisix/stream/plugins/). */
 export const STREAM_PLUGINS: readonly string[] = ${list(stream)};
+
+/** The http plugins whose module declares \`type = 'auth'\`. */
+export const AUTH_PLUGINS: readonly string[] = ${list(auth)};
 `,
 );
-console.log(`wrote ${OUT}: ${http.length} http, ${stream.length} stream`);
+console.log(`wrote ${OUT}: ${http.length} http, ${stream.length} stream, ${auth.length} auth`);

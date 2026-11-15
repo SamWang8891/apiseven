@@ -10,6 +10,7 @@ import { t } from '../../i18n';
 import { resetApp } from '../../test/app';
 import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import type { FakeAdminOptions } from '../../test/fakeAdmin';
+import { MASK_CHANGED } from '../../plugins/secrets';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 
@@ -134,6 +135,52 @@ describe('the key of a key-auth credential', () => {
     expect(document.body.innerHTML).not.toContain('rotated-key-2');
     await user.keyboard('e');
     expect(within(main().getByRole('group', { name: 'key-auth' })).getByLabelText(/^key\b(?!-)/)).toHaveAttribute('type', 'password');
+  });
+});
+
+describe('a conflict (someone changed the key meanwhile)', () => {
+  it('the dialog shows neither key until revealed, flags the key as changed, and "Overwrite with mine" sends my real key', async () => {
+    const { user, admin } = await openCredential();
+    await user.keyboard('e');
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('cr.general.desc') }), '!');
+    admin.touch('credentials', 'c 1', { plugins: { 'key-auth': { key: 'their-new-key' } } }, 'jo e');
+    await save(user);
+    const dialog = await screen.findByRole('dialog', { name: t('editor.conflict.title', { kind: t('kind.credentials.singular'), name: 'first' }) });
+    expect(writesOf(admin)).toEqual([]);
+    expect(document.body.innerHTML).not.toContain(KEY);
+    expect(document.body.innerHTML).not.toContain('their-new-key');
+    const inserted = [...dialog.querySelectorAll('ins .ed-diff__text')].map((el) => el.textContent?.trim());
+    expect(inserted).toContain(`"key": "${MASK_CHANGED}"`);
+
+    await user.click(within(dialog).getByRole('button', { name: t('pl.card.secrets.show') }));
+    expect(dialog.textContent).toContain(KEY);
+    expect(dialog.textContent).toContain('their-new-key');
+    await user.click(within(dialog).getByRole('button', { name: t('pl.card.secrets.hide') }));
+    expect(document.body.innerHTML).not.toContain('their-new-key');
+
+    await user.click(within(dialog).getByRole('button', { name: t('editor.conflict.overwrite') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]).toEqual({ method: 'PUT', path: 'consumers/jo%20e/credentials/c%201', body: loadedWith(C1, { desc: 'CI!' }) });
+    expect(((writesOf(admin)[0]?.body?.plugins as Obj)['key-auth'] as Obj).key).toBe(KEY);
+  });
+
+  it('"Reload theirs" takes their real key: the next untouched save sends it', async () => {
+    const { user, admin } = await openCredential();
+    await user.keyboard('e');
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('cr.general.desc') }), '!');
+    admin.touch('credentials', 'c 1', { plugins: { 'key-auth': { key: 'their-new-key' } } }, 'jo e');
+    await save(user);
+    const dialog = await screen.findByRole('dialog', { name: t('editor.conflict.title', { kind: t('kind.credentials.singular'), name: 'first' }) });
+    await user.click(within(dialog).getByRole('button', { name: t('editor.conflict.reload') }));
+    await main().findByRole('button', { name: t('editor.edit') });
+    await user.keyboard('e');
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('cr.general.name') }), '2');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(((writesOf(admin)[0]?.body?.plugins as Obj)['key-auth'] as Obj).key).toBe('their-new-key');
   });
 });
 

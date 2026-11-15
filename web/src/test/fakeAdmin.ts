@@ -160,9 +160,9 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
   const stored = (kind: Kind, consumer?: string): Obj[] =>
     ((kind === 'credentials' ? credentials.get(consumer ?? '') : objects.get(kind)) ?? []).map((entry) => entry.value);
 
-  /** Changes a stored object behind the editor's back (another user's save): raises its modifiedIndex. */
-  function touch(kind: Kind, id: string, change: Obj): void {
-    const entry = objects.get(kind)?.find((e) => idOf(kind, e.value) === id);
+  /** Changes a stored object behind the editor's back (another user's save): raises its modifiedIndex. Credentials need their consumer. */
+  function touch(kind: Kind, id: string, change: Obj, consumer?: string): void {
+    const entry = (kind === 'credentials' ? credentials.get(consumer ?? '') : objects.get(kind))?.find((e) => idOf(kind, e.value) === id);
     if (!entry) throw new Error(`no stored ${kind} ${id}`);
     entry.value = { ...entry.value, ...change };
     entry.index = ++revision.n;
@@ -194,14 +194,47 @@ function merge(origin: Obj, extend: Obj): Obj {
 const isPlain = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
 /**
- * The auth plugins' `encrypt_fields` (their consumer schemas in APISIX 3.20). APISIX stores them
- * encrypted and echoes the ciphertext in a write's response, while a GET returns the clear text.
+ * Secrets as APISIX 3.20 keeps them (checked on the dev APISIX):
+ * - a plugin's `encrypt_fields`, in any kind's `plugins`, are stored encrypted and echoed by a
+ *   write's response as `$ENC$v1$…`, while a GET returns the clear text (ENCRYPTED lists the ones the
+ *   tests use);
+ * - a private key in PEM form (an SSL's `key` / `keys`, an upstream's or an inline upstream's
+ *   `tls.client_key`) is stored AES-encrypted: only PEM is (`aes_encrypt_pkey`, apisix/ssl.lua
+ *   89–95), anything else passes through. The write's response echoes the ciphertext; an upstream's
+ *   GET returns it as stored; an SSL's GET leaves `key` / `keys` out.
  */
-const ENCRYPTED: Record<string, string[]> = { 'key-auth': ['key'], 'basic-auth': ['password'], 'jwt-auth': ['secret'], 'hmac-auth': ['secret_key'] };
+const ENCRYPTED: Record<string, string[]> = {
+  'key-auth': ['key'],
+  'basic-auth': ['password'],
+  'jwt-auth': ['secret'],
+  'hmac-auth': ['secret_key'],
+  'http-logger': ['auth_header'],
+};
 
-/** What a write's response shows: for consumers and credentials, the auth plugins' secrets as ciphertext. */
-function echoed(kind: string, value: Obj): Obj {
-  if ((kind !== 'consumers' && kind !== 'credentials') || !isPlain(value.plugins)) return value;
+/** The stand-in for APISIX's AES ciphertext of a PEM key: no longer PEM, so a later write passes it through. */
+const aes = (v: unknown): unknown => (typeof v === 'string' && v.startsWith('---') ? `AES:${btoa(encodeURIComponent(v))}` : v);
+
+function withClientKey(upstream: unknown): unknown {
+  if (!isPlain(upstream) || !isPlain(upstream.tls) || upstream.tls.client_key === undefined) return upstream;
+  return { ...upstream, tls: { ...upstream.tls, client_key: aes(upstream.tls.client_key) } };
+}
+
+/** A written value as APISIX stores it: PEM private keys encrypted. */
+function storedAs(kind: string, value: Obj): Obj {
+  if (kind === 'ssls') {
+    const out = { ...value };
+    if (out.key !== undefined) out.key = aes(out.key);
+    if (Array.isArray(out.keys)) out.keys = out.keys.map(aes);
+    return out;
+  }
+  if (kind === 'upstreams') return withClientKey(value) as Obj;
+  if (isPlain(value.upstream)) return { ...value, upstream: withClientKey(value.upstream) };
+  return value;
+}
+
+/** What a write's response shows: the stored value, its plugins' encrypted fields as `$ENC$v1$…`. */
+function echoed(value: Obj): Obj {
+  if (!isPlain(value.plugins)) return value;
   const plugins = Object.fromEntries(
     Object.entries(value.plugins).map(([name, conf]) => {
       if (!isPlain(conf)) return [name, conf];
@@ -232,12 +265,12 @@ function shown(kind: string, value: Obj): Obj {
 function answer(kind: string, stored: Stored[], id: string | undefined, req: FakeRequest, revision: { n: number }, prefix = `/apisix/${kind}`): Response {
   const entry = (value: Obj) => ({ key: `${prefix}/${idOf(kind, value)}`, value });
   // A write's response, as APISIX sends it: secrets as ciphertext (echoed), and no modifiedIndex.
-  const written = (value: Obj) => entry(echoed(kind, value));
+  const written = (value: Obj) => entry(echoed(value));
   const read = (s: Stored) => ({ ...entry(shown(kind, s.value)), modifiedIndex: s.index, createdIndex: s.index });
   const body = (req.body ?? {}) as Obj;
   if (id === undefined) {
     if (req.method === 'POST') {
-      const value = { ...body, id: String(revision.n + 1).padStart(20, '0') };
+      const value = storedAs(kind, { ...body, id: String(revision.n + 1).padStart(20, '0') });
       stored.push({ value, index: ++revision.n });
       return json(201, written(value));
     }
@@ -250,7 +283,7 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
     case 'GET':
       return current ? json(200, read(current)) : json(404, { message: 'Key not found' });
     case 'PUT': {
-      const value = { ...body, ...(kind === 'consumers' ? {} : { id }) };
+      const value = storedAs(kind, { ...body, ...(kind === 'consumers' ? {} : { id }) });
       if (current) {
         current.value = value;
         current.index = ++revision.n;
@@ -259,7 +292,7 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
     }
     case 'PATCH': {
       if (!current) return json(404, { message: 'Key not found' });
-      current.value = merge(current.value, body);
+      current.value = storedAs(kind, merge(current.value, body));
       current.index = ++revision.n;
       return json(200, written(current.value));
     }

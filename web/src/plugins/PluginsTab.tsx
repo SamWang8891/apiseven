@@ -7,7 +7,7 @@ import { Plus } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FC } from 'react';
 import { useAllPlugins } from '../api/hooks';
 import { isObj } from '../api/sanitize';
-import type { Obj } from '../api/types';
+import type { Obj, PluginInfo } from '../api/types';
 import { setPathRaw } from '../editor/draft';
 import { issuesUnder, withinPath, type Issue } from '../editor/issues';
 import { t } from '../i18n';
@@ -21,12 +21,15 @@ import { consumerGroupLoading, consumerInheritedPlugins, inheritedPlugins, strea
 import { PluginCard } from './PluginCard';
 import { PluginPicker } from './PluginPicker';
 import { emptyPlugins, subsystemOf, type Scope } from './scope';
+import { isAuthPlugin } from './auth';
 import './plugins.css';
 
 export interface InheritedPlugin {
   name: string;
   from: 'service' | 'plugin_config' | 'consumer_group';
   disabled: boolean;
+  /** Merged in, but APISIX never runs it here (an auth plugin from a consumer group: plugins/auth.ts). */
+  notApplied?: boolean;
 }
 
 const FROM = {
@@ -202,7 +205,14 @@ function Inherited({ rows, local }: { rows: InheritedPlugin[]; local: string[] }
             <span className="pl-inherited__name mono">{row.name}</span>
             <span className="pl-inherited__from">{t(FROM[row.from])}</span>
             {row.disabled && <span className="pl-inherited__tag">{t('pl.inherited.off')}</span>}
-            {local.includes(row.name) && <span className="pl-inherited__tag pl-inherited__tag--over">{t('pl.inherited.overridden')}</span>}
+            {row.notApplied ? (
+              <>
+                <span className="pl-inherited__tag">{t('pl.inherited.notApplied')}</span>
+                <span className="pl-inherited__why">{t('pl.inherited.notAppliedWhy')}</span>
+              </>
+            ) : (
+              local.includes(row.name) && <span className="pl-inherited__tag pl-inherited__tag--over">{t('pl.inherited.overridden')}</span>
+            )}
           </li>
         ))}
       </ul>
@@ -211,14 +221,14 @@ function Inherited({ rows, local }: { rows: InheritedPlugin[]; local: string[] }
 }
 
 /** What an object of `scope` inherits, and whether that is still loading (a service, a consumer group). */
-function inheritance(scope: Scope, draft: Obj, ctx: TabProps['ctx']): { inherited?: InheritedPlugin[]; waiting?: string } {
+function inheritance(scope: Scope, draft: Obj, ctx: TabProps['ctx'], all: Record<string, PluginInfo> | undefined): { inherited?: InheritedPlugin[]; waiting?: string } {
   switch (scope) {
     case 'route':
       return { inherited: inheritedPlugins(draft, ctx) };
     case 'stream_route':
       return { inherited: streamInheritedPlugins(draft, ctx), waiting: inheritLoading(asStreamRoute(draft), ctx).service ? t('pl.inherited.loading') : undefined };
     case 'consumer':
-      return { inherited: consumerInheritedPlugins(draft, ctx), waiting: consumerGroupLoading(draft, ctx) ? t('pl.inherited.groupLoading') : undefined };
+      return { inherited: consumerInheritedPlugins(draft, ctx, all), waiting: consumerGroupLoading(draft, ctx) ? t('pl.inherited.groupLoading') : undefined };
     default:
       return {};
   }
@@ -228,11 +238,14 @@ function inheritance(scope: Scope, draft: Obj, ctx: TabProps['ctx']): { inherite
  * PluginsTab bound to an editor draft's `plugins` (what makePluginsTab renders). A route lists what it
  * inherits from its service and plugin config; a stream route what it takes from a service it merges
  * with (streamInheritedPlugins); a consumer its group's (consumerInheritedPlugins). Each says so while
- * the object it inherits from is still loading.
+ * the object it inherits from is still loading. A consumer group that holds an auth plugin is told
+ * that APISIX never runs it from there (plugins/auth.ts); APISIX stores it, so Save is not refused.
  */
 export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, scope }: TabProps & { scope: Scope }) {
   const value = isObj(draft.plugins) ? (draft.plugins as Record<string, Obj>) : undefined;
-  const { inherited, waiting } = inheritance(scope, draft, ctx);
+  const all = useAllPlugins(subsystemOf(scope)).data;
+  const { inherited, waiting } = inheritance(scope, draft, ctx, all);
+  const groupAuth = scope === 'consumer_group' ? Object.keys(value ?? {}).filter((name) => isAuthPlugin(name, all)).sort(byName) : [];
   return (
     <>
       <PluginsTab
@@ -245,6 +258,11 @@ export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, sc
         saveAttempts={saveAttempts}
       />
       {waiting && <p className="pl-note">{waiting}</p>}
+      {groupAuth.length > 0 && (
+        <p className="pl-note pl-note--warn" role="note">
+          {t('pl.groupAuth', { names: groupAuth.join(', ') })}
+        </p>
+      )}
     </>
   );
 }

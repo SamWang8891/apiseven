@@ -1,13 +1,17 @@
 // The consumer groups list columns: what a group is, its plugins, and how many consumers are in it.
 import type { Item } from '../../api/types';
 import { t } from '../../i18n';
-import { IdCell, LabelChips, NameDescCell, PluginChips, TimeCell } from '../cells';
+import { IdCell, LabelChips, NameDescCell, PluginChips, TimeCell, type PluginChip } from '../cells';
 import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
 import { labelPairs, nameOfValue } from '../resolve';
-import { servicePlugins as ownPlugins } from '../services/columns';
+import { isAuthPlugin } from '../../plugins/auth';
+import { servicePlugins } from '../services/columns';
 
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+/** The group's plugins, an auth plugin marked as not applied: APISIX never runs one from a group (plugins/auth.ts). */
+export const groupPlugins = (group: Item['value']): PluginChip[] => servicePlugins(group).map((p) => (isAuthPlugin(p.name) ? { ...p, notApplied: true } : p));
+
 const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String(v) : typeof v === 'string' && v !== '' ? v : undefined);
 
 /** The consumers whose group_id is the group's id (a number counts as its text); undefined until the consumers have loaded. */
@@ -42,8 +46,8 @@ export const consumerGroupColumns: ColumnDef[] = [
     get header() {
       return t('column.plugins');
     },
-    accessor: (item) => ownPlugins(item.value).map((p) => p.name),
-    cell: (item) => <PluginChips plugins={ownPlugins(item.value)} />,
+    accessor: (item) => groupPlugins(item.value).map((p) => p.name),
+    cell: (item) => <PluginChips plugins={groupPlugins(item.value)} />,
     defaultVisible: true,
     width: 220,
   },

@@ -44,26 +44,32 @@ function asApiError(err: unknown): ApiError {
   return new ApiError('http', err instanceof Error ? err.message : String(err), { cause: err });
 }
 
+/** What only a write's response can tell about the object: its id (APISIX generates one on POST) and its timestamps. */
+const SERVER_ONLY = ['id', 'create_time', 'update_time'];
+
 /**
- * The stored object after a write, read back with GET: write responses carry no modifiedIndex (the
- * next conflict check needs it), and they echo secrets encrypted (an SSL's `key`, a plugin's
- * `encrypt_fields`, such as an auth plugin's key in a consumer or credential), which must never
- * enter a draft (saved again, they would be encrypted twice, and the real key lost). When the read
- * fails, the write response stands in, without `key` / `keys`, with the `plugins` that were sent
- * (in clear) instead of the echoed ones, and without a modifiedIndex (so the next save of it
- * reports a conflict instead of overwriting blindly).
+ * The stored object after a write, read back with GET. Never the write's response: it carries no
+ * modifiedIndex (the next conflict check needs it), and it echoes secrets as APISIX stored them
+ * (checked on 3.20): a plugin's `encrypt_fields` in any kind as `$ENC$v1$…`, which a GET returns in
+ * clear, and a PEM private key (an SSL's `key`, an upstream's or an inline upstream's
+ * `tls.client_key`) as AES ciphertext. Put in a draft and saved again, a `$ENC$` value would be
+ * encrypted twice and the real secret lost.
+ * When the read fails, what was sent stands in, for every kind; the response gives only what it alone
+ * knows (SERVER_ONLY: the id APISIX assigned, the timestamps) and the item's id, no other value. An
+ * SSL's `key` / `keys` are left out, as a GET leaves them out (the next save is then a PATCH that
+ * keeps the stored key). It has no modifiedIndex, so the next save of it reports a conflict instead
+ * of overwriting blindly.
  */
 async function reread(client: AdminClient, kind: Kind, written: Item, sent: Obj, parent?: Parent): Promise<Item> {
   try {
     return await client.get(kind, written.id, parent);
   } catch {
-    const value = { ...written.value };
+    const value: Obj = { ...sent };
+    for (const key of SERVER_ONLY) if (written.value[key] !== undefined) value[key] = written.value[key];
     if (kind === 'ssls') {
       delete value.key;
       delete value.keys;
     }
-    if (sent.plugins === undefined) delete value.plugins;
-    else value.plugins = sent.plugins;
     return { id: written.id, value };
   }
 }
