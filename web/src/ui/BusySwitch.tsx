@@ -8,7 +8,7 @@ export type BusySwitchProps = Omit<ComponentProps<'button'>, 'onChange' | 'value
   onCheckedChange: (checked: boolean) => void;
   /** Its write is out: the switch takes no change until it settles. */
   busy: boolean;
-  /** What it says while busy ("Saving the new status…"). */
+  /** What it says while busy ("Saving the new status…"): its tooltip then, and part of its description. */
   busyText: string;
 };
 
@@ -22,8 +22,10 @@ export type BusySwitchProps = Omit<ComponentProps<'button'>, 'onChange' | 'value
  * disabled (focus fixup), so a keyboard user would lose their place and not hear that it is saving.
  * It keeps focus through the write and after it, a refused one too.
  */
-export function BusySwitch({ checked, onCheckedChange, busy, busyText, className, ...native }: BusySwitchProps) {
+export function BusySwitch({ checked, onCheckedChange, busy, busyText, className, title, 'aria-describedby': describedBy, ...native }: BusySwitchProps) {
   const sayId = useId();
+  // A caller's own description and title are kept; while busy, "saving" is added to the one and replaces the other.
+  const description = [describedBy, busy ? sayId : undefined].filter(Boolean).join(' ') || undefined;
   return (
     <>
       <RadixSwitch.Root
@@ -32,8 +34,8 @@ export function BusySwitch({ checked, onCheckedChange, busy, busyText, className
         checked={checked}
         aria-disabled={busy || undefined}
         aria-busy={busy || undefined}
-        aria-describedby={busy ? sayId : undefined}
-        title={busy ? busyText : undefined}
+        aria-describedby={description}
+        title={busy ? busyText : title}
         onCheckedChange={(next) => {
           if (!busy) onCheckedChange(next);
         }}
