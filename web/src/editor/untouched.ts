@@ -33,9 +33,10 @@ const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.map((_, i) => Str
 const childOf = (v: unknown, key: string): unknown => (Array.isArray(v) ? v[Number(key)] : isObj(v) ? v[key] : undefined);
 
 /**
- * The dotted paths whose value differs from `before` to `after` (nothing and nothing the same): a
- * path that holds an object or a list on either side, and every path below it that differs, so what
- * a new row or plugin card brings in is recorded only where it holds a value.
+ * The dotted paths whose value differs from `before` to `after` (empty and empty the same: no value,
+ * "", [] or {}; a null is a value here): a path that holds an object or a list on either side, and
+ * every path below it that differs, so what a new row or plugin card brings in is recorded only where
+ * it holds a value.
  */
 export function changedPaths(before: unknown, after: unknown, prefix = ''): string[] {
   if (same(before, after)) return [];
@@ -43,7 +44,7 @@ export function changedPaths(before: unknown, after: unknown, prefix = ''): stri
   const at = (key: string) => (prefix === '' ? key : `${prefix}.${key}`);
   const keys = new Set([...keysOf(before), ...keysOf(after)]);
   const below = [...keys].flatMap((key) => changedPaths(childOf(before, key), childOf(after, key), at(key)));
-  // Two containers that differ only in what counts as nothing (an empty key) did not change.
+  // Two containers that differ only in empty keys ("", [], {} or no value) did not change.
   return below.length > 0 || !(container(before) && container(after)) ? [prefix, ...below] : [];
 }
 
