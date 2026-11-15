@@ -15,11 +15,12 @@ export type InputProps = Omit<ComponentProps<'input'>, 'value' | 'children'> &
     value?: string;
     /** Hosts, URIs, IDs, addresses. */
     mono?: boolean;
-    /** Masks the value behind a reveal toggle, in the locked state too. */
+    /** Masks the value behind a reveal toggle, in the locked state too. `type="password"` implies it. */
     secret?: boolean;
   };
 
-export function Input({ label, help, error, required, htmlFor, mono, secret, id, value, className, type, ...native }: InputProps) {
+export function Input({ label, help, error, required, htmlFor, mono, secret: secretProp, id, value, className, type, ...native }: InputProps) {
+  const secret = secretProp || type === 'password';
   const locked = useLocked();
   const ids = useFieldIds(id ?? htmlFor, { help, error });
   const [revealed, setRevealed] = useReveal();

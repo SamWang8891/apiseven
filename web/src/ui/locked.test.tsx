@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import type { ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
+import { t } from '../i18n';
 import {
   Checkbox,
   Input,
@@ -64,6 +65,16 @@ describe('locked rendering', () => {
 
     const empty = renderLocked(<Input label="Name" value="" onChange={noop} />);
     expect(roValue(empty)).toHaveTextContent(/^—$/);
+  });
+
+  // Task 16b item 15: a password field is a secret whether or not the caller says so.
+  it('Input type="password" without `secret` is masked when locked, with the reveal toggle, and has the toggle when editing', () => {
+    renderLocked(<Input label="Password" type="password" value="hunter2-pass" onChange={noop} />);
+    expect(document.body.textContent).not.toContain('hunter2-pass');
+    expect(screen.getByRole('button', { name: t('ui.secret.show') })).toBeInTheDocument();
+    render(<Input label="Password again" type="password" value="hunter2-pass" onChange={noop} />);
+    expect(screen.getByLabelText('Password again')).toHaveAttribute('type', 'password');
+    expect(screen.getAllByRole('button', { name: t('ui.secret.show') })).toHaveLength(2);
   });
 
   it('Input with mono renders the value in monospace', () => {

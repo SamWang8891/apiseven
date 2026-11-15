@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
+import { renderSchemaForm } from '../test/schemaForm';
 import { Input, LockProvider, useEditingState } from './index';
 
 function Typed() {
@@ -75,5 +76,29 @@ describe('a revealed secret', () => {
     expect(screen.queryByText('s3cret-value')).not.toBeInTheDocument();
     rerender(<Secret locked={false} session={1} />);
     expect(screen.getByLabelText('Key')).toHaveAttribute('type', 'password');
+  });
+
+  // Task 16b item 20 (verified already fixed by useReveal): revealed in the locked view, then a lock change without a click.
+  it('revealed while locked, then unlocked and locked again: masked again (kit Input)', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<Secret locked session={0} />);
+    await user.click(screen.getByRole('button', { name: t('ui.secret.show') }));
+    expect(screen.getByText('s3cret-value')).toBeInTheDocument();
+    rerender(<Secret locked={false} session={0} />);
+    rerender(<Secret locked session={1} />);
+    expect(screen.queryByText('s3cret-value')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t('ui.secret.show') })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('revealed while locked, then unlocked and locked again: masked again (schema-form JSON field)', async () => {
+    const schema = { type: 'object', properties: { conf: {} } };
+    const form = renderSchemaForm(schema, { conf: { password: 'p4ss-word' } }, { locked: true });
+    expect(document.body.textContent).not.toContain('p4ss-word');
+    await form.user.click(screen.getByRole('button', { name: t('ui.secret.show') }));
+    expect(document.body.textContent).toContain('p4ss-word');
+    form.update({ locked: false });
+    form.update({ locked: true });
+    expect(document.body.textContent).not.toContain('p4ss-word');
+    expect(screen.getByRole('button', { name: t('ui.secret.show') })).toHaveAttribute('aria-pressed', 'false');
   });
 });

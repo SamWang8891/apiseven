@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
-import { Select, type Option, type SelectProps } from './index';
+import { LockProvider, Select, type Option, type SelectProps } from './index';
 
 const options: Option[] = [
   { value: 'roundrobin', label: 'Round robin' },
@@ -45,6 +45,20 @@ describe('Select', () => {
   it('shows the selected label, or the placeholder', () => {
     setup({ initial: 'chash' });
     expect(screen.getByRole('combobox', { name: 'Balancer' })).toHaveTextContent('Consistent hash');
+  });
+
+  // Task 16b item 16: an empty string that no option has is no selection.
+  it("value '' with no such option shows the placeholder, editing and locked", () => {
+    setup({ initial: '', placeholder: 'Pick a balancer' });
+    const trigger = screen.getByRole('combobox', { name: 'Balancer' });
+    expect(trigger).toHaveTextContent('Pick a balancer');
+    expect(trigger.querySelector('.ui-select__value--placeholder')).not.toBeNull();
+    const { container } = render(
+      <LockProvider locked>
+        <Select label="Locked" value="" options={options} onChange={() => {}} />
+      </LockProvider>,
+    );
+    expect(container.querySelector('.ro-value--empty')).toHaveTextContent(t('ui.empty'));
   });
 
   it('picks an option by click', async () => {

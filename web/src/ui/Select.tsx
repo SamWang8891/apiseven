@@ -112,7 +112,8 @@ export function Select({
     }
   }
 
-  const display = selected?.label ?? value;
+  // An empty string that no option has is no selection: the placeholder, not an empty trigger.
+  const display = selected?.label ?? (value === '' ? undefined : value);
   const classes = ['ui-select', error && 'ui-select--error', disabled && 'ui-select--disabled', className].filter(Boolean).join(' ');
 
   return (

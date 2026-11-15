@@ -32,6 +32,23 @@ const keyInput = (n: number) => screen.getByRole('textbox', { name: t('ui.kv.key
 const valueInput = (n: number) => screen.getByRole('textbox', { name: t('ui.kv.valueN', { n }) });
 
 describe('KeyValueInput', () => {
+  // Task 16b item 19: the field's help and error describe its inputs.
+  it("its help, then its error, is every input's accessible description", () => {
+    const { rerender } = render(<KeyValueInput label="Labels" help="Shown in the list" value={{ env: 'prod' }} onChange={() => {}} />);
+    expect(keyInput(1)).toHaveAccessibleDescription('Shown in the list');
+    expect(valueInput(1)).toHaveAccessibleDescription('Shown in the list');
+    rerender(<KeyValueInput label="Labels" help="Shown in the list" error="Too many labels" value={{ env: 'prod' }} onChange={() => {}} />);
+    expect(keyInput(1)).toHaveAccessibleDescription('Too many labels');
+    expect(valueInput(1)).toHaveAccessibleDescription('Too many labels');
+  });
+
+  it("a row's own problem is the inputs' accessible description too", async () => {
+    const { user } = setup({ env: 'prod' });
+    await user.click(screen.getByRole('button', { name: t('ui.kv.add') }));
+    await user.type(valueInput(2), 'orphan');
+    expect(keyInput(2)).toHaveAccessibleDescription(t('ui.kv.noKey'));
+  });
+
   it('shows one row per entry', () => {
     setup({ env: 'prod', team: 'core' });
     expect(keyInput(1)).toHaveValue('env');

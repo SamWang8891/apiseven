@@ -1,9 +1,9 @@
 import { Plus, X } from 'lucide-react';
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
 import { Field, type FieldProps } from './Field';
-import { nameOfField } from './fieldIds';
+import { errorId, helpId, nameOfField } from './fieldIds';
 import { useEditingState, useLocked } from './LockContext';
 import { usePending } from './PendingContext';
 import { changedEntry, commitEntry, entriesOf, entryHeld, entryRefusals, keepHeldRows, type EntryRow, type EntryRules } from './entryRows';
@@ -97,6 +97,8 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
   });
   const [focus, setFocus] = useState<{ row: number } | { removedAt: number }>();
   const groupRef = useRef<HTMLDivElement>(null);
+  /** What the field's help and error are named after, so every input can be described by them. */
+  const fieldId = useId();
   usePending(locked ? undefined : heldRows(rows, nameOfField(fieldName, label, undefined)));
 
   useEffect(() => {
@@ -158,6 +160,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
   const shownError =
     error ?? (carried.some(Boolean) ? t('ui.kv.kept') : duplicate.some(Boolean) ? t('ui.kv.duplicate') : noKey.some(Boolean) ? t('ui.kv.noKey') : undefined);
   const inputClass = mono ? 'ui-input mono' : 'ui-input';
+  const describedBy = shownError ? errorId(fieldId) : help ? helpId(fieldId) : undefined;
 
   const add = !disabled && (
     <Button
@@ -176,7 +179,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
   );
 
   return (
-    <Field label={label} help={help} error={shownError} required={required} action={add || undefined}>
+    <Field label={label} help={help} error={shownError} required={required} action={add || undefined} controlId={fieldId}>
       <div className="ui-kv" role="group" aria-label={typeof label === 'string' ? label : undefined} ref={groupRef}>
         {rows.map((row, i) => (
           <div className="ui-kv__row" key={row.id} data-row={row.id}>
@@ -184,6 +187,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
               className={`${inputClass} ui-kv__key`}
               aria-label={t('ui.kv.keyN', { n: i + 1 })}
               aria-invalid={duplicate[i] || noKey[i] || carried[i] || undefined}
+              aria-describedby={describedBy}
               placeholder={keyPlaceholder ?? t('ui.kv.key')}
               value={row.key}
               disabled={disabled}
@@ -195,6 +199,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
             <input
               className={`${inputClass} ui-kv__value`}
               aria-label={t('ui.kv.valueN', { n: i + 1 })}
+              aria-describedby={describedBy}
               placeholder={valuePlaceholder ?? t('ui.kv.value')}
               value={row.value}
               disabled={disabled}
