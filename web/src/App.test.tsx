@@ -57,7 +57,7 @@ describe('App', () => {
     expect(drop.defaultPrevented).toBe(true);
   });
 
-  it('the JSON tab’s editor keeps taking a dropped file while editing; locked, it refuses it and nothing changes (fix round 1, F1)', async () => {
+  it('the window leaves a file dragged over the JSON tab’s editor to the editor, which refuses it itself (Task 15 F4): locked or editing, nothing changes and the page stays (fix round 1, F1)', async () => {
     saveConnections([DEV_CONN], DEV_CONN.id);
     const user = userEvent.setup();
     const { admin } = renderApp({ hash: '#/routes/r1?tab=json', counts: {}, objects: { routes: [{ id: 'r1', name: 'shop', uri: '/a', upstream_id: 'u1' }] } });
@@ -65,17 +65,19 @@ describe('App', () => {
     await main.findByRole('heading', { level: 1, name: 'shop' });
     const editor = await main.findByRole('textbox', { name: t('editor.json.label', { kind: t('kind.routes.singular') }) });
     const file = new File(['{"desc": "dropped"}'], 'route.json', { type: 'application/json' });
-    // Locked: the editor refuses the file itself (the page stays), and the draft is as loaded.
-    const lockedDrop = createEvent.drop(editor, { dataTransfer: { types: ['Files'], files: [file], getData: () => '' } });
-    fireEvent(editor, lockedDrop);
-    expect(lockedDrop.defaultPrevented).toBe(true);
+    const dragAndDrop = () => {
+      const over = createEvent.dragOver(editor, { dataTransfer: { types: ['Files'], dropEffect: 'copy' } });
+      fireEvent(editor, over);
+      const drop = createEvent.drop(editor, { dataTransfer: { types: ['Files'], files: [file], getData: () => '' } });
+      fireEvent(editor, drop);
+      return { overPrevented: over.defaultPrevented, effect: (over as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect, dropPrevented: drop.defaultPrevented };
+    };
+    // The window does not refuse the drag over the editor; the editor's own handler refuses the file on drop.
+    expect(dragAndDrop()).toEqual({ overPrevented: false, effect: 'copy', dropPrevented: true });
     expect(editor.textContent).not.toContain('dropped');
-    // Editing: the window does not refuse a file over the editor; the editor takes it on drop.
     await user.keyboard('e');
-    const over = createEvent.dragOver(editor, { dataTransfer: { types: ['Files'], dropEffect: 'copy' } });
-    fireEvent(editor, over);
-    expect(over.defaultPrevented).toBe(false);
-    expect((over as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect).toBe('copy');
+    expect(dragAndDrop()).toEqual({ overPrevented: false, effect: 'copy', dropPrevented: true });
+    expect(editor.textContent).not.toContain('dropped');
     expect(admin.requests.filter((r) => r.method !== 'GET')).toEqual([]);
   });
 

@@ -1,10 +1,11 @@
 // A file dropped where nothing takes files (on a list, beside an editor) would get the browser's
 // default handling: the browser opens the file and the app, with any unsaved work, is gone (Task
 // 16b, item 128). The guard decides from where the drag is, never from whether something cancelled
-// it (fix round 1, F1: a code editor takes a dropped file without cancelling `dragover`):
-// - places that take files are left alone: an editing host (every code editor's content, which
-//   inserts the file's text while editable and refuses it, the page staying, while read-only), a
-//   declared drop zone (`data-file-drop`: a PEM box, the proto field), a file input;
+// it (fix round 1, F1: a code editor handles a dropped file itself without cancelling `dragover`):
+// - places that handle a dropped file themselves are left alone: an editing host (every code
+//   editor's content, which refuses a file with nothing inserted and the page staying, Task 15 F4,
+//   CodeEditorImpl), a declared drop zone (`data-file-drop`: a PEM box, the proto field, which takes
+//   a file dropped on its editor), a file input;
 // - anywhere else a drag that carries files is refused: `dragover` is cancelled with no drop effect
 //   (the pointer says it can't be dropped there), and its `drop`, should one come, does nothing.
 // A drag of text is left to the browser and the fields.
