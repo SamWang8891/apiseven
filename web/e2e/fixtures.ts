@@ -371,6 +371,9 @@ export function toast(page: Page, text: string | RegExp): Locator {
     .filter({ hasText: text });
 }
 
+/** CodeMirror's content element, which carries the editor's whole text through its view. */
+const CODE_EDITOR = '[role="textbox"][aria-multiline="true"]';
+
 /**
  * Everything an element holds that a secret could hide in: its markup, attributes included; the live
  * value of every form control in it (the markup does not carry what was typed); the whole text of
@@ -380,20 +383,24 @@ export function toast(page: Page, text: string | RegExp): Locator {
  * rest: its whole document is read through the editor's own view, which CodeMirror links from its
  * content element (`cmTile`, @codemirror/view 6.4x). If that link is not there, this fails rather
  * than read part of the text. Code editors are found by the role and aria-multiline CodeMirror gives
- * that element; where the test knows one is shown (`codeEditor`), finding none fails too, so a change
- * to those attributes cannot quietly turn the whole-text read off.
+ * that element; where the test knows one is shown (`codeEditor`), it is waited for (the app fetches
+ * CodeMirror on first use and shows a plain fallback until then, which no loading status covers),
+ * and finding none fails, so a change to those attributes cannot quietly turn the whole-text read off.
  */
 export async function holdsIn(where: Locator, expected: { codeEditor?: boolean } = {}): Promise<string> {
-  const [markup, values, editors] = await where.evaluate((root) => {
+  if (expected.codeEditor) {
+    await expect(where.locator(CODE_EDITOR).first(), 'a code editor is expected here: role="textbox" with aria-multiline="true" (what CodeMirror sets)').toBeAttached();
+  }
+  const [markup, values, editors] = await where.evaluate((root, selector) => {
     const controls = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')].map((el) => el.value);
     type Linked = { cmTile?: { root?: { view?: { state: { doc: { toString(): string } } } } } };
-    const docs = [...root.querySelectorAll('[role="textbox"][aria-multiline="true"]')].map((el) => {
+    const docs = [...root.querySelectorAll(selector)].map((el) => {
       const view = (el as unknown as Linked).cmTile?.root?.view;
       if (!view) throw new Error('a code editor whose whole text cannot be read (CodeMirror no longer links its view from the content element)');
       return view.state.doc.toString();
     });
     return [root.outerHTML, [...controls, ...docs].join('\n'), docs.length] as const;
-  });
+  }, CODE_EDITOR);
   if (expected.codeEditor && editors === 0) {
     throw new Error('a code editor is expected here, and none was found by role="textbox" with aria-multiline="true" (what CodeMirror sets)');
   }
