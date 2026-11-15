@@ -195,6 +195,12 @@ describe('columns menu', () => {
     expect(headerNames()).toEqual(['Name', 'Priority', 'Tags', 'WebSocket']);
   });
 
+  it('the open menu carries the class that keeps it inside the window (table/toolbar.css .tbl-menu--columns)', async () => {
+    const { user } = renderTable({ items });
+    await openColumns(user);
+    expect(screen.getByRole('dialog', { name: t('table.columns.title') })).toHaveClass('tbl-menu--columns');
+  });
+
   it('keeps at least one column visible', async () => {
     const { user } = renderTable({ items });
     const menu = await openColumns(user);
