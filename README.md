@@ -63,7 +63,8 @@ A route, with a plugin's form open:
 
 Nothing is published to a registry yet: you build each of these from this repository. You need
 Node.js 22 for the web builds and Docker for the image (`make` targets are listed under
-[Development](#development)).
+[Development](#development)). On a fresh checkout, the first `make` target that builds the web app
+installs its dependencies first (`cd web && npm ci`).
 
 ## Quick start: single file
 
@@ -380,6 +381,11 @@ make web        # the Vite dev server (cd web && npm run dev); connect to the de
 make check      # web: type check, lint, unit tests; server: gofmt, go vet, go test
 make dev-down   # stop the dev stack and drop its data
 ```
+
+Every `make` target that runs npm (`web`, `check`, `test`, `build`, `single`, `static`) first
+runs `cd web && npm ci` when `web/node_modules` is missing; an existing install is left as it is.
+Run `cd web && npm ci` yourself after a pull that changes `web/package-lock.json`, and before you
+use `npm` or `npx` in `web/` directly.
 
 The dev APISIX uses the admin key `apiseven-dev-admin-key` (and `apiseven-dev-viewer-key` for a
 viewer), from `dev/apisix-config.yaml`; these are public test values. `make web` cannot use the

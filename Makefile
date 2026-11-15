@@ -9,22 +9,27 @@ dev-down:
 seed:
 	node dev/seed.mjs
 
+# The web app's dependencies. Every target that runs npm in web/ installs them first when
+# web/node_modules is missing (order-only: an existing install is left as it is).
+web/node_modules:
+	cd web && npm ci
+
 # The web app's dev server (needs a running APISIX; see dev-up).
-web:
+web: | web/node_modules
 	cd web && npm run dev
 
 # Type check, lint and tests for the web app; gofmt, vet and tests for the server.
-check:
+check: | web/node_modules
 	cd web && npm run check
 	@cd server && out="$$(gofmt -l .)" && if [ -n "$$out" ]; then echo "gofmt needed: $$out"; exit 1; fi
 	cd server && go vet ./... && go test ./...
 
-test:
+test: | web/node_modules
 	cd web && npm test
 	cd server && go test ./...
 
 # bin/apiseven: the server with the web build embedded (server/dist is a copy of web/dist).
-build:
+build: | web/node_modules
 	cd web && npm run build
 	find server/dist -mindepth 1 ! -name .keep -delete
 	cp -R web/dist/. server/dist/
@@ -34,7 +39,7 @@ docker:
 	docker build -t apiseven:local .
 
 # The single-file export: dist/apiseven.html, which runs opened straight from disk.
-single:
+single: | web/node_modules
 	cd web && npm run build:single
 	mkdir -p dist
 	cp web/dist-single/apiseven.html dist/apiseven.html
