@@ -1,8 +1,9 @@
 // Proxy mode: the Docker image serving the app and its Admin API proxy (task-17-report.md). Builds
 // nothing: it runs E2E_IMAGE (`make docker`) on APISIX's Docker network, one container per setup.
 // Every container is labelled `apiseven-e2e=1` (and the run's pid), named before it is started, and
-// removed by that name afterwards whether or not it started; the spec's setup also removes labelled
-// containers an earlier, interrupted run left behind. It never touches a container without the label.
+// removed afterwards by that name, among the labelled containers, whether or not it started; the
+// spec's setup also removes labelled containers an earlier, interrupted run left behind. It never
+// touches a container without the label. No secret is ever in docker's arguments (see `docker`).
 //
 // When Docker or the image is missing the spec is skipped, and the reason is printed; with
 // E2E_REQUIRE_PROXY=1 (which `make e2e` sets) that is a failure instead. A missing Docker network,
@@ -16,29 +17,37 @@ import { freePort, servePage } from './servers';
 
 const LABEL = 'apiseven-e2e';
 
-/** One docker command; it gives up after `timeoutMs` (a hanging daemon must not hang the run). */
-function docker(args: string[], timeoutMs = 15_000): string {
-  return execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs }).trim();
+/**
+ * One docker command; it gives up after `timeoutMs` (a hanging daemon must not hang the run). A value
+ * that is a secret is never an argument (a failed command's message carries its arguments): it goes
+ * in `vars`, the command's own environment, and the argument names it only (`-e APISIX_ADMIN_KEY`).
+ */
+function docker(args: string[], timeoutMs = 15_000, vars: Record<string, string> = {}): string {
+  return execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs, env: { ...process.env, ...vars } }).trim();
 }
+
+const timedOut = (err: unknown) => (err as { code?: string }).code === 'ETIMEDOUT';
+const NO_DOCKER = { reason: 'Docker is not available (no answer within 15 s)' };
 
 type Unavailable = { reason: string; config?: true };
 
-/** Why the spec cannot run here, or undefined. */
+/** Why the spec cannot run here, or undefined. A probe that times out means Docker is not available. */
 function unavailable(): Unavailable | undefined {
   try {
     docker(['version', '--format', '{{.Server.Version}}']);
   } catch (err) {
-    const timedOut = (err as { code?: string }).code === 'ETIMEDOUT';
-    return { reason: `Docker is not available${timedOut ? ' (no answer within 15 s)' : ''}` };
+    return timedOut(err) ? NO_DOCKER : { reason: 'Docker is not available' };
   }
   try {
     docker(['image', 'inspect', env.image]);
-  } catch {
+  } catch (err) {
+    if (timedOut(err)) return NO_DOCKER;
     return { reason: `the image ${env.image} is missing: build it with \`make docker\` (or set E2E_IMAGE)` };
   }
   try {
     docker(['network', 'inspect', env.dockerNetwork]);
-  } catch {
+  } catch (err) {
+    if (timedOut(err)) return NO_DOCKER;
     return {
       config: true,
       reason: `E2E_DOCKER_NETWORK names no Docker network (${env.dockerNetwork}), although APISIX answers at ${env.adminUrl}: set it to the network of the APISIX container (docker network ls)`,
@@ -65,12 +74,16 @@ function containerName(mode: string): string {
   return `apiseven-e2e-${mode}-${process.pid}`;
 }
 
-/** Removes a container of this spec by its name (absent is fine). */
+/** Removes a container of this spec by its name, only if it carries the suite's label (absent is fine). */
 function stop(name: string): void {
   try {
-    docker(['rm', '-f', name]);
+    const rows = docker(['ps', '-a', '--filter', `label=${LABEL}=1`, '--format', '{{.ID}} {{.Names}}']);
+    for (const row of rows.split('\n').filter(Boolean)) {
+      const [id, names] = row.split(' ');
+      if (id && names?.split(',').includes(name)) docker(['rm', '-f', id]);
+    }
   } catch {
-    // Not there.
+    // Docker gone or the container already removed: nothing of ours is left to remove.
   }
 }
 
@@ -93,9 +106,14 @@ function removeLeftovers(): void {
   }
 }
 
-/** Runs the image with these variables, published on a free loopback port; waits for /healthz. */
+/**
+ * Runs the image with these variables, published on a free loopback port; waits for /healthz. The
+ * variables go in docker's own environment and are named in its arguments, never given there (the
+ * admin key and the Basic auth password are among them).
+ */
 async function start(name: string, vars: Record<string, string>): Promise<Container> {
   stop(name);
+  const all = { APISIX_ADMIN_URL: env.dockerAdminUrl, ...vars };
   try {
     const port = await freePort();
     docker(
@@ -105,11 +123,11 @@ async function start(name: string, vars: Record<string, string>): Promise<Contai
         '--network', env.dockerNetwork,
         '-p', `127.0.0.1:${port}:8080`,
         '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
-        '-e', `APISIX_ADMIN_URL=${env.dockerAdminUrl}`,
-        ...Object.entries(vars).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
+        ...Object.keys(all).flatMap((k) => ['-e', k]),
         env.image,
       ],
       60_000,
+      all,
     );
     const url = `http://127.0.0.1:${port}`;
     await expect
