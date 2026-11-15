@@ -89,7 +89,13 @@ function useSplitOffer(pair: PairLink | undefined, own: BoxKind) {
     if (offered) return from === 'file' ? t('ssl.split.file') : t('ssl.split.fileOverText', { reason: reason.bare });
     return byOther ? t(own === 'cert' ? 'ssl.split.fileByKeyBox' : 'ssl.split.fileByCertBox', { reason: reason.bare }) : reason.full;
   };
-  return { offered, consider, apply, problem, fileReason };
+  /**
+   * The box's input went while the box stays (a key box's locked view, a save in flight): a refused
+   * file's reason went with it, so an offer that file made ends too; the text's own offer stays (fix
+   * round 2, R1.2).
+   */
+  const inputGone = () => setFrom((now) => (now === 'file' ? undefined : now));
+  return { offered, consider, apply, problem, fileReason, inputGone };
 }
 
 const NOTHING: PairSide = { value: false, held: false };
@@ -198,6 +204,7 @@ export function CertBox({ label, help, error, value, onValue, hidden, details, k
         }}
         onUnreadable={() => split.consider('', 'file')}
         fileReason={split.fileReason}
+        onGone={split.inputGone}
         onBlur={box.leave}
       />
       {split.offered && !locked && <SplitAction label={splitLabel('cert', { cert: { value: value !== undefined, held: false }, key: pair?.key ?? NOTHING })} onUse={split.apply} />}
@@ -321,6 +328,7 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
         }}
         onUnreadable={() => split.consider('', 'file')}
         fileReason={split.fileReason}
+        onGone={split.inputGone}
         onBlur={box.leave}
       />
       {split.offered && <SplitAction label={splitLabel('key', { cert: pair?.cert ?? NOTHING, key: { value: standing.key !== undefined, held: false } })} onUse={split.apply} />}

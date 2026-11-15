@@ -64,11 +64,13 @@ export interface PemInputProps {
   onUnreadable?: () => void;
   /** How the last refused file's reason reads now (beside the caller's split offer, its bare form); in full by default. */
   fileReason?: (reason: FileReason) => string;
+  /** The box's input goes while its owner stays (a key box's locked view): a refused file's reason goes with it, and so must what it offered. */
+  onGone?: () => void;
   autoFocus?: boolean;
   rows?: number;
 }
 
-export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, changes, onFile, onUnreadable, fileReason, autoFocus, rows = 6 }: PemInputProps) {
+export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, changes, onFile, onUnreadable, fileReason, onGone, autoFocus, rows = 6 }: PemInputProps) {
   const locked = useLocked();
   usePending(locked || problem === undefined ? undefined : t('ui.pending.problem', { field: label, problem }));
   const fileRef = useRef<HTMLInputElement>(null);
@@ -81,9 +83,13 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
    */
   const [refused, setRefused] = useEditingState<{ why: FileReason; at: number } | undefined>(undefined);
   const changesNow = useRef(changes);
+  const goneNow = useRef(onGone);
   useLayoutEffect(() => {
     changesNow.current = changes;
+    goneNow.current = onGone;
   });
+  // The input going takes the refused file's reason with it (fix round 2, R1.2): the owner is told.
+  useEffect(() => () => goneNow.current?.(), []);
   const setFileProblem = (why: FileReason | undefined) => setRefused(why === undefined ? undefined : { why, at: changesNow.current });
   const fileProblem = refused && refused.at === changes ? (fileReason?.(refused.why) ?? refused.why.full) : undefined;
 

@@ -645,6 +645,31 @@ describe('a file dropped while a save is in flight (fix round 2, R1.1)', () => {
   });
 });
 
+describe('a split offer made by a file ends with that file’s reason (fix round 2, R1.2)', () => {
+  it('a combined file dropped on the key box, then a save refused late: the key box\'s input went while locked, and the offer with its reason', async () => {
+    let answer: (r: Response) => void = () => {};
+    const { user, admin } = await openEditor('#/ssls/new', {
+      objects: { ssls: [], routes: [], services: [] },
+      replies: { ssls: (req) => (req.method === 'POST' ? new Promise<Response>((done) => (answer = done)) : undefined) },
+    });
+    await newSsl(user);
+    await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
+    const key = main().getByRole('textbox', { name: t('ssl.pem.key') });
+    fireEvent.drop(key, { dataTransfer: { files: [new File([EC_PAIR.cert + EC_PAIR.key], 'both.pem', { type: 'text/plain' })], getData: () => '' } });
+    const splitAction = () => main().queryByRole('button', { name: new RegExp(`^${t('ssl.split.toCertBox').replace(/[()]/g, '\\$&')}`) });
+    await waitFor(() => expect(splitAction()).toBeInTheDocument());
+    expect(main().getByText(t('ssl.split.file'))).toBeInTheDocument();
+    saveKeys();
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    act(() => answer(json(400, { error_msg: 'refused late by the test' })));
+    expect(await main().findAllByText('refused late by the test')).not.toHaveLength(0);
+    // The key box is open again (its editing state kept), with neither the file's reason nor its offer.
+    expect(await main().findByRole('textbox', { name: t('ssl.pem.key') })).toBeInTheDocument();
+    expect(main().queryByText(t('ssl.split.file'))).toBeNull();
+    expect(splitAction()).toBeNull();
+  });
+});
+
 describe('a new SSL opens without red (Task 16b, item 154)', () => {
   const certTab = () => tab(t('ssl.tab.certificate'));
   const badge = (label: string, count: number) => `${label} ${t('ui.tabs.errors', { count })}`;
