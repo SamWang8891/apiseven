@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { schemaOf } from '../test/pluginFixture';
-import { fieldErrors, schemaErrors, schemaGaps, skippedFormats, specificErrors, validatorFor, withDefaults } from './ajv';
+import { fieldErrors, keptByValidators, schemaErrors, schemaGaps, skippedFormats, specificErrors, validatorFor, withDefaults } from './ajv';
 
 describe('validatorFor', () => {
   it('compiles once per schema object', () => {
@@ -288,5 +288,50 @@ describe('specificErrors', () => {
     const schema: Obj = { type: 'object', properties: { a: { type: 'string' } } };
     const errors = schemaErrors(schema, { a: 1 }) ?? [];
     expect(specificErrors(schema, { a: 1 }, errors)).toEqual(errors);
+  });
+});
+
+// Final wave C2: Ajv's verbose errors carry the value checked (`data`), and a compiled validator keeps
+// its last errors (as does each part of it compiled on its own, a recursive $ref). A secret typed into
+// a form and then discarded must not stay in memory through them.
+describe('validation keeps nothing it was given', () => {
+  const SECRET = 'unsaved-client-s3cret';
+  const holds = (v: unknown) => JSON.stringify(v ?? null).includes(SECRET);
+
+  it('openid-connect (3.20): fieldErrors names the missing discovery; neither its errors nor the cached validators hold the secret', () => {
+    const schema = schemaOf('openid-connect');
+    const errors = fieldErrors(schema, { client_id: 'c', client_secret: SECRET }, { luaTables: true });
+    expect(errors?.map((e) => e.path)).toContain('discovery');
+    expect(holds(errors)).toBe(false);
+    expect(keptByValidators(schema)).toEqual([]);
+    // Without the secret references skipped (the plain validator) too.
+    expect(fieldErrors(schema, { client_id: 'c', client_secret: SECRET }, { secretRefs: false })?.map((e) => e.path)).toContain('discovery');
+    expect(keptByValidators(schema)).toEqual([]);
+  });
+
+  it('schemaErrors: the errors returned carry no data, and keep parentSchema (the error mapping reads it)', () => {
+    const schema = schemaOf('openid-connect');
+    const errors = schemaErrors(schema, { client_id: 'c', client_secret: SECRET }) ?? [];
+    expect(errors.length).toBeGreaterThan(0);
+    // Everything an error carries besides the schema parts (which hold the schema, not the value).
+    expect(holds(errors.map((e) => ({ path: e.instancePath, params: e.params, message: e.message, data: e.data })))).toBe(false);
+    expect(errors.every((e) => !('data' in e) && e.parentSchema !== undefined)).toBe(true);
+    expect(keptByValidators(schema)).toEqual([]);
+  });
+
+  it('a part compiled on its own (a recursive $ref) keeps nothing either', () => {
+    const schema: Obj = {
+      definitions: { node: { type: 'object', properties: { child: { $ref: '#/definitions/node' }, pin: { type: 'integer' } } } },
+      type: 'object',
+      properties: { tree: { $ref: '#/definitions/node' } },
+    };
+    expect(fieldErrors(schema, { tree: { child: { pin: SECRET } } })?.map((e) => e.path)).toEqual(['tree.child.pin']);
+    expect(keptByValidators(schema)).toEqual([]);
+  });
+
+  it('a direct validatorFor() call (the form conditions) keeps nothing', () => {
+    const when: Obj = { properties: { client_secret: { enum: ['x'] } }, required: ['client_secret'] };
+    expect(validatorFor(when)?.({ client_secret: SECRET })).toBe(false);
+    expect(keptByValidators(when)).toEqual([]);
   });
 });

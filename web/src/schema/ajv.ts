@@ -2,6 +2,7 @@
 // plugin validation all compile through validatorFor, validate through schemaErrors, and keep the
 // errors worth showing with specificErrors (fieldErrors does both and gives form-ready paths).
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
+import type { SchemaEnv } from 'ajv/dist/compile';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { normalize, originalSchemaPath, refTargets, skippingSecretRefs, type SchemaGaps } from './prepare';
@@ -14,12 +15,19 @@ export type { SchemaGap, SchemaGaps } from './prepare';
 // server checks them anyway), so a format this browser does not know refuses nothing either: each is
 // a gap the note names (prepare.ts; Task 16b, item 153).
 // verbose: an error carries the schema object holding its keyword, which tells the wrapping's own tests
-// from the schema's (prepare.ts originalSchemaPath).
+// from the schema's (prepare.ts originalSchemaPath). It also carries the value checked (`data`), and a
+// compiled validator keeps its last errors: run() drops both after every check (final wave C2), so a
+// secret typed into a form and discarded is not kept here.
 const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false, verbose: true });
+
+/** A compiled check: whether the value passes, keeping nothing of it (run). */
+export type Check = (value: unknown) => boolean;
 
 interface Compiled {
   /** The validator of the wrapped copy (prepare.ts: secret references skipped as APISIX skips them). */
   validate: ValidateFunction | null;
+  /** `validate` as validatorFor hands it out. */
+  check: Check | null;
   /** What it compiled, to map its errors back to the schema's own paths, and its `$ref` targets. */
   wrapped: Obj | undefined;
   roots: Obj[];
@@ -52,6 +60,7 @@ function compile(schema: Obj): Compiled {
     const validate = wrapped ? ajvCompile(wrapped) : null;
     entry = {
       validate,
+      check: validate && ((value) => run(validate, value).ok),
       wrapped,
       roots: wrapped ? refTargets(wrapped) : [],
       normalized: prepared.schema,
@@ -64,12 +73,67 @@ function compile(schema: Obj): Compiled {
 }
 
 /**
+ * Clears the last errors `validate` keeps, and those of every part of it Ajv compiled on its own (a
+ * $ref it did not inline, a recursive one): each keeps its own.
+ */
+function forget(validate: ValidateFunction): void {
+  validate.errors = null;
+  const seen = new Set<SchemaEnv>();
+  const walk = (env: SchemaEnv) => {
+    if (seen.has(env)) return;
+    seen.add(env);
+    if (env.validate) env.validate.errors = null;
+    for (const ref of Object.values(env.refs) as unknown[]) if (ref !== null && typeof ref === 'object' && 'refs' in ref) walk(ref as SchemaEnv);
+  };
+  walk(validate.schemaEnv);
+}
+
+/** A copy of an Ajv error without the value it was about (verbose's `data`); the schema parts stay. */
+function withoutData(error: ErrorObject): ErrorObject {
+  const copy = { ...error };
+  delete copy.data;
+  return copy;
+}
+
+/**
+ * `validate` run on `value`: whether it passed and its errors, none of them holding the value; the
+ * validator and every part of it keep no errors afterwards (final wave C2: verbose errors hold the
+ * value checked, a secret typed into a form among them). Every check goes through here.
+ */
+function run(validate: ValidateFunction, value: unknown): { ok: boolean; errors: ErrorObject[] } {
+  const ok = validate(value);
+  const errors = ok ? [] : (validate.errors ?? []).map(withoutData);
+  forget(validate);
+  return { ok, errors };
+}
+
+/**
+ * For tests: the errors the validators compiled for `schema` still keep, those of every part Ajv
+ * compiled on its own included; [] when none. It walks Ajv's compiled schemas itself, so a part
+ * run() missed is found.
+ */
+export function keptByValidators(schema: Obj): unknown[] {
+  const entry = compiled.get(schema);
+  const out: unknown[] = [];
+  const seen = new Set<SchemaEnv>();
+  const visit = (env: SchemaEnv) => {
+    if (seen.has(env)) return;
+    seen.add(env);
+    out.push(...(env.validate?.errors ?? []));
+    for (const ref of Object.values(env.refs) as unknown[]) if (ref !== null && typeof ref === 'object' && 'refs' in ref) visit(ref as SchemaEnv);
+  };
+  for (const validate of [entry?.validate, entry?.plain]) if (validate) visit(validate.schemaEnv);
+  return out;
+}
+
+/**
  * Compiles once per schema object (the copy prepare.ts makes: it leaves to APISIX what the browser
  * cannot read, never refusing more for it, and skips a secret reference wherever APISIX does); null
- * when Ajv cannot compile it (callers then skip validation). What it left out is schemaGaps'.
+ * when Ajv cannot compile it (callers then skip validation). What it left out is schemaGaps'. The
+ * check keeps nothing of what it is given (run).
  */
-export function validatorFor(schema: Obj): ValidateFunction | null {
-  return compile(schema).validate;
+export function validatorFor(schema: Obj): Check | null {
+  return compile(schema).check;
 }
 
 /** Whether to skip secret references as APISIX does (the default); false only to compare with the check without it. */
@@ -150,11 +214,11 @@ export function schemaErrors(schema: Obj, value: unknown, opts: CheckOptions = {
     entry.plain ??= ajvCompile(entry.normalized);
     const plain = entry.plain;
     if (!plain) return null;
-    return plain(withDefaults(schema, value)) ? [] : [...(plain.errors ?? [])];
+    return run(plain, withDefaults(schema, value)).errors;
   }
   const validate = entry.validate;
   if (!validate) return null;
-  return validate(withDefaults(schema, value)) ? [] : mapped(entry, validate.errors ?? []);
+  return mapped(entry, run(validate, withDefaults(schema, value)).errors);
 }
 
 /** The keys of a JSON pointer (Ajv's instancePath), unescaped. */
