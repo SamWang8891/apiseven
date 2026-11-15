@@ -1,5 +1,5 @@
 import { Tooltip as RadixTooltip } from 'radix-ui';
-import { cloneElement, useRef, useState, type ReactElement, type ReactNode } from 'react';
+import { cloneElement, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { TooltipsProvided, useTooltipsAvailable } from './tooltipContext';
 import './overlay.css';
 
@@ -54,6 +54,20 @@ export function Tooltip({ content, children }: TooltipProps) {
   const [open, setOpen] = useState(false);
   // Set by the trigger's focus, read by the open request Radix makes right after it.
   const byFocus = useRef<boolean | undefined>(undefined);
+  // While open, the first Escape closes it and nothing else. Radix closes it only while it is the
+  // highest layer; a toast raised since is higher and leaves the key unhandled (Toaster), and a
+  // tooltip holds no focus for an overlay's content-level fallback to tell (ui/escape.ts). So it takes
+  // the key itself, before anything bubbles, and marks it handled.
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      e.preventDefault();
+      setOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown, true);
+    return () => document.removeEventListener('keydown', onKeyDown, true);
+  }, [open]);
   return (
     <RadixTooltip.Root
       open={open}

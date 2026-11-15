@@ -3,7 +3,10 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
 import { Dialog } from './Dialog';
+import { Pencil } from 'lucide-react';
+import { Button } from './Button';
 import { Menu } from './Menu';
+import { TooltipProvider } from './Tooltip';
 import { Toaster } from './Toaster';
 import { dismissToast, getToasts, MAX_VISIBLE, setToastPage, toast, toastsRaised } from './toast';
 
@@ -263,6 +266,57 @@ describe('toasts', () => {
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
     expect(getToasts().map((item) => item.message)).toEqual(['Copied']);
+  });
+
+  // Fix round 2, R1.1: a tooltip holds no focus, so it takes its Escape itself: the first one closes it, and nothing else.
+  describe('a keyboard-opened tooltip and Escape', () => {
+    function Page({ inDialog }: { inDialog: boolean }) {
+      const button = <Button icon={<Pencil size={14} />} aria-label="Edit route" />;
+      return (
+        <TooltipProvider>
+          <Toaster />
+          {inDialog ? (
+            <Dialog open onClose={closed} title="Route web">
+              <input aria-label="first" />
+              {button}
+            </Dialog>
+          ) : (
+            <>
+              <input aria-label="first" />
+              {button}
+            </>
+          )}
+        </TooltipProvider>
+      );
+    }
+    const closed = vi.fn();
+    afterEach(() => closed.mockReset());
+
+    it.each([
+      ['on a page, with a toast showing', false, true],
+      ['in a dialog, with a toast showing', true, true],
+      ['in a dialog, with no toast', true, false],
+    ])('%s: the first Escape closes the tooltip only', async (_, inDialog, withToast) => {
+      const user = userEvent.setup();
+      render(<Page inDialog={inDialog} />);
+      screen.getByRole('textbox', { name: 'first' }).focus();
+      await user.tab();
+      expect(await screen.findByRole('tooltip')).toHaveTextContent('Edit route');
+      if (withToast) act(() => toast.info('Copied'));
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+      expect(closed).not.toHaveBeenCalled();
+      if (withToast) expect(getToasts().map((item) => item.message)).toEqual(['Copied']);
+      if (inDialog) {
+        await user.keyboard('{Escape}');
+        expect(closed).toHaveBeenCalledTimes(1);
+      }
+      // The Escape the tooltip took leaves nothing behind in the toast: its close works at once.
+      if (withToast) {
+        fireEvent.click(screen.getByRole('button', { name: t('ui.toast.dismiss'), hidden: true }));
+        expect(getToasts()).toEqual([]);
+      }
+    });
   });
 
   it('a page-bound refusal goes when the user moves to another page; every other toast stays, errors included', () => {

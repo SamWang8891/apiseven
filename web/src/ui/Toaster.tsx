@@ -69,7 +69,8 @@ function OneToast({ item, order }: { item: ToastItem; order: number }) {
       // An Escape pressed elsewhere is not marked handled (CodeMirror, a field, an overlay below take it:
       // ui/escape.ts); Radix then closes this toast, which is declined.
       onEscapeKeyDown={(e) => {
-        if (!inToast(e.target)) declined.current = true;
+        // Not when something before it took the key (an open tooltip): Radix then asks for no close.
+        if (!inToast(e.target) && !e.defaultPrevented) declined.current = true;
       }}
     >
       <Icon className="ui-toast__icon" aria-hidden="true" size={16} strokeWidth={2.25} />
