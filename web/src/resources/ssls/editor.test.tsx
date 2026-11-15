@@ -224,7 +224,8 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     await replaceWith(user, RSA_LEAF, NEW_KEY);
     await user.click(tab(t('editor.json.tab')));
     const box = await jsonEditor(t('kind.ssls.singular'));
-    await waitFor(() => expect(box.textContent).toContain(t('json.keyHidden')));
+    await waitFor(() => expect(box.textContent).toContain('private key'));
+    expect(box.textContent).toContain('••••••••');
     expect(document.body.innerHTML).not.toContain(NEW_KEY_TEXT);
 
     await user.click(main().getByRole('button', { name: t('json.copy') }));
@@ -254,6 +255,56 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     await save(user);
     await waitFor(() => expect(writesOf(admin)).toHaveLength(2));
     expect(writesOf(admin)[1]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { desc: 'kept key' } });
+  });
+
+  describe('two consecutive edits in the JSON tab after the extra pairs moved (F1)', () => {
+    const KA = `-----BEGIN PRIVATE KEY-----\n${'KEYALPHA'.repeat(9)}\n-----END PRIVATE KEY-----\n`;
+    const KB = `-----BEGIN PRIVATE KEY-----\n${'KEYBRAVO'.repeat(9)}\n-----END PRIVATE KEY-----\n`;
+
+    /** Pairs entered in the JSON tab, then the tab left and opened again: the keys show as notes. */
+    async function withNotes(user: UserEvent) {
+      await user.keyboard('e');
+      await user.click(tab(t('editor.json.tab')));
+      let box = await jsonEditor(t('kind.ssls.singular'));
+      const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+      await user.click(box);
+      await user.keyboard('{Control>}a{/Control}');
+      await user.paste(JSON.stringify({ ...shown, certs: [RSA_LEAF, EC_IPV6], keys: [KA, KB] }));
+      await user.click(tab(t('ssl.tab.general')));
+      await settled();
+      await user.click(tab(t('editor.json.tab')));
+      box = await jsonEditor(t('kind.ssls.singular'));
+      await waitFor(() => expect(box.textContent).not.toContain('KEYALPHA'));
+      expect(box.textContent).not.toContain('KEYBRAVO');
+      return box;
+    }
+
+    async function edit(user: UserEvent, box: HTMLElement, change: (o: Obj) => Obj) {
+      const now = JSON.parse(box.textContent ?? '{}') as Obj;
+      await user.click(box);
+      await user.keyboard('{Control>}a{/Control}');
+      await user.paste(JSON.stringify(change(now)));
+    }
+
+    it('after a swap and another edit, each certificate is sent with its own key', async () => {
+      const { user, admin } = await openSsl();
+      const box = await withNotes(user);
+      await edit(user, box, (o) => ({ ...o, certs: [...(o.certs as string[])].reverse(), keys: [...(o.keys as string[])].reverse() }));
+      await edit(user, box, (o) => ({ ...o, desc: 'after the swap' }));
+      await save(user);
+      await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+      expect(writesOf(admin)[0]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { certs: [EC_IPV6, RSA_LEAF], keys: [KB, KA], desc: 'after the swap' } });
+    });
+
+    it('after a removal and another edit, the remaining key is its own, never the note', async () => {
+      const { user, admin } = await openSsl();
+      const box = await withNotes(user);
+      await edit(user, box, (o) => ({ ...o, certs: [(o.certs as string[])[1]], keys: [(o.keys as string[])[1]] }));
+      await edit(user, box, (o) => ({ ...o, desc: 'after the removal' }));
+      await save(user);
+      await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+      expect(writesOf(admin)[0]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { certs: [EC_IPV6], keys: [KB], desc: 'after the removal' } });
+    });
   });
 
   it('a conflict after Replace shows no key; Overwrite sends a PATCH of mine against theirs, with the key', async () => {

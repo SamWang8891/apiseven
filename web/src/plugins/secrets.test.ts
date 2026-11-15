@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MASK } from '../schema/secrets';
 import { pluginFixture } from '../test/pluginFixture';
-import { copiedWithout, MASK_CHANGED, redactObject, redactPair, unveilKeys, veilKeys } from './secrets';
+import { copiedWithout, copiedWithoutKey, MASK_CHANGED, newKeyNotes, redactObject, redactPair, unveilKeys, veilKeys, type KeyNotes } from './secrets';
 import { t } from '../i18n';
 
 const all = () => pluginFixture().http;
@@ -158,30 +158,62 @@ describe('copiedWithout: what a copy of the shown JSON lacks, for its toast', ()
   });
 });
 
-describe('veilKeys / unveilKeys: the editing JSON tab never shows an SSL key it holds', () => {
+describe('veilKeys / unveilKeys: the editing JSON tab never shows an SSL key, and a note is a token, not a place', () => {
   const draft = { snis: ['a.test'], cert: 'CERT', key: 'NEW-KEY', certs: ['C1', 'C2'], keys: ['K1', 'K2'] };
+  const note = (notes: KeyNotes, n: number) => t('json.keyNote', { id: `${notes.session}.${n}` });
 
-  it('shows each key as a note in its place; other kinds and SSLs without keys are left as they are', () => {
-    const veiled = veilKeys('ssls', draft);
-    expect(veiled.veiled).toBe(true);
-    expect(veiled.value).toEqual({ ...draft, key: t('json.keyHidden'), keys: [t('json.keysHidden', { n: 1 }), t('json.keysHidden', { n: 2 })] });
+  it('shows each key as a note of this session; other kinds and SSLs without keys are left as they are', () => {
+    const notes = newKeyNotes();
+    const veiled = veilKeys('ssls', draft, notes);
+    expect(veiled.value).toEqual({ ...draft, key: note(notes, 1), keys: [note(notes, 2), note(notes, 3)] });
     expect(JSON.stringify(veiled.value)).not.toMatch(/NEW-KEY|K1|K2/);
-    expect(veilKeys('routes', { key: 'x' })).toEqual({ value: { key: 'x' }, veiled: false });
+    // The same keys again get the same notes (a Format, a change from outside).
+    expect(veilKeys('ssls', draft, veiled.notes).value).toEqual(veiled.value);
+    expect(veilKeys('routes', { key: 'x' }, notes)).toMatchObject({ value: { key: 'x' }, veiled: false });
     const plain = { snis: ['a.test'], cert: 'CERT', keys: [null] };
-    expect(veilKeys('ssls', plain)).toEqual({ value: plain, veiled: false });
+    expect(veilKeys('ssls', plain, notes)).toMatchObject({ value: plain, veiled: false });
   });
 
-  it('turns the notes back into the keys they stand for, where they went; a removed note removes its key; typed text stays', () => {
-    const shown = veilKeys('ssls', draft).value;
-    expect(unveilKeys('ssls', shown, draft)).toEqual(draft);
-    expect(unveilKeys('ssls', { ...shown, desc: 'd' }, draft)).toEqual({ ...draft, desc: 'd' });
-    const reordered = { ...shown, certs: ['C2', 'C1'], keys: [t('json.keysHidden', { n: 2 }), t('json.keysHidden', { n: 1 })] };
-    expect(unveilKeys('ssls', reordered, draft)).toEqual({ ...draft, certs: ['C2', 'C1'], keys: ['K2', 'K1'] });
+  it('a note resolves to the key it was made for wherever it moves, also on a second edit after the move', () => {
+    const { value: shown, notes } = veilKeys('ssls', draft, newKeyNotes());
+    expect(unveilKeys('ssls', shown, notes)).toEqual({ ok: true, value: draft });
+    const keys = shown.keys as string[];
+    const swapped = { ...shown, certs: ['C2', 'C1'], keys: [keys[1], keys[0]] };
+    expect(unveilKeys('ssls', swapped, notes)).toEqual({ ok: true, value: { ...draft, certs: ['C2', 'C1'], keys: ['K2', 'K1'] } });
+    expect(unveilKeys('ssls', { ...swapped, desc: 'd' }, notes)).toEqual({ ok: true, value: { ...draft, certs: ['C2', 'C1'], keys: ['K2', 'K1'], desc: 'd' } });
+    const removed = { ...shown, certs: ['C2'], keys: [keys[1]] };
+    expect(unveilKeys('ssls', removed, notes)).toEqual({ ok: true, value: { ...draft, certs: ['C2'], keys: ['K2'] } });
     const withoutKey: Record<string, unknown> = { ...shown };
     delete withoutKey.key;
-    expect(unveilKeys('ssls', withoutKey, draft)).not.toHaveProperty('key');
-    expect(unveilKeys('ssls', { ...shown, key: '-----BEGIN PRIVATE KEY-----typed' }, draft).key).toBe('-----BEGIN PRIVATE KEY-----typed');
-    // A note with nothing behind it (pasted into another object) stays as typed, for the checks to refuse.
-    expect(unveilKeys('ssls', { key: t('json.keyHidden') }, {}).key).toBe(t('json.keyHidden'));
+    const back = unveilKeys('ssls', withoutKey, notes);
+    expect(back.ok && back.value).not.toHaveProperty('key');
+    expect(unveilKeys('ssls', { ...shown, key: '-----BEGIN PRIVATE KEY-----typed' }, notes)).toMatchObject({ ok: true, value: { key: '-----BEGIN PRIVATE KEY-----typed' } });
+  });
+
+  it('a note that stands for no key, a changed one, or one used twice is refused, never sent', () => {
+    const { value: shown, notes } = veilKeys('ssls', draft, newKeyNotes());
+    const other = veilKeys('ssls', draft, newKeyNotes());
+    // From another session (an earlier edit, another tab's copy): even with the same number.
+    expect(unveilKeys('ssls', { ...shown, key: other.value.key }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+    expect(unveilKeys('ssls', { ...shown, key: `${shown.key as string}x` }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+    expect(unveilKeys('ssls', { ...shown, keys: [(shown.keys as string[])[0], (shown.keys as string[])[0]] }, notes)).toEqual({ ok: false, problem: t('json.note.twice') });
+    // A client certificate's extra keys too (APISIX doesn't parse them, so nothing else would stop a note).
+    expect(unveilKeys('ssls', { type: 'client', keys: [`${'•'.repeat(80)}`] }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+  });
+
+  it('a key block stored inside a certificate text is a note there too, and comes back in its place', () => {
+    const BLOCK = '-----BEGIN PRIVATE KEY-----\nSECRET\n-----END PRIVATE KEY-----';
+    const stored = { cert: `CERTTEXT\n${BLOCK}\n`, client: { ca: `CA\n${BLOCK}` } };
+    const { value: shown, notes } = veilKeys('ssls', stored, newKeyNotes());
+    expect(JSON.stringify(shown)).not.toContain('SECRET');
+    expect(unveilKeys('ssls', shown, notes)).toEqual({ ok: true, value: stored });
+    expect(unveilKeys('ssls', { ...shown, cert: (shown.cert as string).replace('private', 'privat') }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+  });
+
+  it('a copy leaves the key out when the text copied shows notes and holds no key itself', () => {
+    const { value } = veilKeys('ssls', draft, newKeyNotes());
+    expect(copiedWithoutKey(JSON.stringify(value))).toBe(true);
+    expect(copiedWithoutKey(JSON.stringify({ ...value, keys: ['-----BEGIN PRIVATE KEY-----\nX\n-----END PRIVATE KEY-----'] }))).toBe(false);
+    expect(copiedWithoutKey(JSON.stringify(draft))).toBe(false);
   });
 });

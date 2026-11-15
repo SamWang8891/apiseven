@@ -189,33 +189,125 @@ export function redactPair(
 }
 
 /**
- * The draft as the editing JSON tab shows it: an SSL's `key` and each text of `keys` (a new pair
- * from Replace, never shown) replaced by a note that stands for it (`json.keyHidden`,
- * `json.keysHidden`); unveilKeys turns the notes back. Every other kind, and an SSL without a new
- * key, as it is.
+ * The notes the editing JSON tab shows in place of private keys: each note is a token for one key text,
+ * made in one editing session (`session`, unique on the page) and never reused, so a note resolves to
+ * the key it was made for or to nothing: never to another key by its position, never to itself.
  */
-export function veilKeys(kind: Kind, draft: Obj): { value: Obj; veiled: boolean } {
-  if (kind !== 'ssls' || (typeof draft.key !== 'string' && !(Array.isArray(draft.keys) && draft.keys.some((k) => typeof k === 'string')))) {
-    return { value: draft, veiled: false };
+export interface KeyNotes {
+  readonly session: number;
+  /** note text → the key text it stands for */
+  readonly keys: ReadonlyMap<string, string>;
+}
+
+let sessions = 0;
+
+/** A new, empty set of notes for an editing session. */
+export function newKeyNotes(): KeyNotes {
+  sessions += 1;
+  return { session: sessions, keys: new Map() };
+}
+
+/** The slots of an SSL that hold a private key: `key` and each of `keys` whole; a key block inside `cert`, an entry of `certs`, `client.ca`. */
+interface Slot {
+  /** The whole text is a key (`key`, `keys`), else keys are blocks inside it (`cert`, `certs`, `client.ca`). */
+  whole: boolean;
+  get: (o: Obj) => unknown;
+  set: (o: Obj, v: unknown) => Obj;
+}
+
+function slotsOf(value: Obj): Slot[] {
+  const slots: Slot[] = [];
+  if (value.key !== undefined) slots.push({ whole: true, get: (o) => o.key, set: (o, v) => ({ ...o, key: v }) });
+  const list = (name: 'keys' | 'certs', whole: boolean) => {
+    const items = value[name];
+    if (!Array.isArray(items)) return;
+    items.forEach((_, i) => {
+      const at = (o: Obj): unknown[] => (Array.isArray(o[name]) ? (o[name] as unknown[]) : []);
+      slots.push({ whole, get: (o) => at(o)[i], set: (o, v) => ({ ...o, [name]: at(o).map((x, j) => (j === i ? v : x)) }) });
+    });
+  };
+  list('keys', true);
+  if (value.cert !== undefined) slots.push({ whole: false, get: (o) => o.cert, set: (o, v) => ({ ...o, cert: v }) });
+  list('certs', false);
+  if (isObj(value.client) && value.client.ca !== undefined) {
+    slots.push({ whole: false, get: (o) => (isObj(o.client) ? o.client.ca : undefined), set: (o, v) => ({ ...o, client: { ...(isObj(o.client) ? o.client : {}), ca: v } }) });
   }
-  const value: Obj = { ...draft };
-  if (typeof value.key === 'string') value.key = t('json.keyHidden');
-  if (Array.isArray(value.keys)) value.keys = (value.keys as unknown[]).map((k, i) => (typeof k === 'string' ? t('json.keysHidden', { n: i + 1 }) : k));
-  return { value, veiled: true };
+  return slots;
+}
+
+/** What the editing JSON tab shows for a private key's text, or a note made in another session. */
+const notePattern = (): RegExp => new RegExp(t('json.keyNote', { id: '\u0000' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\u0000', '[0-9.]+'), 'g');
+
+/**
+ * The draft as the editing JSON tab shows it: an SSL's private keys (`key`, each of `keys`) and any
+ * private-key block stored inside `cert`, `certs` or `client.ca` replaced by its note. A key that has
+ * no note yet gets a new one (`mint`; without it, `complete` says some had none). Every other kind, and
+ * an SSL without such text, as it is.
+ */
+export function veilKeys(kind: Kind, draft: Obj, notes: KeyNotes, mint = true): { value: Obj; notes: KeyNotes; veiled: boolean; complete: boolean } {
+  if (kind !== 'ssls') return { value: draft, notes, veiled: false, complete: true };
+  const keys = new Map(notes.keys);
+  const used = new Set<string>();
+  let complete = true;
+  const noteFor = (secret: string): string => {
+    for (const [note, text] of keys) {
+      if (text === secret && !used.has(note)) {
+        used.add(note);
+        return note;
+      }
+    }
+    if (!mint) {
+      complete = false;
+      return secret;
+    }
+    const note = t('json.keyNote', { id: `${notes.session}.${keys.size + 1}` });
+    keys.set(note, secret);
+    used.add(note);
+    return note;
+  };
+  let value = draft;
+  for (const slot of slotsOf(draft)) {
+    const text = slot.get(draft);
+    if (typeof text !== 'string') continue;
+    if (slot.whole) value = slot.set(value, noteFor(text));
+    else if (holdsPrivateKey(text)) value = slot.set(value, withoutPrivateKeys(text, noteFor));
+  }
+  return { value, notes: keys.size === notes.keys.size ? notes : { session: notes.session, keys }, veiled: used.size > 0, complete };
 }
 
 /**
- * `edited` (the JSON tab's text, parsed) with each note veilKeys put there turned back into the key
- * of `draft` it stands for, wherever the note now is (keys reordered with their certs keep their
- * keys). A note that was removed takes its key with it; text typed over one is kept as typed.
+ * `edited` (the JSON tab's text, parsed) with each note turned back into the key it was made for,
+ * wherever it now is. Refused (`problem`, the text then holds Save as unfinished input) when a note
+ * stands for no key of this session (changed by hand, pasted from elsewhere, left from an earlier
+ * session) or is used twice (each stands for one key): a note's text never reaches the draft, so it is
+ * never sent as a key, whatever its length and the SSL's type. Text typed over a note is kept as typed.
  */
-export function unveilKeys(kind: Kind, edited: Obj, draft: Obj): Obj {
-  if (kind !== 'ssls') return edited;
-  const out: Obj = { ...edited };
-  if (out.key === t('json.keyHidden') && typeof draft.key === 'string') out.key = draft.key;
-  if (Array.isArray(out.keys) && Array.isArray(draft.keys)) {
-    const keys = new Map((draft.keys as unknown[]).flatMap((k, i) => (typeof k === 'string' ? [[t('json.keysHidden', { n: i + 1 }), k] as const] : [])));
-    out.keys = (out.keys as unknown[]).map((k) => (typeof k === 'string' ? (keys.get(k) ?? k) : k));
+export function unveilKeys(kind: Kind, edited: Obj, notes: KeyNotes): { ok: true; value: Obj } | { ok: false; problem: string } {
+  if (kind !== 'ssls') return { ok: true, value: edited };
+  const seen = new Set<string>();
+  let problem: string | undefined;
+  const resolve = (note: string): string => {
+    const text = notes.keys.get(note);
+    if (text === undefined) problem ??= t('json.note.unknown');
+    else if (seen.has(note)) problem ??= t('json.note.twice');
+    seen.add(note);
+    return text ?? note;
+  };
+  let value = edited;
+  for (const slot of slotsOf(edited)) {
+    const text = slot.get(edited);
+    if (typeof text !== 'string' || !text.includes(MASK.slice(0, 1))) continue;
+    if (slot.whole) {
+      value = slot.set(value, resolve(text));
+      continue;
+    }
+    const back = text.replace(notePattern(), resolve);
+    // A note changed by hand no longer matches: what is left of it must not be sent.
+    if (back.includes(MASK.slice(0, 1))) problem ??= t('json.note.unknown');
+    value = slot.set(value, back);
   }
-  return out;
+  return problem === undefined ? { ok: true, value } : { ok: false, problem };
 }
+
+/** Whether copied text leaves a private key out: it shows a note and holds no private key itself. */
+export const copiedWithoutKey = (text: string): boolean => text.includes(MASK) && !holdsPrivateKey(text);

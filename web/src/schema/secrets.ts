@@ -87,8 +87,6 @@ const KEY_BLOCKS = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-
 /** Whether `text` holds a PEM private key anywhere (a combined certificate + key file does). */
 export const holdsPrivateKey = (text: unknown): boolean => typeof text === 'string' && KEY_BEGIN.test(text);
 
-/** `text` with each PEM private-key block replaced by `by` (the rest, certificates included, kept). */
-export const withoutPrivateKeys = (text: string, by: string): string => text.replace(KEY_BLOCKS, by);
-
-/** The PEM private-key blocks in `text`, in order. */
-export const privateKeyBlocks = (text: string): string[] => text.match(KEY_BLOCKS) ?? [];
+/** `text` with each PEM private-key block replaced by `by` (or what it returns for the block); the rest, certificates included, kept. */
+export const withoutPrivateKeys = (text: string, by: string | ((block: string) => string)): string =>
+  typeof by === 'string' ? text.replace(KEY_BLOCKS, () => by) : text.replace(KEY_BLOCKS, by);
