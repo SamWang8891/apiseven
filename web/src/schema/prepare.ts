@@ -9,11 +9,13 @@
 //   constraint counts positively. Under `not`, inside an `if`, or in a `oneOf` branch it can tighten
 //   it, so there the outermost such keyword above the unreadable part goes instead (an `if` with its
 //   `then` and `else`): the check accepts what that keyword would have decided. An unreadable part in
-//   `definitions` (a `$ref` may reach it from any position) leaves the whole schema to APISIX.
+//   `definitions` (a `$ref` may reach it from any position) leaves the whole schema to APISIX, and so
+//   does any unreadable part in a schema with a `$ref` that points elsewhere (`#`, `#/properties/a`),
+//   since such a ref may reach the part from under a `not` (fix round 2, R12.3).
 // The walk knows which keywords hold sub-schemas, so a property named `not` or `pattern` is a
 // property. Pure.
 import type { Obj } from '../api/types';
-import { compiles, isObj } from './refs';
+import { compiles, isObj, resolveRef } from './refs';
 
 /** A kind of part left to APISIX: unreadable patterns, the keys they cover, the conditions above them. */
 export type SchemaGap = 'patterns' | 'keys' | 'conditions';
@@ -47,7 +49,11 @@ interface Found {
   keys: boolean;
   conditions: boolean;
   all: boolean;
+  /** A `$ref` points somewhere other than `definitions` / `$defs`. */
+  refElsewhere: boolean;
 }
+
+const INTO_DEFINITIONS = /^#\/(?:definitions|\$defs)\//;
 
 /** The outermost non-monotone keyword above the part being walked: hit when an unreadable part is below it. */
 interface Guard {
@@ -66,6 +72,7 @@ function normalizeNode(node: unknown, found: Found, guard: Guard | undefined, in
   const dropped: string[] = [];
   for (const [key, value] of Object.entries(node)) {
     if (key === '$schema') continue;
+    if (key === '$ref' && typeof value === 'string' && !INTO_DEFINITIONS.test(value)) found.refElsewhere = true;
     if (key === 'pattern' && typeof value === 'string' && !compiles(value)) {
       unreadable('patterns');
       continue;
@@ -115,9 +122,9 @@ function normalizeNode(node: unknown, found: Found, guard: Guard | undefined, in
 
 /** The copy Ajv compiles, and what it leaves to APISIX ('all': do not compile it; [] when nothing). */
 export function normalize(schema: Obj): { schema: Obj; gaps: SchemaGaps } {
-  const found: Found = { patterns: false, keys: false, conditions: false, all: false };
+  const found: Found = { patterns: false, keys: false, conditions: false, all: false, refElsewhere: false };
   const copy = normalizeNode(schema, found, undefined, false) as Obj;
-  if (found.all) return { schema: copy, gaps: 'all' };
+  if (found.all || (found.refElsewhere && (found.patterns || found.keys || found.conditions))) return { schema: copy, gaps: 'all' };
   return { schema: copy, gaps: (['patterns', 'keys', 'conditions'] as const).filter((gap) => found[gap]) };
 }
 
@@ -220,23 +227,57 @@ export function skippingSecretRefs(schema: Obj): Obj {
 }
 
 /**
- * An error's schemaPath in the wrapped schema, as the path of the node in the schema it was made
- * from; undefined for a wrapper's own test (its `if`), which is not a check of the schema.
+ * The objects the wrapped schema's local `$ref`s point at, besides its root: Ajv compiles a recursive
+ * target as a function of its own and reports its errors with a schemaPath from that target.
  */
-export function originalSchemaPath(wrapped: Obj, schemaPath: string): string | undefined {
-  const segments = schemaPath.replace(/^#/, '').split('/').slice(1);
-  const out: string[] = [];
-  let at: unknown = wrapped;
-  for (const segment of segments) {
-    if (isObj(at) && at[WRAPPER] === true) {
-      if (segment === 'else') {
-        at = at.else;
-        continue;
+export function refTargets(wrapped: Obj): Obj[] {
+  const out = new Set<Obj>();
+  const visit = (node: unknown) => {
+    if (Array.isArray(node)) node.forEach(visit);
+    else if (isObj(node)) {
+      for (const [key, value] of Object.entries(node)) {
+        if (key === '$ref' && typeof value === 'string') {
+          const target = value === '#' ? wrapped : resolveRef(wrapped, value);
+          if (target && target !== wrapped) out.add(target);
+        } else visit(value);
       }
-      if (segment === 'if' || segment === 'then') return undefined;
+    }
+  };
+  visit(wrapped);
+  return [...out];
+}
+
+/** Where a schemaPath leads from `root`: the object holding its last keyword, and the path without the wrapping's `else` hops. */
+function walk(root: Obj, segments: string[]): { holder: unknown; out: string[] } {
+  const out: string[] = [];
+  let at: unknown = root;
+  let holder: unknown = root;
+  for (const [i, segment] of segments.entries()) {
+    if (isObj(at) && at[WRAPPER] === true && segment === 'else') {
+      at = at.else;
+      holder = at;
+      continue;
     }
     out.push(segment);
+    if (i === segments.length - 1) holder = at;
     at = step(at, segment);
   }
-  return `#${out.map((segment) => `/${segment}`).join('')}`;
+  return { holder, out };
+}
+
+/**
+ * An error of the wrapped schema, at the path of its node in the schema it was made from; undefined
+ * for a wrapper's own test (its `if`), which is not a check of the schema. Ajv (verbose) gives the
+ * object holding the failing keyword (`parentSchema`): a wrapper's is the wrapper itself, and the
+ * path is read from whichever root leads to that object, the whole schema or a `$ref` target that Ajv
+ * compiled on its own (fix round 2, R12.1).
+ */
+export function originalSchemaPath(wrapped: Obj, roots: Obj[], error: { schemaPath: string; parentSchema?: unknown }): string | undefined {
+  if (isObj(error.parentSchema) && error.parentSchema[WRAPPER] === true) return undefined;
+  const segments = error.schemaPath.replace(/^#/, '').split('/').slice(1);
+  for (const root of [wrapped, ...roots]) {
+    const { holder, out } = walk(root, segments);
+    if (error.parentSchema === undefined || holder === error.parentSchema) return `#${out.map((segment) => `/${segment}`).join('')}`;
+  }
+  return error.schemaPath;
 }

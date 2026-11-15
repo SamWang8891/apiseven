@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
+import { t } from '../i18n';
 import { everySchema, schemaOf } from '../test/pluginFixture';
 import { editableControls, renderSchemaForm } from '../test/schemaForm';
 
@@ -291,11 +292,17 @@ describe('SchemaForm: values', () => {
       then: { properties: { c: { type: 'string' } }, required: ['c'] },
       else: { properties: { d: { type: 'string' } } },
     };
-    renderSchemaForm(schema, { a: 'bar' });
+    const form = renderSchemaForm(schema, { a: 'bar' });
     expect(screen.getByRole('textbox', { name: 'a' })).toBeInTheDocument();
     expect(screen.queryByRole('textbox', { name: /^c/ })).toBeNull();
     expect(screen.queryByRole('textbox', { name: /^d/ })).toBeNull();
     expect(screen.queryByText('Applies to the current settings')).toBeNull();
+    form.unmount();
+    // A value held in such a branch is not said to be unused: whether it is depends on what the browser can't check (fix round 2, R12.4).
+    renderSchemaForm(schema, { a: 'foo', c: 'x' });
+    expect(screen.queryByRole('textbox', { name: /^c/ })).toBeNull();
+    expect(screen.getByText(t('sf.undecided.one', { keys: 'c' }))).toBeInTheDocument();
+    expect(screen.queryByText(/not used with the current settings/)).toBeNull();
   });
 
   it('a tags field and a map field never hold an entry for a pattern the browser cannot read (fix round 1, R5.2)', async () => {

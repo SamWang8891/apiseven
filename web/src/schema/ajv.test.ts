@@ -119,6 +119,30 @@ describe('failing open never makes the check stricter: an unreadable pattern und
     expect(fieldErrors(schema, { a: 'bar', l: ['xy'] })).toEqual([]);
     expect(fieldErrors(schema, { l: ['xyz'] })).toEqual([{ path: 'l.0', message: 'must NOT have more than 2 characters' }]);
     expect(schemaGaps(schema)).toEqual(['patterns']);
+    // allOf, and the then / else of a readable if: the pattern alone goes, the rest of each still checks.
+    const branches: Obj = {
+      type: 'object',
+      properties: { p: { type: 'string' }, b: { allOf: [{ type: 'string', pattern: PCRE }, { maxLength: 3 }] } },
+      if: { properties: { p: { const: 'x' } }, required: ['p'] },
+      then: { properties: { c: { type: 'string', pattern: PCRE, minLength: 2 } } },
+      else: { properties: { d: { type: 'string', pattern: PCRE, maxLength: 1 } } },
+    };
+    expect(fieldErrors(branches, { b: 'bar', p: 'x', c: 'ok' })).toEqual([]);
+    expect(fieldErrors(branches, { b: 'barz' })).toEqual([{ path: 'b', message: 'must NOT have more than 3 characters' }]);
+    expect(fieldErrors(branches, { p: 'x', c: 'z' })).toEqual([{ path: 'c', message: 'must NOT have fewer than 2 characters' }]);
+    expect(fieldErrors(branches, { p: 'y', d: 'zz' })).toEqual([{ path: 'd', message: 'must NOT have more than 1 characters' }]);
+    expect(schemaGaps(branches)).toEqual(['patterns']);
+  });
+
+  it('an unreadable part where a $ref outside definitions may reach it: the whole schema is left to APISIX (fix round 2, R12.3)', () => {
+    const viaProperty: Obj = { type: 'object', properties: { a: { type: 'string', pattern: PCRE }, b: { not: { $ref: '#/properties/a' } } } };
+    const viaRoot: Obj = { type: 'object', properties: { a: { type: 'string', pattern: PCRE }, n: { not: { $ref: '#' } } } };
+    expect(fieldErrors(viaProperty, { b: 'bar' })).toBeNull();
+    expect(fieldErrors(viaRoot, { n: { a: 'bar' } })).toBeNull();
+    expect(schemaGaps(viaProperty)).toBe('all');
+    expect(schemaGaps(viaRoot)).toBe('all');
+    // Without an unreadable part such refs are compiled as before.
+    expect(fieldErrors({ type: 'object', properties: { a: { type: 'string', pattern: '^a' }, b: { not: { $ref: '#/properties/a' } } } }, { b: 'abc' })).toEqual([{ path: 'b', message: 'must NOT be valid' }]);
   });
 
   it('in definitions (which a $ref may reach from anywhere): the whole schema is left to APISIX', () => {

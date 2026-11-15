@@ -112,21 +112,37 @@ describe('for values that are not references, the errors are the same as without
     for (const key of props) for (const wrong of [12345, 'x', true, [], {}, [1, 'a'], { z: 1 }, -1]) yield { [key]: wrong };
   }
 
-  it('field errors, path and text, for each of them', () => {
+  // As the editor checks plugins (luaTables off) and plugin metadata and secret managers (on): the
+  // luaTables filter is what lets a leaked wrapper error stand alone, so both runs are needed (R12.2).
+  it.each([
+    ['plugins', false],
+    ['metadata and secret managers (luaTables)', true],
+  ])('field errors, path and text, for each of them: %s', (_, luaTables) => {
     let compared = 0;
     let withErrors = 0;
     const differences: string[] = [];
+    const leaks: string[] = [];
     for (const { label: name, schema } of everySchema()) {
       for (const value of invalid(schema)) {
-        const before = fieldErrors(schema, value, { secretRefs: false });
-        const after = fieldErrors(schema, value);
+        const before = fieldErrors(schema, value, { secretRefs: false, luaTables });
+        const after = fieldErrors(schema, value, { luaTables });
         compared++;
         if (before && before.length > 0) withErrors++;
         if (JSON.stringify(before) !== JSON.stringify(after)) differences.push(`${name} ${JSON.stringify(value)}: ${JSON.stringify(before)} → ${JSON.stringify(after)}`);
+        for (const error of after ?? []) if (/must match "(?:else|then)" schema/.test(error.message)) leaks.push(`${name} ${JSON.stringify(value)}: ${error.path} ${error.message}`);
       }
     }
     expect(differences.slice(0, 5)).toEqual([]);
+    expect(leaks.slice(0, 5)).toEqual([]);
     expect(compared).toBeGreaterThan(5000);
     expect(withErrors).toBeGreaterThan(2000);
+  });
+
+  it('a $ref target Ajv compiles as a function of its own (a recursive one): no wrapper error, the same paths (fix round 2, R12.1)', () => {
+    const schema: Obj = { type: 'object', definitions: { node: { properties: { o: { type: 'object' }, child: { $ref: '#/definitions/node' } } } }, properties: { root: { $ref: '#/definitions/node' } } };
+    expect(fieldErrors(schema, { root: { o: [] } }, { luaTables: true })).toEqual([]);
+    expect(fieldErrors(schema, { root: { o: 5 } })).toEqual(fieldErrors(schema, { root: { o: 5 } }, { secretRefs: false }));
+    expect(fieldErrors(schema, { root: { child: { o: 'x' } } })).toEqual(fieldErrors(schema, { root: { child: { o: 'x' } } }, { secretRefs: false }));
+    expect(fieldErrors(schema, { root: { o: '$env://X' } })).toEqual([{ path: 'root.o', message: 'must be object' }]);
   });
 });

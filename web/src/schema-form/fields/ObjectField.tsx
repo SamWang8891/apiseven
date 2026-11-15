@@ -118,6 +118,7 @@ export function ObjectBody({ node, value, path, emit }: { node: ObjectNode; valu
       </div>
       {view.unknown.length > 0 && <Note text={many(view.unknown, 'sf.unknown.one', 'sf.unknown.many')} />}
       {view.hidden.length > 0 && <Note text={many(view.hidden, 'sf.hidden.one', 'sf.hidden.many')} />}
+      {view.undecided.length > 0 && <Note text={many(view.undecided, 'sf.undecided.one', 'sf.undecided.many')} />}
     </div>
   );
 }

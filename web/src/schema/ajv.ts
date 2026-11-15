@@ -4,7 +4,7 @@
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
-import { normalize, originalSchemaPath, skippingSecretRefs, type SchemaGaps } from './prepare';
+import { normalize, originalSchemaPath, refTargets, skippingSecretRefs, type SchemaGaps } from './prepare';
 import { deref, isObj, resolveRef } from './refs';
 
 export type { SchemaGap, SchemaGaps } from './prepare';
@@ -12,13 +12,16 @@ export type { SchemaGap, SchemaGaps } from './prepare';
 // strict: false, since APISIX schemas carry keys Ajv does not know (encrypt_fields, $comment on
 // odd places); formats are not checked (ip-restriction's ipv4/ipv6 would need ajv-formats, and the
 // server checks them anyway), so a format this browser does not know refuses nothing either.
-const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
+// verbose: an error carries the schema object holding its keyword, which tells the wrapping's own tests
+// from the schema's (prepare.ts originalSchemaPath).
+const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false, verbose: true });
 
 interface Compiled {
   /** The validator of the wrapped copy (prepare.ts: secret references skipped as APISIX skips them). */
   validate: ValidateFunction | null;
-  /** What it compiled, to map its errors back to the schema's own paths. */
+  /** What it compiled, to map its errors back to the schema's own paths, and its `$ref` targets. */
   wrapped: Obj | undefined;
+  roots: Obj[];
   /** The normalized copy, unwrapped (for `secretRefs: false`). */
   normalized: Obj;
   plain?: ValidateFunction | null;
@@ -44,7 +47,7 @@ function compile(schema: Obj): Compiled {
     const prepared = normalize(schema);
     const wrapped = prepared.gaps === 'all' ? undefined : skippingSecretRefs(prepared.schema);
     const validate = wrapped ? ajvCompile(wrapped) : null;
-    entry = { validate, wrapped, normalized: prepared.schema, gaps: validate === null ? 'all' : prepared.gaps.length > 0 ? prepared.gaps : undefined };
+    entry = { validate, wrapped, roots: wrapped ? refTargets(wrapped) : [], normalized: prepared.schema, gaps: validate === null ? 'all' : prepared.gaps.length > 0 ? prepared.gaps : undefined };
     compiled.set(schema, entry);
   }
   return entry;
@@ -70,7 +73,7 @@ function mapped(entry: Compiled, errors: ErrorObject[]): ErrorObject[] {
   if (!wrapped) return errors;
   const out: ErrorObject[] = [];
   for (const error of errors) {
-    const schemaPath = originalSchemaPath(wrapped, error.schemaPath);
+    const schemaPath = originalSchemaPath(wrapped, entry.roots, error);
     if (schemaPath !== undefined) out.push({ ...error, schemaPath });
   }
   return out;

@@ -91,15 +91,19 @@ export function activeOption(node: VariantNode, v: unknown): number {
   return node.options.findIndex((o) => o.matches(v));
 }
 
-function declaredKeys(node: Node): Set<string> {
+/** Every key a part declares, its conditions' branches included. */
+function declaredKeysOf(part: ObjectPart): Set<string> {
   const keys = new Set<string>();
-  if (node.kind !== 'object') return keys;
-  const collect = (part: ObjectPart) => {
-    part.props.forEach((p) => keys.add(p.key));
-    part.conditionals.forEach((c) => [c.then, c.else].forEach((x) => x && collect(x)));
+  const collect = (p: ObjectPart) => {
+    p.props.forEach((prop) => keys.add(prop.key));
+    p.conditionals.forEach((c) => [c.then, c.else].forEach((x) => x && collect(x)));
   };
-  collect(node);
+  collect(part);
   return keys;
+}
+
+function declaredKeys(node: Node): Set<string> {
+  return node.kind === 'object' ? declaredKeysOf(node) : new Set<string>();
 }
 
 /**
@@ -173,6 +177,8 @@ export interface ObjectView {
   unknown: string[];
   /** Keys of the value that only conditions which do not hold now would show. */
   hidden: string[];
+  /** Keys of the value under a condition the browser can't evaluate (part of it is left to APISIX): neither shown nor said to be unused. */
+  undecided: string[];
 }
 
 const list = (values: unknown[]) => values.map((v) => (typeof v === 'string' ? v : JSON.stringify(v))).join(', ');
@@ -238,6 +244,8 @@ export function objectView(node: ObjectNode, value: unknown): ObjectView {
   const effective = { ...defaultsOf(node.props), ...v };
   const required = new Set<string>();
   const shown = new Set(node.props.map((p) => p.key));
+  /** What the branches of a condition the browser can't evaluate declare. */
+  const undecidedKeys = new Set<string>();
   const blocks: { caption: string; props: Prop[]; after?: string }[] = [];
   const hints: string[] = [];
 
@@ -252,7 +260,10 @@ export function objectView(node: ObjectNode, value: unknown): ObjectView {
     for (const [key, deps] of Object.entries(part.dependents)) if (v[key] !== undefined) deps.forEach((k) => required.add(k));
     for (const cond of part.conditionals) {
       const result = holds(cond.when, effective);
-      if (result === 'unknown') continue;
+      if (result === 'unknown') {
+        for (const branch of [cond.then, cond.else]) if (branch) declaredKeysOf(branch).forEach((k) => undecidedKeys.add(k));
+        continue;
+      }
       const branches: [ObjectPart | undefined, boolean][] =
         result === undefined ? [[cond.then, true], [cond.else, false]] : [[result ? cond.then : cond.else, result]];
       for (const [branch, positive] of branches) {
@@ -278,15 +289,18 @@ export function objectView(node: ObjectNode, value: unknown): ObjectView {
   const known = schemaKeys(node);
   const unknown: string[] = [];
   const hidden: string[] = [];
+  const undecided: string[] = [];
   for (const key of Object.keys(v)) {
     if (shown.has(key)) continue;
-    (known.has(key) ? hidden : unknown).push(key);
+    if (undecidedKeys.has(key)) undecided.push(key);
+    else (known.has(key) ? hidden : unknown).push(key);
   }
   const view: ObjectView = {
     fields: node.props.map(mark),
     blocks: blocks.map((b) => ({ caption: b.caption, fields: b.props.map(mark), ...(b.after !== undefined ? { after: b.after } : {}) })),
     unknown,
     hidden,
+    undecided,
   };
   if (hints.length > 0) view.hint = hints.join(' ');
   return view;

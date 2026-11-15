@@ -618,6 +618,8 @@ export const en: Record<string, string> = {
   'sf.unknown.many': '{count} fields not in the schema: {keys} — edit them in JSON.',
   'sf.hidden.one': '1 field not used with the current settings: {keys} — kept as it is; edit it in JSON.',
   'sf.hidden.many': '{count} fields not used with the current settings: {keys} — kept as they are; edit them in JSON.',
+  'sf.undecided.one': '1 field depends on a condition this browser can’t check: {keys} — kept as it is; edit it in JSON.',
+  'sf.undecided.many': '{count} fields depend on a condition this browser can’t check: {keys} — kept as they are; edit them in JSON.',
 
   // Schema checks (web/src/schema): a missing required property, shown at its own field
   'schema.required': 'Required',
