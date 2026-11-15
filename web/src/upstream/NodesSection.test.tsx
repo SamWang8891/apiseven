@@ -211,6 +211,12 @@ describe('host:port typed by hand', () => {
     expect(h.value().nodes).toEqual({ '[fe80::1]:80': 2, 'b:80': 1 });
     expect(host(1)).toHaveValue('fe80::1');
     expect(h.held()).toEqual([]);
+    // Fix round 2, R1.2: a port edit keeps the host as typed.
+    await h.user.clear(port(1));
+    await h.user.type(port(1), '81');
+    await h.user.tab();
+    expect(h.value().nodes).toEqual({ '[fe80::1]:81': 2, 'b:80': 1 });
+    expect(host(1)).toHaveValue('fe80::1');
   });
 
   it('"Add a node" of a map: Enter adds host:port as a paste reads it; leaving keeps it held', async () => {

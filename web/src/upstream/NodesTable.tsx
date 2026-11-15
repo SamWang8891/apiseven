@@ -359,7 +359,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
             max={65535}
             value={map ? address.port : row.port}
             error={issue(i, 'port')}
-            onChange={(v) => (map ? editAddress(i, { host: address.host, port: v }) : onChange(setNodeField(value, i, 'port', v)))}
+            // A port edit keeps the host as the field shows it (an IPv6 address as typed, not bracketed).
+            onChange={(v) => (map ? editAddress(i, { host: hostText(i), port: v }) : onChange(setNodeField(value, i, 'port', v)))}
             onBlur={() => map && settle(i)}
           />
         </td>
