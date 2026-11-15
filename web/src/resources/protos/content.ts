@@ -101,7 +101,11 @@ const COMPILED = /\.(pb|desc|protoset|bin)$/i;
  * the request the Admin API's 1.5 MiB (REQUEST_MAX).
  */
 export async function readProtoFile(file: File): Promise<ProtoFile> {
-  if (file.size > REQUEST_MAX) return { problem: t('pr.file.tooBig', { size: formatBytes(file.size) }) };
+  if (file.size > REQUEST_MAX) {
+    // Its size only where it reads otherwise than the cap (fix round 2, M4: "1.5 MB" beside "more than 1.5 MB" says nothing).
+    const size = formatBytes(file.size);
+    return { problem: size === formatBytes(REQUEST_MAX) ? t('pr.file.tooBigNear') : t('pr.file.tooBig', { size }) };
+  }
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await file.arrayBuffer());

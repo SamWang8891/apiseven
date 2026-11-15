@@ -69,6 +69,28 @@ describe('opening and closing', () => {
     expect(search).toHaveValue('');
   });
 
+  it('Esc when nothing had focus before the palette, or what had it can no longer take it: focus goes to the main area (fix round 2, M3)', async () => {
+    const { user } = await open();
+    await screen.findByRole('searchbox', { name: t('table.search.label', { plural: t('kind.routes.plural') }) });
+    // Nothing focused when the palette opens.
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    await openPalette(user);
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
+    // A button that had focus, disabled meanwhile.
+    const button = document.createElement('button');
+    document.body.append(button);
+    button.focus();
+    await openPalette(user);
+    button.disabled = true;
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
+    button.remove();
+  });
+
   it('Esc when what had focus before the palette is gone: focus goes to the main area, not body (Task 16b, item 136; fix round 1, F2)', async () => {
     const { user } = await open();
     await screen.findByRole('searchbox', { name: t('table.search.label', { plural: t('kind.routes.plural') }) });

@@ -207,6 +207,15 @@ describe('a new route: a plugin card added is not all in red (Task 16b, item 154
     expect(main().getByRole('textbox', { name: 'time_window (required)' })).not.toHaveAccessibleDescription(expect.stringContaining(t('schema.required')) as string);
   });
 
+  it('the JSON tab: a null typed over nothing is a value entered, and its problem shows at once (fix round 2, M1)', async () => {
+    const { user } = await openEditor(`#${newPathFor('routes')}?tab=json`, { objects: objects([]), replies: pluginReplies() });
+    const box = await jsonEditor(t('kind.routes.singular'));
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(JSON.stringify({ uri: '/a', status: 1, priority: null }));
+    await waitFor(() => expect(tab(t('rt.tab.general'))).toHaveAccessibleName(`${t('rt.tab.general')} ${t('ui.tabs.errors', { count: 1 })}`));
+  });
+
   it('the JSON tab: a plugin pasted in without its required settings waits; a value of the wrong type shows at once', async () => {
     const { user } = await openEditor(`#${newPathFor('routes')}?tab=json`, { objects: objects([]), replies: pluginReplies() });
     const box = await jsonEditor(t('kind.routes.singular'));

@@ -10,7 +10,8 @@
 //   problem whose path does not resolve in the draft (a map's rows named by place, a key that holds a
 //   ".") is shown: fail open.
 // - "Touched": the draft's value at the field's own path, or below it, has differed from the start
-//   at some time in this session; nothing and nothing count as the same. A change above it (a plugin
+//   at some time in this session; empty and empty ("", [], {}, no value) count as the same, while a
+//   null typed over nothing is a change (fix round 2, M1). A change above it (a plugin
 //   card or a row added, an object pasted in the JSON tab) touches only what it put a value in. A
 //   problem about the object as a whole is touched by nothing but a refused Save.
 // One rule for every kind, in the frame (Editor.tsx); the kinds' checks are unchanged.
@@ -20,9 +21,13 @@ import type { Obj } from '../api/types';
 import { deepEqual, getPath, isEmptyValue } from './draft';
 import type { Issue } from './issues';
 
-/** Nothing there: no value, null, "", [] or {}. */
+/** Nothing there, for "only missing": no value, null, "", [] or {}. */
 const nothing = (v: unknown): boolean => v === null || isEmptyValue(v);
-const same = (a: unknown, b: unknown): boolean => deepEqual(a, b) || (nothing(a) && nothing(b));
+/**
+ * Unchanged, for "touched": equal, or both empty (no value, "", [] or {}). A null typed over nothing is
+ * a change (fix round 2, M1): APISIX refuses it where a type is required, and its problem shows at once.
+ */
+const same = (a: unknown, b: unknown): boolean => deepEqual(a, b) || (isEmptyValue(a) && isEmptyValue(b));
 const container = (v: unknown): v is Obj | unknown[] => isObj(v) || Array.isArray(v);
 const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.map((_, i) => String(i)) : isObj(v) ? Object.keys(v) : []);
 const childOf = (v: unknown, key: string): unknown => (Array.isArray(v) ? v[Number(key)] : isObj(v) ? v[key] : undefined);

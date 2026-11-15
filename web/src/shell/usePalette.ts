@@ -50,11 +50,15 @@ export function usePalette(main: RefObject<HTMLElement | null>) {
   const isOpen = useCallback(() => shown.current, []);
   usePaletteHotkey(toggle, show, isOpen);
 
-  /** Focus back where it was before the palette opened, or to `main` when that element is gone (Task 16b, item 136). */
+  /**
+   * Focus back where it was before the palette opened, or to `main` when that leaves nothing focused:
+   * the element is gone, was `body` (nothing had focus), or can no longer take focus (Task 16b, item
+   * 136; fix round 2, M3).
+   */
   const restore = useCallback(() => {
     const el = returnTo.current;
-    if (el?.isConnected) el.focus();
-    else main.current?.focus({ preventScroll: true });
+    if (el?.isConnected && el !== document.body) el.focus();
+    if (nothingFocused()) main.current?.focus({ preventScroll: true });
   }, [main]);
 
   // Closed without leaving: focus goes back where it was (the kit Dialog has no trigger to return to).

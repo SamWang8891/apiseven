@@ -44,13 +44,17 @@ describe('readProtoFile', () => {
     // file never fits, as it is sent as its text (or as base64, larger still) (Task 16b, item 117).
     expect(REQUEST_MAX).toBe(1024 * 1024 * 1.5);
     const huge = new File(['x'], 'huge.proto');
-    Object.defineProperty(huge, 'size', { value: REQUEST_MAX + 1 });
+    Object.defineProperty(huge, 'size', { value: 2 * REQUEST_MAX });
     const read = vi.spyOn(huge, 'arrayBuffer');
-    expect(await readProtoFile(huge)).toEqual({ problem: t('pr.file.tooBig', { size: formatBytes(REQUEST_MAX + 1) }) });
+    expect(await readProtoFile(huge)).toEqual({ problem: t('pr.file.tooBig', { size: formatBytes(2 * REQUEST_MAX) }) });
+    expect(t('pr.file.tooBig', { size: formatBytes(2 * REQUEST_MAX) })).toBe('This file is more than the 1.5 MB the Admin API takes in a request (3.0 MB).');
     expect(read).not.toHaveBeenCalled();
-    // Just over the cap, the size rounds to the cap itself: the words say "more than" (fix round 1, R2.3).
+    // Just over the cap the size reads as the cap itself: the words say "more than", with no figure (fix round 1, R2.3; fix round 2, M4).
+    const near = new File(['x'], 'near.proto');
+    Object.defineProperty(near, 'size', { value: REQUEST_MAX + 1 });
     expect(formatBytes(REQUEST_MAX + 1)).toBe('1.5 MB');
-    expect(t('pr.file.tooBig', { size: formatBytes(REQUEST_MAX + 1) })).toMatch(/^This file is more than the 1\.5 MB /);
+    expect(await readProtoFile(near)).toEqual({ problem: t('pr.file.tooBigNear') });
+    expect(t('pr.file.tooBigNear')).not.toMatch(/\(/);
     expect(await readProtoFile(new File(['a'.repeat(CONTENT_MAX + 1)], 'long.proto'))).toEqual({ problem: t('pr.file.tooLong') });
     // A descriptor set whose base64 would pass the limit.
     const big = new Uint8Array(Math.floor((CONTENT_MAX * 3) / 4) + 3);

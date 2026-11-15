@@ -1626,6 +1626,7 @@ export const en: Record<string, string> = {
   'pr.content.toText': 'Write proto source instead',
   'pr.content.empty': 'No content.',
   'pr.file.tooBig': 'This file is more than the 1.5 MB the Admin API takes in a request ({size}).',
+  'pr.file.tooBigNear': 'This file is more than the 1.5 MB the Admin API takes in a request.',
   'pr.file.tooBigSent': 'Sent as JSON, this file would be more than the 1.5 MB the Admin API takes in a request.',
   'pr.file.tooLong': 'This file is longer than the 1,048,576 characters APISIX takes as content.',
   'pr.file.notDescriptor': 'Not proto source, and not a compiled descriptor set (protoc --descriptor_set_out): nothing was changed.',

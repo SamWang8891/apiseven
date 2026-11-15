@@ -8,7 +8,9 @@ describe('changedPaths', () => {
     expect(changedPaths({ a: 1, b: { c: 1, d: 2 } }, { a: 1, b: { c: 1, d: 3 } })).toEqual(['', 'b', 'b.d']);
     expect(changedPaths({ cert: 'x' }, {})).toEqual(['', 'cert']);
     expect(changedPaths({ a: [1] }, { a: [1] })).toEqual([]);
-    expect(changedPaths({ name: '' }, { name: null, x: {} })).toEqual([]);
+    expect(changedPaths({ name: '' }, { name: [], x: {} })).toEqual([]);
+    // A null typed over nothing is a change: its problem shows at once (fix round 2, M1).
+    expect(changedPaths({}, { priority: null })).toEqual(['', 'priority']);
   });
 
   it('what a new plugin card or row brings in is recorded only where it holds a value', () => {

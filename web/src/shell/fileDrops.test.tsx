@@ -80,6 +80,32 @@ describe('the window-level guard for dropped files', () => {
     expect(drag('dragOver', screen.getByText('proto source'), ['Files'])).toEqual({ prevented: true, dropEffect: 'copy' });
   });
 
+  it('a drag aimed at a Text node inside a declared zone is the zone’s (fix round 2, M2)', () => {
+    undo = guardFileDrops(window);
+    render(
+      <div
+        {...FILE_DROP_ZONE}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+      >
+        <span>a label</span>
+      </div>,
+    );
+    const text = screen.getByText('a label').firstChild as Text;
+    expect(text.nodeType).toBe(Node.TEXT_NODE);
+    const event = createEvent.dragOver(text, { dataTransfer: { types: ['Files'], dropEffect: 'copy' } });
+    fireEvent(text, event);
+    expect((event as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect).toBe('copy');
+    // Outside a zone, a Text node is refused like its element.
+    render(<p>plain text</p>);
+    const plain = screen.getByText('plain text').firstChild as Text;
+    const refused = createEvent.dragOver(plain, { dataTransfer: { types: ['Files'], dropEffect: 'copy' } });
+    fireEvent(plain, refused);
+    expect(refused.defaultPrevented).toBe(true);
+  });
+
   it('refuses a file over an element that only cancelled the drag without declaring itself a drop zone', () => {
     undo = guardFileDrops(window);
     render(<div onDragOver={(e) => e.preventDefault()}>a list row</div>);

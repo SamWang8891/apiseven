@@ -17,7 +17,9 @@ export const FILE_DROP_ZONE = { 'data-file-drop': '' } as const;
 const TAKES_FILES = '[data-file-drop], input[type="file"]';
 
 const carriesFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
-const takesFiles = (target: EventTarget | null): boolean => target instanceof Element && target.closest(TAKES_FILES) !== null;
+/** The element a drag is over: a Text node (as some browsers aim drag events) stands for its parent (fix round 2, M2). */
+const elementOf = (target: EventTarget | null): Element | null => (target instanceof Element ? target : target instanceof Node ? target.parentElement : null);
+const takesFiles = (target: EventTarget | null): boolean => elementOf(target)?.closest(TAKES_FILES) != null;
 
 /** Guards `target` (the window) against file drops where nothing takes files; returns the way to remove the guard. */
 export function guardFileDrops(target: Window): () => void {
