@@ -415,6 +415,33 @@ cd web && APISIX_LIVE=1 npx vitest run src/api/client.live.test.ts
 They read `APISIX_ADMIN_URL` and `APISIX_ADMIN_KEY` (defaults: the dev stack) and remove what they
 create.
 
+The end-to-end suite (Playwright, Chromium) drives the built app (`vite preview`) against a real
+APISIX and checks what it stores through the Admin API and what it does through the gateway:
+
+```sh
+make dev-up && make docker && make single   # the dev stack, the image and the single file it also tests
+make e2e                                    # cd web && npm run e2e (npm run e2e:ui for the UI mode)
+```
+
+It resets the APISIX it points at to the seed data (`node dev/seed.mjs --reset`) before it starts,
+and checks at the end that it holds exactly the seed again. The proxy-mode specs run the Docker image
+on APISIX's Docker network; they and the single-file specs are skipped, with the reason, when the
+image or the file is missing. By default it uses the dev stack; these variables point it elsewhere:
+
+| Variable | Default |
+|---|---|
+| `E2E_ADMIN_URL` | `http://127.0.0.1:19180` (the Admin API) |
+| `E2E_ADMIN_KEY`, `E2E_VIEWER_KEY` | `apiseven-dev-admin-key`, `apiseven-dev-viewer-key` |
+| `E2E_GATEWAY_URL` | `http://127.0.0.1:9080` (the gateway's HTTP listener) |
+| `E2E_GATEWAY_HTTPS`, `E2E_GATEWAY_STREAM` | `127.0.0.1:9443`, `127.0.0.1:9100` (host:port) |
+| `E2E_PREVIEW_PORT` | `4173` (where `vite preview` serves the app) |
+| `E2E_DOCKER_NETWORK` | `apiseven-dev_default` (APISIX's Docker network) |
+| `E2E_DOCKER_ADMIN_URL` | `http://apisix:9180` (the Admin API as seen on that network) |
+| `E2E_IMAGE` | `apiseven:local` (`make docker IMAGE=…` builds under another tag) |
+
+The routes the suite creates proxy to the dev stack's etcd (`etcd:2379`, which answers `/version`),
+so it needs no other upstream and no internet access.
+
 Other targets: `make build` (the server with the web app embedded, at `bin/apiseven`),
 `make docker` (the image `apiseven:local`), `make single` and `make static` (the exports in
 `dist/`), `make test` (the tests, without the type check and lint).

@@ -136,7 +136,7 @@ test.describe('an empty id in a new object’s JSON', () => {
     ['routes', t('kind.routes.singular'), 'routes/new?tab=json'],
     ['global_rules', t('kind.global_rules.singular'), 'global_rules/new?tab=json'],
   ] as const) {
-    test.fixme(`16b-142: a new ${kind.replace('_', ' ')} with "id": "" is refused before any request, naming the ID`, async ({ page }) => {
+    test.fixme(`16b-142: a new ${label} with "id": "" is refused before any request, naming the ID`, async ({ page }) => {
       const main = await goto(page, path);
       const body = kind === 'routes' ? { id: '', uri: ECHO.path, upstream: { nodes: [{ host: ECHO.host, port: ECHO.port, weight: 1 }] } } : { id: '', plugins: { 'request-id': {} } };
       await setCode(page, jsonEditor(page, label), JSON.stringify(body, null, 2));
