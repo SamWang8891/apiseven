@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { pathFor } from '../router/paths';
@@ -21,8 +21,8 @@ const ROUTES: Obj[] = [
 ];
 const UPSTREAMS: Obj[] = [{ id: 'u1', name: 'web-pool', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] }];
 
-async function open(hash = '#/routes', opts: FakeAdminOptions = {}) {
-  saveConnections([DEV_CONN], DEV_CONN.id);
+async function open(hash = '#/routes', opts: FakeAdminOptions = {}, connections = [DEV_CONN]) {
+  saveConnections(connections, DEV_CONN.id);
   const user = userEvent.setup();
   const app = renderApp({ hash, counts: {}, objects: { routes: ROUTES, upstreams: UPSTREAMS }, ...opts });
   await screen.findByRole('main');
@@ -125,6 +125,20 @@ describe('opening and closing', () => {
     await user.click(within(confirm).getByRole('button', { name: t('ui.cancel') }));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
     await openPalette(user);
+  });
+
+  it('held down, Ctrl-K repeats are kept from the browser and do not toggle it again', async () => {
+    await open();
+    const repeat = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, repeat: true, bubbles: true, cancelable: true });
+    document.body.dispatchEvent(repeat);
+    expect(repeat.defaultPrevented).toBe(true);
+    expect(dialog()).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', ctrlKey: true });
+    await screen.findByRole('dialog', { name: t('palette.title') });
+    const again = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, repeat: true, bubbles: true, cancelable: true });
+    box().dispatchEvent(again);
+    expect(again.defaultPrevented).toBe(true);
+    expect(dialog()).toBeInTheDocument();
   });
 
   it('a refused Ctrl-K is still taken from the browser', async () => {
@@ -271,6 +285,26 @@ describe('moving through the results', () => {
     delete document.documentElement.dataset.theme;
   });
 
+  it('the hint names what Enter does on the active row: open, apply a theme, switch connection', async () => {
+    const PROD = { id: 'prod', name: 'prod', baseUrl: 'https://prod.test:9180', key: 'prod-key' };
+    const { user } = await open('#/routes', {}, [DEV_CONN, PROD]);
+    await openPalette(user);
+    const enter = () => document.querySelector('.cp-hints span:nth-child(2)');
+    expect(active()).toHaveTextContent(t('palette.action.goTo', { plural: t('kind.routes.plural') }));
+    expect(enter()).toHaveTextContent(t('palette.hint.open'));
+    await user.type(box(), 'theme dark');
+    expect(active()).toHaveTextContent(t('palette.action.theme', { theme: t('theme.dark') }));
+    expect(enter()).toHaveTextContent(t('palette.hint.apply'));
+    expect(enter()).not.toHaveTextContent(t('palette.hint.open'));
+    await user.clear(box());
+    await user.type(box(), 'switch prod');
+    expect(active()).toHaveTextContent(t('palette.action.switch', { name: 'prod (prod.test:9180)' }));
+    expect(enter()).toHaveTextContent(t('palette.hint.switch'));
+    await user.clear(box());
+    await user.type(box(), 'manage');
+    expect(enter()).toHaveTextContent(t('palette.hint.open'));
+  });
+
   it('typing, then a list arriving above, keeps the first row typed for highlighted: Enter opens it, not a neighbour', async () => {
     let release = () => {};
     const gate = new Promise<undefined>((resolve) => {
@@ -311,6 +345,68 @@ describe('moving through the results', () => {
     expect(active()).toHaveTextContent(/^web-pool-2/);
     await user.keyboard('{Enter}');
     await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('upstreams', 'u2')}`));
+  });
+
+  describe('the highlighted row stays in view when rows arrive above it', () => {
+    const scrolled = vi.fn<(this: Element, arg?: boolean | ScrollIntoViewOptions) => void>();
+    beforeAll(() => {
+      // jsdom has no layout, and no scrollIntoView: record who asks to be shown.
+      Element.prototype.scrollIntoView = function (this: Element, arg?: boolean | ScrollIntoViewOptions) {
+        scrolled.call(this, arg);
+      };
+    });
+    afterAll(() => {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    });
+
+    /** Upstreams web-pool and web-pool-2 found by "web"; the routes (web-a, web-b) held until `release`. */
+    async function heldRoutes() {
+      let release = () => {};
+      const gate = new Promise<undefined>((resolve) => {
+        release = () => resolve(undefined);
+      });
+      const app = await open('#/upstreams', {
+        objects: { routes: ROUTES, upstreams: [...UPSTREAMS, { id: 'u2', name: 'web-pool-2', nodes: [] }] },
+        replies: { routes: (req) => (req.url.searchParams.get('page_size') === '500' ? gate : undefined) },
+      });
+      await openPalette(app.user);
+      await app.user.type(box(), 'web');
+      await screen.findByRole('option', { name: /^web-pool-2/ });
+      return { ...app, release };
+    }
+    const shown = () => scrolled.mock.contexts;
+
+    it('typed: the first row, pushed down by the routes, is scrolled back into view', async () => {
+      const { release } = await heldRoutes();
+      expect(active()).toHaveTextContent(/^web-pool$|^web-pool[^-]/);
+      scrolled.mockClear();
+      release();
+      await screen.findByRole('option', { name: /^web-a/ });
+      expect(active()).toHaveTextContent(/^web-pool$|^web-pool[^-]/);
+      await waitFor(() => expect(shown()).toContain(active()));
+    });
+
+    it('after ArrowDown: the chosen row, pushed down by the routes, is scrolled back into view', async () => {
+      const { user, release } = await heldRoutes();
+      await user.keyboard('{ArrowDown}');
+      expect(active()).toHaveTextContent(/^web-pool-2/);
+      scrolled.mockClear();
+      release();
+      await screen.findByRole('option', { name: /^web-a/ });
+      expect(active()).toHaveTextContent(/^web-pool-2/);
+      await waitFor(() => expect(shown()).toContain(active()));
+    });
+
+    it('a row the pointer highlighted is not scrolled under the pointer, but is brought back when rows push it away', async () => {
+      const { user, release } = await heldRoutes();
+      scrolled.mockClear();
+      await user.hover(screen.getByRole('option', { name: /^web-pool-2/ }));
+      expect(active()).toHaveTextContent(/^web-pool-2/);
+      expect(shown()).toEqual([]);
+      release();
+      await screen.findByRole('option', { name: /^web-a/ });
+      await waitFor(() => expect(shown()).toContain(active()));
+    });
   });
 
   it('after Enter navigates, focus is on the page it opened', async () => {

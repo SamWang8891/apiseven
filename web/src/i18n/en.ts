@@ -90,6 +90,8 @@ export const en: Record<string, string> = {
   'palette.hint.move': 'move',
   'palette.hint.open': 'open',
   'palette.hint.expand': 'show all',
+  'palette.hint.apply': 'apply',
+  'palette.hint.switch': 'switch',
   'palette.hint.newTab': 'new tab',
   'palette.hint.close': 'close',
   'palette.hint.slash': 'opens search',

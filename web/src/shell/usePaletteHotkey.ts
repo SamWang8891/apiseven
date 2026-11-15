@@ -49,10 +49,11 @@ export function usePaletteHotkey(toggle: () => void, open: () => void, isOpen: (
   });
   useEffect(() => {
     const onCapture = (e: KeyboardEvent) => {
-      if (e.repeat || e.altKey || e.shiftKey || !isK(e) || !modHeld(e)) return;
-      // The key never reaches the browser (its search or address bar), even when it does nothing here.
+      if (e.altKey || e.shiftKey || !isK(e) || !modHeld(e)) return;
+      // The key never reaches the browser (its search or address bar), even when it does nothing here:
+      // not its repeats while held, which do nothing here either.
       e.preventDefault();
-      if (!handlers.current.isOpen() && overlayOpen()) return;
+      if (e.repeat || (!handlers.current.isOpen() && overlayOpen())) return;
       e.stopPropagation();
       handlers.current.toggle();
     };

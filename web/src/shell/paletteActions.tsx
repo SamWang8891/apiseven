@@ -21,6 +21,8 @@ export interface PaletteAction extends Action {
   icon: ReactNode;
   /** The page it opens (a hash-route path), when it only navigates: Cmd/Ctrl-Enter opens it in a new tab. */
   href?: string;
+  /** What Enter does, for the footer's hint: open a page, apply a setting, switch connection. */
+  enter: 'open' | 'apply' | 'switch';
 }
 
 /** How an action leaves the palette: navigating (the page it opens takes focus), or staying (focus goes back). */
@@ -72,6 +74,7 @@ function buildActions({ kinds, host, readOnly, list, active, serverManaged, list
     return {
       id: `go:${kind}`,
       group: 'goTo',
+      enter: 'open',
       label: t('palette.action.goTo', { plural: t(`kind.${kind}.plural`) }),
       keywords: t('palette.keywords.goTo'),
       icon: <ArrowRight size={15} />,
@@ -87,6 +90,7 @@ function buildActions({ kinds, host, readOnly, list, active, serverManaged, list
         return {
           id: `new:${kind}`,
           group: 'create',
+          enter: 'open',
           label: t('page.new', { kind: t(`kind.${kind}.singular`) }),
           keywords: t('palette.keywords.new'),
           icon: <Plus size={15} />,
@@ -104,6 +108,7 @@ function buildActions({ kinds, host, readOnly, list, active, serverManaged, list
             (c): PaletteAction => ({
               id: `conn:${c.id}`,
               group: 'connections',
+              enter: 'switch',
               label: t('palette.action.switch', { name: connectionLabel(c) }),
               keywords: `${t('palette.keywords.switch')} ${hostOf(c.baseUrl)}`,
               icon: <Server size={15} />,
@@ -113,6 +118,7 @@ function buildActions({ kinds, host, readOnly, list, active, serverManaged, list
         {
           id: 'conn:manage',
           group: 'connections',
+          enter: 'open',
           label: t('palette.action.manage'),
           keywords: t('palette.keywords.manage'),
           icon: <Settings2 size={15} />,
@@ -125,6 +131,7 @@ function buildActions({ kinds, host, readOnly, list, active, serverManaged, list
     ({ value, icon }): PaletteAction => ({
       id: `theme:${value}`,
       group: 'theme',
+      enter: 'apply',
       label: t('palette.action.theme', { theme: t(`theme.${value}`) }),
       keywords: t('palette.keywords.theme'),
       icon,

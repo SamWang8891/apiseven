@@ -14,9 +14,10 @@ import { kindFromSegment, pathFor } from '../router/paths';
 import { Dialog } from '../ui';
 import { NAV_KINDS } from './nav';
 import { usePaletteActions, type ActionGroup, type PaletteAction } from './paletteActions';
+import { PaletteHints } from './PaletteHints';
 import { PaletteRow, type Row } from './PaletteRow';
 import { entriesOf, KIND_ORDER, search, searchActions, type Entry, type Hit } from './search';
-import { isMac, modHeld, overlayOpen } from './usePaletteHotkey';
+import { modHeld, overlayOpen } from './usePaletteHotkey';
 import type { PaletteExit } from './usePalette';
 import './palette.css';
 
@@ -228,9 +229,15 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
   const listId = `${base}-list`;
   const optionId = (key: string) => `${base}-${encodeURIComponent(key)}`;
   const activeId = activeRow ? optionId(activeRow.key) : undefined;
+  // The highlighted row is in view whenever Enter would act on it: scrolled to when it changes (unless
+  // the pointer chose it, under the pointer), and whenever rows arriving above or below move it.
+  const shownAt = useRef<{ id?: string; index: number }>({ index: -1 });
   useEffect(() => {
-    if (activeId !== undefined && scrolls) document.getElementById(activeId)?.scrollIntoView?.({ block: 'nearest' });
-  }, [activeId, scrolls]);
+    const last = shownAt.current;
+    shownAt.current = { id: activeId, index: active };
+    const moved = last.id === activeId ? last.index !== active : scrolls;
+    if (activeId !== undefined && moved) document.getElementById(activeId)?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeId, active, scrolls]);
 
   function run(row: Row, newTab: boolean) {
     if (row.type === 'more') {
@@ -356,42 +363,10 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         <div className="cp-sr-only" role="status">
           {announced}
         </div>
-        <Hints enter={activeRow?.type === 'more' ? 'expand' : 'open'} newTab={hrefOf(activeRow) !== undefined} slash={!onListPage(pathname)} />
+        <PaletteHints row={activeRow} newTab={hrefOf(activeRow) !== undefined} slash={!onListPage(pathname)} />
       </div>
     </Dialog>
   );
 }
 
 const NO_KINDS: readonly Kind[] = [];
-
-/** The keys that work on the active row (what Enter does there), and "/" where it opens the palette. */
-function Hints({ enter, newTab, slash }: { enter: 'open' | 'expand'; newTab: boolean; slash: boolean }) {
-  return (
-    <div className="cp-hints" aria-hidden="true">
-      <span>
-        <kbd>{t('palette.key.move')}</kbd>
-        {t('palette.hint.move')}
-      </span>
-      <span>
-        <kbd>{t('palette.key.enter')}</kbd>
-        {t(`palette.hint.${enter}`)}
-      </span>
-      {newTab && (
-        <span>
-          <kbd>{t(isMac() ? 'palette.key.modEnter.mac' : 'palette.key.modEnter.other')}</kbd>
-          {t('palette.hint.newTab')}
-        </span>
-      )}
-      <span>
-        <kbd>{t('palette.key.esc')}</kbd>
-        {t('palette.hint.close')}
-      </span>
-      {slash && (
-        <span>
-          <kbd>{t('palette.key.slash')}</kbd>
-          {t('palette.hint.slash')}
-        </span>
-      )}
-    </div>
-  );
-}
