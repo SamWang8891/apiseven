@@ -12,6 +12,7 @@ import type { TabDef } from '../resources/registry';
 import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
 import { Section } from '../resources/Section';
+import { SchemaForm } from '../schema-form/SchemaForm';
 import { Input, NumberInput, TagInput, usePending } from '../ui';
 import { getToasts } from '../ui/toast';
 
@@ -156,6 +157,38 @@ describe('a refusal focuses the field that holds input', () => {
     await user.click(main().getByRole('button', { name: 'Part' }));
     expect(main().getByRole('button', { name: 'Part' })).toHaveAttribute('aria-expanded', 'true');
     expect(main().getByRole('textbox', { name: 'held' })).toHaveFocus();
+  });
+});
+
+// Fix round 1, F6: the field typed in when a hold's message last changed may not be the one that holds.
+describe('a refusal never focuses a field that holds nothing', () => {
+  const LIMITS: TabDef = {
+    id: 'limits',
+    label: 'Limits',
+    fields: ['limits'],
+    render: ({ draft, setDraft }) => (
+      <SchemaForm
+        name="limits"
+        schema={{ type: 'object', properties: { limits: { type: 'object', additionalProperties: { type: 'integer' } } } }}
+        value={{ limits: draft.limits }}
+        onChange={(v) => setDraft({ ...draft, limits: (v as Obj | undefined)?.limits })}
+      />
+    ),
+  };
+
+  it("a map row without a key, then a rename of another row's key: a refused Save focuses the row without a key", async () => {
+    undo.push(overrideDef('routes', { tabs: [LIMITS, GENERAL_TAB] }));
+    const { user } = await openEditor('#/routes/r1', { objects: { routes: [{ ...ROUTE, limits: { a: 1, b: 2 } }] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await user.click(await main().findByRole('button', { name: t('sf.map.add') }));
+    await user.type(main().getByRole('spinbutton', { name: t('sf.map.valueOfEntry', { n: 3 }) }), '7');
+    const key1 = main().getByRole('textbox', { name: t('sf.map.keyOf', { n: 1 }) });
+    await user.clear(key1);
+    await user.type(key1, 'c');
+    await user.tab();
+    await user.click(button(t('editor.save')));
+    expect(main().getByRole('textbox', { name: t('sf.map.keyOf', { n: 3 }) })).toHaveFocus();
   });
 });
 

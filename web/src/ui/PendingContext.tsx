@@ -117,12 +117,22 @@ function typingIn(): HTMLElement | undefined {
 
 /**
  * Where a refusal puts focus in `container`: the field that holds the entry's input (the one whose
- * message is told), else the first flagged field, which may be one with a validation problem.
+ * message is told). The field recorded with the entry (typed in when its message last changed) is
+ * it only while it is flagged itself (a holder marks the input that holds with aria-invalid: addendum
+ * 2); a sibling row's edit can re-word a hold, so otherwise the first flagged field in the nearest
+ * part around the recorded one that has one (its row, its table, its form). Without a recorded field,
+ * the first flagged one in `container`, which may be one with a validation problem.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- a helper of the entries this module reports
 export function heldField(entry: PendingEntry | undefined, container: HTMLElement | null | undefined): HTMLElement | undefined {
   const element = entry?.element;
-  if (element?.isConnected && container?.contains(element)) return element;
+  if (container && element?.isConnected && container.contains(element)) {
+    if (element.getAttribute('aria-invalid') === 'true') return element;
+    for (let part = element.parentElement; part; part = part === container ? null : part.parentElement) {
+      const flagged = part.querySelector<HTMLElement>('[aria-invalid="true"]');
+      if (flagged) return flagged;
+    }
+  }
   return container?.querySelector<HTMLElement>('[aria-invalid="true"]') ?? undefined;
 }
 

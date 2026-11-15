@@ -169,6 +169,23 @@ describe('the upstream editor', () => {
       expect(hostN(1)).toHaveValue('10.0.0.9:');
     });
 
+    // Fix round 1, F6: an edit of one row re-words another row's hold; the refusal goes to the row that holds.
+    it('row 3 held as a duplicate of row 1; row 1 retyped re-words that hold: a refused Save focuses row 3, not row 1', async () => {
+      const MAPPED = { ...POOL, nodes: { 'a:80': 1, 'b:80': 1, 'c:80': 1 } };
+      const { user } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [MAPPED] } });
+      await main().findByRole('heading', { level: 1, name: 'web-pool' });
+      await user.keyboard('e');
+      await user.clear(await waitFor(() => hostN(3)));
+      await user.type(hostN(3), 'a');
+      expect(hostN(3)).toHaveAttribute('aria-invalid', 'true');
+      await user.clear(hostN(1));
+      await user.type(hostN(1), 'a');
+      expect(hostN(1)).not.toHaveAttribute('aria-invalid');
+      expect(hostN(3)).toHaveAttribute('aria-invalid', 'true');
+      await user.click(main().getByRole('button', { name: t('editor.save') }));
+      expect(hostN(3)).toHaveFocus();
+    });
+
     it('a stored host holding a port: click in, Tab out: nothing changes, the page is not unsaved', async () => {
       const STORED = { ...POOL, nodes: [{ host: '10.0.0.5:8080', port: 80, weight: 1 }] };
       const { user } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [STORED] } });
