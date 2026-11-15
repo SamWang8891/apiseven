@@ -69,6 +69,20 @@ describe('opening and closing', () => {
     expect(search).toHaveValue('');
   });
 
+  it('Esc when what had focus before the palette is gone: focus goes to the main area, not body (Task 16b, item 136; fix round 1, F2)', async () => {
+    const { user } = await open();
+    await screen.findByRole('searchbox', { name: t('table.search.label', { plural: t('kind.routes.plural') }) });
+    // An element outside React that had focus, gone by the time the palette closes.
+    const gone = document.createElement('button');
+    document.body.append(gone);
+    gone.focus();
+    await openPalette(user);
+    gone.remove();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
+  });
+
   it('Ctrl-K inside the palette closes it (it toggles)', async () => {
     const { user } = await open();
     await openPalette(user);

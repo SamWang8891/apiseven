@@ -50,13 +50,19 @@ export function usePalette(main: RefObject<HTMLElement | null>) {
   const isOpen = useCallback(() => shown.current, []);
   usePaletteHotkey(toggle, show, isOpen);
 
+  /** Focus back where it was before the palette opened, or to `main` when that element is gone (Task 16b, item 136). */
+  const restore = useCallback(() => {
+    const el = returnTo.current;
+    if (el?.isConnected) el.focus();
+    else main.current?.focus({ preventScroll: true });
+  }, [main]);
+
   // Closed without leaving: focus goes back where it was (the kit Dialog has no trigger to return to).
   useEffect(() => {
     if (open || after.current !== 'restore') return;
     after.current = undefined;
-    const el = returnTo.current;
-    if (el?.isConnected && nothingFocused()) el.focus();
-  }, [open]);
+    if (nothingFocused()) restore();
+  }, [open, restore]);
 
   // A palette navigation went through: the page it opened takes focus, unless something on it has.
   const location = useLocation();
@@ -83,17 +89,13 @@ export function usePalette(main: RefObject<HTMLElement | null>) {
       if (!sawQuestion.current) return;
       after.current = undefined;
       observer.disconnect();
-      const active = document.activeElement;
-      if (!(nothingFocused() || active === main.current)) return;
-      const el = returnTo.current;
-      if (el?.isConnected) el.focus();
-      else main.current?.focus({ preventScroll: true });
+      if (nothingFocused() || document.activeElement === main.current) restore();
     };
     const observer = new MutationObserver(settle);
     observer.observe(document.body, { childList: true });
     settle();
     return () => observer.disconnect();
-  }, [open, main]);
+  }, [open, main, restore]);
 
   // A connection switch rides on its navigation (switchState): done once that navigation is through.
   const navigate = useNavigate();
