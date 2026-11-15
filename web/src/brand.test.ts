@@ -34,6 +34,11 @@ describe('index.html', () => {
     );
   });
 
+  // Behind apiseven's Basic auth: browsers fetch a manifest without credentials unless asked to.
+  it('fetches the manifest with credentials', () => {
+    expect(head.querySelector('link[rel="manifest"]')?.getAttribute('crossorigin')).toBe('use-credentials');
+  });
+
   it('has no href that starts with /, and each one names a file in public/', () => {
     const hrefs = [...html.matchAll(/\bhref\s*=\s*["']([^"']*)["']/gi)].map((m) => m[1] ?? '');
     expect(hrefs.length).toBeGreaterThanOrEqual(5);
