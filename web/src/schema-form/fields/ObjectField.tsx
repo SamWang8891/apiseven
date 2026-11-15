@@ -3,10 +3,10 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj } from '../../schema/refs';
-import { PendingScope, useHeld } from '../../ui';
+import { PendingScope, refuseHeld, useHeld, type PendingEntry } from '../../ui';
 import { isWide, type ObjectNode } from '../analyze';
 import { useErrorBelow, useFieldError, useFieldId, useLatest } from '../context';
-import { isEmpty, joinPath, objectView, setKey, type Block, type Key, type Shown } from '../model';
+import { isEmpty, joinPath, objectView, setKey, type Block, type Key, type ObjectView, type Shown } from '../model';
 import { ErrorLine, FieldLabel, RequiredMark } from './chrome';
 import { NodeField } from './NodeField';
 import type { FieldProps } from './types';
@@ -29,12 +29,33 @@ function Fields({ fields, value, path, onChange }: { fields: Shown[]; value: Obj
   ));
 }
 
-function CondBlock({ block, value, path, onChange }: { block: Block; value: Obj; path: string; onChange: (name: Key, v: unknown) => void }) {
+/** A condition's block, as React tells it from the others (its key in ObjectBody): a field is remounted when its block's key changes. */
+const blockKey = (block: Block): string => `if:${block.caption}:${block.fields[0]?.prop.key ?? ''}`;
+
+/** A field of a block, for what it holds: its block's key and its own. */
+const heldKey = (block: string, field: string): string => `${block}\n${field}`;
+
+/** Every field a view shows in a condition's block, by heldKey. */
+const blockFields = (view: ObjectView): Set<string> => new Set(view.blocks.flatMap((b) => b.fields.map((f) => heldKey(blockKey(b), f.prop.key))));
+
+function CondBlock({ block, value, path, onChange, track }: {
+  block: Block;
+  value: Obj;
+  path: string;
+  onChange: (name: Key, v: unknown) => void;
+  /** What each field of the block holds (ObjectBody refuses a change that would hide one that holds). */
+  track: (key: string, entries: PendingEntry[]) => void;
+}) {
+  const own = blockKey(block);
   return (
     <section className="sf-cond" aria-label={block.caption}>
       <p className="sf-cond__caption">{block.caption}</p>
       <div className="sf-grid">
-        <Fields fields={block.fields} value={value} path={path} onChange={onChange} />
+        {block.fields.map((field) => (
+          <PendingScope key={field.prop.key} onChange={(entries) => track(heldKey(own, field.prop.key), entries)}>
+            <Fields fields={[field]} value={value} path={path} onChange={onChange} />
+          </PendingScope>
+        ))}
       </div>
     </section>
   );
@@ -86,33 +107,55 @@ function Note({ text }: { text: string }) {
 
 /**
  * The fields of an object: its own (required first), then those its conditions bring in under a
- * caption, then a note naming the keys of the value that no field shows (kept as they are).
+ * caption, then a note naming the keys of the value that no field shows (kept as they are). A change
+ * that would hide a condition's field holding input it has not emitted (choosing `local` while a
+ * redis field holds "-") is refused: a toast names that field and focus goes to it (final wave D2;
+ * addendum 9: a control holding input is never hidden but by an explicit discard).
  */
 export function ObjectBody({ node, value, path, emit }: { node: ObjectNode; value: unknown; path: string; emit: (next: Obj) => void }) {
   const obj = isObj(value) ? value : NONE;
   const view = useMemo(() => objectView(node, obj), [node, obj]);
   const latestRef = useLatest(obj);
   const emitRef = useLatest(emit);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  /** What the fields of the conditions' blocks hold, by heldKey (only those that hold anything). */
+  const holding = useRef(new Map<string, PendingEntry[]>());
+  const track = useCallback((key: string, entries: PendingEntry[]) => {
+    if (entries.length > 0) holding.current.set(key, entries);
+    else holding.current.delete(key);
+  }, []);
   const onChild = useCallback(
     (key: Key, v: unknown) => {
       const next = setKey(latestRef.current, String(key), v);
+      if (holding.current.size > 0) {
+        // Only fields shown now count (one gone some other way told no one), and of those, any the change hides.
+        const now = blockFields(objectView(node, latestRef.current));
+        const then = blockFields(objectView(node, next));
+        for (const [at, entries] of holding.current) {
+          if (!now.has(at)) holding.current.delete(at);
+          else if (!then.has(at) && entries[0]) {
+            refuseHeld(entries[0], bodyRef.current);
+            return;
+          }
+        }
+      }
       latestRef.current = next;
       emitRef.current(next);
     },
-    [latestRef, emitRef],
+    [latestRef, emitRef, node],
   );
   const many = (keys: string[], one: string, other: string) =>
     t(keys.length === 1 ? one : other, { count: keys.length, keys: keys.join(', ') });
 
   return (
-    <div className="sf-body">
+    <div className="sf-body" ref={bodyRef}>
       {view.hint !== undefined && <p className="sf-hint">{view.hint}</p>}
       <div className="sf-grid">
         {arrange(view.fields, view.blocks).map((item) =>
           'prop' in item ? (
             <Fields key={item.prop.key} fields={[item]} value={obj} path={path} onChange={onChild} />
           ) : (
-            <CondBlock key={`if:${item.caption}:${item.fields[0]?.prop.key ?? ''}`} block={item} value={obj} path={path} onChange={onChild} />
+            <CondBlock key={blockKey(item)} block={item} value={obj} path={path} onChange={onChild} track={track} />
           ),
         )}
       </div>

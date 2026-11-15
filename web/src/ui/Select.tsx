@@ -150,9 +150,10 @@ export function Select({
                   type="button"
                   className="ui-select__clear"
                   aria-label={t('ui.select.clear')}
-                  onClick={() => {
+                  onClick={(e) => {
                     onChange(undefined);
-                    triggerRef.current?.focus();
+                    // Unless the change put focus elsewhere (a refusal naming the field to fix).
+                    if (document.activeElement === e.currentTarget) triggerRef.current?.focus();
                   }}
                 >
                   <X aria-hidden="true" size={14} />
@@ -173,6 +174,11 @@ export function Select({
             }}
             onCloseAutoFocus={(e) => {
               e.preventDefault();
+              // Back to the trigger, unless the choice put focus elsewhere on purpose (a refusal moves it to
+              // the field to fix: schema-form ObjectBody): the list is gone by now, so focus that is not on
+              // body was put there.
+              const now = document.activeElement;
+              if (now instanceof HTMLElement && now !== document.body && now.isConnected) return;
               triggerRef.current?.focus();
             }}
             onKeyDown={escapeFallback(() => setOpen(false))}

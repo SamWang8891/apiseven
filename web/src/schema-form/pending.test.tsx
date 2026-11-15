@@ -2,7 +2,7 @@
 // (a number that doesn't parse, refused tag text, a withheld map row, JSON that doesn't parse or is
 // not the schema's type) is declared through usePending, named by the field's dotted path (after
 // the form's `name`, when it has one).
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
@@ -439,5 +439,39 @@ describe('a map keeps its renderer while it holds input', () => {
     expect(key1).toHaveValue('X-New');
     expect(form.held()).toEqual([]);
     expect(form.value()).toEqual({ headers: { add: { 'X-New': 'v' } } });
+  });
+});
+
+// Final wave D2: a change to what an if / then / else depends on would unmount the branch, and with it
+// a field holding unfinished input. It is refused, naming that field, and focus goes to it.
+describe('a change that would hide a condition’s fields holding input is refused', () => {
+  it('limit-count (3.20): policy redis, "-" in redis_port, choose local → refused, the toast names redis_port and focus goes to it; cleared, local is taken', async () => {
+    const form = renderSchemaForm(schemaOf('limit-count'), { count: 1, time_window: 60, policy: 'redis', redis_host: 'r.example' }, { name: 'limit-count' });
+    const port = screen.getByRole('spinbutton', { name: /^redis_port/ });
+    await form.user.type(port, '-');
+    const held = t('ui.pending.notNumber', { field: 'limit-count.redis_port', text: '-' });
+    expect(form.held()).toEqual([held]);
+    const policy = screen.getByRole('combobox', { name: /^policy/ });
+    await form.user.click(policy);
+    await form.user.click(await screen.findByRole('option', { name: 'local' }));
+
+    expect(getToasts().at(-1)?.message).toBe(t('ui.pending.refused', { message: held }));
+    expect(form.value()).toMatchObject({ policy: 'redis' });
+    expect(screen.getByRole('spinbutton', { name: /^redis_port/ })).toBe(port);
+    expect(port).toHaveValue('-');
+    expect(form.held()).toEqual([held]);
+    await waitFor(() => expect(port).toHaveFocus());
+
+    // The same through the select's clear button (policy then reads its default, local).
+    await form.user.click(screen.getByRole('button', { name: t('ui.select.clear') }));
+    expect(form.value()).toMatchObject({ policy: 'redis' });
+    await waitFor(() => expect(port).toHaveFocus());
+
+    // Resolved, the change is taken.
+    await form.user.clear(port);
+    await form.user.click(policy);
+    await form.user.click(await screen.findByRole('option', { name: 'local' }));
+    expect(form.value()).toMatchObject({ policy: 'local' });
+    expect(screen.queryByRole('spinbutton', { name: /^redis_port/ })).not.toBeInTheDocument();
   });
 });

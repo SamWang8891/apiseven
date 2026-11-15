@@ -139,6 +139,23 @@ export function heldField(entry: PendingEntry | undefined, container: HTMLElemen
 /** Set while one refusal is being told: a tab strip asks twice per click (mousedown, then focus). */
 let refusing = false;
 
+/**
+ * Tells that a change is refused because `entry`'s field holds input: a toast with its message (once
+ * per task), and focus on that field in `container` (heldField). For a part that refuses a change
+ * itself (a condition's fields that would be hidden: schema-form ObjectBody); useHeld().refuse does
+ * the same for a part that hides its fields.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a helper of the entries this module reports
+export function refuseHeld(entry: PendingEntry, container: HTMLElement | null): void {
+  heldField(entry, container)?.focus();
+  if (refusing) return;
+  refusing = true;
+  setTimeout(() => {
+    refusing = false;
+  });
+  toast.error(t('ui.pending.refused', { message: entry.message }), { pageBound: true });
+}
+
 export interface Held {
   /** PendingScope's onChange: what the fields inside hold now. */
   track: (entries: PendingEntry[]) => void;
@@ -165,14 +182,7 @@ export function useHeld(): Held {
         flushSync(() => {});
         const first = entries.current[0];
         if (!first) return false;
-        heldField(first, container)?.focus();
-        if (!refusing) {
-          refusing = true;
-          setTimeout(() => {
-            refusing = false;
-          });
-          toast.error(t('ui.pending.refused', { message: first.message }), { pageBound: true });
-        }
+        refuseHeld(first, container);
         return true;
       },
     }),
