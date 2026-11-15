@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net"
@@ -63,6 +64,14 @@ func newUpstream(t *testing.T) *upstream {
 		w.Header().Set("Access-Control-Expose-Headers", "*")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 		w.Header().Set("Content-Type", "application/json")
+		// Something behind the proxy tries to pass for apiseven's own refusal.
+		w.Header().Set("X-Apiseven-Refusal", "header")
+		var code int
+		if _, err := fmt.Sscanf(r.URL.Path, "/apisix/admin/status/%d", &code); err == nil {
+			w.WriteHeader(code)
+			_, _ = io.WriteString(w, `{"error_msg":"apiseven: the upstream says so"}`)
+			return
+		}
 		if r.URL.Path == "/apisix/admin/routes/missing" {
 			w.WriteHeader(404)
 			_, _ = io.WriteString(w, `{"message":"Key not found"}`)
@@ -433,5 +442,79 @@ func proxyEnvChild(t *testing.T) {
 	assertErrorMsg(t, w, 502, "apiseven: cannot reach the APISIX Admin API at apisix.invalid:9180: ")
 	if !strings.Contains(w.Body.String(), "apisix.invalid") {
 		t.Errorf("502 body %s does not show the direct lookup of the Admin API's name", w.Body)
+	}
+}
+
+func assertRefusal(t *testing.T, label string, w *httptest.ResponseRecorder, reason string) {
+	t.Helper()
+	if got := w.Header().Values("X-Apiseven-Refusal"); len(got) != 1 || got[0] != reason {
+		t.Errorf("%s: X-Apiseven-Refusal %q, want exactly %q", label, got, reason)
+	}
+}
+
+// Every answer the server makes itself on the Admin API path says so, with a reason word the app
+// can rely on (an error_msg starting "apiseven: " could come from anywhere).
+func TestServerRefusalsAreMarked(t *testing.T) {
+	up := newUpstream(t)
+	keyed, _ := server(t, testConfig(t, up.URL, map[string]string{"APISIX_ADMIN_KEY": serverKey}))
+	auth, _ := server(t, basicAuthConfig(t, up.URL))
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	down := "http://" + l.Addr().String()
+	_ = l.Close()
+	unreachable, _ := server(t, testConfig(t, down, nil))
+
+	noHeader := appRequest("GET", "/apisix/admin/routes", nil)
+	noHeader.Header.Del("X-Apiseven-Request")
+	otherOrigin := appRequest("POST", "/apisix/admin/routes", strings.NewReader("{}"))
+	otherOrigin.Header.Set("Origin", "http://evil.example")
+	otherSite := appRequest("POST", "/apisix/admin/routes", strings.NewReader("{}"))
+	otherSite.Header.Set("Sec-Fetch-Site", "cross-site")
+	otherHost := appRequest("GET", "/apisix/admin/routes", nil)
+	otherHost.Host = "evil.example"
+	for _, tc := range []struct {
+		label  string
+		h      http.Handler
+		r      *http.Request
+		status int
+		reason string
+	}{
+		{"no X-Apiseven-Request", keyed, noHeader, 403, "header"},
+		{"another Origin", keyed, otherOrigin, 403, "origin"},
+		{"Sec-Fetch-Site cross-site", keyed, otherSite, 403, "origin"},
+		{"another Host", keyed, otherHost, 403, "host"},
+		{"no Basic auth", auth, appRequest("GET", "/apisix/admin/routes", nil), 401, "auth"},
+		{"a dot segment", keyed, appRequest("GET", "/apisix/admin/../ui/", nil), 404, "path"},
+		{"another method", keyed, appRequest("TRACE", "/apisix/admin/routes", nil), 405, "method"},
+		{"APISIX down", unreachable, appRequest("GET", "/apisix/admin/routes", nil), 502, "upstream"},
+	} {
+		w := serve(tc.h, tc.r)
+		if w.Code != tc.status {
+			t.Errorf("%s: status %d, want %d", tc.label, w.Code, tc.status)
+		}
+		assertRefusal(t, tc.label, w, tc.reason)
+	}
+	if n := up.count(); n != 0 {
+		t.Errorf("%d refused requests reached APISIX", n)
+	}
+}
+
+// What APISIX (or anything behind the proxy) answers is never marked, even when it sends the header.
+func TestProxiedErrorsAreNeverMarked(t *testing.T) {
+	up := newUpstream(t)
+	h, _ := server(t, testConfig(t, up.URL, map[string]string{"APISIX_ADMIN_KEY": serverKey}))
+	for _, path := range []string{"/apisix/admin/status/401", "/apisix/admin/status/403", "/apisix/admin/status/502", "/apisix/admin/routes"} {
+		w := serve(h, appRequest("GET", path, nil))
+		if want := map[bool]int{true: 200}[path == "/apisix/admin/routes"]; want != 0 && w.Code != want {
+			t.Errorf("GET %s = %d", path, w.Code)
+		}
+		if got := w.Header().Values("X-Apiseven-Refusal"); len(got) != 0 {
+			t.Errorf("GET %s (proxied, status %d) carries X-Apiseven-Refusal %q", path, w.Code, got)
+		}
+	}
+	if n := up.count(); n != 4 {
+		t.Errorf("%d requests reached APISIX, want 4", n)
 	}
 }

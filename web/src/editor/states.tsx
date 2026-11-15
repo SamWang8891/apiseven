@@ -1,7 +1,7 @@
 // What the editor page shows instead of an object: while it loads, when it doesn't exist, when the read failed.
 import { ArrowLeft, CircleAlert, SearchX } from 'lucide-react';
 import { Link } from 'react-router';
-import type { ApiError } from '../api/errors';
+import { refusalTitle, type ApiError } from '../api/errors';
 import type { Kind, Parent } from '../api/types';
 import { t } from '../i18n';
 import { registry } from '../resources/registry';
@@ -56,12 +56,14 @@ export function LoadErrorState({ kind, id, error, retrying, onRetry, copying }: 
   useDocumentTitle(copying ? pageTitle(t('page.new', { kind: registry[kind].singular })) : objectTitle(id, registry[kind].singular));
   // Nothing loaded, its own retry: the shell's unreachable banner stands down (api/reachability.ts).
   useOwnUnreachable(error);
+  // Refused by apiseven's own server: headed as that, with its sentence (which names the fix).
+  const refused = error.kind === 'server' ? error.refusal : undefined;
   return (
     <div className="ed-state ed-state--error" role="alert">
       <CircleAlert className="ed-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />
-      <h1>{t('editor.loadFailed', { kind: registry[kind].singular, id })}</h1>
+      <h1>{refused ? refusalTitle(refused) : t('editor.loadFailed', { kind: registry[kind].singular, id })}</h1>
       <Unreached error={error} className="ed-state__body" />
-      <p className="ed-state__message mono">{error.message}</p>
+      <p className="ed-state__message mono">{refused ? refused.message : error.message}</p>
       <Button onClick={onRetry} loading={retrying}>
         {t('table.retry')}
       </Button>

@@ -28,15 +28,15 @@ func (h *handler) serveAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	if !slices.Contains(proxyMethods, r.Method) {
 		w.Header().Set("Allow", strings.Join(proxyMethods, ", "))
-		refuse(w, true, http.StatusMethodNotAllowed, fmt.Sprintf("apiseven: method %s is not allowed", r.Method))
+		refuse(w, true, http.StatusMethodNotAllowed, "method", fmt.Sprintf("apiseven: method %s is not allowed", r.Method))
 		return
 	}
 	if msg := crossOrigin(r); msg != "" {
-		refuse(w, true, http.StatusForbidden, msg)
+		refuse(w, true, http.StatusForbidden, "origin", msg)
 		return
 	}
 	if r.Header.Get("X-Apiseven-Request") != "1" {
-		refuse(w, true, http.StatusForbidden, "apiseven: missing X-Apiseven-Request header")
+		refuse(w, true, http.StatusForbidden, "header", "apiseven: missing X-Apiseven-Request header")
 		return
 	}
 	h.proxy.ServeHTTP(w, r)
@@ -116,6 +116,7 @@ func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 			for name := range securityHeaders {
 				res.Header.Del(name) // already set on the response, once
 			}
+			res.Header.Del(refusalHeader) // only the server's own answers carry it
 			if res.Header.Get("Cache-Control") == "" {
 				res.Header.Set("Cache-Control", "no-store")
 			}
@@ -130,7 +131,7 @@ func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 			if !errors.Is(err, context.Canceled) {
 				logger.Warn("cannot reach the APISIX Admin API", "admin", target.Host, "error", err.Error())
 			}
-			refuse(w, true, http.StatusBadGateway, fmt.Sprintf("apiseven: cannot reach the APISIX Admin API at %s: %v", target.Host, err))
+			refuse(w, true, http.StatusBadGateway, "upstream", fmt.Sprintf("apiseven: cannot reach the APISIX Admin API at %s: %v", target.Host, err))
 		},
 	}
 }

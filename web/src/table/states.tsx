@@ -1,6 +1,6 @@
 import { CircleAlert, Inbox, SearchX } from 'lucide-react';
 import { useId } from 'react';
-import type { ApiError } from '../api/errors';
+import { refusalTitle, type ApiError } from '../api/errors';
 import type { Kind, Parent } from '../api/types';
 import { t } from '../i18n';
 import { registry } from '../resources/registry';
@@ -52,12 +52,14 @@ export function NoMatchState({ plural, onClear }: { plural: string; onClear: () 
  */
 export function ErrorState({ plural, error, onRetry }: { plural: string; error: ApiError; onRetry?: () => void }) {
   useOwnUnreachable(error);
+  // Refused by apiseven's own server: headed as that, with its sentence (which names the fix).
+  const refused = error.kind === 'server' ? error.refusal : undefined;
   return (
     <div className="tbl-state tbl-state--error" role="alert">
       <CircleAlert className="tbl-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />
-      <h2>{t('table.error', { plural })}</h2>
+      <h2>{refused ? refusalTitle(refused) : t('table.error', { plural })}</h2>
       <Unreached error={error} />
-      <p className="tbl-state__message mono">{error.message}</p>
+      <p className="tbl-state__message mono">{refused ? refused.message : error.message}</p>
       {onRetry && <Button onClick={onRetry}>{t('table.retry')}</Button>}
     </div>
   );

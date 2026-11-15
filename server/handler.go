@@ -96,12 +96,12 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *handler) route(w http.ResponseWriter, r *http.Request) {
 	admin := isAdminPath(r.URL.Path)
 	if !h.hostAllowed(r.Host) {
-		refuse(w, admin, http.StatusForbidden, hostRefusal(r.Host))
+		refuse(w, admin, http.StatusForbidden, "host", hostRefusal(r.Host))
 		return
 	}
 	if h.cfg.basicAuth() && !h.signedIn(r) {
 		w.Header().Set("WWW-Authenticate", `Basic realm="apiseven"`)
-		refuse(w, admin, http.StatusUnauthorized, "apiseven: sign-in required")
+		refuse(w, admin, http.StatusUnauthorized, "auth", "apiseven: sign-in required")
 		return
 	}
 	switch {
@@ -230,17 +230,23 @@ func getOrHead(w http.ResponseWriter, r *http.Request, jsonBody bool) bool {
 		return true
 	}
 	w.Header().Set("Allow", "GET, HEAD")
-	refuse(w, jsonBody, http.StatusMethodNotAllowed, fmt.Sprintf("apiseven: method %s is not allowed here", r.Method))
+	refuse(w, jsonBody, http.StatusMethodNotAllowed, "method", fmt.Sprintf("apiseven: method %s is not allowed here", r.Method))
 	return false
 }
 
 func notFound(w http.ResponseWriter, jsonBody bool) {
-	refuse(w, jsonBody, http.StatusNotFound, "apiseven: not found")
+	refuse(w, jsonBody, http.StatusNotFound, "path", "apiseven: not found")
 }
+
+// refusalHeader marks every answer the server makes itself (never a proxied one: the proxy drops
+// it from APISIX's answers), with one word for why: host, auth, header, origin, path, method, size
+// or upstream. The app tells apiseven's refusals from APISIX's by it, not by the message text.
+const refusalHeader = "X-Apiseven-Refusal"
 
 // refuse writes an error the server itself decided: JSON {"error_msg": …} on the Admin API path,
 // where the app shows error_msg verbatim, plain text elsewhere.
-func refuse(w http.ResponseWriter, jsonBody bool, status int, msg string) {
+func refuse(w http.ResponseWriter, jsonBody bool, status int, reason, msg string) {
+	w.Header().Set(refusalHeader, reason)
 	w.Header().Set("Cache-Control", "no-store")
 	if jsonBody {
 		body, _ := json.Marshal(map[string]string{"error_msg": msg})

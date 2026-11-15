@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { ApiError } from './errors';
+import { ApiError, refusalTitle } from './errors';
 import { isPageOrigin } from './origin';
 import { isObj } from './sanitize';
 import { idSegments, isSegment } from './segments';
@@ -231,11 +231,19 @@ export class AdminClient {
       noteUnreached(this.conn.id, error);
       throw error;
     }
+    const status = res.status;
+    const parsed = parseJson(text);
+    // An answer apiseven's own server made is not the Admin API's: it proves nothing about APISIX, and
+    // "cannot reach APISIX" (kind network) is a request APISIX did not answer (api/reachability.ts).
+    const refusal = this.viaServer ? res.headers.get('X-Apiseven-Refusal') : null;
+    if (refusal) {
+      const error = serverRefusal(refusal, status, parsed);
+      if (error.kind === 'network') noteUnreached(this.conn.id, error);
+      throw error;
+    }
     // An answer, whatever it says: the Admin API is reachable (api/reachability.ts).
     noteAnswered(this.conn.id);
 
-    const status = res.status;
-    const parsed = parseJson(text);
     if (status === 401 || status === 403) {
       const errorMsg = apisixMessage(parsed);
       throw new ApiError('auth', httpMessage(status, errorMsg), { status, errorMsg });
@@ -247,6 +255,16 @@ export class AdminClient {
     }
     return { body: parsed, headers: res.headers };
   }
+}
+
+/**
+ * An answer apiseven's own server made (it marks them X-Apiseven-Refusal; it drops the header from
+ * APISIX's answers): its own kind, not a key problem; `network` when it could not reach APISIX.
+ */
+function serverRefusal(reason: string, status: number, body: unknown): ApiError {
+  const refusal = { reason, message: apisixMessage(body) ?? `HTTP ${status}` };
+  if (reason === 'upstream') return new ApiError('network', `${t('api.server.upstream')}: ${refusal.message}`, { status, refusal });
+  return new ApiError('server', `${refusalTitle(refusal)}: ${refusal.message}`, { status, refusal });
 }
 
 /**

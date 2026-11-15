@@ -3,7 +3,7 @@ import { ArrowLeft, CircleAlert, Server, Trash2, TriangleAlert } from 'lucide-re
 import { useId, useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import { AdminClient } from '../api/client';
-import type { ApiError } from '../api/errors';
+import { refusalTitle, type ApiError } from '../api/errors';
 import type { Connection } from '../api/types';
 import logo from '../assets/logo.png';
 import { t } from '../i18n';
@@ -100,7 +100,11 @@ function SubmitError({ error, baseUrl }: { error: ApiError; baseUrl: string }) {
   switch (error.kind) {
     case 'auth':
       return <Alert title={t('connect.badKey')} detail={error.errorMsg} />;
+    case 'server':
+      return <Alert title={error.refusal ? refusalTitle(error.refusal) : t('api.server.refused')} detail={error.refusal?.message} />;
     case 'network':
+      // apiseven's server could not reach APISIX: this browser's address and CORS do not matter.
+      if (error.refusal) return <Alert title={t('api.server.upstream')} detail={error.refusal.message} />;
       return (
         <Alert
           title={t('connect.network', { url: `${baseUrl}/apisix/admin` })}

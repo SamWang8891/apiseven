@@ -1,6 +1,6 @@
 // What stopped the last save, for the banner above the tabs: APISIX's refusal, or the editor's own
 // when a create's id is taken or could not be checked (saveResource never overwrites).
-import type { ApiError } from '../api/errors';
+import { refusalTitle, type ApiError } from '../api/errors';
 import type { Item, Kind, Parent } from '../api/types';
 import { t } from '../i18n';
 import { registry } from '../resources/registry';
@@ -40,10 +40,12 @@ export function takenFailure(kind: Kind, holder: Item, parent?: Parent, here = f
 }
 
 /**
- * A save that failed: APISIX's refusal, shown verbatim; or the client's own, never sent for an id the
- * Admin API's path can't hold (api/segments.ts), named as not sent.
+ * A save that failed: APISIX's refusal, shown verbatim; apiseven's server's, named as its; or the
+ * client's own, never sent for an id the Admin API's path can't hold (api/segments.ts), named as not sent.
  */
 export function saveFailure(error: ApiError, path?: string): Failure {
+  // Refused by apiseven's own server (Docker mode): not APISIX's refusal, and its sentence names the fix.
+  if (error.kind === 'server' && error.refusal) return { title: refusalTitle(error.refusal), message: error.refusal.message };
   const message = error.errorMsg ?? error.message;
   return error.kind === 'refused' ? { title: t('editor.notSent'), message } : { message, path };
 }
