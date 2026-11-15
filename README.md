@@ -419,14 +419,22 @@ The end-to-end suite (Playwright, Chromium) drives the built app (`vite preview`
 APISIX and checks what it stores through the Admin API and what it does through the gateway:
 
 ```sh
-make dev-up && make docker && make single   # the dev stack, the image and the single file it also tests
-make e2e                                    # cd web && npm run e2e (npm run e2e:ui for the UI mode)
+cd web && npx playwright install chromium   # once: the browser the suite drives
+make dev-up                                 # the dev stack
+make e2e                                    # builds the single file and the image, then runs the suite
 ```
 
+`make e2e` builds what it tests (`make single`, and `make docker` for the image `$(IMAGE)`,
+`apiseven:local` unless you pass `IMAGE=…`) and requires proxy mode to run. `cd web && npm run e2e`
+(or `npm run e2e:ui`) runs the suite alone: then the image and `web/dist-single/apiseven.html` are
+whatever was built last, and the proxy-mode and single-file specs are skipped, with the reason printed,
+when either is missing. The suite builds and serves the app itself (`vite preview`); it does not reuse
+a server already on the port unless `E2E_REUSE_SERVER=1`.
+
 It resets the APISIX it points at to the seed data (`node dev/seed.mjs --reset`) before it starts,
-and checks at the end that it holds exactly the seed again. The proxy-mode specs run the Docker image
-on APISIX's Docker network; they and the single-file specs are skipped, with the reason, when the
-image or the file is missing. By default it uses the dev stack; these variables point it elsewhere:
+and checks at the end that it holds exactly the seed again, every object as seeded. The proxy-mode
+specs run the Docker image on APISIX's Docker network. By default it uses the dev stack; these
+variables point it elsewhere:
 
 | Variable | Default |
 |---|---|
@@ -438,6 +446,8 @@ image or the file is missing. By default it uses the dev stack; these variables 
 | `E2E_DOCKER_NETWORK` | `apiseven-dev_default` (APISIX's Docker network) |
 | `E2E_DOCKER_ADMIN_URL` | `http://apisix:9180` (the Admin API as seen on that network) |
 | `E2E_IMAGE` | `apiseven:local` (`make docker IMAGE=…` builds under another tag) |
+| `E2E_REUSE_SERVER` | unset: build and serve the app; `1`: use whatever already answers on the preview port |
+| `E2E_REQUIRE_PROXY` | unset: skip proxy mode without Docker or the image; `1` (as `make e2e` sets): fail |
 
 The routes the suite creates proxy to the dev stack's etcd (`etcd:2379`, which answers `/version`),
 so it needs no other upstream and no internet access.

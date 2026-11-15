@@ -17,8 +17,12 @@
 //   E2E_DOCKER_NETWORK    APISIX's Docker network (proxy mode)       apiseven-dev_default
 //   E2E_DOCKER_ADMIN_URL  the Admin API as seen on that network      http://apisix:9180
 //   E2E_IMAGE             the apiseven image (proxy mode)            apiseven:local (make docker)
+//   E2E_REUSE_SERVER=1    reuse a server already on the preview port (default: build and start the
+//                         suite's own, and fail if the port is taken)
+//   E2E_REQUIRE_PROXY=1   a missing Docker or image fails proxy mode instead of skipping it (make e2e)
 // proxy-mode.spec.ts needs Docker and that image; single-file.spec.ts needs `npm run build:single`.
-// Each skips with the reason when what it needs is missing.
+// Each skips with the reason (printed) when what it needs is missing. Chromium must be installed:
+// `npx playwright install chromium`.
 import { defineConfig } from '@playwright/test';
 import { env } from './e2e/env';
 
@@ -49,10 +53,13 @@ export default defineConfig({
     screenshot: 'only-on-failure',
   },
   projects: [{ name: 'chromium' }],
+  // The suite builds and serves the app it tests. Whatever else answers on the port is not reused
+  // (it may be another checkout's build); Playwright then stops, saying the port is in use: free it,
+  // set E2E_PREVIEW_PORT, or reuse it on purpose with E2E_REUSE_SERVER=1.
   webServer: {
     command: `npm run build && npm run preview -- --host 127.0.0.1 --port ${env.previewPort} --strictPort`,
     url: `${env.baseURL}/`,
-    reuseExistingServer: true,
+    reuseExistingServer: process.env.E2E_REUSE_SERVER === '1',
     timeout: 300_000,
     stdout: 'ignore',
     stderr: 'pipe',

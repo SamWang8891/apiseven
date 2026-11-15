@@ -32,11 +32,12 @@ test: | $(WEB_DEPS)
 	cd web && npm test
 	cd server && go test ./...
 
-# The Playwright suite against the dev stack (make dev-up first). It resets the dev APISIX to the seed.
-# proxy-mode needs `make docker`, single-file `make single`; web/playwright.config.ts lists the E2E_*
-# variables that point it at another APISIX.
-e2e:
-	cd web && npm run e2e
+# The Playwright suite against the dev stack (make dev-up first; Chromium: cd web && npx playwright
+# install chromium). It resets the dev APISIX to the seed. It builds what it tests: the single file and
+# the image $(IMAGE), which proxy mode then requires. web/playwright.config.ts lists the E2E_* variables
+# that point it at another APISIX.
+e2e: single docker
+	cd web && E2E_IMAGE=$(IMAGE) E2E_REQUIRE_PROXY=1 npm run e2e
 
 # bin/apiseven: the server with the web build embedded (server/dist is a copy of web/dist).
 build: | $(WEB_DEPS)
