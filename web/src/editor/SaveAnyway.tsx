@@ -7,21 +7,22 @@
 // the confirmation, asked once per editing session; this file draws the offer and the question.
 import { ShieldQuestion } from 'lucide-react';
 import { t } from '../i18n';
-import { Button, ConfirmDialog } from '../ui';
+import { ConfirmDialog } from '../ui';
 import type { SaveAnyway } from './useSaveAnyway';
 
-/** The offer, above the tabs: what stands in the way, and Save anyway. `busy` while a save is out. */
-export function SaveAnywayNotice({ count, kind, busy, onPress }: { count: number; kind: string; busy: boolean; onPress: () => void }) {
+/**
+ * What the offer is, above the tabs; the action itself is Save anyway beside Save in the sticky
+ * header (EditorHeader), which a refusal that scrolls to a field far down never hides. It describes
+ * that button (`ed-anyway-why`).
+ */
+export function SaveAnywayNotice({ count, kind }: { count: number; kind: string }) {
   return (
     <section className="ed-anyway" aria-label={t('editor.anyway.title')}>
       <ShieldQuestion size={16} aria-hidden="true" />
       <div className="ed-anyway__text">
         <p className="ed-anyway__title">{t('editor.anyway.title')}</p>
-        <p>{count === 1 ? t('editor.anyway.bodyOne', { kind }) : t('editor.anyway.bodyMany', { kind, count })}</p>
+        <p id="ed-anyway-why">{count === 1 ? t('editor.anyway.bodyOne', { kind }) : t('editor.anyway.bodyMany', { kind, count })}</p>
       </div>
-      <Button size="sm" disabled={busy} onClick={onPress}>
-        {t('editor.anyway.action')}
-      </Button>
     </section>
   );
 }

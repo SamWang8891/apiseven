@@ -33,6 +33,8 @@ export interface EditorHeaderProps {
   saving: boolean;
   /** Save is impossible (the JSON tab holds text that doesn't parse). */
   saveBlocked: boolean;
+  /** Save anyway, beside Save, while the frame offers it (SaveAnyway.tsx). */
+  onSaveAnyway?: () => void;
   editRef: Ref<HTMLButtonElement>;
   onEdit: () => void;
   onSave: () => void;
@@ -69,8 +71,9 @@ function Times({ item }: { item: Item }) {
 
 /**
  * Left: back to the list, the name, the id (copyable), Locked / Editing, and the status. Under them,
- * the times and "Unsaved changes". Right: Edit while locked; Discard and Save while editing; the ⋯
- * menu for stored objects. Both states keep the same height, so unlocking moves nothing.
+ * the times and "Unsaved changes". Right: Edit while locked; Discard and Save while editing (with
+ * Save anyway between them while it is offered, so it stays in view however far down the refused
+ * field is); the ⋯ menu for stored objects. Both states keep the same height, so unlocking moves nothing.
  */
 export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
   const edit = (
@@ -167,6 +170,11 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
             <Button disabled={p.saving} onClick={p.onDiscard}>
               {t('editor.discard')}
             </Button>
+            {p.onSaveAnyway && (
+              <Button disabled={p.saving} onClick={p.onSaveAnyway} aria-describedby="ed-anyway-why">
+                {t('editor.anyway.action')}
+              </Button>
+            )}
             <Button
               variant="primary"
               loading={p.saving}

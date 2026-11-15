@@ -267,8 +267,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
 
   // Save from the button, Cmd/Ctrl-S, Save anyway or the conflict dialog: after the focused field is left.
   const requestSave = useSaveRequest(bodyRef, save, !saving && !locked);
-  const offered = !locked && !readOnly && attempted && onlyLocal && checked.length > 0;
-  const anyway = useSaveAnyway({ session, offered, checked, shown: shownTabs, tabFields, send: () => requestSave(false, true) });
+  const anyway = useSaveAnyway({ session, offered: !locked && !readOnly && attempted && onlyLocal && checked.length > 0, checked, shown: shownTabs, tabFields, send: () => requestSave(false, true) });
 
   function discard() {
     if (isNew) {
@@ -329,6 +328,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         readOnly={readOnly}
         saving={saving}
         saveBlocked={active === JSON_TAB && pending.length > 0}
+        onSaveAnyway={anyway.offered ? anyway.press : undefined}
         editRef={editRef}
         onEdit={unlock}
         onSave={() => requestSave()}
@@ -340,7 +340,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       />
       <div className="ed-body" ref={bodyRef}>
         {failure && <FailureBanner failure={failure} onShow={showStored} />}
-        {anyway.offered && <SaveAnywayNotice count={checked.length} kind={def.singular} busy={saving} onPress={anyway.press} />}
+        {anyway.offered && <SaveAnywayNotice count={checked.length} kind={def.singular} />}
         {notice}
         {isNew && start?.copy && <CopyNotice notes={start.copy} />}
         {isNew && !def.idFromDraft && fixedId === undefined && (

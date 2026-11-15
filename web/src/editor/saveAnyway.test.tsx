@@ -56,7 +56,8 @@ async function setUri(user: User, uri: string) {
 }
 
 const offer = () => main().queryByRole('region', { name: t('editor.anyway.title') });
-const anywayButton = () => within(offer() as HTMLElement).getByRole('button', { name: t('editor.anyway.action') });
+/** Save anyway, in the sticky header beside Save, described by the notice above the tabs. */
+const anywayButton = () => main().getByRole('button', { name: t('editor.anyway.action') });
 const confirmDialog = () => screen.queryByRole('alertdialog', { name: t('editor.anyway.confirmTitle') });
 
 /** Save is refused: no request, the usual toast, and the offer shows. */
@@ -78,6 +79,10 @@ describe('Save anyway', () => {
     expect(offer()).toBeNull();
     await refusedWithOffer(user, admin);
     expect(offer()).toHaveTextContent(t('editor.anyway.bodyOne', { kind: 'Route' }));
+    // The action sits beside Save in the sticky header (in view however far down the refused field
+    // is), described by the notice above the tabs.
+    expect(anywayButton().closest('header')).toContainElement(main().getByRole('button', { name: t('editor.save') }));
+    expect(anywayButton()).toHaveAccessibleDescription(t('editor.anyway.bodyOne', { kind: 'Route' }));
 
     await user.click(anywayButton());
     const dialog = await screen.findByRole('alertdialog', { name: t('editor.anyway.confirmTitle') });
