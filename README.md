@@ -72,7 +72,8 @@ make single          # writes dist/apiseven.html
 ```
 
 Open `dist/apiseven.html` in your browser (double-click it; it works from `file://`, and from any
-web server too). Enter the Admin API address, such as `http://127.0.0.1:9180`, and an admin key.
+web server too). Enter the Admin API address, such as `http://127.0.0.1:9180`, and an admin key
+(see [Admin keys](#admin-keys)).
 apiseven checks them with one small request, then saves the connection in this browser.
 
 The file holds everything (scripts, styles, icons), about 1.8 MB, and loads nothing else. Your
@@ -89,6 +90,27 @@ Unzip `apiseven-static.zip` into any web server's directory, at any path (it use
 and hash routing, so it needs no rewrite rules). Open it and connect as above. The page first asks
 for `config.json` next to itself to find out whether apiseven's own server is behind it; on a plain
 file server that request answers 404, which is expected.
+
+## Admin keys
+
+apiseven has no users of its own: it acts with an APISIX admin key. The keys are in APISIX's
+`config.yaml`; each has a role, `admin` (read and write) or `viewer` (read only, which apiseven
+shows as a read-only UI):
+
+```yaml
+deployment:
+  admin:
+    admin_key_required: true    # the default
+    admin_key:
+      - name: admin
+        key: 0f4c2b9e7d1a6c35e8b04f92a7d3c618   # a long random string: openssl rand -hex 16
+        role: admin
+      - name: viewer
+        key: 9b27e04d5c13f8a6b0e49d72c5f18a3e
+        role: viewer
+```
+
+Restart APISIX after changing `config.yaml`. The keys above are examples: make your own.
 
 ## What APISIX must allow (for the browser modes)
 
@@ -135,8 +157,8 @@ docker run --rm -p 127.0.0.1:8080:8080 --read-only --cap-drop ALL \
   apiseven:local
 ```
 
-Open <http://127.0.0.1:8080>. apiseven asks only for the admin key; the server passes it to
-APISIX with each request and never stores or logs it.
+Open <http://127.0.0.1:8080>. apiseven asks only for the admin key ([Admin keys](#admin-keys));
+the server passes it to APISIX with each request and never stores or logs it.
 
 ### The key on the server, with Basic auth
 
@@ -158,6 +180,10 @@ and the browser asks for nothing, so anyone who can open the page has full Admin
 Put Basic auth (or your own authentication) in front of it. Without Basic auth the server logs a
 `WARNING` at start. With Basic auth on, the browser shows the tab icon only after you sign in.
 
+The image runs as UID 65532, so the two files must be readable by that user: `chmod 0444` them,
+or `chown 65532` them and keep `0400`. A `0600` file of your own is unreadable through the mount,
+and apiseven stops with "cannot read … as UID 65532".
+
 ### Joining APISIX's network
 
 `APISIX_ADMIN_URL` is the Admin API as the container reaches it. When APISIX runs in Docker,
@@ -169,7 +195,25 @@ attach apiseven to its network (`docker network ls` lists them; a compose projec
   shows the network's subnet, such as `172.18.0.0/16`; add that.
 
 If APISIX's Admin API is unreachable, proxied requests answer `502` with a message naming the
-address and the error, and the app shows it.
+address and the error, and the app says "APISIX can't be reached from the apiseven server" with
+that message.
+
+### An `https://` Admin API
+
+With an `https://` `APISIX_ADMIN_URL`, apiseven checks APISIX's certificate against the image's CA
+bundle and the host name in the URL; the check cannot be switched off. APISIX's `https_admin`
+usually has a certificate from a private CA: mount that CA's certificate and point `SSL_CERT_FILE`
+at it (the file may hold just that CA):
+
+```sh
+  -v "$PWD/apisix-ca.pem:/etc/apiseven/apisix-ca.pem:ro" \
+  -e SSL_CERT_FILE=/etc/apiseven/apisix-ca.pem \
+  -e APISIX_ADMIN_URL=https://apisix:9180 \
+```
+
+The certificate must name the host in `APISIX_ADMIN_URL` (here `apisix`). apiseven presents no
+client certificate, so an Admin API that requires one (`admin_api_mtls.admin_ssl_ca_cert`) is not
+supported.
 
 ### With compose
 
@@ -194,9 +238,10 @@ To serve apiseven under a name, for example `https://apisix-admin.example.com`:
   }
   ```
 
-  nginx's default sends the upstream's own address instead. apiseven then refuses saves with
-  "refused a request from another origin", because the page's origin no longer matches the
-  `Host`, and its host name check (below) sees only that address, so it cannot stop DNS rebinding.
+  nginx's default sends the upstream's own address instead. apiseven then refuses saves (the app
+  says "The apiseven server refused this request: … refused a request from another origin"),
+  because the page's origin no longer matches the `Host`, and its host name check (below) sees
+  only that address, so it cannot stop DNS rebinding.
 - Without Basic auth, set `ALLOWED_HOSTS=apisix-admin.example.com`: by default apiseven answers
   only requests for IP addresses and `localhost`.
 - apiseven serves plain HTTP. Use HTTPS in front of it whenever the page is not on `localhost`:
@@ -217,6 +262,11 @@ with a message naming the variable.
 | `BASIC_AUTH_PASSWORD` | The Basic auth password. Setting only one of user and password is an error. |
 | `BASIC_AUTH_PASSWORD_FILE` | A file holding the password; wins over `BASIC_AUTH_PASSWORD`. Trimmed like the key file. |
 | `ALLOWED_HOSTS` | Optional. Comma-separated host names (no scheme, no port) apiseven may be opened under, besides IP addresses and `localhost`. `*` turns the check off. Not needed with Basic auth. |
+| `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Ignored on purpose: apiseven always connects to `APISIX_ADMIN_URL` directly, never through a forward proxy (Docker can set these in every container). |
+| `SSL_CERT_FILE` | Optional. A CA certificate (PEM) to trust for an `https://` Admin API; see [An `https://` Admin API](#an-https-admin-api). |
+
+Errors about a variable name it and say what is wrong, but never repeat a key, a password, or
+anything in a URL beyond `scheme://host:port`.
 
 The server answers:
 
@@ -224,7 +274,21 @@ The server answers:
 - `/config.json`: `{"adminBase":"apisix/admin","keyRequired":true}`, which tells the app it is
   behind apiseven's server and whether to ask for a key.
 - `/apisix/admin` and everything under it: the Admin API proxy (`GET`, `HEAD`, `POST`, `PUT`,
-  `PATCH`, `DELETE`, `OPTIONS`).
+  `PATCH`, `DELETE`, `OPTIONS`; bodies up to 16 MiB). Every request must carry the header
+  `X-Apiseven-Request: 1`, which the app sends and other web pages cannot (see
+  [Security notes](#security-notes)). From a script:
+
+  ```sh
+  # key on the server
+  curl -H 'X-Apiseven-Request: 1' http://127.0.0.1:8080/apisix/admin/routes
+  # key in the browser mode: send the key too; with Basic auth add -u admin:<password>
+  curl -H 'X-Apiseven-Request: 1' -H 'X-API-KEY: <admin key>' http://127.0.0.1:8080/apisix/admin/routes
+  ```
+
+  Answers the server makes itself (a refused request, or `502` when APISIX cannot be reached)
+  carry `X-Apiseven-Refusal` with a one-word reason (`header`, `origin`, `host`, `auth`, `path`,
+  `method`, `size`, `upstream`) and a JSON `error_msg`; APISIX's own answers pass through without
+  it.
 - `/healthz`: `ok`, without authentication. `apiseven -healthcheck` requests it from the server at
   `LISTEN` and exits 0 when healthy; the image and `compose.yaml` use it as the health check.
 
@@ -243,19 +307,35 @@ output, except for `/healthz`.
   refused write and shows the connection as read-only until the page is reloaded.
 - **Other web pages cannot use the proxy.** It requires a custom header that a page on another
   origin cannot send without permission the server never gives, and it refuses requests whose
-  `Origin` or `Sec-Fetch-Site` says they come from another site. It also answers only requests for
-  IP addresses, `localhost` and the names in `ALLOWED_HOSTS` (any name once Basic auth is on), so
-  an attacker's domain that resolves to your apiseven (DNS rebinding) gets nothing.
+  `Origin` names another host or port, or whose `Sec-Fetch-Site` is `cross-site` or `same-site`
+  (a sibling subdomain is another origin too). It also answers only requests for IP addresses,
+  `localhost` and the names in `ALLOWED_HOSTS` (any name once Basic auth is on), so an attacker's
+  domain that resolves to your apiseven (DNS rebinding) gets nothing.
 - **What reaches APISIX and the logs.** The browser's `Authorization` (Basic auth) and cookies are
-  never forwarded to APISIX. The server never logs keys, credentials, query strings or request
-  bodies.
-- **Content Security Policy.** In Docker mode every response carries a policy that allows scripts,
-  styles, images, fonts and connections from apiseven's own origin only (plus inline styles for
-  the code editor, and `data:` images and fonts), forbids framing, and allows `eval`, which the
-  schema checker (Ajv) needs: it turns each plugin schema your APISIX reports into a function at
-  run time.
-- **The single file carries no Content Security Policy:** its scripts are inline and nothing sends
-  it headers. It holds no key; the key you type stays in that browser.
+  never forwarded to APISIX, and the connection to APISIX never goes through `HTTP_PROXY`. The
+  server never logs or prints keys, credentials, query strings or request bodies, not even in an
+  error about a malformed setting.
+- **Content Security Policy (Docker mode).** Every response from apiseven's server carries:
+
+  ```
+  default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline';
+  img-src 'self' data:; font-src 'self' data:; connect-src 'self'; manifest-src 'self';
+  frame-ancestors 'none'; base-uri 'self'; form-action 'self'
+  ```
+
+  - `script-src 'self' 'unsafe-eval'`: scripts load only from apiseven's own origin; inline and
+    foreign scripts are blocked. `'unsafe-eval'` lets scripts already running in the page turn
+    text into code (`eval`, `new Function`). It is there because the form validator (Ajv)
+    compiles each JSON schema your APISIX reports into a function, in the browser; without it the
+    plugin forms lose their checks and their conditional fields.
+  - `style-src 'self' 'unsafe-inline'`: stylesheets from apiseven's origin, and any inline style
+    (style elements and attributes), which the code editor and the app's components set.
+  - `connect-src 'self'`: the page may connect only to apiseven itself; in Docker mode it never
+    calls APISIX directly.
+  - Images and fonts come from apiseven or `data:` URLs; no site may frame the page.
+- **The static folder and the single file have no such header at all:** no server of apiseven's
+  sends them headers (the static folder gets whatever your web server adds). The single file's
+  scripts are inline. It holds no key; the key you type stays in that browser.
 
 ## Supported APISIX versions
 
@@ -276,7 +356,9 @@ Known limitations:
 - A viewer key is recognised only when a write is refused.
 - The browser's checks of plugin configs cover what JSON Schema can express; some of APISIX's own
   checks run only when you save.
-- Some smaller issues found in review are still open; they are tracked for the next releases.
+- In Docker mode the Content Security Policy allows `'unsafe-eval'`, for the form validator (see
+  [Security notes](#security-notes)). Dropping it needs a validator that checks schemas without
+  generating code.
 
 ## Development
 

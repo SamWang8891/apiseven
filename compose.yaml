@@ -37,7 +37,13 @@ services:
       # served as https://apisix-admin.example.com:
       # ALLOWED_HOSTS: apisix-admin.example.com
 
+      # An https:// Admin API with a certificate from a private CA: mount the CA certificate
+      # (volumes: ["./apisix-ca.pem:/etc/apiseven/apisix-ca.pem:ro"]) and name it here.
+      # SSL_CERT_FILE: /etc/apiseven/apisix-ca.pem
+
       # LISTEN: ":8080"
+    # The image runs as UID 65532: each secret file must be readable by it (chmod 0444, or chown
+    # 65532 and keep 0400); a 0600 file of your own stops apiseven with "cannot read … as UID 65532".
     # secrets:
     #   - apisix_admin_key
     #   - apiseven_password
