@@ -460,6 +460,27 @@ describe('the other optional columns', () => {
   it('websocket: Yes or No', () => {
     expect(value('websocket', route({ enable_websocket: true }))).toBe(true);
     expect(value('websocket', route({}))).toBe(false);
+    expect(cell('websocket', route({ enable_websocket: true })).el).toHaveTextContent(t('ui.yes'));
+  });
+
+  // Final wave E5: unset on the route, APISIX takes the service's setting (apisix/init.lua 1017, 1046–1047).
+  it("websocket: the service's setting when the route has none of its own; loading… until the services are in", () => {
+    const services = ctxOf({ services: [itemOf('ws', { enable_websocket: true }), itemOf('plain')] });
+    const shown = (item: Item, ctx: Ctx) => {
+      const view = cell('websocket', item, ctx);
+      const text = view.el.textContent;
+      view.unmount();
+      return text;
+    };
+    expect(value('websocket', route({ service_id: 'ws' }), services)).toBe(true);
+    expect(shown(route({ service_id: 'ws' }), services)).toBe(t('ui.yes'));
+    expect(value('websocket', route({ service_id: 'ws', enable_websocket: false }), services)).toBe(false);
+    expect(value('websocket', route({ service_id: 'plain' }), services)).toBe(false);
+    expect(value('websocket', route({ service_id: 'ws' }), ctxOf({ loaded: { services: false } }))).toBeUndefined();
+    expect(shown(route({ service_id: 'ws' }), ctxOf({ loaded: { services: false } }))).toBe(t('picker.loading'));
+    expect(shown(route({ service_id: 'ws' }), ctxOf({ loaded: { services: false }, failed: { services: true } }))).toBe(t('cell.websocketUnknown'));
+    // Its own setting needs no service.
+    expect(value('websocket', route({ service_id: 'ws', enable_websocket: true }), ctxOf({ loaded: { services: false } }))).toBe(true);
   });
 
   it('ssl_expiry: the soonest certificate expiry among the hosts', () => {

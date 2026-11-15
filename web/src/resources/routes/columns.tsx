@@ -66,6 +66,19 @@ function soonestExpiry(route: Obj, ctx: Ctx): number | undefined {
   return soonest;
 }
 
+/**
+ * Whether APISIX upgrades WebSocket for the route: its own `enable_websocket`, else (unset) its
+ * service's, else off (apisix/init.lua 1017, 1046–1047); `loading` / `unknown` while the service's
+ * setting can't be known yet / at all.
+ */
+function websocketOf(route: Obj, ctx: Ctx): boolean | 'loading' | 'unknown' {
+  if (route.enable_websocket !== undefined) return route.enable_websocket === true;
+  const service = resolveRef('services', route.service_id, ctx);
+  if (!service) return false;
+  if (!ctx.loaded.services) return ctx.failed.services ? 'unknown' : 'loading';
+  return service.item?.value.enable_websocket === true;
+}
+
 /** A referenced object's name (else its id); undefined when the field is unset. */
 export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx: Ctx): string | undefined {
   const target = resolveRef(kind, field, ctx);
@@ -301,7 +314,16 @@ export const routeColumns: ColumnDef[] = [
     get header() {
       return t('column.websocket');
     },
-    accessor: (item) => item.value.enable_websocket === true,
+    accessor: (item, ctx) => {
+      const on = websocketOf(item.value, ctx);
+      return typeof on === 'boolean' ? on : undefined;
+    },
+    cell: (item, ctx) => {
+      const on = websocketOf(item.value, ctx);
+      if (on === 'loading') return <span className="cell-muted">{t('picker.loading')}</span>;
+      if (on === 'unknown') return <span className="cell-muted">{t('cell.websocketUnknown')}</span>;
+      return t(on ? 'ui.yes' : 'ui.no');
+    },
     defaultVisible: false,
     width: 110,
   },

@@ -218,6 +218,7 @@ export const en: Record<string, string> = {
   'cell.plugin.notRunRouteWhy': "the route's script runs instead of plugins",
   'cell.plugin.notRunServiceWhy': "the service's script takes over: APISIX runs it instead of plugins",
   'cell.pluginsUnknown': 'unknown (Services didn’t load)',
+  'cell.websocketUnknown': 'unknown (Services didn’t load)',
   'cell.plugin.fromService': 'From service {name}',
   'cell.plugin.fromPluginConfig': 'From plugin config {name}',
   'cell.copyId': 'Copy ID {id}',
