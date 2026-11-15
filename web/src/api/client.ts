@@ -1,5 +1,7 @@
+import { t } from '../i18n';
 import { ApiError } from './errors';
 import { isObj } from './sanitize';
+import { idSegments, isSegment } from './segments';
 import type { Connection, Item, Kind, Obj, Parent, PluginInfo } from './types';
 
 /**
@@ -232,20 +234,27 @@ export class AdminClient {
   }
 }
 
+/**
+ * An id the path can't hold (api/segments.ts): the call fails before any request, as "not found" for
+ * a read (status 404), and as a refusal naming the id for a write (kind 'refused').
+ */
+function unaddressable(id: string): ApiError {
+  const message = t('api.notAddressable', { id });
+  return new ApiError('refused', message, { status: 404, errorMsg: message });
+}
+
 function collectionPath(kind: Kind, parent?: Parent): string {
   if (kind !== 'credentials') return kind;
   if (!parent) throw new Error('credentials need a parent consumer');
+  if (!isSegment(parent.consumer)) throw unaddressable(parent.consumer);
   return `consumers/${encodeURIComponent(parent.consumer)}/credentials`;
 }
 
+/** The one place a resource's path is built: every id part must stay one segment (a secret's id is <manager>/<id>: two). */
 function itemPath(kind: Kind, id: string, parent?: Parent): string {
-  const slash = id.indexOf('/');
-  // A secret's ID is <manager>/<id>: two path segments.
-  const encoded =
-    kind === 'secrets' && slash > 0
-      ? `${encodeURIComponent(id.slice(0, slash))}/${encodeURIComponent(id.slice(slash + 1))}`
-      : encodeURIComponent(id);
-  return `${collectionPath(kind, parent)}/${encoded}`;
+  const parts = idSegments(kind, id);
+  if (!parts) throw unaddressable(id);
+  return `${collectionPath(kind, parent)}/${parts.map(encodeURIComponent).join('/')}`;
 }
 
 /** Reads `{total, list}`. An empty list arrives as `{}`: an empty Lua table encodes as a JSON object. */

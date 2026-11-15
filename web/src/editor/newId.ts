@@ -6,6 +6,7 @@
 // "<manager>/<id>") has each of its segments checked instead. A missing id, or one the kind's id rule
 // refuses (ResourceDef.idProblem: a consumer's username pattern too), is the frame's refusal as well,
 // never one of the kind's validation issues that Save anyway could send past. Pure.
+import { isSegment } from '../api/segments';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import type { ResourceDef } from '../resources/registry';
@@ -15,8 +16,8 @@ type IdRules = Pick<ResourceDef, 'idFromDraft' | 'idMode' | 'idProblem' | 'idWit
 /** Why `id` would not stay what it is in the Admin API's path, or undefined. */
 export function segmentProblem(id: string, withSlash = false): string | undefined {
   const segments = withSlash ? id.split('/') : [id];
-  const bad = (segment: string) => segment === '.' || segment === '..' || (!withSlash && segment.includes('/'));
-  return segments.some(bad) ? t('editor.id.segment', { id }) : undefined;
+  // An empty part is the kind's own rule's to name (a secret's "Enter the ID after the manager").
+  return segments.some((segment) => segment !== '' && !isSegment(segment)) ? t('editor.id.segment', { id }) : undefined;
 }
 
 export interface NewIdState {

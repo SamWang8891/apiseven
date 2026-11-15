@@ -4,8 +4,9 @@
  * - network: no response at all (offline, refused, or blocked by CORS)
  * - http: any other error status with a JSON body
  * - parse: the response is not the JSON the Admin API sends (e.g. an HTML error page)
+ * - refused: never sent, as the id would not stay one path segment (api/segments.ts); status 404
  */
-export type ApiErrorKind = 'auth' | 'network' | 'http' | 'parse';
+export type ApiErrorKind = 'auth' | 'network' | 'http' | 'parse' | 'refused';
 
 export class ApiError extends Error {
   readonly kind: ApiErrorKind;

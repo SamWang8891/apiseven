@@ -39,6 +39,15 @@ export function takenFailure(kind: Kind, holder: Item, parent?: Parent, here = f
   };
 }
 
+/**
+ * A save that failed: APISIX's refusal, shown verbatim; or the client's own, never sent for an id the
+ * Admin API's path can't hold (api/segments.ts), named as not sent.
+ */
+export function saveFailure(error: ApiError, path?: string): Failure {
+  const message = error.errorMsg ?? error.message;
+  return error.kind === 'refused' ? { title: t('editor.notSent'), message } : { message, path };
+}
+
 /** A create refused because whether the id is free could not be checked. */
 export function uncheckedFailure(id: string, error: ApiError): Failure {
   return { title: t('editor.taken.title'), message: t('editor.taken.unchecked', { id, error: error.errorMsg ?? error.message }) };

@@ -57,14 +57,15 @@ describe('ListPage', () => {
   });
 
   it('Edit opens the editor and Duplicate the create page with ?from=<encoded id>', async () => {
-    const { user } = await open('#/routes', { objects: { routes: [{ id: 'a/b', name: 'slashy' }] } });
+    // An id with a slash names no object since fix round 2 (R4); one with a space still needs encoding.
+    const { user } = await open('#/routes', { objects: { routes: [{ id: 'a b', name: 'slashy' }] } });
     await rowAction(user, 'slashy', t('action.duplicate'));
-    await waitFor(() => expect(window.location.hash).toBe('#/routes/new?from=a%2Fb'));
+    await waitFor(() => expect(window.location.hash).toBe('#/routes/new?from=a%20b'));
     window.history.back();
     // The copy is unsaved work (a duplicate starts dirty), so leaving it asks first.
     await user.click(await screen.findByRole('button', { name: t('editor.leave.confirm') }));
     await rowAction(user, 'slashy', t('action.edit'));
-    await waitFor(() => expect(window.location.hash).toBe('#/routes/a%2Fb'));
+    await waitFor(() => expect(window.location.hash).toBe('#/routes/a%20b'));
   });
 
   it('View JSON shows the stored value, pretty-printed, and copies it', async () => {

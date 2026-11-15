@@ -179,11 +179,12 @@ describe('requests', () => {
     const { api, calls } = setup((call) =>
       call.url.includes('page=') ? json({ total: 0, list: [] }) : json({ key: '/apisix/x/y', value: { id: 'y' } }),
     );
-    await api.get('consumers', 'a b/c?');
+    // An id with a slash is never sent (R4, below); everything else is encoded.
+    await api.get('consumers', 'a b%c?');
     await api.get('secrets', 'vault/my id');
     await api.list('credentials', { consumer: 'jo e' });
     expect(calls.map((c) => c.url)).toEqual([
-      `${ADMIN}/consumers/a%20b%2Fc%3F`,
+      `${ADMIN}/consumers/a%20b%25c%3F`,
       `${ADMIN}/secrets/vault/my%20id`,
       `${ADMIN}/consumers/jo%20e/credentials?page=1&page_size=500`,
     ]);
@@ -429,5 +430,59 @@ describe('supports', () => {
   it('rethrows auth and network failures', async () => {
     const { api } = setup(() => json({ error_msg: 'failed to check token' }, 401));
     expect((await apiError(api.supports('routes'))).kind).toBe('auth');
+  });
+});
+
+describe('an id that is not one path segment is never sent (fix round 2, R4)', () => {
+  const ok = () => json({ key: '/apisix/routes/r1', value: { id: 'r1' } });
+
+  it.each([
+    ['routes', 'r1/x'],
+    ['routes', '..'],
+    ['routes', '.'],
+    ['upstreams', ''],
+    ['consumers', 'a/credentials/k0'],
+    ['plugin_metadata', '..'],
+    ['ssls', 'a%2Fb/c'],
+    ['secrets', 'vault/..'],
+    ['secrets', 'vault'],
+    ['secrets', 'vault/a/b'],
+    ['secrets', '../a'],
+  ] as const)('%s %s: reads and writes fail before any request, as not found, naming the id', async (kind, id) => {
+    const { api, calls } = setup(ok);
+    // create(kind, body, '') is a create without an id (POST or PUT to the collection), so '' is not tried there.
+    const calls_ = [() => api.get(kind, id), () => api.replace(kind, id, {}), () => api.remove(kind, id), ...(id === '' ? [] : [() => api.create(kind, {}, id)])];
+    for (const call of calls_) {
+      const error = await apiError(call());
+      expect(error.kind).toBe('refused');
+      expect(error.status).toBe(404);
+      expect(error.errorMsg).toContain(id);
+    }
+    if (kind !== 'consumers' && kind !== 'plugin_metadata') await apiError(api.patch(kind, id, {}));
+    expect(calls).toEqual([]);
+  });
+
+  it.each([
+    ['a/credentials/k0', 'k1'],
+    ['..', 'k1'],
+    ['', 'k1'],
+    ['alice', '..'],
+    ['alice', 'a/b'],
+  ])('credentials of consumer "%s", id "%s": refused before any request (the consumer is judged too)', async (consumer, id) => {
+    const { api, calls } = setup(ok);
+    const parent = { consumer };
+    await apiError(api.get('credentials', id, parent));
+    await apiError(api.replace('credentials', id, {}, parent));
+    await apiError(api.remove('credentials', id, parent));
+    if (consumer !== 'alice') await apiError(api.list('credentials', parent));
+    expect(calls).toEqual([]);
+  });
+
+  it('what is one segment goes as before: a secret is two, encoded each', async () => {
+    const { api, calls } = setup((call) => json({ key: `/apisix/${call.url.split('/apisix/admin/')[1] ?? ''}`, value: {} }));
+    await api.get('secrets', 'vault/my id');
+    await api.get('credentials', 'k.1', { consumer: 'alice' });
+    await api.get('routes', 'a..b');
+    expect(calls.map((c) => c.url.replace(ADMIN, ''))).toEqual(['/secrets/vault/my%20id', '/consumers/alice/credentials/k.1', '/routes/a..b']);
   });
 });

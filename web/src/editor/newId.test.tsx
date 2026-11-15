@@ -13,6 +13,8 @@ import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
 import { pluginReplies } from '../test/plugins';
 import { getToasts } from '../ui/toast';
+import { ApiError } from '../api/errors';
+import { saveFailure } from './failure';
 import { newIdState, segmentProblem } from './newId';
 
 const undo: (() => void)[] = [];
@@ -46,6 +48,14 @@ describe('segmentProblem and newIdState', () => {
     expect(newIdState(consumer, { username: 'a/b' }, { isNew: true, newId: '' })).toMatchObject({ createId: 'a/b', refused: 'bad' });
     // A stored object's id is not judged.
     expect(newIdState(consumer, { username: 'a/b' }, { isNew: false, newId: '' })).toMatchObject({ missing: false, refused: undefined });
+  });
+});
+
+describe('the API client is the last line (fix round 2, R4)', () => {
+  it("a write it refused is named as not sent, not as APISIX's refusal", () => {
+    const error = new ApiError('refused', 'nothing sent', { status: 404, errorMsg: '"a/b" can’t be an ID' });
+    expect(saveFailure(error)).toEqual({ title: t('editor.notSent'), message: '"a/b" can’t be an ID' });
+    expect(saveFailure(new ApiError('http', 'HTTP 400', { status: 400, errorMsg: 'bad' }), 'uri')).toEqual({ message: 'bad', path: 'uri' });
   });
 });
 

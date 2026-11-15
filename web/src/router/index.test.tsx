@@ -14,7 +14,7 @@ async function mainRegion() {
 
 describe('editor routes', () => {
   const cases: { kind: Kind; id: string; parent?: Parent; adminPath: string }[] = [
-    { kind: 'routes', id: 'a/b', adminPath: 'routes/a%2Fb' },
+    // An id with a slash is Not found since fix round 2 (R4, under "unknown paths").
     { kind: 'routes', id: 'a b?c#d%', adminPath: 'routes/a%20b%3Fc%23d%25' },
     { kind: 'secrets', id: 'vault/my id', adminPath: 'secrets/vault/my%20id' },
     { kind: 'credentials', id: 'c 1', parent: { consumer: 'jo e' }, adminPath: 'consumers/jo%20e/credentials/c%201' },
@@ -69,6 +69,20 @@ describe('unknown paths', () => {
     // The shell is still there.
     expect(screen.getByRole('navigation', { name: t('shell.nav') })).toBeInTheDocument();
   });
+
+  // An id or a consumer that would not stay one path segment once decoded (fix round 2, R4): Not found,
+  // and no request ever names such a path.
+  for (const hash of ['#/routes/r1%2Fx', '#/routes/..', '#/consumers/a%2Fb/credentials/new', '#/consumers/..%2Froutes/credentials/new', '#/consumers/a%2Fcredentials%2Fk0/credentials/new', '#/consumers/jo/credentials/..']) {
+    it(`${hash} is Not found, and nothing is requested for it`, async () => {
+      saveConnections([DEV_CONN], DEV_CONN.id);
+      const { admin } = renderApp({ hash, objects: { routes: [{ id: 'r1', uri: '/' }], consumers: [{ username: 'jo' }] } });
+      const main = await mainRegion();
+      expect(await main.findByRole('heading', { level: 1, name: t('notFound.title') })).toBeInTheDocument();
+      await new Promise((done) => setTimeout(done, 30));
+      const paths = admin.requests.map((r) => decodeURIComponent(r.url.pathname));
+      expect(paths.filter((p) => /\/(?:r1\/x|\.\.|a\/b|a\/credentials)/.test(p))).toEqual([]);
+    });
+  }
 
   for (const hash of ['#/credentials', '#/nope/x', '#/routes/a/b', '#/consumers/jo/credentials']) {
     it(`${hash} is Not found`, async () => {

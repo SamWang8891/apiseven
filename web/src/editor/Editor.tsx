@@ -18,7 +18,7 @@ import { backOf, ownerPath } from './back';
 import { EditorDialogs } from './EditorDialogs';
 import { useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
-import { takenFailure, uncheckedFailure, type Failure } from './failure';
+import { saveFailure, takenFailure, uncheckedFailure, type Failure } from './failure';
 import { CopyNotice } from './CopyNotice';
 import { FailureBanner } from './FailureBanner';
 import { useHeaderStatus } from './headerStatus';
@@ -265,7 +265,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       const { error } = result;
       if (error.kind === 'auth') markReadOnly();
       const path = pathOfError(error.errorMsg);
-      setFailure({ message: error.errorMsg ?? error.message, path });
+      setFailure(saveFailure(error, path));
       if (path !== undefined) goTab(tabOfIssue({ path, message: '' }, tabFields, JSON_TAB));
     }
   }

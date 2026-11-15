@@ -1,5 +1,6 @@
 // The elements the route table renders: they read the URL params and key the pages by them.
 import { Link, useLocation, useParams } from 'react-router';
+import { idSegments, isSegment } from '../api/segments';
 import { t } from '../i18n';
 import { EditorPage } from '../pages/EditorPage';
 import { ListPage } from '../pages/ListPage';
@@ -36,6 +37,8 @@ export function EditorRoute({ creating }: { creating?: boolean }) {
   const kind = kindFromSegment(params.kind);
   if (!kind) return <NotFound />;
   const id = creating ? undefined : params.id;
+  // An id that would not stay one path segment (decoded: "r1/x", "..") names no object (api/segments.ts).
+  if (id !== undefined && !idSegments(kind, id)) return <NotFound />;
   // Keyed, so opening another object starts a fresh page instead of reusing this one's state.
   return <EditorPage key={`${kind}/${id ?? ''}`} kind={kind} id={id} />;
 }
@@ -43,5 +46,7 @@ export function EditorRoute({ creating }: { creating?: boolean }) {
 export function CredentialRoute({ creating }: { creating?: boolean }) {
   const { username = '', id } = useParams();
   const credentialId = creating ? undefined : id;
+  // The consumer comes from the URL as well: it is judged like the id, or the page would name one object and write another.
+  if (!isSegment(username) || (credentialId !== undefined && !isSegment(credentialId))) return <NotFound />;
   return <EditorPage key={`${username}/${credentialId ?? ''}`} kind="credentials" id={credentialId} parent={{ consumer: username }} />;
 }
