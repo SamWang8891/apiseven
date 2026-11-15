@@ -3,11 +3,11 @@ import { use, useCallback, useState, type ReactNode } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
-import { Button, Input, KeyValueInput, useEditingState, useLocked, usePending } from '../../ui';
+import { Button, Input, KeyValueInput, PendingScope, useEditingState, useLocked, usePending, type PendingEntry } from '../../ui';
 import { changedEntry, commitEntry, entriesOf, entryHeld, entryRefusals, keepHeldRows, type EntryRow, type EntryRules } from '../../ui/entryRows';
 import type { MapNode } from '../analyze';
 import { RowNameContext, useFieldError, useFieldId, useFieldName, useLatest } from '../context';
-import { blankOf, isEmpty, joinPath, mapMode, type Key } from '../model';
+import { blankOf, isEmpty, joinPath, mapMode, mapModeFits, type Key, type MapMode } from '../model';
 import { ErrorLine, FieldLabel, RequiredMark } from './chrome';
 import { useFieldHelp } from './help';
 import { JsonField } from './JsonField';
@@ -220,12 +220,39 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
 }
 
 /**
+ * Which renderer shows the map: the one its value asks for (mapMode), except that one holding input
+ * stays on the page (final wave D3: a removed row could otherwise turn rows into the key/value editor
+ * and unmount another row's unfinished edit). Kept that way, it stays for the editing session (it
+ * still shows the value), so finishing the edit does not swap the field under the keyboard either.
+ */
+function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (entries: PendingEntry[]) => void } {
+  const wanted = mapMode(node, value);
+  /** Whether the renderer on the page holds input (its PendingScope). */
+  const [holds, setHolds] = useState(false);
+  /** A renderer kept over a change while it held input: editing state (Save and Discard end it). */
+  const [kept, setKept] = useEditingState<MapMode | undefined>(undefined);
+  /** The renderer on the page. */
+  const [shown, setShown] = useState(wanted);
+  let mode = kept !== undefined && mapModeFits(node, value, kept) ? kept : wanted;
+  if (mode !== shown) {
+    if (holds && mapModeFits(node, value, shown)) {
+      setKept(shown);
+      mode = shown;
+    } else setShown(mode);
+  }
+  const track = useCallback((entries: PendingEntry[]) => setHolds(entries.length > 0), []);
+  return { mode, track };
+}
+
+/**
  * A map (patternProperties / additionalProperties, or a free-form object): a key/value editor while
  * every entry is text its schema takes; rows of key + field for other values; JSON for entries the
- * value field cannot show. Emptied, it removes its key unless required.
+ * value field cannot show; the renderer stays while it holds input (useMapMode). Emptied, it removes
+ * its key unless required.
  */
 export function MapField(props: FieldProps<MapNode>) {
   const { node, value, name, path, onChange, prop, required, ariaLabel } = props;
+  const { mode, track } = useMapMode(node, value);
   const id = useFieldId(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
@@ -253,9 +280,20 @@ export function MapField(props: FieldProps<MapNode>) {
     </span>
   );
 
-  const mode = mapMode(node, value);
-  if (mode === 'json') return <JsonField {...props} />;
-  if (mode === 'rows') return <MapRows node={node} value={map} path={path} emit={emit} label={label} labelId={labelId} help={help} error={error} />;
+  if (mode === 'json') {
+    return (
+      <PendingScope onChange={track}>
+        <JsonField {...props} />
+      </PendingScope>
+    );
+  }
+  if (mode === 'rows') {
+    return (
+      <PendingScope onChange={track}>
+        <MapRows node={node} value={map} path={path} emit={emit} label={label} labelId={labelId} help={help} error={error} />
+      </PendingScope>
+    );
+  }
 
   const text = Object.fromEntries(Object.entries(map).map(([k, v]) => [k, textOf(v)]));
   const refused = Object.keys(text)
@@ -263,20 +301,22 @@ export function MapField(props: FieldProps<MapNode>) {
     .find((m) => m !== undefined);
   return (
     <div className="sf-map" role="group" aria-labelledby={labelId}>
-      <KeyValueInput
-        label={label}
-        help={help}
-        error={error ?? refused}
-        required={false}
-        mono
-        fieldName={fieldName}
-        value={text}
-        onChange={(next) => {
-          // Entries left as they were keep their stored type (a number stays a number).
-          const typed = Object.fromEntries(Object.entries(next).map(([k, s]) => [k, map[k] !== undefined && textOf(map[k]) === s ? map[k] : s]));
-          emit(typed);
-        }}
-      />
+      <PendingScope onChange={track}>
+        <KeyValueInput
+          label={label}
+          help={help}
+          error={error ?? refused}
+          required={false}
+          mono
+          fieldName={fieldName}
+          value={text}
+          onChange={(next) => {
+            // Entries left as they were keep their stored type (a number stays a number).
+            const typed = Object.fromEntries(Object.entries(next).map(([k, s]) => [k, map[k] !== undefined && textOf(map[k]) === s ? map[k] : s]));
+            emit(typed);
+          }}
+        />
+      </PendingScope>
     </div>
   );
 }

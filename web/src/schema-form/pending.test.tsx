@@ -412,3 +412,32 @@ describe('numbers a double would round are held, never sent rounded', () => {
     expect(form.changes).not.toHaveBeenCalled();
   });
 });
+
+// Final wave D3: a map whose entries change kind (a list removed, the rest all text) would switch from
+// its rows to the key/value editor, unmounting another row's unfinished edit. The renderer stays.
+describe('a map keeps its renderer while it holds input', () => {
+  it('proxy-rewrite headers.add (3.20): clear X-Test’s key, remove X-List: the row stays empty and held, the last good entry kept', async () => {
+    const form = renderSchemaForm(schemaOf('proxy-rewrite'), { headers: { add: { 'X-List': ['a'], 'X-Test': 'v' } } }, { name: 'proxy-rewrite' });
+    const add = group('add');
+    const key2 = add.getByRole('textbox', { name: t('sf.map.keyOf', { n: 2 }) });
+    expect(key2).toHaveValue('X-Test');
+    await form.user.clear(key2);
+    const held = t('ui.pending.noKey', { field: 'proxy-rewrite.headers.add', n: 2 });
+    expect(form.held()).toEqual([held]);
+    await form.user.click(add.getByRole('button', { name: t('sf.map.remove', { key: 'X-List' }) }));
+
+    // The X-Test row is still the one on the page, still empty and held (now the first row).
+    const key1 = group('add').getByRole('textbox', { name: t('sf.map.keyOf', { n: 1 }) });
+    expect(key1).toBe(key2);
+    expect(key1).toHaveValue('');
+    expect(form.held()).toEqual([t('ui.pending.noKey', { field: 'proxy-rewrite.headers.add', n: 1 })]);
+    expect(form.value()).toEqual({ headers: { add: { 'X-Test': 'v' } } });
+
+    // Typed to the end without the field swapping under the keyboard; what shows is what is emitted.
+    await form.user.type(key1, 'X-New');
+    expect(key1).toHaveFocus();
+    expect(key1).toHaveValue('X-New');
+    expect(form.held()).toEqual([]);
+    expect(form.value()).toEqual({ headers: { add: { 'X-New': 'v' } } });
+  });
+});

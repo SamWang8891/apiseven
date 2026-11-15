@@ -146,16 +146,25 @@ function textKinds(node: Node): Set<string> {
   return new Set();
 }
 
+export type MapMode = 'kv' | 'rows' | 'json';
+
+/** Whether a map edited as `mode` can show `value` (JSON shows anything). */
+export function mapModeFits(node: MapNode, value: unknown, mode: MapMode): boolean {
+  if (mode === 'json') return true;
+  if (value !== undefined && !isObj(value)) return false;
+  const entries = Object.values(value ?? {});
+  if (mode === 'rows') return node.value.kind !== 'json' && entries.every((v) => fits(node.value, v));
+  const kinds = textKinds(node.value);
+  return kinds.has('string') && entries.every((v) => kinds.has(jsonType(v) === 'integer' ? 'number' : jsonType(v)));
+}
+
 /**
  * How a map is edited: 'kv' (a key/value editor, when every entry is text the value schema takes),
  * 'rows' (a key and a field per entry), or 'json' (entries the value field cannot show).
  */
-export function mapMode(node: MapNode, value: unknown): 'kv' | 'rows' | 'json' {
-  if (value !== undefined && !isObj(value)) return 'json';
-  const entries = Object.values(value ?? {});
-  const kinds = textKinds(node.value);
-  if (kinds.has('string') && entries.every((v) => kinds.has(jsonType(v) === 'integer' ? 'number' : jsonType(v)))) return 'kv';
-  if (node.value.kind !== 'json' && entries.every((v) => fits(node.value, v))) return 'rows';
+export function mapMode(node: MapNode, value: unknown): MapMode {
+  if (mapModeFits(node, value, 'kv')) return 'kv';
+  if (mapModeFits(node, value, 'rows')) return 'rows';
   return 'json';
 }
 
