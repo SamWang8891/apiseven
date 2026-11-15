@@ -1,7 +1,7 @@
 // The shared "Proxy to" control as the service editor uses it (no service of its own) and as the
 // stream route editor words it. Its route behaviour is covered by routes/tabs.test.tsx, through the
 // route editor's Upstream tab, which is a thin user of it.
-import { screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
@@ -99,6 +99,30 @@ describe('allowService={false} (a service)', () => {
   it('an inline upstream resolves to its nodes', () => {
     service({ upstream: { nodes: [{ host: '10.0.1.20', port: 3000, weight: 1 }] } }, { locked: true });
     expect(screen.getByRole('group', { name: t('rt.up.resolves') })).toHaveTextContent('10.0.1.20:3000');
+  });
+});
+
+describe('an inline upstream left beside an upstream_id: what it means, per kind (fix round 1)', () => {
+  const both = { upstream_id: 'u1', upstream: { nodes: [{ host: 'h', port: 1, weight: 1 }] } };
+  function RouteSource(p: TabProps) {
+    return <UpstreamSourceField draft={p.draft} setDraft={p.setDraft} ctx={p.ctx} issues={p.issues} isNew={p.isNew} kind={p.kind} allowService />;
+  }
+
+  it('a route, and a stream route: APISIX ignores it (its own upstream_id wins, init.lua 724 and 1894)', () => {
+    renderTab('routes', RouteSource, { uri: '/x', ...both }, inlineIssues, { ctx: CTX });
+    expect(screen.getByText(t('rt.up.alsoInline'))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t('rt.up.removeInline') })).toBeInTheDocument();
+    cleanup();
+    renderTab('stream_routes', StreamSource, { server_port: 9100, ...both }, inlineIssues, { ctx: CTX });
+    expect(screen.getByText(t('rt.up.alsoInline'))).toBeInTheDocument();
+  });
+
+  it('a service: its routes use the chosen upstream, its stream routes the inline one; removing says so', async () => {
+    const h = service({ name: 'svc', ...both });
+    expect(screen.getByText(t('svc.up.alsoInline'))).toBeInTheDocument();
+    expect(screen.queryByText(t('rt.up.alsoInline'))).not.toBeInTheDocument();
+    await h.user.click(screen.getByRole('button', { name: t('svc.up.removeInline') }));
+    expect(h.value()).toEqual({ name: 'svc', upstream_id: 'u1' });
   });
 });
 

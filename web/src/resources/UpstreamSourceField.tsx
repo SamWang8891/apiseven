@@ -35,13 +35,44 @@ export interface UpstreamSourceFieldProps {
   kind?: Kind;
 }
 
-/** What "no upstream" means for the object that has none: a route and a stream route can't proxy; a service leaves it to its routes. */
-function noneTexts(allowService: boolean, kind: Kind | undefined): { note: string; resolves: string; broken: boolean; discard: string; discardHeld: string } {
+interface Texts {
+  note: string;
+  resolves: string;
+  broken: boolean;
+  discard: string;
+  discardHeld: string;
+  /** An inline upstream left beside an upstream_id: what it does, and what removing it changes. */
+  alsoInline: string;
+  removeInline: string;
+}
+
+/**
+ * The words that depend on whose upstream this is. A route and a stream route proxy to their own
+ * upstream_id and ignore a leftover inline upstream (apisix/init.lua 724, 1894). A service with both
+ * serves two readers: its routes take the upstream_id (http), its stream routes the inline one
+ * (merge_service_stream_route, plugin.lua 793–799); so it has its own words.
+ */
+function textsOf(allowService: boolean, kind: Kind | undefined): Texts {
   if (!allowService) {
-    return { note: t('svc.up.noneNote'), resolves: t('svc.up.resolvesNone'), broken: false, discard: t('svc.up.discard.body'), discardHeld: t('svc.up.discard.bodyHeld') };
+    return {
+      note: t('svc.up.noneNote'),
+      resolves: t('svc.up.resolvesNone'),
+      broken: false,
+      discard: t('svc.up.discard.body'),
+      discardHeld: t('svc.up.discard.bodyHeld'),
+      alsoInline: t('svc.up.alsoInline'),
+      removeInline: t('svc.up.removeInline'),
+    };
   }
-  const note = kind === 'stream_routes' ? t('sr.up.noneNote') : t('rt.up.noneNote');
-  return { note, resolves: t('rt.up.resolvesNone'), broken: true, discard: t('rt.up.discard.body'), discardHeld: t('rt.up.discard.bodyHeld') };
+  return {
+    note: kind === 'stream_routes' ? t('sr.up.noneNote') : t('rt.up.noneNote'),
+    resolves: t('rt.up.resolvesNone'),
+    broken: true,
+    discard: t('rt.up.discard.body'),
+    discardHeld: t('rt.up.discard.bodyHeld'),
+    alsoInline: t('rt.up.alsoInline'),
+    removeInline: t('rt.up.removeInline'),
+  };
 }
 
 /** What the object's requests go to, as APISIX resolves it: a name, where it comes from, and the nodes in mono. */
@@ -76,7 +107,7 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
   // A service's own `service_id` (only possible through the JSON, and refused by APISIX) is no source.
   const sourced = allowService ? draft : { ...draft, service_id: undefined };
   const derived = sourceOf(sourced);
-  const none = noneTexts(allowService, kind);
+  const texts = textsOf(allowService, kind);
   // A stream route reads a service's upstream, and its own inline one, in the stream subsystem's way.
   const subsystem: Subsystem = kind === 'stream_routes' ? 'stream' : 'http';
   // A choice the draft can't say yet (Existing before one is picked, Inline before a node is typed)
@@ -153,8 +184,8 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
             error={issueAt(issues, '')}
           />
         )}
-        {source === 'none' && !locked && <p className="res-source__note">{none.note}</p>}
-        <Resolves draft={sourced} ctx={ctx} none={none} subsystem={subsystem} />
+        {source === 'none' && !locked && <p className="res-source__note">{texts.note}</p>}
+        <Resolves draft={sourced} ctx={ctx} none={texts} subsystem={subsystem} />
       </div>
 
       {source === 'existing' && (
@@ -171,10 +202,10 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
           />
           {isObj(draft.upstream) && (
             <div className="res-leftover">
-              <p className="res-source__note">{t('rt.up.alsoInline')}</p>
+              <p className="res-source__note">{texts.alsoInline}</p>
               {!locked && (
                 <Button size="sm" onClick={() => setDraft(setPath(draft, ['upstream'], undefined))}>
-                  {t('rt.up.removeInline')}
+                  {texts.removeInline}
                 </Button>
               )}
             </div>
@@ -200,7 +231,7 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
       <ConfirmDialog
         open={asking !== undefined}
         title={t('rt.up.discard.title')}
-        body={inlineHeld ? none.discardHeld : none.discard}
+        body={inlineHeld ? texts.discardHeld : texts.discard}
         confirmLabel={t('rt.up.discard.confirm')}
         cancelLabel={t('rt.up.discard.cancel')}
         danger

@@ -23,11 +23,11 @@ export function servicePlugins(service: Obj): PluginChip[] {
 }
 
 /**
- * The routes and stream routes that use the service (referencesTo); undefined until the routes have
- * loaded. Stream routes count once theirs have (with stream mode off, there are none to count).
+ * The routes and stream routes that use the service (referencesTo); undefined until both lists have
+ * loaded (with stream mode off, the stream routes count as loaded: there are none).
  */
 export function usersOf(item: Item, ctx: Ctx) {
-  return ctx.loaded.routes ? referencesTo('services', item.id, ctx) : undefined;
+  return ctx.loaded.routes && ctx.loaded.streamRoutes ? referencesTo('services', item.id, ctx) : undefined;
 }
 
 // Headers are getters, so they follow the language table at use (never spread a column). The

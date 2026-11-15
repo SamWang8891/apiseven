@@ -62,6 +62,11 @@ export interface DataTableProps {
   emptyState?: ReactNode;
   /** Replaces the New button's target and text (e.g. "New route in this service" → `#/routes/new?service_id=…`). */
   newLink?: { to: string; label: string };
+  /**
+   * Whether the status column is a switch that writes at once (a list page) or the state in words
+   * (default for an embedded table: one inside an editor never writes with a single click).
+   */
+  statusEditable?: boolean;
 }
 
 const NO_FILTERS: FilterDef[] = [];
@@ -75,7 +80,8 @@ export function DataTable(props: DataTableProps) {
   const { kind, items, columns, ctx, rowActions, bulkActions = [], filters = NO_FILTERS, toolbarExtra, groupBy, parent } = props;
   const def = registry[kind];
   const embedded = props.stateKey !== undefined;
-  const allColumns = useMemo(() => withStatusColumn(kind, def.hasStatus, columns), [kind, def.hasStatus, columns]);
+  const statusEditable = props.statusEditable ?? !embedded;
+  const allColumns = useMemo(() => withStatusColumn(kind, def.hasStatus, columns, statusEditable), [kind, def.hasStatus, columns, statusEditable]);
   const [state, patch, reset] = useTableState(props.stateKey ?? kind, allColumns);
   const [view, setView] = useView(!embedded);
 

@@ -156,6 +156,19 @@ describe('Routes', () => {
     expect(h.router.state.location.pathname).toBe('/routes/web-blog');
   });
 
+  it.each([
+    ['locked', true],
+    ['editing', false],
+  ])('%s: a route\'s status is words only, never a switch; clicking it writes nothing (fix round 1)', async (_, locked) => {
+    const h = tab(RoutesTab, WEB, { locked, admin: { objects: { routes: [{ id: 'web-home', uri: '/*', service_id: 'web', status: 1 }] } } });
+    const routes = await screen.findByRole('region', { name: t('kind.routes.plural') });
+    await within(routes).findByRole('link', { name: 'web-home' });
+    expect(within(routes).queryAllByRole('switch')).toEqual([]);
+    await h.user.click(within(routes).getAllByText(t('table.status.enabled'))[0] as HTMLElement);
+    expect(h.admin.requests.filter((r) => r.method !== 'GET')).toEqual([]);
+    expect(editableControls(routes)).toEqual([]);
+  });
+
   it('locked, the tables are still lists to work with: the service\'s lock is not theirs (page size, columns)', async () => {
     tab(RoutesTab, WEB, { locked: true });
     const routes = await screen.findByRole('region', { name: t('kind.routes.plural') });

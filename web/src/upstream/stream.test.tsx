@@ -51,6 +51,35 @@ describe('Connection, stream', () => {
   });
 });
 
+describe('a stored keepalive pool stays for the editing session (fix round 1, B2)', () => {
+  const pool = (name: string) => screen.getByRole('spinbutton', { name: t(name) });
+
+  it('input held in one field stays when another field of the group is cleared', async () => {
+    const h = renderUpstream({ ...NODES, keepalive_pool: { size: 8 } }, { section: 'connection', subsystem: 'stream' });
+    await h.user.type(pool('up.conn.poolIdle'), 'abc');
+    expect(h.held()).toEqual([t('ui.pending.notNumber', { field: t('up.conn.poolIdle'), text: 'abc' })]);
+    await h.user.clear(pool('up.conn.poolSize'));
+    expect(h.value()).toEqual(NODES);
+    expect(screen.getByRole('group', { name: t('up.conn.pool') })).toBeInTheDocument();
+    expect(pool('up.conn.poolIdle')).toHaveValue('abc');
+    expect(h.held()).toEqual([t('ui.pending.notNumber', { field: t('up.conn.poolIdle'), text: 'abc' })]);
+  });
+
+  it('the size can be backspaced and retyped', async () => {
+    const h = renderUpstream({ ...NODES, keepalive_pool: { size: 8 } }, { section: 'connection', subsystem: 'stream' });
+    await h.user.type(pool('up.conn.poolSize'), '{Backspace}16');
+    expect(h.value()).toEqual({ ...NODES, keepalive_pool: { size: 16 } });
+  });
+
+  it('once the session ends with the pool removed, it is no longer offered', async () => {
+    const h = renderUpstream({ ...NODES, keepalive_pool: { size: 8 } }, { section: 'connection', subsystem: 'stream' });
+    await h.user.clear(pool('up.conn.poolSize'));
+    h.update({ locked: true });
+    h.update({ locked: false });
+    expect(screen.queryByRole('group', { name: t('up.conn.pool') })).not.toBeInTheDocument();
+  });
+});
+
 describe('Load balancing, stream', () => {
   it('hash on: vars and vars_combinations only; slow start is not offered', async () => {
     const h = renderUpstream({ ...NODES, type: 'chash', key: 'remote_addr' }, { section: 'balancing', subsystem: 'stream' });

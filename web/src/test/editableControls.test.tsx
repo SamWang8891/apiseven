@@ -31,4 +31,17 @@ describe('editableControls', () => {
     );
     expect(editableControls(container)).toEqual([]);
   });
+
+  it('skips a list\'s view controls, marked data-view-control (fix round 1), and nothing beside them', () => {
+    const { container } = render(
+      <div>
+        <div data-view-control="">
+          <input type="search" />
+          <button type="button" role="combobox" />
+        </div>
+        <button type="button" role="switch" aria-checked="true" />
+      </div>,
+    );
+    expect(editableControls(container).map((el) => el.getAttribute('role'))).toEqual(['switch']);
+  });
 });

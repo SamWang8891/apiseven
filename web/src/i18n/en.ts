@@ -517,6 +517,7 @@ export const en: Record<string, string> = {
   'pl.picker.added': 'Added',
   'pl.picker.none': 'No plugin matches "{query}".',
   'pl.picker.empty': 'No plugins can be added here.',
+  'pl.inherited.loading': 'Plugins from the service: loading…',
   'pl.inherited.title': 'Also running here',
   'pl.inherited.help': 'Configured on the objects this one uses; edit them there.',
   'pl.inherited.fromService': 'from service',
@@ -933,6 +934,8 @@ export const en: Record<string, string> = {
   // Upstream source wording for the service and stream route editors (web/src/resources/UpstreamSourceField.tsx)
   'svc.up.noneNote': 'Without an upstream here, each route in this service needs its own.',
   'svc.up.resolvesNone': 'None: each route in this service sets its own',
+  'svc.up.alsoInline': "An inline upstream is also set. Routes in this service use the upstream chosen here; its stream routes use the inline one.",
+  'svc.up.removeInline': 'Remove the inline upstream (stream routes then use the one chosen here)',
   'svc.up.discard.body': 'Its nodes and settings are removed from this service.',
   'svc.up.discard.bodyHeld': 'Its nodes and settings are removed from this service, with the input not yet in it.',
   'sr.up.noneNote': 'Without an upstream, APISIX closes the connections this stream route matches.',

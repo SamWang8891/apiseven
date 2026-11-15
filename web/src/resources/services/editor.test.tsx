@@ -87,8 +87,9 @@ describe('the service editor', () => {
     ['an inline upstream', BILLING],
   ])('opened locked (%s), every field tab reads as text: no form controls', async (_, service) => {
     const { user } = await openService(service);
-    // Routes owns no field: it lists other objects, with a search box and menus of their own.
-    for (const label of TAB_LABELS().slice(0, 3)) {
+    // Routes too: its tables write nothing (status in words); their own view controls (search,
+    // columns, pager) mark themselves, as they change only how the list is shown.
+    for (const label of TAB_LABELS().slice(0, 4)) {
       await user.click(tab(label));
       const panel = await settled();
       expect(editableControls(panel), label).toEqual([]);
@@ -139,6 +140,53 @@ describe('a save from each tab sends every field the tab does not own exactly as
     await save(user);
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body).toEqual(loadedWith(WEB, { plugins: { gzip: { comp_level: 5, _meta: { disable: true } } } }));
+  });
+});
+
+describe('a service with an inline upstream: unknown keys at every level survive a save from each tab (fix round 1)', () => {
+  /** As APISIX might hold it from a newer version or another tool: keys no form shows, at the top, in the upstream and in a plugin. */
+  const BILLING_X: Obj = {
+    id: 'billing',
+    name: 'billing',
+    upstream: { type: 'roundrobin', nodes: [{ host: '10.0.1.20', port: 3000, weight: 1 }], x_upstream: { kept: true } },
+    plugins: { 'limit-req': { rate: 50, burst: 25, key_type: 'var', key: 'remote_addr', rejected_code: 429, x_plugin: 'kept' } },
+    x_future: { kept: true },
+    create_time: 1700000000,
+    update_time: 1700000100,
+  };
+  const save = async (user: UserEvent) => user.click(main().getByRole('button', { name: t('editor.save') }));
+
+  it('General', async () => {
+    const { user, admin } = await openService(BILLING_X);
+    await user.keyboard('e');
+    await user.type(main().getByRole('textbox', { name: t('svc.general.desc') }), 'Billing');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toEqual(loadedWith(BILLING_X, { desc: 'Billing' }));
+  });
+
+  it('Upstream: a node\'s weight', async () => {
+    const { user, admin } = await openService(BILLING_X, '#/services/billing?tab=upstream');
+    await settled();
+    await user.keyboard('e');
+    const weight = main().getByRole('spinbutton', { name: t('up.nodes.weightN', { n: 1 }) });
+    await user.clear(weight);
+    await user.type(weight, '3');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    const upstream = { ...(BILLING_X.upstream as Obj), nodes: [{ host: '10.0.1.20', port: 3000, weight: 3 }] };
+    expect(writesOf(admin)[0]?.body).toEqual(loadedWith(BILLING_X, { upstream }));
+  });
+
+  it('Plugins: a plugin switched off', async () => {
+    const { user, admin } = await openService(BILLING_X, '#/services/billing?tab=plugins');
+    await settled();
+    await user.keyboard('e');
+    await user.click(main().getByRole('switch', { name: 'Enable limit-req' }));
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    const plugins = { 'limit-req': { ...((BILLING_X.plugins as Obj)['limit-req'] as Obj), _meta: { disable: true } } };
+    expect(writesOf(admin)[0]?.body).toEqual(loadedWith(BILLING_X, { plugins }));
   });
 });
 

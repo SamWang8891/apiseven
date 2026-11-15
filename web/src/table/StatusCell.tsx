@@ -13,6 +13,16 @@ import { Badge } from '../ui';
  * The status column: a switch and the state in words. Toggling PATCHes `{status}` at once and
  * shows the new state until the reloaded list confirms it; a refused write puts it back.
  */
+/** The status in words only, for a table that must not write (one embedded in an editor). */
+export function StatusBadge({ item }: { item: Item }) {
+  const enabled = isEnabled(item.value);
+  return (
+    <span className="tbl-status">
+      <Badge tone={enabled ? 'ok' : 'neutral'}>{enabled ? t('table.status.enabled') : t('table.status.disabled')}</Badge>
+    </span>
+  );
+}
+
 export function StatusCell({ kind, item }: { kind: Kind; item: Item }) {
   const write = useWrite();
   const readOnly = useReadOnlyKey();

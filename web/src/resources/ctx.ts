@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useList } from '../api/hooks';
+import { useList, useSupports } from '../api/hooks';
 import type { Item, Kind } from '../api/types';
 
 /** The lists of a Ctx, by field name. */
@@ -38,7 +38,11 @@ function useItems(kind: Kind): [Item[], boolean] {
  */
 export function useCtx(): Ctx {
   const [routes, routesLoaded] = useItems('routes');
-  const [streamRoutes, streamRoutesLoaded] = useItems('stream_routes');
+  const [streamRoutes, streamRoutesListed] = useItems('stream_routes');
+  // An APISIX without stream mode answers 4xx for stream routes (AdminClient.supports): it has none,
+  // so the empty list is the whole truth and counts as loaded. (The sidebar asks the same, cached.)
+  const streamOff = useSupports('stream_routes') === false;
+  const streamRoutesLoaded = streamRoutesListed || streamOff;
   const [services, servicesLoaded] = useItems('services');
   const [upstreams, upstreamsLoaded] = useItems('upstreams');
   const [ssls, sslsLoaded] = useItems('ssls');

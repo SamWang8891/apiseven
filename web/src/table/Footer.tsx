@@ -20,7 +20,8 @@ export function Pager({ model, pageSize, onPage, onPageSize }: PagerProps) {
   const first = page === 0;
   const last = page >= pageCount - 1;
   return (
-    <div className="tbl-pager">
+    // A view control: it changes how the list is shown, never data (test/schemaForm editableControls).
+    <div className="tbl-pager" data-view-control="">
       <span className="tbl-pager__range">{t('table.page.range', { start: model.start, end: model.end, total: model.total })}</span>
       <span className="tbl-pager__size">
         <span className="tbl-pager__label" aria-hidden="true">

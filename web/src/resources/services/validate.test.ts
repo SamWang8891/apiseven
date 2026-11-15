@@ -48,6 +48,12 @@ describe('serviceIssues', () => {
     expect(paths({ labels: { team: '' } })).toEqual(['labels']);
   });
 
+  it('an empty table is both an array and an object to APISIX: labels [] (fix round 1); hosts {} is still too few hosts', () => {
+    expect(issues({ labels: [] })).toEqual([]);
+    expect(paths({ labels: ['a'] })).toEqual(['labels']);
+    expect(issues({ hosts: {} })).toEqual([['hosts', t('svc.issue.hostsEmpty'), undefined]]);
+  });
+
   it('an upstream_id that matches no upstream, once the upstreams have loaded', () => {
     expect(issues({ upstream_id: 'u9' })).toEqual([['upstream_id', t('rt.issue.missing.upstream', { id: 'u9' }), undefined]]);
     expect(issues({ upstream_id: 'u9' }, { ...env, ctx: ctxOf({ loaded: { upstreams: false } }) })).toEqual([]);

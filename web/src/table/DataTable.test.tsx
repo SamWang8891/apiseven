@@ -441,3 +441,32 @@ describe('cells', () => {
     expect(cells.filter((c) => c.textContent === t('ui.empty'))).toHaveLength(2);
   });
 });
+
+describe('status (fix round 1: a table in an editor never writes with one click)', () => {
+  const routes = [itemOf('r1', { name: 'web', status: 1 }), itemOf('r2', { name: 'old', status: 0 })];
+
+  it('a list page offers the switch', () => {
+    renderTable({ kind: 'routes', items: routes });
+    expect(within(table()).getAllByRole('switch')).toHaveLength(2);
+  });
+
+  it('an embedded table (stateKey) shows the status as words only: nothing to click, nothing written', () => {
+    const { admin } = renderTable({ kind: 'routes', items: routes, stateKey: 'services.routes' });
+    expect(within(table()).queryAllByRole('switch')).toEqual([]);
+    expect(within(table()).getByText(t('table.status.enabled'))).toBeInTheDocument();
+    expect(within(table()).getByText(t('table.status.disabled'))).toBeInTheDocument();
+    expect(admin.requests.filter((r) => r.method !== 'GET')).toEqual([]);
+  });
+
+  it('statusEditable decides either way', () => {
+    renderTable({ kind: 'routes', items: routes, stateKey: 'x.routes', statusEditable: true });
+    expect(within(table()).getAllByRole('switch')).toHaveLength(2);
+  });
+
+  it('the table marks its own view controls (search, columns, pager) for editableControls to skip', () => {
+    renderTable({ kind: 'routes', items: routes, stateKey: 'services.routes' });
+    expect(screen.getByRole('searchbox').closest('[data-view-control]')).not.toBeNull();
+    expect(screen.getByRole('combobox', { name: t('table.page.size') }).closest('[data-view-control]')).not.toBeNull();
+  });
+});
+

@@ -79,8 +79,10 @@ const NOT_CONTROLS = ['.cm-content[aria-readonly="true"]', 'input[type="hidden"]
 /**
  * Every element that takes input (what a locked form must not contain): native inputs (read-only
  * ones too: a box is a box), textareas, selects, contenteditable, and any control by role. A
- * disabled one counts as well: a locked view shows values, not disabled controls.
+ * disabled one counts as well: a locked view shows values, not disabled controls. Skipped, by their
+ * own marker: a list's view controls (`[data-view-control]`: a table's search, column menu and pager),
+ * which change how other objects are listed, never data.
  */
 export function editableControls(container: HTMLElement): Element[] {
-  return [...container.querySelectorAll(CONTROLS)].filter((el) => !el.matches(NOT_CONTROLS));
+  return [...container.querySelectorAll(CONTROLS)].filter((el) => !el.matches(NOT_CONTROLS) && el.closest('[data-view-control]') === null);
 }

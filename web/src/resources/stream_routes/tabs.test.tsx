@@ -196,7 +196,7 @@ describe('General', () => {
     expect(h.value()).toEqual({ name: 'etcd-tcp', desc: 'To etcd' });
   });
 
-  it('the overview: what it matches, where it goes, its plugins (and the service\'s), the rest', () => {
+  it('the overview: what it matches, where it goes, its plugins (not the service\'s: it has its own upstream_id), the rest', () => {
     tab(GeneralTab, FULL, { locked: true });
     const overview = screen.getByRole('region', { name: t('sr.overview') });
     expect(overview).toHaveTextContent('127.0.0.1:9100');
@@ -204,7 +204,9 @@ describe('General', () => {
     expect(overview).toHaveTextContent('a.example, *.b.example');
     expect(overview).toHaveTextContent('web-pool');
     expect(overview).toHaveTextContent('limit-conn');
-    expect(overview).toHaveTextContent('ip-restriction');
+    // FULL has its own upstream_id: APISIX doesn't merge it with its service, so the service's
+    // ip-restriction doesn't run (init.lua 1894–1907; fix round 1, B1).
+    expect(overview).not.toHaveTextContent('ip-restriction');
     expect(overview).toHaveTextContent('redis');
     expect(within(overview).getByRole('link', { name: t('sr.tab.matching') })).toHaveAttribute('href', '/?tab=matching');
   });

@@ -1,7 +1,6 @@
 // The service editor's General tab: name, description, labels, the hosts its routes inherit and
 // WebSocket, then the service at a glance (its upstream, plugins and the routes using it), each line
 // linking to its tab. Locked, this is the service's spec sheet.
-import { useSupports } from '../../api/hooks';
 import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
 import { setPath } from '../../editor/draft';
@@ -33,14 +32,15 @@ function plugins(draft: Obj) {
   return <Parts parts={parts} />;
 }
 
-/** How many routes and stream routes use the service; "loading…" until the lists they come from have loaded. */
-function useRoutesLine(id: string | undefined, ctx: Ctx) {
-  // With stream mode off, APISIX answers 400 for stream routes: there are none, and their list never loads.
-  const streamOn = useSupports('stream_routes');
+/**
+ * How many routes and stream routes use the service; "loading…" until both lists have loaded (with
+ * stream mode off, the stream routes count as loaded: there are none, Ctx).
+ */
+function routesLine(id: string | undefined, ctx: Ctx) {
   if (id === undefined) return t('svc.overview.noRoutes');
   const uses = (value: Obj) => idOf(value.service_id) === id;
   const routes = ctx.loaded.routes ? ctx.routes.filter((r) => uses(r.value)).length : undefined;
-  const streams = streamOn === false ? 0 : streamOn === true && ctx.loaded.streamRoutes ? ctx.streamRoutes.filter((r) => uses(r.value)).length : undefined;
+  const streams = ctx.loaded.streamRoutes ? ctx.streamRoutes.filter((r) => uses(r.value)).length : undefined;
   if (routes === undefined || streams === undefined) return t('picker.loading');
   if (routes === 0 && streams === 0) return t('svc.overview.noRoutes');
   const parts = [
@@ -61,7 +61,7 @@ export function GeneralTab({ draft, setDraft, issues, ctx, isNew, original }: Ta
   // Unset and false both leave WebSocket off for a route that doesn't set it (apisix/init.lua 1046):
   // off removes the key, or gives back the false that was stored.
   const wsOff = original?.value.enable_websocket === false ? false : undefined;
-  const routesLine = useRoutesLine(isNew ? undefined : (original?.id ?? idOf(draft.id)), ctx);
+  const routes = routesLine(isNew ? undefined : (original?.id ?? idOf(draft.id)), ctx);
 
   return (
     <div className="ed-stack">
@@ -106,7 +106,7 @@ export function GeneralTab({ draft, setDraft, issues, ctx, isNew, original }: Ta
         rows={[
           { tab: 'upstream', label: t('rt.tab.upstream'), value: upstream(draft, ctx) },
           { tab: 'plugins', label: t('pl.tab'), value: plugins(draft) },
-          { tab: 'routes', label: t('svc.tab.routes'), value: routesLine },
+          { tab: 'routes', label: t('svc.tab.routes'), value: routes },
         ]}
       />
     </div>

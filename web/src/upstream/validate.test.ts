@@ -33,6 +33,13 @@ describe('upstreamIssues', () => {
     expect(upstreamIssues({ discovery_type: '', service_name: 'web' })).toEqual([]);
   });
 
+  it('an empty table is both an array and an object to APISIX: labels [], an active check [] (fix round 1)', () => {
+    expect(upstreamIssues({ ...NODES, labels: [], checks: { active: [] } })).toEqual([]);
+    expect(upstreamIssues({ ...NODES, checks: { active: [], passive: [] } })).toEqual([]);
+    expect(paths({ ...NODES, labels: ['a'] })).toEqual(['labels']);
+    expect(paths({ ...NODES, checks: { active: ['x'] } })).toEqual(['checks']);
+  });
+
   it('an array node\'s IPv6 host needs brackets (check_schema, upstream.lua 534–539)', () => {
     expect(upstreamIssues({ nodes: [{ host: '::1', port: 80, weight: 1 }] })).toEqual([{ path: 'nodes.0.host', message: t('up.issue.ipv6Brackets', { host: '::1' }) }]);
     expect(upstreamIssues({ nodes: [{ host: '[::1]', port: 80, weight: 1 }] })).toEqual([]);

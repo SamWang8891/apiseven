@@ -10,6 +10,7 @@
 // An empty node list is not among them (APISIX stores it; requests fail until a node is added): the
 // nodes section says so, without blocking. Pure; used by the Upstream editor's `validate` and, with a
 // path prefix, by editors that hold an upstream inline.
+import { isLuaObject } from '../api/lua';
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { getPath } from '../editor/draft';
@@ -170,8 +171,9 @@ function checkTls(up: Obj, add: Add, conf: boolean): void {
 function checkChecks(up: Obj, add: Add): void {
   if (up.checks === undefined) return;
   const checks = obj(up.checks);
-  if (isObj(checks.active)) return;
-  if (isObj(checks.passive)) add('checks.passive', t('up.issue.passiveNeedsActive'));
+  // An empty table is an object to APISIX (`active: []` is stored): isLuaObject.
+  if (checks.active !== undefined && isLuaObject(checks.active)) return;
+  if (checks.passive !== undefined && isLuaObject(checks.passive)) add('checks.passive', t('up.issue.passiveNeedsActive'));
   else add('checks', t('up.issue.checksActive'));
 }
 
@@ -216,8 +218,8 @@ export function upstreamIssues(up: Obj, pathPrefix?: string, { checkConf = true 
     if (list !== undefined && !(Array.isArray(list) && list.length > 0 && list.every((s) => isWhole(s) && s >= 200 && s <= 599))) add(path, t('up.issue.statuses'));
   }
   checkWarmUp(up, add, checkConf);
-  // labels_def (schema_def.lua 108–115, 466).
-  if (up.labels !== undefined && !(isObj(up.labels) && Object.values(up.labels).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256))) {
+  // labels_def (schema_def.lua 108–115, 466); an empty table is an object to APISIX.
+  if (up.labels !== undefined && !(isLuaObject(up.labels) && Object.values(up.labels as object).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256))) {
     add('labels', t('up.issue.labels'));
   }
   return issues;

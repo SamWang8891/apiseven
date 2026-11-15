@@ -9,7 +9,7 @@ import { HostsCell, IdCell, LabelChips, MethodChips, NameDescCell, PluginChips, 
 import type { Ctx } from '../ctx';
 import { ExpiryBadge } from '../expiry';
 import type { ColumnDef } from '../registry';
-import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, sslForHost, upstreamSummary } from '../resolve';
+import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v !== '') : [];
@@ -72,9 +72,9 @@ export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx
   return target && (target.item ? (nameOfValue(target.item.value) ?? target.id) : target.id);
 }
 
-/** The plugins that run (those `keep` takes, by default all), each saying where an inherited one comes from. */
-export function pluginChips(route: Obj, ctx: Ctx, keep: (name: string) => boolean = () => true): PluginChip[] {
-  return effectivePlugins(route, ctx).filter((p) => keep(p.name)).map(({ name, from, disabled }): PluginChip => {
+/** The plugins that run (by default a route's, effectivePlugins), each saying where an inherited one comes from. */
+export function pluginChips(route: Obj, ctx: Ctx, plugins: EffectivePlugin[] = effectivePlugins(route, ctx)): PluginChip[] {
+  return plugins.map(({ name, from, disabled }): PluginChip => {
     if (from === 'service') return { name, disabled, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
     if (from === 'plugin_config') {
       return { name, disabled, from: t('cell.plugin.fromPluginConfig', { name: refName('plugin_configs', route.plugin_config_id, ctx) ?? '' }) };

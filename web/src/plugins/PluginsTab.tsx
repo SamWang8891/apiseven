@@ -15,7 +15,9 @@ import type { TabProps } from '../resources/registry';
 import { useLatest } from '../schema-form/context';
 import { ErrorLine } from '../schema-form/fields/chrome';
 import { Button, useLocked } from '../ui';
-import { inheritedPlugins } from './inherited';
+import { inheritLoading } from '../resources/routes/inherit';
+import { asStreamRoute } from '../resources/resolve';
+import { inheritedPlugins, streamInheritedPlugins } from './inherited';
 import { PluginCard } from './PluginCard';
 import { PluginPicker } from './PluginPicker';
 import { emptyPlugins, subsystemOf, type Scope } from './scope';
@@ -200,18 +202,27 @@ function Inherited({ rows, local }: { rows: InheritedPlugin[]; local: string[] }
   );
 }
 
-/** PluginsTab bound to an editor draft's `plugins` (what makePluginsTab renders). */
+/**
+ * PluginsTab bound to an editor draft's `plugins` (what makePluginsTab renders). A route lists what it
+ * inherits from its service and plugin config; a stream route what it takes from a service it merges
+ * with (streamInheritedPlugins), and says so while that service is still loading.
+ */
 export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, scope }: TabProps & { scope: Scope }) {
   const value = isObj(draft.plugins) ? (draft.plugins as Record<string, Obj>) : undefined;
+  const inherited = scope === 'route' ? inheritedPlugins(draft, ctx) : scope === 'stream_route' ? streamInheritedPlugins(draft, ctx) : undefined;
+  const waiting = scope === 'stream_route' && inheritLoading(asStreamRoute(draft), ctx).service;
   return (
-    <PluginsTab
-      value={value}
-      // Raw: `{}` (a plugin on with its defaults, or the empty list APISIX requires) is kept as it is.
-      onChange={(next) => setDraft(setPathRaw(draft, ['plugins'], next))}
-      scope={scope}
-      issues={issues}
-      inherited={scope === 'route' ? inheritedPlugins(draft, ctx) : undefined}
-      saveAttempts={saveAttempts}
-    />
+    <>
+      <PluginsTab
+        value={value}
+        // Raw: `{}` (a plugin on with its defaults, or the empty list APISIX requires) is kept as it is.
+        onChange={(next) => setDraft(setPathRaw(draft, ['plugins'], next))}
+        scope={scope}
+        issues={issues}
+        inherited={inherited}
+        saveAttempts={saveAttempts}
+      />
+      {waiting && <p className="pl-note">{t('pl.inherited.loading')}</p>}
+    </>
   );
 }

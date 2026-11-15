@@ -6,6 +6,7 @@
 // needs no field at all, an upstream included, and its inline upstream is checked by the schema only
 // (check_conf never calls check_upstream_conf). Pure; the registry uses it as the kind's `validate`.
 import { isObj } from '../../api/sanitize';
+import { isLuaArray, isLuaObject } from '../../api/lua';
 import type { Obj } from '../../api/types';
 import type { Issue } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -66,8 +67,8 @@ function loggerEntryOk(entry: unknown): boolean {
   if (!isObj(entry)) return true;
   if (Object.keys(entry).some((key) => key !== 'name' && key !== 'filter' && key !== 'conf')) return false;
   if (entry.name !== undefined && typeof entry.name !== 'string') return false;
-  if (entry.filter !== undefined && !Array.isArray(entry.filter)) return false;
-  if (entry.conf !== undefined && !isObj(entry.conf)) return false;
+  if (entry.filter !== undefined && !isLuaArray(entry.filter)) return false;
+  if (entry.conf !== undefined && !isLuaObject(entry.conf)) return false;
   return entry.name === undefined || entry.conf !== undefined;
 }
 
@@ -75,18 +76,20 @@ function loggerEntryOk(entry: unknown): boolean {
 function checkProtocol(draft: Obj, env: ValidateEnv, add: Add): void {
   const protocol = draft.protocol;
   if (protocol === undefined) return;
-  if (!isObj(protocol)) {
+  // An empty table passes either type (isLuaObject / isLuaArray): `conf: []`, `logger: {}`.
+  if (!isLuaObject(protocol)) {
     add('protocol', t('sr.issue.protocol'));
     return;
   }
-  if (typeof protocol.name !== 'string') add('protocol.name', t('sr.issue.protocolName'));
-  if (protocol.conf !== undefined && !isObj(protocol.conf)) add('protocol.conf', t('sr.issue.protocolConf'));
-  if (protocol.logger !== undefined) {
-    if (!Array.isArray(protocol.logger)) add('protocol.logger', t('sr.issue.logger'));
-    else protocol.logger.forEach((entry, i) => !loggerEntryOk(entry) && add('protocol.logger', t('sr.issue.loggerEntry', { n: i + 1 })));
+  const p = isObj(protocol) ? protocol : {};
+  if (typeof p.name !== 'string') add('protocol.name', t('sr.issue.protocolName'));
+  if (p.conf !== undefined && !isLuaObject(p.conf)) add('protocol.conf', t('sr.issue.protocolConf'));
+  if (p.logger !== undefined) {
+    if (!isLuaArray(p.logger)) add('protocol.logger', t('sr.issue.logger'));
+    else if (Array.isArray(p.logger)) p.logger.forEach((entry, i) => !loggerEntryOk(entry) && add('protocol.logger', t('sr.issue.loggerEntry', { n: i + 1 })));
   }
 
-  const superior = idOf(protocol.superior_id);
+  const superior = idOf(p.superior_id);
   if (superior === undefined) return;
   // admin/stream_routes.lua 67–72: never itself.
   if (superior === idOf(draft.id)) {
@@ -100,8 +103,8 @@ function checkProtocol(draft: Obj, env: ValidateEnv, add: Add): void {
     return;
   }
   const theirs = found.item.value.protocol;
-  if (isObj(theirs) && theirs.name !== protocol.name && typeof protocol.name === 'string') {
-    add('protocol.name', t('sr.issue.superiorProtocol', { name: protocol.name, superior: String(theirs.name) }));
+  if (isObj(theirs) && theirs.name !== p.name && typeof p.name === 'string') {
+    add('protocol.name', t('sr.issue.superiorProtocol', { name: p.name, superior: String(theirs.name) }));
   }
 }
 

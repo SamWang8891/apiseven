@@ -1,8 +1,8 @@
 // Quick-filter chips of the services list. Options come from the services themselves (what is in use).
 import { t } from '../../i18n';
 import type { FilterDef } from '../../table/filter';
-import { labelPairs, referencesTo } from '../resolve';
-import { servicePlugins } from './columns';
+import { labelPairs } from '../resolve';
+import { servicePlugins, usersOf } from './columns';
 
 const collator = new Intl.Collator(undefined, { numeric: true });
 
@@ -27,8 +27,12 @@ export const serviceFilters: FilterDef[] = [
       { value: 'unused', label: t('filter.unused.yes') },
       { value: 'used', label: t('filter.unused.no') },
     ],
-    // Routes and stream routes both count (referencesTo, as APISIX's delete_checker does).
-    matches: (item, selected, ctx) => selected.includes(referencesTo('services', item.id, ctx).length === 0 ? 'unused' : 'used'),
+    // Routes and stream routes both count (referencesTo, as APISIX's delete_checker does); until both
+    // lists have loaded, a service is neither (usersOf).
+    matches: (item, selected, ctx) => {
+      const users = usersOf(item, ctx);
+      return users !== undefined && selected.includes(users.length === 0 ? 'unused' : 'used');
+    },
   },
   {
     id: 'label',

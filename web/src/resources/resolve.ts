@@ -3,6 +3,7 @@
 import { isObj } from '../api/sanitize';
 import type { Item, Kind, Obj } from '../api/types';
 import { t } from '../i18n';
+import { runsOnStream } from '../plugins/stream';
 import type { Ctx } from './ctx';
 import { parseCert } from './ssls/parseCert';
 
@@ -174,7 +175,8 @@ export function ownUpstream(obj: Obj, ctx: Ctx, inlineFirst = false): UpstreamSu
  * upstream (merge_service_stream_route copies it when the route has none, plugin.lua 793–799, and
  * stream_preread_phase reads upstream_id only without one, init.lua 1922–1934).
  */
-export function upstreamSummary(obj: Obj, ctx: Ctx, subsystem: Subsystem = 'http'): UpstreamSummary {
+export function upstreamSummary(object: Obj, ctx: Ctx, subsystem: Subsystem = 'http'): UpstreamSummary {
+  const obj = subsystem === 'stream' ? asStreamRoute(object) : object;
   const own = ownUpstream(obj, ctx);
   if (own) return own;
   const service = find(ctx.services, idOf(obj.service_id));
@@ -205,6 +207,28 @@ export function effectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
     }
   }
   return [...byName.values()].sort((a, b) => compareText(a.name, b.name));
+}
+
+/**
+ * A stream route with only what the stream subsystem merges into it. stream_preread_phase merges a
+ * route with its service (merge_service_stream_route: the service's plugins it doesn't set, and the
+ * service's upstream when it has none) only when the route has no upstream_id of its own; with one,
+ * neither its service's plugins nor its upstream apply (apisix/init.lua 1894–1907, 1947). A stream
+ * route has no plugin config. Used for every view of a stream route: its plugins, its inherited
+ * list, its upstream.
+ */
+export function asStreamRoute(route: Obj): Obj {
+  const merged = idOf(route.upstream_id) === undefined;
+  return { ...route, plugin_config_id: undefined, ...(merged ? {} : { service_id: undefined }) };
+}
+
+/**
+ * The plugins that run for a stream route: its own, then those of its service that it merges and
+ * doesn't set (asStreamRoute), of those only what the stream subsystem runs (plugin.stream_filter,
+ * apisix/plugin.lua 675–702: runsOnStream), sorted by name.
+ */
+export function streamEffectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
+  return effectivePlugins(asStreamRoute(route), ctx).filter((p) => runsOnStream(p.name));
 }
 
 /** `*.example.org` covers exactly one more label: `a.example.org`, not `a.b.example.org` or `example.org`. */

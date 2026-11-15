@@ -5,6 +5,7 @@
 // no upstream, no hosts and no plugins. A host is checked as typed by the General tab's tag box,
 // with the same rule (hostProblem). Pure; the registry uses it as the service's `validate`.
 import { isObj } from '../../api/sanitize';
+import { isLuaArray } from '../../api/lua';
 import type { Obj } from '../../api/types';
 import type { Issue } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -22,8 +23,9 @@ export function serviceIssues(draft: Obj, env: ValidateEnv): Issue[] {
   // hosts (schema_def.lua 781–786): a list of host_def (57–61), at least one, no repeats.
   const hosts = draft.hosts;
   if (hosts !== undefined) {
-    if (!Array.isArray(hosts)) add('hosts', t('svc.issue.hostsList'));
-    else if (hosts.length === 0) add('hosts', t('svc.issue.hostsEmpty'));
+    // `{}` is an empty table: an empty list to APISIX (isLuaArray), so too few hosts.
+    if (!isLuaArray(hosts)) add('hosts', t('svc.issue.hostsList'));
+    else if (!Array.isArray(hosts) || hosts.length === 0) add('hosts', t('svc.issue.hostsEmpty'));
     else {
       const seen = new Set<unknown>();
       hosts.forEach((host: unknown, i) => {

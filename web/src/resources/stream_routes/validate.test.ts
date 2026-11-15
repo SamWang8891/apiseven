@@ -89,11 +89,24 @@ describe('streamRouteIssues', () => {
   it('protocol: a name; conf an object; logger a list of { name, filter, conf } with conf beside a name', () => {
     expect(issues({ protocol: {} })).toEqual([['protocol.name', t('sr.issue.protocolName')]]);
     expect(issues({ protocol: 'redis' })).toEqual([['protocol', t('sr.issue.protocol')]]);
-    expect(issues({ protocol: { name: 'redis', conf: [] } })).toEqual([['protocol.conf', t('sr.issue.protocolConf')]]);
-    expect(issues({ protocol: { name: 'redis', logger: {} } })).toEqual([['protocol.logger', t('sr.issue.logger')]]);
+    // (An empty [] or {} passes either type: see the fix round 1 test below.)
+    expect(issues({ protocol: { name: 'redis', conf: ['x'] } })).toEqual([['protocol.conf', t('sr.issue.protocolConf')]]);
+    expect(issues({ protocol: { name: 'redis', logger: { a: 1 } } })).toEqual([['protocol.logger', t('sr.issue.logger')]]);
     expect(issues({ protocol: { name: 'redis', logger: [{ name: 'syslog' }] } })).toEqual([['protocol.logger', t('sr.issue.loggerEntry', { n: 1 })]]);
     expect(issues({ protocol: { name: 'redis', logger: [{ conf: {}, level: 'x' }] } })).toEqual([['protocol.logger', t('sr.issue.loggerEntry', { n: 1 })]]);
-    expect(issues({ protocol: { name: 'redis', logger: [{ name: 'syslog', conf: {}, filter: {} }] } })).toEqual([['protocol.logger', t('sr.issue.loggerEntry', { n: 1 })]]);
+    expect(issues({ protocol: { name: 'redis', logger: [{ name: 'syslog', conf: {}, filter: { a: 1 } }] } })).toEqual([['protocol.logger', t('sr.issue.loggerEntry', { n: 1 })]]);
+  });
+
+  it('an empty table is both an array and an object to APISIX: [] and {} pass either type (fix round 1)', () => {
+    expect(issues({ protocol: { name: 'redis', conf: [], logger: {} } })).toEqual([]);
+    expect(issues({ protocol: { name: 'redis', logger: [{ name: 'syslog', filter: {}, conf: [] }] } })).toEqual([]);
+    expect(issues({ labels: [] })).toEqual([]);
+    // Not empty, the wrong type is still refused.
+    expect(paths({ protocol: { name: 'redis', conf: ['x'] } })).toEqual(['protocol.conf']);
+    expect(paths({ protocol: { name: 'redis', logger: { a: 1 } } })).toEqual(['protocol.logger']);
+    expect(paths({ protocol: { name: 'redis', logger: [{ name: 'syslog', filter: { a: 1 }, conf: {} }] } })).toEqual(['protocol.logger']);
+    expect(paths({ protocol: { name: 'redis', logger: [{ name: 'syslog', conf: ['x'] }] } })).toEqual(['protocol.logger']);
+    expect(paths({ labels: ['a'] })).toEqual(['labels']);
   });
 
   it('protocol.superior_id: not itself, one that exists (once loaded), of the same protocol', () => {

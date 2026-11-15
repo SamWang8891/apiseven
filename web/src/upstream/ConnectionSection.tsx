@@ -7,6 +7,7 @@
 // is stored, with a note, so it shows and can be removed.
 import { setPath } from '../editor/draft';
 import { t } from '../i18n';
+import { useEditingState } from '../ui';
 import { ChoiceSelect, Group, NumberField, StreamNote, TextField } from './fields';
 import { bind, byDefault, num, obj, str, type SectionProps } from './values';
 import { DEFAULT_SCHEME, DEFAULT_STREAM_SCHEME, STREAM_SCHEMES } from './meta';
@@ -29,7 +30,11 @@ export function ConnectionSection(p: SectionProps) {
   const schemes = stream ? STREAM_SCHEMES : SCHEMES;
   // In stream, the http-only parts are there only while stored.
   const showPass = !stream || value.pass_host !== undefined || value.upstream_host !== undefined;
-  const showPool = !stream || value.keepalive_pool !== undefined;
+  // A pool stored when editing began stays for the editing session (editing state): clearing a field
+  // to retype it, or while another of its fields holds input, never takes the group away (addendum
+  // rule 9). Removed, it is gone from the next session on.
+  const [poolKept] = useEditingState(() => value.keepalive_pool !== undefined);
+  const showPool = !stream || value.keepalive_pool !== undefined || poolKept;
 
   function setTimeoutField(key: (typeof TIMEOUTS)[number], v: number | undefined) {
     if (v === undefined) {

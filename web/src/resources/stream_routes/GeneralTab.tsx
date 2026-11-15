@@ -11,9 +11,10 @@ import { Input, KeyValueInput, useLocked } from '../../ui';
 import type { Ctx } from '../ctx';
 import { Mono, Overview, Parts } from '../Overview';
 import type { TabProps } from '../registry';
+import { asStreamRoute, streamEffectivePlugins } from '../resolve';
 import { inheritLoading } from '../routes/inherit';
 import { targetOf } from '../upstreamSource';
-import { snisOf, streamPluginsOf } from './columns';
+import { snisOf } from './columns';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 
@@ -49,15 +50,15 @@ function upstream(draft: Obj, ctx: Ctx): ReactNode {
 }
 
 /**
- * The route's own plugins, then the service's it doesn't override that can run on a stream route
- * (streamPluginsOf, as the list's column). Until the service has loaded, the inherited part says so.
+ * The plugins that run for the stream route (streamEffectivePlugins, as the list's column): its own,
+ * then what it takes from its service. Until a service it merges with has loaded, that part says so.
  */
 function plugins(draft: Obj, ctx: Ctx): ReactNode {
   const label = (p: { name: string; disabled: boolean }) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name);
-  const all = streamPluginsOf(draft, ctx);
+  const all = streamEffectivePlugins(draft, ctx);
   const own = all.filter((p) => p.from === 'route').map(label);
   const ownPart = own.length > 0 ? [<Mono key="own" values={own} />] : [];
-  if (inheritLoading(draft, ctx).service) return <Parts parts={[...ownPart, t('rt.overview.inheritedLoading')]} />;
+  if (inheritLoading(asStreamRoute(draft), ctx).service) return <Parts parts={[...ownPart, t('rt.overview.inheritedLoading')]} />;
   const inherited = all.filter((p) => p.from === 'service').map(label);
   const parts = [
     ...ownPart,

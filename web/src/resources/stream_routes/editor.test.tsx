@@ -245,6 +245,30 @@ describe('what the fields show is what gets saved', () => {
     expect(writesOf(admin)[0]?.body).toEqual(loadedWith(ETCD, { snis: ['a.example', 'b.example', 'c.example'] }));
   });
 
+  it('protocol conf JSON held while the protocol name changes: the text stays, Save is refused; fixed, the PUT has both (fix round 1)', async () => {
+    const { user, admin } = await openStream(ETCD, '#/stream_routes/etcd-tcp?tab=advanced');
+    await settled();
+    await user.keyboard('e');
+    const conf = await main().findByRole('textbox', { name: t('sf.json.label', { key: 'conf' }) });
+    await user.click(conf);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('{"faults": [');
+    const name = main().getByRole('textbox', { name: t('sr.adv.protocolName') });
+    await user.clear(name);
+    await user.type(name, 'dubbo');
+    expect(conf.textContent).toBe('{"faults": [');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: t('ui.pending.json', { field: 'protocol.conf' }) }));
+    expect(writesOf(admin)).toEqual([]);
+
+    await user.click(conf);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('{"faults": ["delay"]}');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.protocol).toEqual({ name: 'dubbo', conf: { faults: ['delay'] } });
+  });
+
   it('protocol conf JSON that does not parse blocks Save, naming protocol.conf; the stored conf stays in the draft', async () => {
     const { user, admin } = await openStream(ETCD, '#/stream_routes/etcd-tcp?tab=advanced');
     await settled();

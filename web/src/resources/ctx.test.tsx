@@ -79,7 +79,7 @@ describe('useCtx', () => {
   it('gives an empty list for a list that failed', async () => {
     const { result, admin } = setup({
       counts: COUNTS,
-      replies: { stream_routes: () => json(400, { error_msg: 'stream mode is disabled' }) },
+      replies: { stream_routes: () => json(500, { error_msg: 'etcd is down' }) },
     });
     await waitFor(() => expect(result.current.routes).toHaveLength(3));
     await waitFor(() => expect(admin.requests.some((r) => r.url.pathname.endsWith('/stream_routes'))).toBe(true));
@@ -87,6 +87,15 @@ describe('useCtx', () => {
     // Never loaded: a reference into it can't be called dangling.
     expect(result.current.loaded.streamRoutes).toBe(false);
     expect(result.current.loaded.routes).toBe(true);
+  });
+
+  it('with stream mode off (APISIX answers 400 for stream routes), the stream routes are loaded: there are none (fix round 1)', async () => {
+    const { result } = setup({
+      counts: COUNTS,
+      replies: { stream_routes: () => json(400, { error_msg: 'stream mode is disabled, can not add stream routes' }) },
+    });
+    await waitFor(() => expect(result.current.loaded.streamRoutes).toBe(true));
+    expect(result.current.streamRoutes).toEqual([]);
   });
 
   it('keeps the same object across re-renders and same-data refetches', async () => {

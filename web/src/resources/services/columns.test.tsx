@@ -58,11 +58,16 @@ describe('service columns', () => {
     expect(screen.getByRole('button', { name: t('cell.usedBy', { count: 3 }) })).toBeInTheDocument();
   });
 
-  it('routes: "unused" when nothing uses it; "loading…" (no count) until the routes have loaded', () => {
+  it.each([
+    ['routes', { routes: false }],
+    ['stream routes', { streamRoutes: false }],
+  ])('routes: "unused" when nothing uses it; "loading…" (no count) until the %s have loaded', (_, loaded) => {
     expect(cell('routes', BARE)).toHaveTextContent(t('cell.unused'));
-    const loading = ctxOf({ ...CTX, loaded: { routes: false } });
+    const loading = ctxOf({ ...CTX, loaded });
     expect(value('routes', WEB, loading)).toBeUndefined();
+    expect(value('routes', BARE, loading)).toBeUndefined();
     expect(cell('routes', WEB, loading)).toHaveTextContent(t('picker.loading'));
+    expect(cell('routes', BARE, loading)).not.toHaveTextContent(t('cell.unused'));
   });
 
   it('hosts, upstream and plugins: the service\'s own', () => {
@@ -107,6 +112,15 @@ describe('serviceFilters', () => {
     // A service only a stream route uses is in use.
     const onlyStream = ctxOf({ services: SERVICES, streamRoutes: [itemOf('sr1', { service_id: 'bare' })] });
     expect(names({ unused: ['unused'] }, onlyStream)).toEqual(['web', 'billing']);
+  });
+
+  it.each([
+    ['routes', { routes: false }],
+    ['stream routes', { streamRoutes: false }],
+  ])('unused: matches nothing either way until the %s have loaded (fix round 1)', (_, loaded) => {
+    const loading = ctxOf({ ...CTX, loaded });
+    expect(names({ unused: ['unused'] }, loading)).toEqual([]);
+    expect(names({ unused: ['used'] }, loading)).toEqual([]);
   });
 
   it('label: key:value pairs in use', () => {

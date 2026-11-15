@@ -167,6 +167,13 @@ describe('routeIssues', () => {
     expect([...issuesByTab(found, TABS, 'json').keys()]).toEqual(['upstream']);
   });
 
+  it('an empty table is both an array and an object to APISIX: labels [], vars {}, methods {} (fix round 1)', () => {
+    expect(routeIssues({ uri: '/a', upstream_id: 'u1', labels: [], vars: {}, methods: {} }, withCtx)).toEqual([]);
+    expect(routeIssues({ uri: '/a', upstream_id: 'u1', labels: ['a'] }, withCtx).map((i) => i.path)).toEqual(['labels']);
+    expect(routeIssues({ uri: '/a', upstream_id: 'u1', vars: { a: 1 } }, withCtx).map((i) => i.path)).toEqual(['vars']);
+    expect(routeIssues({ uri: '/a', upstream_id: 'u1', methods: { a: 1 } }, withCtx).map((i) => i.path)).toEqual(['methods']);
+  });
+
   it('an inline upstream with an empty node list is what APISIX stores, and counts as something to do (Ruling 1)', () => {
     expect(routeIssues({ uri: '/a', upstream: { nodes: [] } }, withCtx)).toEqual([]);
     expect(routeIssues({ uri: '/a', upstream: { nodes: {} } }, withCtx)).toEqual([]);

@@ -101,10 +101,13 @@ export function NewLink({ kind, parent, to, label }: { kind: Kind; parent?: Pare
   );
 }
 
-/** Left: search and filter chips. Right: the result count, then the table's own controls. */
+/**
+ * Left: search and filter chips. Right: the result count, then the table's own controls. They are
+ * view controls (`data-view-control`): they change how the list is shown, never data.
+ */
 export function Toolbar({ start, count, end }: { start: ReactNode; count: ReactNode; end: ReactNode }) {
   return (
-    <div className="shell-toolbar tbl-toolbar">
+    <div className="shell-toolbar tbl-toolbar" data-view-control="">
       <div className="tbl-toolbar__start">{start}</div>
       <div className="tbl-toolbar__end">
         <span className="tbl-toolbar__count" aria-live="polite">

@@ -1,7 +1,8 @@
 // The plugins a route also runs from its service and its plugin config.
 import type { Obj } from '../api/types';
 import type { Ctx } from '../resources/ctx';
-import { effectivePlugins } from '../resources/resolve';
+import { asStreamRoute, effectivePlugins } from '../resources/resolve';
+import { runsOnStream } from './stream';
 import type { InheritedPlugin } from './PluginsTab';
 
 /**
@@ -12,4 +13,9 @@ export function inheritedPlugins(route: Obj, ctx: Ctx): InheritedPlugin[] {
   return effectivePlugins({ ...route, plugins: undefined }, ctx).flatMap(({ name, from, disabled }) =>
     from === 'service' || from === 'plugin_config' ? [{ name, from, disabled }] : [],
   );
+}
+
+/** A stream route's: only from a service it merges with, and only what the stream subsystem runs (asStreamRoute, runsOnStream). */
+export function streamInheritedPlugins(route: Obj, ctx: Ctx): InheritedPlugin[] {
+  return inheritedPlugins(asStreamRoute(route), ctx).filter((p) => runsOnStream(p.name));
 }

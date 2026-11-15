@@ -8,6 +8,7 @@
 // the Matching tab's tag boxes. Pure; the registry composes it into the route's `validate`, with the
 // inline upstream's and the plugins' checks.
 import { isObj } from '../../api/sanitize';
+import { isLuaArray, isLuaObject } from '../../api/lua';
 import type { Obj } from '../../api/types';
 import type { Issue } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -63,7 +64,8 @@ export function addrProblem(addr: string): string | undefined {
 /** Whether APISIX refuses these labels: labels_def (schema_def.lua 108–115), each value a label_value_def (98–105): text without spaces, 1–256 characters. */
 export function labelsRefused(labels: unknown): boolean {
   if (labels === undefined) return false;
-  return !(isObj(labels) && Object.values(labels).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256));
+  // An empty table is an object to APISIX (`labels: []` is stored): isLuaObject.
+  return !(isLuaObject(labels) && Object.values(labels as object).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256));
 }
 
 type Add = (path: string, message: string) => void;
@@ -114,13 +116,14 @@ export function routeIssues(draft: Obj, env: ValidateEnv): Issue[] {
   checkPair(draft, 'remote_addr', 'remote_addrs', { single: address, item: address }, add);
 
   if (draft.methods !== undefined) {
-    const methods: unknown[] = Array.isArray(draft.methods) ? draft.methods : [draft.methods];
+    // `methods: {}` is an empty table, so an empty list to APISIX (isLuaArray).
+    const methods: unknown[] = Array.isArray(draft.methods) ? draft.methods : isLuaArray(draft.methods) ? [] : [draft.methods];
     const bad = methods.find((m) => !(METHODS as readonly unknown[]).includes(m));
     const twice = methods.find((m, i) => methods.indexOf(m) !== i);
     if (bad !== undefined) add('methods', t('rt.issue.method', { method: typeof bad === 'string' ? bad : JSON.stringify(bad) }));
     else if (twice !== undefined) add('methods', t('rt.issue.twice', { value: typeof twice === 'string' ? twice : JSON.stringify(twice) }));
   }
-  if (draft.vars !== undefined && !Array.isArray(draft.vars)) add('vars', t('rt.issue.vars'));
+  if (draft.vars !== undefined && !isLuaArray(draft.vars)) add('vars', t('rt.issue.vars'));
   const filter = draft.filter_func;
   if (filter !== undefined && !(typeof filter === 'string' && filter.length >= 10 && filter.startsWith('function'))) add('filter_func', t('rt.issue.filterFunc'));
 
