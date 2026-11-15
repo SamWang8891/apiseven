@@ -143,6 +143,17 @@ describe("a plugin's metadata page", () => {
   const open = (stored: Obj[], hash: string, replies: FakeAdminOptions['replies'] = {}) =>
     openEditor(hash, { objects: { plugin_metadata: stored }, replies: { ...pluginReplies(), ...replies } });
 
+  it('a metadata schema with a pattern the browser cannot read: the same note as a plugin card, and no issue from it (fix round 1, R5.3)', async () => {
+    const http = { ...pluginFixture().http, 'my-logger': { metadata_schema: { type: 'object', properties: { tag: { type: 'string', pattern: '\\Afoo\\z' } } }, schema: { type: 'object' } } };
+    const { user, admin } = await open([], '#/plugin_metadata/my-logger', { plugins: (req) => (req.url.searchParams.get('subsystem') === 'stream' ? undefined : json(200, http)) });
+    await main().findByRole('button', { name: t('editor.create') });
+    await settled();
+    expect(await main().findByText(t('sf.gaps.some', { parts: t('sf.gaps.patterns') }))).toBeInTheDocument();
+    await user.type(main().getByRole('textbox', { name: 'tag' }), 'bar');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'plugin_metadata/my-logger', body: { tag: 'bar' } }]));
+  });
+
   it('opened locked: no form controls; no Duplicate, and Delete reads Reset', async () => {
     const { user } = await open([LOGGER], '#/plugin_metadata/http-logger');
     await main().findByRole('heading', { level: 1, name: 'http-logger' });

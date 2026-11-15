@@ -59,21 +59,31 @@ export function expand(root: Obj, schema: unknown): Obj[] {
   return out;
 }
 
+/**
+ * Whether Ajv can compile `pattern`: it builds `new RegExp(pattern, 'u')` (its default
+ * unicodeRegExp). One it cannot (PCRE's `\A…\z`) is left to APISIX everywhere: the validator skips
+ * it (prepare.ts), and testPattern counts it as matching.
+ */
+export function compiles(pattern: string): boolean {
+  try {
+    new RegExp(pattern, 'u');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const patterns = new Map<string, RegExp | null>();
 
-/** Whether `text` matches a JSON Schema `pattern`. A pattern JavaScript cannot compile counts as matching. */
+/**
+ * Whether `text` matches a JSON Schema `pattern`, read as Ajv reads it. A pattern Ajv cannot compile
+ * counts as matching: read any other way (without the unicode flag, `\A` is a literal A) it would
+ * refuse what APISIX accepts, and an entry refused here is held, which blocks Save and Save anyway.
+ */
 export function testPattern(pattern: string, text: string): boolean {
   let re = patterns.get(pattern);
   if (re === undefined) {
-    try {
-      re = new RegExp(pattern, 'u');
-    } catch {
-      try {
-        re = new RegExp(pattern);
-      } catch {
-        re = null;
-      }
-    }
+    re = compiles(pattern) ? new RegExp(pattern, 'u') : null;
     patterns.set(pattern, re);
   }
   return re === null || re.test(text);

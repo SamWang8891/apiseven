@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
-import { deref, expand, resolveRef, testPattern } from './refs';
+import { compiles, deref, expand, resolveRef, testPattern } from './refs';
 
 const root: Obj = {
   definitions: {
@@ -74,5 +74,12 @@ describe('testPattern', () => {
     expect(testPattern('^[^:]+$', 'X-Api')).toBe(true);
     expect(testPattern('^[^:]+$', 'a:b')).toBe(false);
     expect(testPattern('([', 'anything')).toBe(true);
+  });
+
+  it('a pattern compiles as Ajv compiles it (unicode): PCRE\'s \\A…\\z is unreadable, so it matches, never as a literal A…z (fix round 1)', () => {
+    expect(compiles('^[a-z]+$')).toBe(true);
+    expect(compiles('\\Afoo\\z')).toBe(false);
+    expect(testPattern('\\Afoo\\z', 'bar')).toBe(true);
+    expect(testPattern('\\Afoo\\z', 'AfooZ')).toBe(true);
   });
 });

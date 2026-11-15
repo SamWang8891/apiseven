@@ -187,11 +187,12 @@ describe('Form and JSON', () => {
     expect(within(el).queryByText(t('pl.card.problems.one'))).not.toBeInTheDocument();
     await user.click(toggle(el, 'openwhisk'));
     await user.click(within(el).getByRole('button', { name: t('pl.card.json') }));
-    expect(await within(el).findByText(t('pl.card.schemaGaps.patterns'))).toBeInTheDocument();
+    const note = t('sf.gaps.some', { parts: t('sf.gaps.patterns') });
+    expect(await within(el).findByText(note)).toBeInTheDocument();
     expect(value()).toEqual({ openwhisk: conf });
-    // A schema it reads whole has no note.
+    // The note belongs to the JSON view: the Form view of the same plugin has none.
     await user.click(within(el).getByRole('button', { name: t('pl.card.form') }));
-    expect(within(el).queryByText(t('pl.card.schemaGaps.patterns'))).not.toBeInTheDocument();
+    expect(within(el).queryByText(note)).not.toBeInTheDocument();
   });
 
   it('JSON that does not parse, or is not an object, is not emitted', async () => {

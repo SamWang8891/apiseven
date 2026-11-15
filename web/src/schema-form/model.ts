@@ -3,7 +3,7 @@
 // node at all (if not, it is shown as JSON). Pure; shared by the field components and errors.ts.
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
-import { validatorFor } from '../schema/ajv';
+import { schemaGaps, validatorFor } from '../schema/ajv';
 import { isObj } from '../schema/refs';
 import { ANY_SCHEMA, jsonType, type MapNode, type Node, type ObjectNode, type ObjectPart, type Prop, type VariantNode } from './analyze';
 
@@ -203,10 +203,16 @@ function subjectOf(when: Obj | null): string | undefined {
   return keys.size === 1 ? [...keys][0] : undefined;
 }
 
-/** Whether `when` holds for the object (with its fields' defaults filled in); undefined when undecidable. */
-function holds(when: Obj | null, value: Obj): boolean | undefined {
+/**
+ * Whether `when` holds for the object (with its fields' defaults filled in); undefined when
+ * undecidable (both branches are shown, not required); 'unknown' when part of `when` is left to
+ * APISIX (an unreadable pattern, schema/prepare.ts): the validator then applies neither `then` nor
+ * `else`, and neither does the form.
+ */
+function holds(when: Obj | null, value: Obj): boolean | 'unknown' | undefined {
   if (!when) return undefined;
   const validate = validatorFor(when);
+  if (validate && schemaGaps(when)) return 'unknown';
   return validate ? validate(value) : undefined;
 }
 
@@ -246,6 +252,7 @@ export function objectView(node: ObjectNode, value: unknown): ObjectView {
     for (const [key, deps] of Object.entries(part.dependents)) if (v[key] !== undefined) deps.forEach((k) => required.add(k));
     for (const cond of part.conditionals) {
       const result = holds(cond.when, effective);
+      if (result === 'unknown') continue;
       const branches: [ObjectPart | undefined, boolean][] =
         result === undefined ? [[cond.then, true], [cond.else, false]] : [[result ? cond.then : cond.else, result]];
       for (const [branch, positive] of branches) {

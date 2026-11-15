@@ -4,103 +4,56 @@
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
+import { normalize, type SchemaGaps } from './prepare';
 import { deref, isObj, resolveRef } from './refs';
+
+export type { SchemaGap, SchemaGaps } from './prepare';
 
 // strict: false, since APISIX schemas carry keys Ajv does not know (encrypt_fields, $comment on
 // odd places); formats are not checked (ip-restriction's ipv4/ipv6 would need ajv-formats, and the
 // server checks them anyway), so a format this browser does not know refuses nothing either.
 const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
-const validators = new WeakMap<Obj, ValidateFunction | null>();
 
-/**
- * What a schema's checks leave to APISIX (Task 16 B18, failing open): 'patterns' when a `pattern` or
- * a `patternProperties` key JavaScript cannot compile was skipped (APISIX reads them with PCRE:
- * openwhisk's `\A…\z`), 'all' when Ajv cannot compile the schema at all; absent when nothing is.
- */
-export type SchemaGaps = 'patterns' | 'all';
-const gaps = new WeakMap<Obj, SchemaGaps | undefined>();
-
-/** Whether Ajv can compile `pattern`: it builds `new RegExp(pattern, 'u')` (its default unicodeRegExp). */
-function compiles(pattern: string): boolean {
-  try {
-    new RegExp(pattern, 'u');
-    return true;
-  } catch {
-    return false;
-  }
+interface Compiled {
+  validate: ValidateFunction | null;
+  /** What the checks leave to APISIX (prepare.ts); undefined when nothing. */
+  gaps: SchemaGaps | undefined;
 }
+const compiled = new WeakMap<Obj, Compiled>();
 
-/**
- * A copy Ajv 8 (draft-07) accepts: no `$schema` (a draft-04 URI would not resolve), and draft-04's
- * boolean `exclusiveMinimum` / `exclusiveMaximum` turned into the draft-07 numbers. A `pattern`
- * JavaScript cannot compile is left out, and so is a `patternProperties` key, together with that
- * object's `additionalProperties` (the keys the pattern meant would be refused as additional):
- * `skipped.patterns` says so. Without this, one such pattern made the whole schema uncompilable.
- */
-function normalize(schema: unknown, skipped: { patterns: boolean }): unknown {
-  if (Array.isArray(schema)) return schema.map((item) => normalize(item, skipped));
-  if (!isObj(schema)) return schema;
-  const out: Obj = {};
-  let unreadKeys = false;
-  for (const [key, value] of Object.entries(schema)) {
-    if (key === '$schema') continue;
-    if (key === 'enum' || key === 'const' || key === 'default' || key === 'examples') out[key] = value;
-    else if (key === 'pattern' && typeof value === 'string' && !compiles(value)) skipped.patterns = true;
-    else if (key === 'patternProperties' && isObj(value)) {
-      const kept: Obj = {};
-      for (const [pattern, sub] of Object.entries(value)) {
-        if (compiles(pattern)) kept[pattern] = normalize(sub, skipped);
-        else unreadKeys = true;
+function compile(schema: Obj): Compiled {
+  let entry = compiled.get(schema);
+  if (entry === undefined) {
+    const prepared = normalize(schema);
+    let validate: ValidateFunction | null = null;
+    if (prepared.gaps !== 'all') {
+      try {
+        validate = ajv.compile(prepared.schema);
+      } catch {
+        validate = null;
+      } finally {
+        // Keeps the instance from collecting schemas, and two schemas with the same $id from clashing.
+        ajv.removeSchema(prepared.schema);
       }
-      out[key] = kept;
-    } else out[key] = normalize(value, skipped);
-  }
-  if (unreadKeys) {
-    skipped.patterns = true;
-    delete out.additionalProperties;
-  }
-  for (const [flag, bound] of [
-    ['exclusiveMinimum', 'minimum'],
-    ['exclusiveMaximum', 'maximum'],
-  ] as const) {
-    if (typeof out[flag] !== 'boolean') continue;
-    if (out[flag] && typeof out[bound] === 'number') {
-      out[flag] = out[bound];
-      delete out[bound];
-    } else {
-      delete out[flag];
     }
+    entry = { validate, gaps: validate === null ? 'all' : prepared.gaps.length > 0 ? prepared.gaps : undefined };
+    compiled.set(schema, entry);
   }
-  return out;
+  return entry;
 }
 
 /**
- * Compiles once per schema object; null when Ajv cannot compile it (callers then skip validation).
- * What it had to leave out is schemaGaps'.
+ * Compiles once per schema object (the copy prepare.ts makes, which leaves to APISIX what the
+ * browser cannot read, never refusing more for it); null when Ajv cannot compile it (callers then
+ * skip validation). What it left out is schemaGaps'.
  */
 export function validatorFor(schema: Obj): ValidateFunction | null {
-  let validate = validators.get(schema);
-  if (validate === undefined) {
-    const skipped = { patterns: false };
-    const copy = normalize(schema, skipped) as Obj;
-    try {
-      validate = ajv.compile(copy);
-    } catch {
-      validate = null;
-    } finally {
-      // Keeps the instance from collecting schemas, and two schemas with the same $id from clashing.
-      ajv.removeSchema(copy);
-    }
-    validators.set(schema, validate);
-    gaps.set(schema, validate === null ? 'all' : skipped.patterns ? 'patterns' : undefined);
-  }
-  return validate;
+  return compile(schema).validate;
 }
 
-/** What `schema`'s checks leave to APISIX (SchemaGaps), or undefined when they cover it whole. */
+/** What `schema`'s checks leave to APISIX (prepare.ts SchemaGaps), or undefined when they cover it whole. */
 export function schemaGaps(schema: Obj): SchemaGaps | undefined {
-  validatorFor(schema);
-  return gaps.get(schema);
+  return compile(schema).gaps;
 }
 
 /** The `properties` of `schema` with its $ref followed and its allOf parts merged in. */

@@ -283,6 +283,40 @@ describe('SchemaForm: values', () => {
     expect(form.value()).toEqual({ weights: { 'c:80': 2, 'd:80': 7 } });
   });
 
+  it('an if whose pattern the browser cannot read applies neither branch: no conditional field, nothing required (fix round 1, F1)', () => {
+    const schema: Obj = {
+      type: 'object',
+      properties: { a: { type: 'string' } },
+      if: { properties: { a: { pattern: '\\Afoo\\z' } }, required: ['a'] },
+      then: { properties: { c: { type: 'string' } }, required: ['c'] },
+      else: { properties: { d: { type: 'string' } } },
+    };
+    renderSchemaForm(schema, { a: 'bar' });
+    expect(screen.getByRole('textbox', { name: 'a' })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /^c/ })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: /^d/ })).toBeNull();
+    expect(screen.queryByText('Applies to the current settings')).toBeNull();
+  });
+
+  it('a tags field and a map field never hold an entry for a pattern the browser cannot read (fix round 1, R5.2)', async () => {
+    const PCRE = '\\Afoo\\z';
+    const schema: Obj = {
+      type: 'object',
+      properties: {
+        tags: { type: 'array', items: { type: 'string', pattern: PCRE } },
+        labels: { type: 'object', patternProperties: { [PCRE]: { type: 'string' } } },
+      },
+    };
+    const form = renderSchemaForm(schema, {});
+    await form.user.type(screen.getByRole('textbox', { name: 'tags' }), 'bar{Enter}');
+    expect(form.value()).toEqual({ tags: ['bar'] });
+    await form.user.type(screen.getByRole('textbox', { name: 'Key 1' }), 'bar');
+    await form.user.type(screen.getByRole('textbox', { name: /^Value/ }), 'v');
+    await form.user.tab();
+    expect(form.held()).toEqual([]);
+    expect(form.value()).toEqual({ tags: ['bar'], labels: { bar: 'v' } });
+  });
+
   it('lists the keys it does not know in a note and keeps them through edits', async () => {
     const schema: Obj = { type: 'object', properties: { name: { type: 'string' } } };
     const form = renderSchemaForm(schema, { extra: { deep: [1] }, other: 2 });

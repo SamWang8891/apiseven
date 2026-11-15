@@ -2,8 +2,8 @@
 // whose schema isn't known): the whole config, `_meta` included, linted against the plugin's schema.
 // Text that doesn't parse, or isn't an object, stays here and holds Save. Locked, it shows the stored
 // value with its secrets masked behind "Show secrets". What the browser can't check of the schema (a
-// pattern JavaScript can't compile, or a schema Ajv can't) refuses nothing (schema/ajv schemaGaps):
-// a quiet note says APISIX checks it on save.
+// pattern JavaScript can't compile, the keys and conditions that depend on one, or a schema Ajv
+// can't compile) refuses nothing (schema/prepare.ts): a quiet note says what APISIX checks on save.
 import { Eye, EyeOff } from 'lucide-react';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import { isObj } from '../api/sanitize';
@@ -11,7 +11,7 @@ import type { Obj } from '../api/types';
 import { deepEqual } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
-import { schemaGaps } from '../schema/ajv';
+import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
 import { redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
 import { maskConfig } from './secrets';
@@ -73,7 +73,6 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
 
   // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.
   const text = locked ? pretty(hidden?.redacted && !revealed ? hidden.value : conf) : current.text;
-  const gaps = schema && schemaGaps(schema);
   return (
     <div className="pl-json">
       {locked && hidden?.redacted && (
@@ -94,7 +93,7 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
         aria-invalid={!locked && current.held !== undefined}
       />
       <div aria-live="polite">{!locked && current.error !== undefined && <p className="pl-json__error mono">{current.error}</p>}</div>
-      {gaps && <p className="pl-note">{t(`pl.card.schemaGaps.${gaps}`)}</p>}
+      {schema && <SchemaGapsNote schema={schema} className="pl-note" />}
       {issues.length > 0 && (
         <ul className="pl-json__issues">
           {issues.map((issue, i) => (

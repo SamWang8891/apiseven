@@ -4,6 +4,7 @@
 import { Copy } from 'lucide-react';
 import { t } from '../../i18n';
 import { SchemaForm } from '../../schema-form/SchemaForm';
+import { SchemaGapsNote } from '../../schema-form/SchemaGapsNote';
 import { Badge, Button, toast } from '../../ui';
 import type { TabProps } from '../registry';
 import { withId, withoutId } from '../withoutId';
@@ -60,6 +61,7 @@ export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabP
           <Badge tone="accent">{t(`sc.manager.${manager}`)}</Badge>
         </p>
       )}
+      <SchemaGapsNote schema={SCHEMAS[manager]} className="res-note" />
       <SchemaForm
         schema={SCHEMAS[manager]}
         value={withoutId(draft)}

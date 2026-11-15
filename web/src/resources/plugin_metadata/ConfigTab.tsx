@@ -5,6 +5,7 @@
 import { useAllPlugins } from '../../api/hooks';
 import { t } from '../../i18n';
 import { SchemaForm } from '../../schema-form/SchemaForm';
+import { SchemaGapsNote } from '../../schema-form/SchemaGapsNote';
 import type { TabProps } from '../registry';
 import { withId, withoutId } from '../withoutId';
 import '../resources.css';
@@ -21,6 +22,7 @@ export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabP
   return (
     <div className="ed-stack">
       <p className="res-note">{isNew ? t('pm.config.notSet', { name: id }) : t('pm.config.help', { name: id })}</p>
+      <SchemaGapsNote schema={schema} className="res-note" />
       <SchemaForm
         schema={schema}
         value={withoutId(draft)}

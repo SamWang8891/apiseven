@@ -46,13 +46,14 @@ describe('failing open (Task 16 B18): what JavaScript cannot read is left to API
     expect(fieldErrors(schema, { name: 'hello' })).toEqual([]);
     expect(fieldErrors(schema, { name: 'not matched by a JS reading of \\A' })).toEqual([{ path: 'name', message: 'must NOT have more than 5 characters' }]);
     expect(fieldErrors(schema, {})).toEqual([{ path: 'name', message: t('schema.required') }]);
-    expect(schemaGaps(schema)).toBe('patterns');
+    expect(schemaGaps(schema)).toEqual(['patterns']);
   });
 
   it('a patternProperties key JavaScript cannot compile is skipped, and keys it may have meant are not refused as additional', () => {
     const schema: Obj = { type: 'object', patternProperties: { [PCRE]: { type: 'integer' } }, additionalProperties: false };
     expect(fieldErrors(schema, { anything: 'text' })).toEqual([]);
-    expect(schemaGaps(schema)).toBe('patterns');
+    // What was left out is the keys the pattern covers, and the check of keys no pattern names.
+    expect(schemaGaps(schema)).toEqual(['keys']);
   });
 
   it('an unknown format produces no issue', () => {
@@ -72,9 +73,64 @@ describe('failing open (Task 16 B18): what JavaScript cannot read is left to API
 
   it("openwhisk (3.20): its PCRE patterns are skipped, its other checks run", () => {
     const openwhisk = schemaOf('openwhisk');
-    expect(schemaGaps(openwhisk)).toBe('patterns');
+    expect(schemaGaps(openwhisk)).toEqual(['patterns']);
     expect(fieldErrors(openwhisk, { api_host: 'http://ow.test', service_token: 'u:p', namespace: 'guest', action: 'hello' })).toEqual([]);
     expect(fieldErrors(openwhisk, { api_host: 'http://ow.test', namespace: 'guest', action: 'hello' })).toEqual([{ path: 'service_token', message: t('schema.required') }]);
+  });
+});
+
+describe('failing open never makes the check stricter: an unreadable pattern under not, if or oneOf leaves that whole check to APISIX (fix round 1, F1)', () => {
+  // PCRE reads "bar" as not matching \Afoo\z, so APISIX accepts { a: 'bar' } under each schema below.
+  const PCRE = '\\Afoo\\z';
+
+  it('under not: the not goes, the rest of the node stays', () => {
+    const schema: Obj = { type: 'object', properties: { a: { type: 'string', not: { type: 'string', pattern: PCRE } } } };
+    expect(fieldErrors(schema, { a: 'bar' })).toEqual([]);
+    expect(fieldErrors(schema, { a: 5 })).toEqual([{ path: 'a', message: 'must be string' }]);
+    expect(schemaGaps(schema)).toEqual(['conditions']);
+  });
+
+  it('in a oneOf branch: the oneOf goes', () => {
+    const schema: Obj = { type: 'object', properties: { a: { oneOf: [{ type: 'string', pattern: PCRE }, { type: 'string', maxLength: 3 }] } } };
+    expect(fieldErrors(schema, { a: 'bar' })).toEqual([]);
+    expect(schemaGaps(schema)).toEqual(['conditions']);
+  });
+
+  it('in an if: neither then nor else is applied', () => {
+    const schema: Obj = { type: 'object', properties: { a: { type: 'string' } }, if: { properties: { a: { pattern: PCRE } } }, then: { required: ['b'] }, else: { required: ['c'] } };
+    expect(fieldErrors(schema, { a: 'bar' })).toEqual([]);
+    expect(fieldErrors(schema, { a: 1 })).toEqual([{ path: 'a', message: 'must be string' }]);
+    expect(schemaGaps(schema)).toEqual(['conditions']);
+  });
+
+  it('nested: a not inside properties inside a oneOf branch takes the outermost oneOf', () => {
+    const schema: Obj = { type: 'object', oneOf: [{ required: ['a'], properties: { a: { not: { pattern: PCRE } } } }, { required: ['z'] }] };
+    expect(fieldErrors(schema, { a: 'bar' })).toEqual([]);
+    expect(schemaGaps(schema)).toEqual(['conditions']);
+  });
+
+  it('a not inside a not: still the outermost, so no double negation turns stricter', () => {
+    const schema: Obj = { type: 'object', properties: { a: { not: { not: { type: 'string', pattern: PCRE } } } } };
+    expect(fieldErrors(schema, { a: 'bar' })).toEqual([]);
+  });
+
+  it('where removing only loosens (anyOf, allOf, then, else, items) only the pattern goes', () => {
+    const schema: Obj = { type: 'object', properties: { a: { anyOf: [{ type: 'string', pattern: PCRE }, { type: 'integer' }] }, l: { type: 'array', items: { type: 'string', pattern: PCRE, maxLength: 2 } } } };
+    expect(fieldErrors(schema, { a: 'bar', l: ['xy'] })).toEqual([]);
+    expect(fieldErrors(schema, { l: ['xyz'] })).toEqual([{ path: 'l.0', message: 'must NOT have more than 2 characters' }]);
+    expect(schemaGaps(schema)).toEqual(['patterns']);
+  });
+
+  it('in definitions (which a $ref may reach from anywhere): the whole schema is left to APISIX', () => {
+    const schema: Obj = { type: 'object', definitions: { x: { type: 'string', pattern: PCRE } }, properties: { a: { not: { $ref: '#/definitions/x' } } } };
+    expect(fieldErrors(schema, { a: 'bar' })).toBeNull();
+    expect(schemaGaps(schema)).toBe('all');
+  });
+
+  it('a property named like a keyword is a property, not a keyword', () => {
+    const schema: Obj = { type: 'object', properties: { not: { type: 'string', pattern: PCRE }, if: { type: 'integer' } } };
+    expect(fieldErrors(schema, { not: 'bar', if: 'x' })).toEqual([{ path: 'if', message: 'must be integer' }]);
+    expect(schemaGaps(schema)).toEqual(['patterns']);
   });
 });
 
