@@ -1,11 +1,13 @@
 // The additional certificate/key pairs (`certs` / `keys`, e.g. ECDSA beside RSA) as the draft holds
 // them. APISIX never returns a key (admin/resource.lua 180–193), so a stored pair's key is not in the
-// draft; it stays in APISIX only while the save is a PATCH that sends no `keys` (editor/save.ts),
-// because `keys` is replaced whole when sent (core.table.merge replaces arrays) and a PUT replaces
-// everything. So any change to the pairs means every remaining key is entered again: `keys` then lines
-// up with `certs`, with null where a key is still to be entered (sslIssues refuses those). Checked
-// live: a PATCH of certs + keys with every key works; certs alone that changes their number is
-// refused; removing them all needs `keys: []` (`keys: null` crashes APISIX's PATCH, a 500).
+// draft; it stays in APISIX while the save, a PATCH for every stored SSL (editor/save.ts), sends no
+// `keys`, because `keys` is replaced whole when sent (core.table.merge replaces arrays). So a change
+// to the pairs means every remaining key is entered again: `keys` then lines up with `certs`, with
+// null where a key is still to be entered (sslIssues refuses those). A change that ends where it began
+// (the stored certs, no key entered) is no change: `keys` goes again (settled). Checked live: a PATCH
+// of certs + keys with every key works; certs alone that changes their number is refused; removing
+// them all needs `keys: []` (`keys: null` crashes APISIX's PATCH, a 500); `{cert, key}` keeps them.
+import { deepEqual } from '../../editor/draft';
 import type { Obj } from '../../api/types';
 
 /**
@@ -18,8 +20,8 @@ export type KeyState = 'stored' | 'entered' | 'needed' | 'stale';
 
 const list = (value: unknown): unknown[] => (Array.isArray(value) ? value : []);
 
-/** Whether the save keeps the stored extra keys: a stored object saved as a PATCH (no new main key) that sends no `keys`. */
-const keepsStoredKeys = (draft: Obj, isNew: boolean): boolean => !isNew && draft.key === undefined && draft.keys === undefined;
+/** Whether the save keeps the stored extra keys: a stored object (always a PATCH) that sends no `keys`. */
+const keepsStoredKeys = (draft: Obj, isNew: boolean): boolean => !isNew && draft.keys === undefined;
 
 /** Each additional pair's key state, in order (see KeyState). `original` is the stored object. */
 export function keyStates(draft: Obj, isNew: boolean, original?: Obj): KeyState[] {
@@ -43,25 +45,38 @@ function alignedKeys(draft: Obj): (string | null)[] {
   });
 }
 
+/**
+ * A stored SSL whose pairs ended where they began (the stored certs, in order, and no key entered):
+ * `keys` goes, and every stored key stays (a way back from add-then-remove).
+ */
+function settled(next: Obj, isNew: boolean, original: Obj | undefined): Obj {
+  if (isNew || !Array.isArray(next.keys) || next.keys.some((k) => k !== null)) return next;
+  if (!deepEqual(list(next.certs), list(original?.certs))) return next;
+  const out = { ...next };
+  delete out.keys;
+  if (list(original?.certs).length === 0) delete out.certs;
+  return out;
+}
+
 /** `draft` with a pair added at the end; every other pair's key is then to be entered again (unless it already is). */
 export function withPairAdded(draft: Obj, cert: string, key: string): Obj {
   return { ...draft, certs: [...list(draft.certs), cert], keys: [...alignedKeys(draft), key] };
 }
 
 /**
- * `draft` without pair `index`; the others' keys are to be entered again (unless they already are).
- * With none left, both lists go, except that a stored object saved as a PATCH sends `keys: []` so
- * that APISIX drops the stored keys too (mergePatch sends `certs: null` for the certs).
+ * `draft` without pair `index`; the others' keys are to be entered again (unless they already are,
+ * or the pairs are back as stored: settled). With none left, both lists go, except that a stored
+ * object sends `keys: []` so that APISIX drops the stored keys too (mergePatch sends `certs: null`).
  */
 export function withPairRemoved(draft: Obj, index: number, isNew: boolean, original?: Obj): Obj {
   const certs = list(draft.certs).filter((_, i) => i !== index);
   const keys = alignedKeys(draft).filter((_, i) => i !== index);
   const next: Obj = { ...draft, certs, keys };
-  if (certs.length > 0) return next;
+  if (certs.length > 0) return settled(next, isNew, original);
   delete next.certs;
   delete next.keys;
   const storedPairs = list(original?.certs).length > 0;
-  if (!isNew && storedPairs && draft.key === undefined) next.keys = [];
+  if (!isNew && storedPairs) next.keys = [];
   return next;
 }
 

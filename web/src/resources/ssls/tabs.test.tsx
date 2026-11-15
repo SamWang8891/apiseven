@@ -230,6 +230,17 @@ describe('additional pairs', () => {
   });
 });
 
+describe('additional pairs of a client certificate', () => {
+  it('are hidden when it has none, and shown when the draft has keys but no certs (from the JSON tab)', () => {
+    const client = { type: 'client', cert: SEED_CERT };
+    const none = renderSsl(CertificateTab, client, { original: itemOf('s1', client) });
+    expect(screen.queryByRole('region', { name: t('ssl.extra.title') })).toBeNull();
+    none.unmount();
+    renderSsl(CertificateTab, { ...client, keys: ['K'] }, { original: itemOf('s1', client) });
+    expect(screen.getByRole('region', { name: t('ssl.extra.title') })).toBeInTheDocument();
+  });
+});
+
 describe('the SNIs tab', () => {
   it('"Use SANs from certificate" takes its DNS names only, wildcards kept; several go in snis, one in sni', async () => {
     const leaf = renderSsl(SnisTab, { cert: RSA_LEAF, sni: 'old.test' });

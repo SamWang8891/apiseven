@@ -8,7 +8,7 @@ import type { Obj } from '../../api/types';
 import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
 import { resetApp } from '../../test/app';
-import { RSA_LEAF } from '../../test/certs';
+import { EC_IPV6, RSA_LEAF } from '../../test/certs';
 import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import { json, type FakeAdminOptions } from '../../test/fakeAdmin';
 import { editableControls } from '../../test/schemaForm';
@@ -19,7 +19,7 @@ import { fingerprintOf } from './fingerprint';
 beforeAll(async () => {
   await import('./bodies');
   // The fingerprints the tests show, computed once: no late update after a test.
-  await Promise.all([fingerprintOf(SEED_CERT), fingerprintOf(RSA_LEAF)]);
+  await Promise.all([fingerprintOf(SEED_CERT), fingerprintOf(RSA_LEAF), fingerprintOf(EC_IPV6)]);
 });
 
 afterEach(() => {
@@ -40,8 +40,8 @@ const STORED: Obj = {
   cert: SEED_CERT,
   key: SEED_KEY,
   labels: { env: 'dev' },
-  // A key no tab models (APISIX 3.20's schema has none to add; a newer one might): a PATCH leaves it
-  // alone, a PUT sends it back as loaded.
+  // A key no tab models (APISIX 3.20's schema has none to add; a newer one might): every save of a
+  // stored SSL is a PATCH, which leaves it alone; a copy takes it.
   x_future: { kept: true },
   create_time: 1700000000,
   update_time: 1700000100,
@@ -65,15 +65,6 @@ async function openSsl(hash = '#/ssls/apiseven-test', objects: Obj[] = [STORED],
   await settled();
   return app;
 }
-
-/** The stored object with these changes, without the timestamps the editor strips. */
-const loadedWith = (change: Obj): Obj => {
-  const rest = { ...STORED };
-  delete rest.create_time;
-  delete rest.update_time;
-  delete rest.key;
-  return { ...rest, ...change };
-};
 
 /** Replace certificate → the dialog → paste a pair → Apply. */
 async function replaceWith(user: UserEvent, cert: string, key: string) {
@@ -148,7 +139,7 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     expect(writesOf(admin)[1]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { client: null } });
   });
 
-  it('Replace: a PUT of the whole object with the new cert and key; the key is never on the page', async () => {
+  it('Replace: PATCH {cert, key} (APISIX encrypts the key and merges); the key is never on the page', async () => {
     const { user, admin } = await openSsl();
     await user.keyboard('e');
     await replaceWith(user, RSA_LEAF, NEW_KEY);
@@ -157,8 +148,21 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     expect(document.body.innerHTML).not.toContain(NEW_KEY_TEXT);
     await save(user);
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
-    expect(writesOf(admin)[0]).toEqual({ method: 'PUT', path: 'ssls/apiseven-test', body: loadedWith({ cert: RSA_LEAF, key: NEW_KEY }) });
+    expect(writesOf(admin)[0]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { cert: RSA_LEAF, key: NEW_KEY } });
     expect(document.body.innerHTML).not.toContain(NEW_KEY_TEXT);
+  });
+
+  it('Replace on an SSL with an extra pair: PATCH {cert, key}; the extra pair keeps its stored key, nothing to re-enter', async () => {
+    const withPair = { ...STORED, certs: [RSA_LEAF] };
+    const { user, admin } = await openSsl('#/ssls/apiseven-test', [{ ...withPair, keys: [SEED_KEY] }]);
+    await user.keyboard('e');
+    await replaceWith(user, EC_IPV6, NEW_KEY);
+    expect(main().getByRole('listitem', { name: t('ssl.extra.row', { n: 1 }) })).toHaveTextContent(t('ssl.extra.stored'));
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { cert: EC_IPV6, key: NEW_KEY } });
+    // The stored extra key is still there (the fake keeps it encrypted, as APISIX does).
+    expect(admin.stored('ssls')[0]).toMatchObject({ certs: [RSA_LEAF], keys: [expect.stringMatching(/^AES:/)] });
   });
 
   it('Replace, Save, Edit: the key reads "stored" again and the next save is a PATCH without it', async () => {
@@ -201,7 +205,7 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
   it('a refused save keeps the replacement: still editing, and the next Save sends the key again', async () => {
     let refuse = true;
     const { user, admin } = await openSsl('#/ssls/apiseven-test', [STORED], {
-      'ssls/apiseven-test': (req) => (req.method === 'PUT' && refuse ? ((refuse = false), json(400, { error_msg: 'failed to parse key: PEM_read_bio_PrivateKey() failed' })) : undefined),
+      'ssls/apiseven-test': (req) => (req.method === 'PATCH' && refuse ? ((refuse = false), json(400, { error_msg: 'failed to parse key: PEM_read_bio_PrivateKey() failed' })) : undefined),
     });
     await user.keyboard('e');
     await replaceWith(user, RSA_LEAF, NEW_KEY);
@@ -211,7 +215,7 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     expect(document.body.innerHTML).not.toContain(NEW_KEY_TEXT);
     await save(user);
     await waitFor(() => expect(writesOf(admin)).toHaveLength(2));
-    expect(writesOf(admin)[1]).toMatchObject({ method: 'PUT', body: { key: NEW_KEY, cert: RSA_LEAF } });
+    expect(writesOf(admin)[1]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { key: NEW_KEY, cert: RSA_LEAF } });
   });
 
   it('the JSON tab shows a note for the new key, never the key; an edit there keeps it, removing the note drops it', async () => {
@@ -233,7 +237,7 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     await user.paste(JSON.stringify({ ...shown, desc: 'from json' }));
     await save(user);
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
-    expect(writesOf(admin)[0]).toEqual({ method: 'PUT', path: 'ssls/apiseven-test', body: loadedWith({ cert: RSA_LEAF, key: NEW_KEY, desc: 'from json' }) });
+    expect(writesOf(admin)[0]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { cert: RSA_LEAF, key: NEW_KEY, desc: 'from json' } });
 
     await main().findByRole('button', { name: t('editor.edit') });
     await user.click(tab(t('ssl.tab.certificate')));
@@ -252,7 +256,7 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     expect(writesOf(admin)[1]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { desc: 'kept key' } });
   });
 
-  it('a conflict after Replace shows no key; Overwrite sends the PUT with it', async () => {
+  it('a conflict after Replace shows no key; Overwrite sends a PATCH of mine against theirs, with the key', async () => {
     const { user, admin } = await openSsl();
     await user.keyboard('e');
     await replaceWith(user, RSA_LEAF, NEW_KEY);
@@ -264,7 +268,7 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
     expect(document.body.innerHTML).not.toContain(SEED_KEY_TEXT);
     await user.click(within(dialog).getByRole('button', { name: t('editor.conflict.overwrite') }));
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
-    expect(writesOf(admin)[0]).toMatchObject({ method: 'PUT', body: { key: NEW_KEY, cert: RSA_LEAF, snis: STORED.snis } });
+    expect(writesOf(admin)[0]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { key: NEW_KEY, cert: RSA_LEAF, snis: STORED.snis } });
   });
 });
 

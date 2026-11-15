@@ -5,7 +5,6 @@
 // private key is never shown once taken: not here, not in the JSON tab (a note stands for it), and
 // after a save the draft holds none again (the item is read back with GET). Additional pairs:
 // ExtraPairs.
-import { isObj } from '../../api/sanitize';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -142,7 +141,7 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
           </>
         )}
       </section>
-      {(!client || certs.length > 0 || isObj(draft.keys)) && (
+      {(!client || certs.length > 0 || draft.keys !== undefined) && (
         <ExtraPairs draft={draft} setDraft={setDraft} isNew={isNew} original={original} issues={issues} client={client} />
       )}
       {replacing && !locked && (

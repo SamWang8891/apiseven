@@ -190,11 +190,12 @@ describe('saveResource, SSL', () => {
     expect(admin.stored('ssls')[0]).toEqual({ id: 's1', cert: 'CERT', key: 'ENCRYPTED', snis: ['a.test'], labels: { env: 'dev' }, update_time: expect.any(Number) as number });
   });
 
-  it('a draft containing key (certificate replaced) sends a full PUT', async () => {
-    const { client, writes } = setup({ objects: { ssls: [SSL] } });
+  it('a draft containing key (certificate replaced) sends PATCH {cert, key}: APISIX encrypts the key and merges, so stored extra keys stay', async () => {
+    const { admin, client, writes } = setup({ objects: { ssls: [{ ...SSL, certs: ['C1'], keys: ['K1'] }] } });
     const { original, draft } = await load(client, 'ssls', 's1');
     await saveResource(client, { kind: 'ssls', id: 's1', isNew: false, draft: { ...draft, cert: 'NEW CERT', key: 'NEW KEY' }, original });
-    expect(writes()).toMatchObject([{ method: 'PUT', path: 'ssls/s1', body: { cert: 'NEW CERT', key: 'NEW KEY', snis: ['a.test'] } }]);
+    expect(writes()).toEqual([{ method: 'PATCH', path: 'ssls/s1', body: { cert: 'NEW CERT', key: 'NEW KEY' } }]);
+    expect(admin.stored('ssls')[0]).toMatchObject({ cert: 'NEW CERT', key: 'NEW KEY', certs: ['C1'], keys: ['K1'] });
   });
 
   it('the saved item is re-read, so it never carries the key a write response echoes', async () => {
@@ -309,7 +310,7 @@ describe('when the read after a write fails, what was sent stands in: never a va
     expect(item.value.key).toBeUndefined();
     expect(item.value.cert).toBe('NEW CERT');
     await saveResource(client, { kind: 'ssls', id: 's1', isNew: false, draft: { ...stripTimestamps(item.value), snis: ['b.test'] }, original: item, force: true });
-    expect(writes().map((w) => w.method)).toEqual(['PUT', 'PATCH']);
+    expect(writes().map((w) => w.method)).toEqual(['PATCH', 'PATCH']);
     expect(writes()[1]?.body).toEqual({ snis: ['b.test'] });
     expect(admin.stored('ssls')[0]?.key).toBe(`AES:${btoa(encodeURIComponent(PEM))}`);
   });

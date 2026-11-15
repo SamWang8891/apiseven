@@ -59,10 +59,10 @@ function checkSnis(draft: Obj, server: boolean, add: Add): void {
 
 /**
  * The extra pairs: each cert and key a PEM string (934–941), and for a server certificate as many
- * keys as certs in what APISIX will check (ssl.lua 205–208). For a stored object saved without a new
- * main key, that is the draft merged into the stored object (a PATCH, editor/save.ts): the stored
- * keys, which a GET never shows, stay unless `keys` is sent, and there are as many of them as the
- * stored certs (the same check ran when they were saved). Checked live: a PATCH of `certs` alone that
+ * keys as certs in what APISIX will check (ssl.lua 205–208). For a stored object, that is the draft
+ * merged into the stored object (every save of one is a PATCH, editor/save.ts): the stored keys, which
+ * a GET never shows, stay unless `keys` is sent, and there are as many of them as the stored certs
+ * (the same check ran when they were saved). Checked live: a PATCH of `certs` alone that
  * changes their number answers "mismatched number of certs and keys".
  */
 function checkPairs(draft: Obj, env: ValidateEnv, server: boolean, add: Add): void {
@@ -79,13 +79,14 @@ function checkPairs(draft: Obj, env: ValidateEnv, server: boolean, add: Add): vo
   }
   // A client certificate is not counted: check_ssl_conf returns before (ssl.lua 201–203).
   if (!server) return;
-  const put = env.isNew || draft.key !== undefined;
+  // A create sends the draft as it is; a stored SSL is saved as a PATCH (editor/save.ts), merged into
+  // the stored keys unless `keys` is sent, also with a new main key (admin/resource.lua 471–483).
   const stored = env.original?.value.certs;
   const certCount = Array.isArray(certs) ? certs.length : 0;
-  const keyCount = Array.isArray(keys) ? keys.length : isLuaArray(keys) ? 0 : put ? 0 : Array.isArray(stored) ? stored.length : 0;
+  const keyCount = Array.isArray(keys) ? keys.length : isLuaArray(keys) ? 0 : env.isNew ? 0 : Array.isArray(stored) ? stored.length : 0;
   if (certCount === keyCount) return;
   if (Array.isArray(keys)) add('keys', t('ssl.issue.countKeys', { certs: certCount, keys: keyCount }));
-  else add('keys', t(put ? 'ssl.issue.replaceKeys' : 'ssl.issue.reenterKeys'));
+  else add('keys', t(env.isNew ? 'ssl.issue.needKeys' : 'ssl.issue.reenterKeys'));
 }
 
 /** `client` (942–962): an object with a CA; depth a whole number ≥ 0; the skip list non-empty and unique. An empty table is an object to APISIX. */

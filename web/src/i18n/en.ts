@@ -1266,7 +1266,7 @@ export const en: Record<string, string> = {
   'ssl.issue.keyMissing': 'Additional certificate {n}: enter its private key.',
   'ssl.issue.countKeys': '{certs} additional certificates but {keys} private keys: APISIX needs one key for each.',
   'ssl.issue.reenterKeys': 'The additional certificates changed: enter the private key of each again. APISIX keeps the stored keys until they are sent, and needs one per certificate.',
-  'ssl.issue.replaceKeys': 'The save sends the whole certificate, so APISIX needs the private key of each additional certificate too: enter them below.',
+  'ssl.issue.needKeys': 'Each additional certificate needs its private key: enter them below.',
   'ssl.issue.caRequired': 'mTLS needs the CA certificate that signs the client certificates.',
   'ssl.issue.caLength': 'A CA certificate is PEM text of 128 to 65536 characters.',
   'ssl.issue.depth': 'Depth is a whole number, 0 or more.',

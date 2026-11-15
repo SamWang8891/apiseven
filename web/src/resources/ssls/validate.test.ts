@@ -99,7 +99,7 @@ describe('sslIssues: additional pairs, as APISIX counts them after the save (ssl
   it('a new or replaced object: as many keys as certs', () => {
     expect(issues({ cert: CERT, key: KEY, snis: ['a.test'], certs: [RSA_LEAF], keys: [KEY] }, { isNew: true })).toEqual([]);
     expect(issues({ cert: CERT, key: KEY, snis: ['a.test'], certs: [RSA_LEAF] }, { isNew: true })).toEqual([
-      { path: 'keys', message: t('ssl.issue.replaceKeys') },
+      { path: 'keys', message: t('ssl.issue.needKeys') },
     ]);
     expect(issues({ cert: CERT, key: KEY, snis: ['a.test'], certs: [RSA_LEAF], keys: [KEY, KEY] }, { isNew: true })).toEqual([
       { path: 'keys', message: t('ssl.issue.countKeys', { certs: 1, keys: 2 }) },
@@ -119,10 +119,8 @@ describe('sslIssues: additional pairs, as APISIX counts them after the save (ssl
     expect(issues({ cert: CERT, snis: ['a.test'], keys: [] }, { original: STORED.value })).toEqual([]);
   });
 
-  it('a replaced main pair on an object with extra pairs needs their keys again (the PUT replaces everything)', () => {
-    expect(issues({ cert: CERT, key: KEY, snis: ['a.test'], certs: [RSA_LEAF] }, { original: STORED.value })).toEqual([
-      { path: 'keys', message: t('ssl.issue.replaceKeys') },
-    ]);
+  it('a replaced main pair on an object with extra pairs keeps their stored keys (PATCH {cert, key}: APISIX merges)', () => {
+    expect(issues({ cert: CERT, key: KEY, snis: ['a.test'], certs: [RSA_LEAF] }, { original: STORED.value })).toEqual([]);
   });
 
   it('a key still to enter is an issue at its place (keys are strings: private_key_schema)', () => {

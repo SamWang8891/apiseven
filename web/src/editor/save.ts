@@ -101,9 +101,10 @@ async function reread(client: AdminClient, kind: Kind, written: Item, sent: Obj,
  * Saves a draft: create (POST, or PUT with an id) or edit (full PUT), with the timestamps APISIX
  * refuses stripped. An edit first re-reads the object; when its modifiedIndex moved since `original`
  * was loaded (someone else saved) it writes nothing and returns the server's item as `conflict`,
- * unless `force`. SSL is the exception to the full PUT: the private key can't be read back, so
- * unless the draft carries a new `key`, only the changes go, as a PATCH (see mergePatch) computed
- * against the server's current value. Never throws.
+ * unless `force`. A stored SSL is the exception to the full PUT: its private keys can't be read back,
+ * so only the changes go, as a PATCH (see mergePatch) computed against the server's current value. A
+ * new main `key` goes in it too: APISIX's PATCH encrypts `key` / `keys` and merges into the stored
+ * object (admin/resource.lua 471–483), so the stored extra keys stay. Never throws.
  */
 export async function saveResource(client: AdminClient, a: SaveArgs): Promise<SaveResult> {
   const body = stripTimestamps(a.draft);
@@ -121,7 +122,7 @@ export async function saveResource(client: AdminClient, a: SaveArgs): Promise<Sa
     const current = await client.get(a.kind, a.id, a.parent);
     if (!a.force && current.modifiedIndex !== a.original?.modifiedIndex) return { ok: false, conflict: current };
     const written =
-      a.kind === 'ssls' && !Object.hasOwn(body, 'key')
+      a.kind === 'ssls'
         ? await client.patch(a.kind, a.id, mergePatch(stripTimestamps(current.value), body))
         : await client.replace(a.kind, a.id, body, a.parent);
     return { ok: true, item: await reread(client, a.kind, written, body, a.parent) };
