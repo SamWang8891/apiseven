@@ -22,9 +22,16 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-// Custom properties declared directly in the first rule whose selector is exactly `selector`.
+// Custom properties declared directly in the first rule whose selector is exactly `selector`. Only
+// top-level rules are read: a stylesheet with a nested block (@media, @supports) is refused, never
+// read past (its rules would be skipped, or taken for top-level ones).
 function declarations(css: string, selector: string): Map<string, string> {
   const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  let depth = 0;
+  for (const char of withoutComments) {
+    if (char === '{' && ++depth > 1) throw new Error('tokens.css has a nested block (@media, @supports, …), which this parser cannot read: extend it first');
+    if (char === '}') depth -= 1;
+  }
   const rule = /([^{}]+)\{([^{}]*)\}/g;
   for (let m = rule.exec(withoutComments); m; m = rule.exec(withoutComments)) {
     if (m[1]?.trim() !== selector) continue;
@@ -145,6 +152,12 @@ describe('what --selection would make unreadable', () => {
 });
 
 describe('tokens.css', () => {
+  // Task 16b item 41: the parser reads only top-level rules; a token set inside @media would be skipped or misread.
+  it('the parser refuses a stylesheet with a nested block rather than misread it', () => {
+    expect(() => declarations('@media (min-width: 1px) { :root { --text: #fff; } }\n:root { --text: #000; }', ':root')).toThrow(/nested/);
+    expect(() => declarations(':root { --text: #000; }', ':root')).not.toThrow();
+  });
+
   it('defines every token under :root', () => {
     for (const name of [...COLOR_TOKENS, ...OTHER_TOKENS]) {
       expect(light.get(name), name).toBeTruthy();

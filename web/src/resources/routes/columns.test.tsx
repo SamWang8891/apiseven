@@ -49,6 +49,35 @@ const CTX = ctxOf({
   pluginConfigs: [itemOf('pc1', { name: 'common', plugins: { 'response-rewrite': {} } })],
 });
 
+// Task 16b item 38: a stored field of another shape than the schema's is shown or left out, never a crash.
+describe('route columns on odd shapes', () => {
+  const ODD: Obj[] = [
+    { desc: 5 },
+    { desc: { a: 1 } },
+    { labels: 'x' },
+    { labels: ['a'] },
+    { plugins: null },
+    { plugins: 'x' },
+    { plugins: { a: null } },
+    { methods: 'GET' },
+    { methods: [1, null] },
+    { name: 7, uris: 'x', uri: 3, hosts: 'a', host: 4, remote_addrs: 'x', vars: 'x', timeout: 'x', priority: 'x', create_time: 'x', update_time: null },
+    { service_id: { a: 1 }, plugin_config_id: [], upstream_id: 5, upstream: 'x', enable_websocket: 'yes' },
+  ];
+
+  it('every column reads, renders and sorts such rows without throwing', () => {
+    const items = ODD.map((v, i) => route(v, `odd${i}`));
+    for (const item of items) {
+      for (const column of routeColumns) {
+        expect(() => column.accessor(item, CTX), `${column.id} ${JSON.stringify(item.value)}`).not.toThrow();
+        const { unmount } = renderWithProviders(<div>{column.cell?.(item, CTX)}</div>, { counts: {} });
+        unmount();
+      }
+    }
+    for (const column of routeColumns) expect(() => sortItems(items, [{ id: column.id, desc: false }], routeColumns, CTX), column.id).not.toThrow();
+  });
+});
+
 describe('route columns', () => {
   it('lists the columns in order, the main ones visible by default (status comes from the table)', () => {
     expect(routeColumns.map((c) => c.id)).toEqual([

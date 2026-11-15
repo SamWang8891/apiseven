@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
 import { EC_IPV6, FAR } from '../test/certs';
 import { ctxOf, itemOf } from '../test/ctx';
+import * as resolve from './resolve';
 import { effectivePlugins, labelPairs, nameOfValue, referencesTo, resolveRef, routeHosts, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
 
 describe('nameOfValue', () => {
@@ -514,6 +515,23 @@ describe('resolveRef', () => {
     expect(resolveRef('services', undefined, ctx)).toBeUndefined();
     expect(resolveRef('services', '', ctx)).toBeUndefined();
   });
+
+  // Task 16b item 35: one pass over a list builds its id index; every lookup after that is direct.
+  it('reads a list once for any number of lookups, the first of a repeated id wins, and another list is indexed anew', () => {
+    const items = Array.from({ length: 500 }, (_, i) => itemOf(`s${i}`));
+    let reads = 0;
+    const counted = new Proxy([...items, itemOf('s7', { name: 'later twin' })], {
+      get(target, key, receiver) {
+        if (typeof key === 'string' && /^\d+$/.test(key)) reads += 1;
+        return Reflect.get(target, key, receiver) as unknown;
+      },
+    });
+    const big = ctxOf({ services: counted });
+    for (let i = 0; i < 500; i += 1) expect(resolveRef('services', `s${i}`, big)?.item).toBe(items[i]);
+    expect(reads).toBeLessThanOrEqual(501);
+    const next = ctxOf({ services: [itemOf('s1', { name: 'new' })] });
+    expect(resolveRef('services', 's1', next)?.item?.value.name).toBe('new');
+  });
 });
 
 describe('labelPairs', () => {
@@ -521,5 +539,62 @@ describe('labelPairs', () => {
     expect(labelPairs({ team: 'core', env: 'dev', n: 1 })).toEqual([['team', 'core'], ['env', 'dev']]);
     expect(labelPairs(undefined)).toEqual([]);
     expect(labelPairs(['a'])).toEqual([]);
+  });
+});
+
+// Task 16b item 36: whatever shape a stored field has, no resolver throws (a list cell or the palette would crash).
+describe('every exported resolver, on odd shapes', () => {
+  const ODD: unknown[] = [null, 0, 7, -1, 'x', '', true, [], ['a', 3, null], {}, { a: null }, { nodes: 'x' }];
+  const FIELDS = [
+    'id', 'name', 'username', 'desc', 'status', 'labels', 'hosts', 'host', 'service_id', 'upstream_id', 'upstream', 'plugins',
+    'plugin_config_id', 'group_id', 'snis', 'sni', 'cert', 'certs', 'type', 'client', 'tls', 'nodes', 'discovery_type',
+    'service_name', 'validity_end',
+  ];
+  const shapes: Record<string, unknown>[] = [{}, ...FIELDS.flatMap((field) => ODD.map((odd) => ({ [field]: odd })))];
+  const items = shapes.map((value, i) => ({ id: `o${i}`, value: { ...value, id: `o${i}` } }));
+  const nested = ODD.map((odd) => ({ upstream: { nodes: odd, tls: odd }, plugins: { 'traffic-split': { rules: odd }, x: odd }, tls: { client_cert_id: odd } }));
+  const ctx = ctxOf({
+    routes: items, streamRoutes: items, services: items, upstreams: items, ssls: items, pluginConfigs: items,
+    consumerGroups: items, consumers: items, globalRules: items,
+  });
+  const HOSTS = ['', '*', '.', '..', '*.', '[', '::', 'a..b', 'Ä.test', '*.*.test', '10.0.0.1.', 'x'.repeat(300)];
+
+  it('lists every exported function once, so a new one is added here', () => {
+    expect(Object.keys(resolve).filter((name) => typeof (resolve as Record<string, unknown>)[name] === 'function').sort()).toEqual([
+      'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referencesTo', 'resolveRef',
+      'routeHosts', 'routeHostsLoading', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter', 'streamEffectivePlugins',
+      'upstreamSummary',
+    ]);
+  });
+
+  it('none throws', () => {
+    for (const value of [...shapes, ...nested]) {
+      const v = value as Record<string, unknown>;
+      expect(() => {
+        resolve.nameOfValue(v);
+        resolve.isEnabled(v);
+        resolve.labelPairs(v.labels);
+        resolve.routeHosts(v, ctx);
+        resolve.routeHostsLoading(v, ctx);
+        resolve.ownUpstream(v, ctx);
+        resolve.ownUpstream(v, ctx, true);
+        resolve.upstreamSummary(v, ctx);
+        resolve.upstreamSummary(v, ctx, 'stream');
+        resolve.effectivePlugins(v, ctx);
+        resolve.streamEffectivePlugins(v, ctx);
+        resolve.asStreamRoute(v);
+        resolve.sniList(v);
+        resolve.servedToClients(v);
+        resolve.sslNotAfter(v);
+        for (const kind of ['services', 'upstreams', 'plugin_configs', 'consumer_groups', 'consumers', 'routes', 'stream_routes', 'ssls'] as const) {
+          resolve.resolveRef(kind, v.id, ctx);
+          resolve.findInCtx(kind, String(v.id), ctx);
+        }
+      }, JSON.stringify(v)).not.toThrow();
+    }
+    for (const kind of ['upstreams', 'services', 'plugin_configs', 'consumer_groups', 'ssls', 'protos', 'routes'] as const) {
+      expect(() => resolve.referencesTo(kind, 'o1', ctx)).not.toThrow();
+    }
+    for (const host of HOSTS) expect(() => resolve.sslExpiries(resolve.sslForHost(host, ctx)), host).not.toThrow();
   });
 });

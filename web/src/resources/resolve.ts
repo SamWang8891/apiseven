@@ -46,8 +46,18 @@ function idOf(value: unknown): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
+/** Each list's items by id (the first of a repeated id), built once per list: the lists are replaced, never changed in place. */
+const indexes = new WeakMap<Item[], Map<string, Item>>();
+
 function find(items: Item[], id: string | undefined): Item | undefined {
-  return id === undefined ? undefined : items.find((item) => String(item.id) === id);
+  if (id === undefined) return undefined;
+  let index = indexes.get(items);
+  if (!index) {
+    index = new Map();
+    for (const item of items) if (!index.has(String(item.id))) index.set(String(item.id), item);
+    indexes.set(items, index);
+  }
+  return index.get(id);
 }
 
 /** A nested field, or undefined as soon as a step is not an object. */

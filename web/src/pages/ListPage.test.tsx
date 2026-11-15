@@ -220,6 +220,24 @@ describe('status', () => {
   });
 });
 
+// Task 16b item 38: the list page itself, its search and its filters over rows of odd shapes.
+describe('rows of odd shapes', () => {
+  it('the routes list shows every row, and searching them throws nothing', async () => {
+    const odd: Obj[] = [
+      { id: 'o1', name: 'one', desc: 5 },
+      { id: 'o2', name: 'two', labels: 'x' },
+      { id: 'o3', name: 'three', plugins: null },
+      { id: 'o4', name: 'four', methods: 'GET', hosts: 'a', uris: 7 },
+    ];
+    const { user } = await open('#/routes', { objects: { routes: odd, upstreams: [] } });
+    for (const name of ['one', 'two', 'three', 'four']) expect(await main().findByRole('link', { name })).toBeInTheDocument();
+    expect(screen.queryByText(t('error.title'))).not.toBeInTheDocument();
+    await user.type(main().getByRole('searchbox'), 'GET');
+    await waitFor(() => expect(main().queryByRole('link', { name: 'one' })).not.toBeInTheDocument());
+    expect(screen.queryByText(t('error.title'))).not.toBeInTheDocument();
+  });
+});
+
 describe('read-only key', () => {
   it('a rejected write shows the error, marks the key read-only with a banner, and stays on the page', async () => {
     const { user } = await open('#/routes', {

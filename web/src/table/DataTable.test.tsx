@@ -1,12 +1,13 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Item, Kind } from '../api/types';
 import { t } from '../i18n';
 import { registry, type ColumnDef, type Ctx } from '../resources/registry';
 import { ctxOf, itemOf } from '../test/ctx';
 import { locationOf, renderWithProviders } from '../test/providers';
-import { DataTable, type DataTableProps } from './DataTable';
+import { DataTable, type BulkAction, type DataTableProps } from './DataTable';
 import type { FilterDef } from './filter';
 import { tableStorageKey } from './tableState';
 
@@ -381,6 +382,28 @@ describe('search and filters', () => {
     expect(search).toHaveValue('');
     expect(names()).toHaveLength(4);
   });
+
+  // Task 16b item 40: a view the URL carries is followed through Back and Forward.
+  it('Back and Forward bring back the view each URL carries', async () => {
+    const { router } = renderTable({ items, filters: [TEAM] });
+    expect(names()).toHaveLength(4);
+    await act(() => router.navigate('/routes?q=shop'));
+    expect(screen.getByRole('searchbox')).toHaveValue('shop');
+    expect(names()).toEqual(['shop']);
+    await act(() => router.navigate('/routes?f.team=core'));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    expect(screen.getByRole('button', { name: t('table.filter.labelCount', { label: 'Team', count: 1 }) })).toBeInTheDocument();
+    await act(() => router.navigate(-1));
+    expect(screen.getByRole('searchbox')).toHaveValue('shop');
+    expect(names()).toEqual(['shop']);
+    expect(screen.queryByRole('button', { name: t('table.filter.labelCount', { label: 'Team', count: 1 }) })).not.toBeInTheDocument();
+    await act(() => router.navigate(-1));
+    expect(screen.getByRole('searchbox')).toHaveValue('');
+    expect(names()).toHaveLength(4);
+    await act(() => router.navigate(1));
+    expect(screen.getByRole('searchbox')).toHaveValue('shop');
+    expect(names()).toEqual(['shop']);
+  });
 });
 
 describe('selection', () => {
@@ -442,6 +465,55 @@ describe('selection', () => {
     expect(seen).toEqual([['r1', 'r2', 'r3']]);
     expect(await screen.findByText(t('table.bulk.progress', { done: 1, total: 3 }))).toBeInTheDocument();
     release();
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+  });
+
+  // Task 16b item 40: the dialog is about the selection as it is now, not as it was when it opened.
+  it('the confirm dialog follows the list: an item gone meanwhile leaves it, and is not sent', async () => {
+    const seen: string[][] = [];
+    let setItems: (next: Item[]) => void = () => {};
+    const zap: BulkAction = {
+      id: 'zap',
+      label: 'Zap',
+      danger: true,
+      confirm: (list) => ({ title: `Zap ${list.length}?`, body: <ul>{list.map((i) => <li key={i.id}>{String(i.value.name)}</li>)}</ul>, confirmLabel: 'Zap them' }),
+      run: async (list) => {
+        seen.push(list.map((i) => i.id));
+        await Promise.resolve();
+      },
+    };
+    function Live() {
+      const [list, set] = useState(many.slice(0, 3));
+      setItems = set;
+      return <DataTable kind="upstreams" columns={COLUMNS} ctx={ctxOf()} rowActions={() => []} items={list} bulkActions={[zap]} />;
+    }
+    const user = userEvent.setup();
+    renderWithProviders(<Live />, { path: '/routes', counts: {} });
+    await user.click(screen.getByRole('checkbox', { name: t('table.selectAll', { count: 3 }) }));
+    await user.click(screen.getByRole('button', { name: 'Zap' }));
+    expect(screen.getByRole('alertdialog', { name: 'Zap 3?' })).toHaveTextContent('drop-2');
+    act(() => setItems([many[0], { ...many[2], value: { ...many[2]?.value, name: 'drop-3 renamed' } }].filter((i): i is Item => i !== undefined)));
+    const dialog = screen.getByRole('alertdialog', { name: 'Zap 2?' });
+    expect(dialog).not.toHaveTextContent('drop-2');
+    expect(dialog).toHaveTextContent('drop-3 renamed');
+    await user.click(within(dialog).getByRole('button', { name: 'Zap them' }));
+    expect(seen).toEqual([['r1', 'r3']]);
+  });
+
+  it('the confirm dialog closes when nothing it was about is left', async () => {
+    let setItems: (next: Item[]) => void = () => {};
+    const zap: BulkAction = { id: 'zap', label: 'Zap', confirm: (list) => ({ title: `Zap ${list.length}?`, confirmLabel: 'Zap them' }), run: async () => {} };
+    function Live() {
+      const [list, set] = useState(many.slice(0, 2));
+      setItems = set;
+      return <DataTable kind="upstreams" columns={COLUMNS} ctx={ctxOf()} rowActions={() => []} items={list} bulkActions={[zap]} />;
+    }
+    const user = userEvent.setup();
+    renderWithProviders(<Live />, { path: '/routes', counts: {} });
+    await user.click(screen.getByRole('checkbox', { name: t('table.selectRow', { name: 'keep-1' }) }));
+    await user.click(screen.getByRole('button', { name: 'Zap' }));
+    expect(screen.getByRole('alertdialog', { name: 'Zap 1?' })).toBeInTheDocument();
+    act(() => setItems(many.slice(1, 2)));
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 });

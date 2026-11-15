@@ -110,7 +110,9 @@ export function DataTable(props: DataTableProps) {
   if ([...selected].some((id) => !shownIds.has(id))) setSelected(new Set([...selected].filter((id) => shownIds.has(id))));
   const selectedItems = useMemo(() => sorted.filter((i) => selected.has(i.id)), [sorted, selected]);
 
-  const [confirming, setConfirming] = useState<{ action: BulkAction; items: Item[] }>();
+  /** The bulk action waiting for its confirmation; it is about the selection as it is now (rows gone meanwhile drop out of it). */
+  const [confirming, setConfirming] = useState<BulkAction>();
+  if (confirming && selectedItems.length === 0) setConfirming(undefined);
   const [progress, setProgress] = useState<{ done: number; total: number }>();
 
   async function runBulk(action: BulkAction, list: Item[]) {
@@ -237,7 +239,7 @@ export function DataTable(props: DataTableProps) {
                   size="sm"
                   variant={action.danger ? 'danger' : 'secondary'}
                   disabled={action.disabled || progress !== undefined}
-                  onClick={() => (action.confirm ? setConfirming({ action, items: selectedItems }) : void runBulk(action, selectedItems))}
+                  onClick={() => (action.confirm ? setConfirming(action) : void runBulk(action, selectedItems))}
                 >
                   {action.label}
                 </Button>
@@ -252,12 +254,12 @@ export function DataTable(props: DataTableProps) {
           />
         </div>
       )}
-      {confirming?.action.confirm && (
+      {confirming?.confirm && selectedItems.length > 0 && (
         <ConfirmDialog
           open
-          danger={confirming.action.danger}
-          {...confirming.action.confirm(confirming.items)}
-          onConfirm={() => void runBulk(confirming.action, confirming.items)}
+          danger={confirming.danger}
+          {...confirming.confirm(selectedItems)}
+          onConfirm={() => void runBulk(confirming, selectedItems)}
           onCancel={() => setConfirming(undefined)}
         />
       )}
