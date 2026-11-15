@@ -1,5 +1,5 @@
 // The Upstream editor and list as the registry wires them: General + one tab per form section.
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import type { Obj } from '../../api/types';
 import { resetReadOnlyKeys } from '../../api/write';
@@ -27,6 +27,7 @@ afterEach(() => {
 
 /** A tab by its label (its name also counts its problems). */
 const tab = (label: string | RegExp) => main().getByRole('tab', { name: typeof label === 'string' ? new RegExp(`^${label}`) : label });
+const POOL_NODE_2 = { host: '10.0.0.12', port: 8080, weight: 1 };
 const POOL: Obj = {
   id: 'web-pool',
   name: 'web-pool',
@@ -136,6 +137,49 @@ describe('the upstream editor', () => {
     await user.click(tab(t('up.section.tls')));
     expect(await main().findByText(t('up.tls.mode.none'))).toBeInTheDocument();
     expect(main().queryByText(t('up.tls.mode.inline'))).not.toBeInTheDocument();
+  });
+
+  // Fix round 1, F3/F4: the node table on the page: what a save sends is what the host fields show.
+  describe('host text and the save gesture', () => {
+    const hostN = (n: number) => main().getByRole('textbox', { name: t('up.nodes.hostN', { n }) });
+    const cmdS = () => fireEvent.keyDown(window, { key: 's', metaKey: true });
+
+    it('an array host typed as host:port, then Cmd/Ctrl-S at once: sent exactly as shown', async () => {
+      const { user, admin } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [POOL] } });
+      await main().findByRole('heading', { level: 1, name: 'web-pool' });
+      await user.keyboard('e');
+      await user.clear(await waitFor(() => hostN(1)));
+      await user.type(hostN(1), '10.0.0.9:9000');
+      cmdS();
+      await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+      expect((writesOf(admin)[0]?.body as Obj).nodes).toEqual([{ host: '10.0.0.9:9000', port: 8080, weight: 1 }, POOL_NODE_2]);
+    });
+
+    it('a map host with a stray colon, then Cmd/Ctrl-S at once: no request, the toast names the node', async () => {
+      const MAPPED = { ...POOL, nodes: { '10.0.0.11:8080': 1, '10.0.0.12:8080': 1 } };
+      const { user, admin } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [MAPPED] } });
+      await main().findByRole('heading', { level: 1, name: 'web-pool' });
+      await user.keyboard('e');
+      await user.clear(await waitFor(() => hostN(1)));
+      await user.type(hostN(1), '10.0.0.9:');
+      cmdS();
+      await waitFor(() => expect(getToasts().at(-1)?.message).toContain(t('up.pending.unsaved', { node: t('up.pending.node', { n: 1 }), addr: '10.0.0.9:' })));
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(writesOf(admin)).toEqual([]);
+      expect(hostN(1)).toHaveValue('10.0.0.9:');
+    });
+
+    it('a stored host holding a port: click in, Tab out: nothing changes, the page is not unsaved', async () => {
+      const STORED = { ...POOL, nodes: [{ host: '10.0.0.5:8080', port: 80, weight: 1 }] };
+      const { user } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [STORED] } });
+      await main().findByRole('heading', { level: 1, name: 'web-pool' });
+      await user.keyboard('e');
+      await user.click(await waitFor(() => hostN(1)));
+      await user.tab();
+      expect(hostN(1)).toHaveValue('10.0.0.5:8080');
+      expect(main().getByRole('spinbutton', { name: t('up.nodes.portN', { n: 1 }) })).toHaveValue('80');
+      expect(main().queryByText(t('editor.unsaved'))).not.toBeInTheDocument();
+    });
   });
 
   // Task 16b item 50: sections opened or closed on a tab are as the user left them after a tab switch.

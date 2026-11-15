@@ -82,9 +82,9 @@ export interface Address {
 }
 
 /**
- * An address as it is written when the field is left: a host typed with its port (`10.0.0.5:8080`,
- * `[::1]:9000`) is read as a pasted one is (parseAddr), its port replacing the row's; anything else,
- * a bare or bracketed IPv6 address included, is left as it is.
+ * An address with the port its host holds moved to its port, as a paste reads it (parseAddr):
+ * `10.0.0.5:8080`, `[::1]:9000`. Only on the user's explicit action (Enter in "Add a node", "Move
+ * <port> to Port"), never on leaving a field. Anything else is left as it is.
  */
 export function committed(address: Address): Address {
   const parsed = parseAddr(address.host);
@@ -94,12 +94,27 @@ export function committed(address: Address): Address {
 /** The port a node's host holds (`10.0.0.5:8080`), which APISIX would read as part of the host name; undefined for none. */
 export const portInHost = (host: string | undefined): number | undefined => (host === undefined ? undefined : parseAddr(host).port);
 
+/** Whether `host` is an IPv6 address, bare (`fe80::1`) or in brackets (`[fe80::1]`): the one kind of host that holds colons. */
+export function isIpv6(host: string): boolean {
+  const bare = host.startsWith('[') && host.endsWith(']') ? host.slice(1, -1) : host;
+  if (!bare.includes(':')) return false;
+  try {
+    new URL(`http://[${bare}]/`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** A colon in a host that is not an IPv6 address (`10.0.0.5:`, `10.0.0.5:8080`, `a:b`): APISIX would look it all up as a name. */
+export const strayColon = (host: string): boolean => host.includes(':') && !isIpv6(host);
+
 /**
  * What became of an address edit on a map: done, or refused because another entry (`other`) has
- * that address, or held while it is typed (until commitDigits, when the field is left): an
- * all-digit host without a port ('digits': JavaScript would move the entry to the top of the map,
- * integer-like keys first), or a host with a colon ('colon': `10.0.0.5:` on its way to a port, or an
- * IPv6 address, which would be bracketed into the key and read back with its brackets).
+ * that address, or held: an all-digit host without a port while it is typed ('digits', until
+ * commitDigits when the field is left: JavaScript would move the entry to the top of the map,
+ * integer-like keys first), or a host with a stray colon ('colon': no map key can hold it; held until
+ * the user changes it or moves its port, never ended by leaving the field).
  */
 export type AddressEdit = { ok: true; up: Obj } | { ok: false; reason: 'digits' | 'colon' } | { ok: false; reason: 'duplicate'; other: number };
 
@@ -120,7 +135,7 @@ const isDigits = (address: Address): boolean => address.port === undefined && /^
 
 /** Why `address` can't take entry `index`'s place in a map (index = the entry count: a new entry). */
 function refusal(entries: [string, unknown][], index: number, address: Address, commitDigits: boolean): AddressEdit | undefined {
-  if (!commitDigits && address.host.includes(':')) return { ok: false, reason: 'colon' };
+  if (strayColon(address.host)) return { ok: false, reason: 'colon' };
   const key = addrOf(address.host, address.port);
   const other = entries.findIndex(([k], j) => j !== index && k === key);
   if (other >= 0) return { ok: false, reason: 'duplicate', other };
@@ -129,11 +144,10 @@ function refusal(entries: [string, unknown][], index: number, address: Address, 
 }
 
 /** Gives map entry `index` a new address where it stands, its weight kept. */
-export function setMapAddress(up: Obj, index: number, typed: Address, opts: { commitDigits?: boolean } = {}): AddressEdit {
+export function setMapAddress(up: Obj, index: number, address: Address, opts: { commitDigits?: boolean } = {}): AddressEdit {
   const entries = entriesOf(up);
   const entry = entries[index];
   if (!entry) return { ok: true, up };
-  const address = opts.commitDigits ? committed(typed) : typed;
   const refused = refusal(entries, index, address, opts.commitDigits ?? false);
   if (refused) return refused;
   entries[index] = [addrOf(address.host, address.port), entry[1]];
@@ -141,8 +155,7 @@ export function setMapAddress(up: Obj, index: number, typed: Address, opts: { co
 }
 
 /** Adds an entry with the default weight at the end of a map, unless refused as setMapAddress would. */
-export function addMapNode(up: Obj, typed: Address, opts: { commitDigits?: boolean } = {}): AddressEdit {
-  const address = opts.commitDigits ? committed(typed) : typed;
+export function addMapNode(up: Obj, address: Address, opts: { commitDigits?: boolean } = {}): AddressEdit {
   const entries = entriesOf(up);
   const refused = refusal(entries, entries.length, address, opts.commitDigits ?? false);
   if (refused) return refused;
