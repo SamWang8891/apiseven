@@ -48,7 +48,7 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
     setState(current);
   }
   // A plugin whose schema isn't known (not loaded on this APISIX, or the list still loading) has every value masked.
-  const hidden = useMemo(() => (locked ? (schema ? redactSecrets(conf, '', encrypt) : maskConfig(conf)) : undefined), [locked, conf, encrypt, schema]);
+  const hidden = useMemo(() => (locked ? (schema ? redactSecrets(conf, '', encrypt, schema) : maskConfig(conf)) : undefined), [locked, conf, encrypt, schema]);
   const holding = !locked && current.held !== undefined;
   usePending(holding ? current.held : undefined);
   useLayoutEffect(() => onHeld(holding), [onHeld, holding]);

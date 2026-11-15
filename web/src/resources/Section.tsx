@@ -6,7 +6,7 @@
 // the user, it stays so for the editor page (ui/ViewMemory: a tab switch remounts it), by its title,
 // until a Save is refused while a problem sits inside it: then it opens, as a card with one does.
 import { ChevronRight } from 'lucide-react';
-import { use, useId, useRef, useState, type ReactNode } from 'react';
+import { use, useId, useRef, type ReactNode } from 'react';
 import { refusedSince, SaveRefusalsContext } from '../editor/saveRefusals';
 import { t } from '../i18n';
 import { Badge, PendingScope, useHeld, useViewState } from '../ui';
@@ -25,19 +25,16 @@ export interface SectionProps {
 export function Section({ title, summary, issues = 0, defaultOpen = false, children }: SectionProps) {
   const id = useId();
   const refusals = use(SaveRefusalsContext);
-  /** Open or not, and as of which refused Save that was decided. */
-  const [state, setState] = useViewState(typeof title === 'string' ? `section:${title}` : undefined, () => ({ open: defaultOpen || issues > 0, at: refusals }));
+  /** Open or not, as of which refused Save that was decided, and with how many problems inside (kept with it, through a remount). */
+  const [state, setState] = useViewState(typeof title === 'string' ? `section:${title}` : undefined, () => ({ open: defaultOpen || issues > 0, at: refusals, issues }));
   const { open } = state;
-  const setOpen = (next: boolean | ((was: boolean) => boolean)) => setState((s) => ({ open: typeof next === 'function' ? next(s.open) : next, at: refusals }));
+  const setOpen = (next: boolean | ((was: boolean) => boolean)) => setState((s) => ({ open: typeof next === 'function' ? next(s.open) : next, at: refusals, issues }));
+  // More problems than when it was last seen (also while it was away: a tab switch) open it.
+  if (issues !== state.issues) setState((s) => ({ open: s.open || issues > s.issues, at: s.at, issues }));
   // A Save refused since then, with a problem inside, opens it (also when this tab mounts after one).
-  if (!open && issues > 0 && refusedSince(refusals, state.at)) setState({ open: true, at: refusals });
-  const [seen, setSeen] = useState(issues);
+  else if (!open && issues > 0 && refusedSince(refusals, state.at)) setState({ open: true, at: refusals, issues });
   const held = useHeld();
   const bodyRef = useRef<HTMLDivElement>(null);
-  if (issues !== seen) {
-    setSeen(issues);
-    if (issues > seen && !open) setOpen(true);
-  }
   const titleId = `${id}-title`;
   const summaryId = `${id}-summary`;
   const issuesId = `${id}-issues`;

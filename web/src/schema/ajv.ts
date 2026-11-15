@@ -228,21 +228,58 @@ function emptyTableTypeError(error: ErrorObject, value: unknown): boolean {
   return empty && wanted.some((type) => type === 'object' || type === 'array');
 }
 
+/** `value` with the JSON at `pointer` replaced, copying only along the way; `value` itself when there is nothing there. */
+function replaceAt(value: unknown, keys: string[], next: unknown): unknown {
+  const [key, ...rest] = keys;
+  if (key === undefined) return next;
+  if (Array.isArray(value)) {
+    const list: unknown[] = value;
+    const i = Number(key);
+    if (!(i in list)) return list;
+    const copy = [...list];
+    copy[i] = replaceAt(list[i], rest, next);
+    return copy;
+  }
+  if (!isObj(value) || !Object.hasOwn(value, key)) return value;
+  return { ...value, [key]: replaceAt(value[key], rest, next) };
+}
+
+/**
+ * `value` (defaults applied) with each empty table read as the type its schema position asks for,
+ * `[]` as `{}` where an object is wanted and `{}` as `[]` where a list is, as APISIX's validator reads
+ * an empty Lua table: then minItems, required and the rest apply to it as APISIX applies them. Each
+ * place is turned once (a branch of a combinator may want the other type).
+ */
+function asLuaTables(schema: Obj, value: unknown, opts: CheckOptions): unknown {
+  let current = withDefaults(schema, value);
+  const turned = new Set<string>();
+  for (let round = 0; round < 16; round += 1) {
+    const error = (schemaErrors(schema, current, opts) ?? []).find((e) => !turned.has(e.instancePath) && emptyTableTypeError(e, current));
+    if (!error) break;
+    turned.add(error.instancePath);
+    const wanted = String((error.params as Record<string, unknown>).type).split(',');
+    const at = valueAt(current, error.instancePath);
+    const read = Array.isArray(at) ? (wanted.includes('object') ? {} : at) : wanted.includes('array') ? [] : at;
+    current = replaceAt(current, pointerKeys(error.instancePath), read);
+  }
+  return current;
+}
+
 /**
  * What is wrong with `value`, for showing beside fields: specificErrors, each at a dotted path (array
  * indices as numbers) and a missing required property at its own path (reading "Required"),
  * duplicates once. [] when
  * valid; null when the schema does not compile (the caller then shows nothing; APISIX decides).
- * `luaTables`: an empty `[]` or `{}` passes as either a list or an object, as in APISIX's validator
- * (used where the check blocks a save of something APISIX stores: plugin metadata, secret managers).
+ * `luaTables`: an empty `[]` or `{}` is read as the list or object its position asks for (asLuaTables),
+ * as APISIX's validator reads it (plugins, plugin metadata, secret managers: what APISIX stores).
  */
 export function fieldErrors(schema: Obj, value: unknown, opts: { luaTables?: boolean } & CheckOptions = {}): FieldError[] | null {
-  const all = schemaErrors(schema, value, opts);
+  const input = opts.luaTables ? asLuaTables(schema, value, opts) : value;
+  const all = schemaErrors(schema, input, opts);
   if (all === null) return null;
-  const errors = opts.luaTables ? all.filter((error) => !emptyTableTypeError(error, withDefaults(schema, value))) : all;
   const seen = new Set<string>();
   const out: FieldError[] = [];
-  for (const error of specificErrors(schema, withDefaults(schema, value), errors)) {
+  for (const error of specificErrors(schema, withDefaults(schema, input), all)) {
     const keys = pointerKeys(error.instancePath);
     const missing = (error.params as Record<string, unknown>).missingProperty;
     const isMissing = error.keyword === 'required' && typeof missing === 'string';

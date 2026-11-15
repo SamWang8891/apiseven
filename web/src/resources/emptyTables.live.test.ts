@@ -63,6 +63,9 @@ const PLUGIN_CASES: Obj[] = [
   { 'forward-auth': { uri: 'http://a.test', request_headers: {} }, 'file-logger': { path: 'logs/zz.log', log_format: [] } },
   { 'forward-auth': { uri: 'http://a.test', request_headers: { a: 1 } } },
   { 'file-logger': { path: 'logs/zz.log', log_format: ['x'] } },
+  // Fix round 1, R4.1: an empty table meets the position's other rules as the expected type.
+  { cors: { allow_origins_by_regex: {} } },
+  { 'fault-injection': { abort: [] } },
 ];
 
 const PROTOCOLS: Obj[] = [

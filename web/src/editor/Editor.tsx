@@ -15,7 +15,7 @@ import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { findInCtx } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
-import { heldField, LockProvider, PendingProvider, Tabs, toast, ViewMemory } from '../ui';
+import { heldField, LockProvider, PendingProvider, Tabs, toast, ViewMemory, ViewScope } from '../ui';
 import { backOf, ownerPath } from './back';
 import { EditorDialogs } from './EditorDialogs';
 import { useDraft } from './draft';
@@ -338,7 +338,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const content = useMemo(() => {
     const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues, id: objectId };
     const tab = shownTabs.find((candidate) => candidate.id === active);
-    return tab ? tab.render(props) : <JsonTab {...props} />;
+    // Each tab's view state is its own (ui/ViewMemory: one title on two tabs is two sections).
+    return tab ? <ViewScope name={tab.id}>{tab.render(props)}</ViewScope> : <JsonTab {...props} />;
   }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, objectId]);
   const tabs = tabStrip({ shown: shownTabs, tabFields, draft, baseline, dirty, active, content, byTab, failureTab, pending });
   const refusals = useMemo(() => ({ session, attempts: saveAttempts }), [session, saveAttempts]);

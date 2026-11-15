@@ -3,7 +3,7 @@ import { t } from '../../i18n';
 import type { FilterDef } from '../../table/filter';
 import type { Option } from '../../ui';
 import { balancerLabel } from '../../upstream/meta';
-import { healthLabel, healthOf, schemeOf, typeOf, usedBy, type HealthState } from './columns';
+import { healthLabel, healthOf, schemeOf, typeOf, usedBy, USAGE_LISTS, type HealthState } from './columns';
 
 const collator = new Intl.Collator(undefined, { numeric: true });
 const byLabel = (a: Option, b: Option): number => collator.compare(a.label, b.label);
@@ -39,14 +39,17 @@ export const upstreamFilters: FilterDef[] = [
     get label() {
       return t('filter.unused');
     },
-    options: () => [
+    // After a list that can point at an upstream failed to load, the usage is unknown: an option of its own.
+    options: (_items, ctx) => [
       { value: 'unused', label: t('filter.unused.yes') },
       { value: 'used', label: t('filter.unused.no') },
+      ...(USAGE_LISTS.some((list) => ctx.failed[list] && !ctx.loaded[list]) ? [{ value: 'unknown', label: t('filter.unused.unknown') }] : []),
     ],
-    // Until every list that can point at an upstream has loaded, an upstream is neither (usedBy).
+    // While the lists load, an upstream is none of them (usedBy).
     matches: (item, selected, ctx) => {
       const refs = usedBy(item, ctx);
-      return refs !== undefined && selected.includes(refs.length === 0 ? 'unused' : 'used');
+      if (refs === 'loading') return false;
+      return selected.includes(refs === 'unknown' ? 'unknown' : refs.length === 0 ? 'unused' : 'used');
     },
   },
 ];

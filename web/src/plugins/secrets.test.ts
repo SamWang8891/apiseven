@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MASK, redactSecrets } from '../schema/secrets';
-import { pluginFixture } from '../test/pluginFixture';
+import { pluginFixture, schemaOf } from '../test/pluginFixture';
 import { copiedWithout, copiedWithoutKey, MASK_CHANGED, newKeyNotes, redactObject, redactPair, unveilKeys, veilKeys, type KeyNotes } from './secrets';
 import { t } from '../i18n';
 
@@ -164,6 +164,15 @@ describe('redactSecrets: every secret value, numbers included', () => {
     expect(redactSecrets({ pin: 'p1', port: 80 }, 'rules.0.auth', ['rules.auth.pin']).value).toEqual({ pin: MASK, port: 80 });
     expect(redactSecrets({ pin: 4242, port: 80 }, 'rules.0.auth', ['rules.auth.pin']).value).toEqual({ pin: MASK, port: 80 });
     expect(redactSecrets(4242, 'rules.1.auth.pin', ['rules.auth.pin']).value).toBe(MASK);
+  });
+
+  // Fix round 1, R4.2: a field its schema types as a number is masked only where encrypt_fields names it.
+  it("a number its plugin's schema types as a number is not masked for its name (authz-keycloak's leeway); the secret beside it is", () => {
+    const route = { id: 'r1', plugins: { 'authz-keycloak': { access_token_expires_leeway: 60, refresh_token_expires_leeway: 30, client_secret: 's3cret' } }, password: 4242 };
+    const out = redactObject(route, 'routes', all());
+    expect(out.value).toEqual({ id: 'r1', plugins: { 'authz-keycloak': { access_token_expires_leeway: 60, refresh_token_expires_leeway: 30, client_secret: MASK } }, password: MASK });
+    expect(redactSecrets({ access_token_expires_leeway: 60 }, '', [], schemaOf('authz-keycloak')).value).toEqual({ access_token_expires_leeway: 60 });
+    expect(redactSecrets({ pin_token: 60 }, '', ['pin_token'], { type: 'object', properties: { pin_token: { type: 'integer' } } }).value).toEqual({ pin_token: MASK });
   });
 
   it('a number secret that differs reads as changed on their side of a conflict', () => {

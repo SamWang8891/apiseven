@@ -80,6 +80,13 @@ describe('upstream columns', () => {
     },
   );
 
+  // Fix round 1, R4.4: a list that failed to load leaves the count unknown, not "loading…" for ever.
+  it('used_by: "unknown" once a list that can point at an upstream failed to load', () => {
+    const failed = { ...CTX, loaded: { ...CTX.loaded, consumers: false }, failed: { ...CTX.failed, consumers: true } };
+    expect(value('used_by', POOL, failed)).toBeUndefined();
+    expect(cell('used_by', POOL, failed)).toHaveTextContent(t('cell.usedBy.unknown'));
+  });
+
   it('used_by: how many objects point at the upstream, sortable as a number, the first in a tooltip', async () => {
     expect(value('used_by', POOL)).toBe(3);
     expect(value('used_by', API)).toBe(1);

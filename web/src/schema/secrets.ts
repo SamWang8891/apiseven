@@ -1,7 +1,8 @@
 // What a secret is and how it reads while hidden, shared by the schema form (its secret inputs and
 // locked JSON), the plugin cards and the editor's JSON views. Small and free of the form's analysis,
 // so the editor frame can mask a locked object without loading the form.
-import { isObj } from './refs';
+import type { Obj } from '../api/types';
+import { expand, isObj, testPattern } from './refs';
 
 /** What a secret reads as while hidden (the kit's masked input shows the same). */
 export const MASK = '••••••••';
@@ -54,13 +55,39 @@ function maskStrings(value: unknown): unknown {
   return isObj(value) ? Object.fromEntries(Object.entries(value).map(([k, x]) => [k, maskStrings(x)])) : value;
 }
 
+/** The schema of property `key` of what `at` describes (properties, a matching patternProperties, additionalProperties), through $ref and combinators. */
+function childSchema(root: Obj, at: Obj | undefined, key: string): Obj | undefined {
+  if (!at) return undefined;
+  const all = expand(root, at);
+  for (const s of all) if (isObj(s.properties) && isObj(s.properties[key])) return s.properties[key];
+  for (const s of all) {
+    if (isObj(s.patternProperties)) for (const [pattern, sub] of Object.entries(s.patternProperties)) if (isObj(sub) && testPattern(pattern, key)) return sub;
+    if (isObj(s.additionalProperties)) return s.additionalProperties;
+  }
+  return undefined;
+}
+
+/** The schema of the items of what `at` describes. */
+function itemsSchema(root: Obj, at: Obj | undefined): Obj | undefined {
+  return at ? expand(root, at).find((s) => isObj(s.items))?.items as Obj | undefined : undefined;
+}
+
+/** Whether `at` types its value as a number only (number or integer; not also text). */
+function numeric(root: Obj, at: Obj | undefined): boolean {
+  if (!at) return false;
+  const types = expand(root, at).flatMap((s): unknown[] => (Array.isArray(s.type) ? (s.type as unknown[]) : s.type !== undefined ? [s.type] : []));
+  return types.length > 0 && types.every((type) => type === 'number' || type === 'integer');
+}
+
 /**
  * `value` (shown at the field `path`) with every secret string or number masked: those an encrypt path names
  * (atEncryptPath; all of a map or object there, a map of headers say) or that lie below one, and those
- * under a key whose name says secret, at any depth from the field's own key down. `redacted` says
+ * under a key whose name says secret, at any depth from the field's own key down. A number that
+ * `schema` (the schema of `value`, when known) types as a number is masked only where an encrypt path
+ * names it, never for its name alone (`max_tokens`, `access_token_expires_leeway`). `redacted` says
  * whether anything was.
  */
-export function redactSecrets(value: unknown, path: string, encrypt: string[]): { value: unknown; redacted: boolean } {
+export function redactSecrets(value: unknown, path: string, encrypt: string[], schema?: Obj): { value: unknown; redacted: boolean } {
   const keys = keyPath(path);
   let out = value;
   for (const e of encrypt) {
@@ -70,14 +97,16 @@ export function redactSecrets(value: unknown, path: string, encrypt: string[]): 
     // The path leads into the value: mask what it names.
     else if (keys.every((k, i) => segments[i] === k)) out = atEncryptPath(out, segments.slice(keys.length), maskStrings);
   }
-  const walk = (v: unknown, secret: boolean): unknown => {
+  const root = schema ?? {};
+  const walk = (v: unknown, secret: boolean, at: Obj | undefined): unknown => {
+    if (typeof v === 'number') return secret && !numeric(root, at) ? MASK : v;
     if (secretValue(v)) return secret ? MASK : v;
-    if (Array.isArray(v)) return v.map((x) => walk(x, secret));
-    if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, secret || isSecretName(k))]));
+    if (Array.isArray(v)) return v.map((x) => walk(x, secret, itemsSchema(root, at)));
+    if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, secret || isSecretName(k), childSchema(root, at, k))]));
     return v;
   };
   const own = keys.at(-1);
-  out = walk(out, own !== undefined && isSecretName(own));
+  out = walk(out, own !== undefined && isSecretName(own), schema);
   return { value: out, redacted: JSON.stringify(out) !== JSON.stringify(value) };
 }
 

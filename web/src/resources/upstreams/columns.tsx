@@ -9,7 +9,7 @@ import { addrOf, rowsOf, usesDiscovery } from '../../upstream/nodes';
 import { IdCell, LabelChips, NameDescCell, TimeCell, UsedByCell } from '../cells';
 import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
-import { labelPairs, nameOfValue, referencesTo } from '../resolve';
+import { labelPairs, nameOfValue, referencesTo, type Reference } from '../resolve';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
@@ -37,14 +37,17 @@ export function healthOf(up: Obj): HealthState {
 
 export const healthLabel = (state: HealthState): string => (state === 'off' ? t('ui.off') : t(`up.health.${state}`));
 
+/** The lists that can point at an upstream (referencesTo: routes, services, stream routes, and a traffic-split rule in a plugin config, consumer or consumer group). */
+export const USAGE_LISTS = ['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups'] as const;
+
 /**
- * What points at the upstream (referencesTo: routes, services, stream routes, and a traffic-split rule
- * in a plugin config, consumer or consumer group); undefined until every one of those lists has loaded
- * (addendum rule 12; with stream mode off, the stream routes count as loaded).
+ * What points at the upstream: the references once every list that can has loaded; 'unknown' when one
+ * of them failed to load (it can't be told), else 'loading' (addendum rule 12; with stream mode off,
+ * the stream routes count as loaded).
  */
-export function usedBy(item: Item, ctx: Ctx) {
-  const { routes, services, streamRoutes, pluginConfigs, consumers, consumerGroups } = ctx.loaded;
-  return routes && services && streamRoutes && pluginConfigs && consumers && consumerGroups ? referencesTo('upstreams', item.id, ctx) : undefined;
+export function usedBy(item: Item, ctx: Ctx): Reference[] | 'loading' | 'unknown' {
+  if (USAGE_LISTS.every((list) => ctx.loaded[list])) return referencesTo('upstreams', item.id, ctx);
+  return USAGE_LISTS.some((list) => ctx.failed[list] && !ctx.loaded[list]) ? 'unknown' : 'loading';
 }
 
 // Headers are getters, so they follow the language table at use (never spread a column). The
@@ -109,10 +112,14 @@ export const upstreamColumns: ColumnDef[] = [
     get header() {
       return t('column.used_by');
     },
-    accessor: (item, ctx) => usedBy(item, ctx)?.length,
+    accessor: (item, ctx) => {
+      const refs = usedBy(item, ctx);
+      return typeof refs === 'string' ? undefined : refs.length;
+    },
     cell: (item, ctx) => {
       const refs = usedBy(item, ctx);
-      return refs ? <UsedByCell refs={refs} /> : <span className="cell-muted">{t('picker.loading')}</span>;
+      if (typeof refs !== 'string') return <UsedByCell refs={refs} />;
+      return <span className="cell-muted">{refs === 'unknown' ? t('cell.usedBy.unknown') : t('picker.loading')}</span>;
     },
     defaultVisible: true,
     width: 90,

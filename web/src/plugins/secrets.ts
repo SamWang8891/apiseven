@@ -21,7 +21,7 @@ import type { Kind, Obj, PluginInfo } from '../api/types';
 import { t } from '../i18n';
 import { holdsPrivateKey, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
-import { managerOf, SECRET_FIELDS } from '../resources/secrets/schemas';
+import { managerOf, SCHEMAS, SECRET_FIELDS } from '../resources/secrets/schemas';
 
 /** Keys whose value no view shows (see the head comment). */
 const NEVER_SHOWN = new Set(['client_key']);
@@ -117,7 +117,8 @@ function maskPlugins(plugins: Obj, kind: Kind, all: Record<string, PluginInfo> |
   const value = Object.fromEntries(
     Object.entries(plugins).map(([name, conf]) => {
       const info = all?.[name];
-      const masked = info && scope ? redactSecrets(conf, '', encryptOf(schemaFor(info, scope))) : maskConfig(conf);
+      const schema = info && scope ? schemaFor(info, scope) : undefined;
+      const masked = schema ? redactSecrets(conf, '', encryptOf(schema), schema) : maskConfig(conf);
       redacted ||= masked.redacted;
       return [name, masked.value];
     }),
@@ -138,8 +139,18 @@ export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginI
   const never = kind === 'ssls' ? maskSslKeys(clientKeys.value as Obj) : { value: clientKeys.value as Obj, redacted: false };
   never.redacted ||= clientKeys.redacted;
   const revealed = never.redacted ? never.value : value;
-  const byName = redactSecrets(revealed, '', []);
-  let masked = byName.value as Obj;
+  // By name: everything but what a schema-aware pass below reads (each plugin's config; a metadata
+  // entry or a secret manager entry whose schema is known), where a number its schema types as one is
+  // not a secret for its name alone.
+  const pluginsApart = scopeOfKind[kind] !== undefined && isObj(revealed.plugins);
+  const manager = kind === 'secrets' ? managerOf(ownId) : undefined;
+  const ownSchema = kind === 'plugin_metadata' ? (ownId === undefined ? undefined : all?.[ownId]?.metadata_schema) : manager ? SCHEMAS[manager] : undefined;
+  const others = pluginsApart ? Object.fromEntries(Object.entries(revealed).filter(([key]) => key !== 'plugins')) : revealed;
+  const named = redactSecrets(others, '', [], ownSchema).value as Obj;
+  // The keys in their order, the plugins left to maskPlugins.
+  const byNameValue = pluginsApart ? Object.fromEntries(Object.entries(revealed).map(([key, v]) => [key, key === 'plugins' ? v : named[key]])) : named;
+  const byName = { value: byNameValue, redacted: JSON.stringify(byNameValue) !== JSON.stringify(revealed) };
+  let masked = byName.value;
   let secrets = byName.redacted;
   if (scopeOfKind[kind] && isObj(masked.plugins)) {
     const plugins = maskPlugins(masked.plugins, kind, all);
@@ -148,13 +159,12 @@ export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginI
   }
   if (kind === 'plugin_metadata') {
     const schema = ownId === undefined ? undefined : all?.[ownId]?.metadata_schema;
-    const meta = schema ? redactSecrets(masked, '', encryptOf(schema)) : maskMetadata(masked);
+    const meta = schema ? redactSecrets(masked, '', encryptOf(schema), schema) : maskMetadata(masked);
     masked = meta.value as Obj;
     secrets ||= meta.redacted;
   }
   if (kind === 'secrets') {
-    const manager = managerOf(ownId);
-    const own = manager ? redactSecrets(masked, '', SECRET_FIELDS[manager]) : maskMetadata(masked);
+    const own = manager ? redactSecrets(masked, '', SECRET_FIELDS[manager], SCHEMAS[manager]) : maskMetadata(masked);
     masked = own.value as Obj;
     secrets ||= own.redacted;
   }

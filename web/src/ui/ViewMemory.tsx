@@ -6,6 +6,14 @@ import { createContext, use, useCallback, useLayoutEffect, useState, type Dispat
 import { useSessionKey } from './LockContext';
 
 const ViewMemoryContext = createContext<Map<string, unknown> | null>(null);
+/** The part of the page (an editor tab) the keys below belong to, so one title on two tabs is two keys. */
+const ViewScopeContext = createContext('');
+
+/** Names the part of the page its view state belongs to (the editor wraps each tab's content in one). */
+export const ViewScope: FC<{ name: string; children: ReactNode }> = ({ name, children }) => {
+  const outer = use(ViewScopeContext);
+  return <ViewScopeContext value={outer ? `${outer}/${name}` : name}>{children}</ViewScopeContext>;
+};
 
 /** One memory for everything below it, kept as long as it is mounted (the editor frame: the page). */
 export const ViewMemory: FC<{ children: ReactNode }> = ({ children }) => {
@@ -20,8 +28,10 @@ export const ViewMemory: FC<{ children: ReactNode }> = ({ children }) => {
  * (a section open because it has problems) is worked out afresh. No `key`: plain state.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the hook belongs beside its provider, as useLocked does
-export function useViewState<T>(key: string | undefined, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
+export function useViewState<T>(name: string | undefined, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
   const page = use(ViewMemoryContext);
+  const scope = use(ViewScopeContext);
+  const key = name === undefined ? undefined : scope ? `${scope}:${name}` : name;
   const memory = key === undefined ? null : page;
   /** The value, and whether it was set (only a set value is remembered). */
   const [cell, setCell] = useState<{ value: T; set: boolean }>(() =>

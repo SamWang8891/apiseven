@@ -24,6 +24,17 @@ describe('validatePlugins', () => {
     ]);
   });
 
+  // Fix round 1, R4.1: an empty table is read as the type its position asks for, then checked as APISIX checks it
+  // (both refused live: "expect array to have at least 1 items", "http_status is required"); [] and {} alike.
+  it('an empty table read as the expected type still meets minItems and required, whichever of [] and {} it is', () => {
+    for (const empty of [{}, []]) {
+      expect(validatePlugins({ cors: { allow_origins_by_regex: empty } }, http, 'route').map((i) => `${i.plugin}.${i.path}`), JSON.stringify(empty)).toEqual(['cors.allow_origins_by_regex']);
+      expect(validatePlugins({ 'fault-injection': { abort: empty } }, http, 'route').map((i) => `${i.plugin}.${i.path} ${i.message}`), JSON.stringify(empty)).toEqual([
+        `fault-injection.abort.http_status ${t('schema.required')}`,
+      ]);
+    }
+  });
+
   it('flags a wrong type at the field', () => {
     expect(validatePlugins({ 'limit-count': { count: 1, time_window: 60, rejected_code: 'teapot' } }, http, 'route')).toEqual([
       { plugin: 'limit-count', path: 'rejected_code', message: 'must be integer' },

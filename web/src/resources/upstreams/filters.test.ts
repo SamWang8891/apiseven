@@ -52,6 +52,15 @@ describe('upstreamFilters', () => {
     }
   });
 
+  // Fix round 1, R4.4: after a list failed to load, an upstream's usage is unknown, and filtered as that.
+  it('unused: after a list that can point at an upstream failed, rows are "unknown", an option of their own', () => {
+    const failed = { ...CTX, loaded: { ...CTX.loaded, consumerGroups: false }, failed: { ...CTX.failed, consumerGroups: true } };
+    expect(filter('unused').options(UPSTREAMS, failed).map((o) => o.value)).toEqual(['unused', 'used', 'unknown']);
+    expect(applyFilters(UPSTREAMS, '', upstreamFilters, { unused: ['unknown'] }, failed).map((i) => i.value.name)).toEqual(['one', 'two', 'three']);
+    expect(applyFilters(UPSTREAMS, '', upstreamFilters, { unused: ['unused'] }, failed)).toEqual([]);
+    expect(filter('unused').options(UPSTREAMS, CTX).map((o) => o.value)).toEqual(['unused', 'used']);
+  });
+
   it('unused: nothing points at it', () => {
     expect(filter('unused').options(UPSTREAMS, CTX).map((o) => o.label)).toEqual([t('filter.unused.yes'), t('filter.unused.no')]);
     expect(names({ unused: ['unused'] })).toEqual(['two', 'three']);
