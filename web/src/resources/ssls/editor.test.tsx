@@ -586,6 +586,35 @@ describe('O2: a reference is taken only when it is the whole text', () => {
   });
 });
 
+describe('a reference with white space around it (Task 16b, item 104)', () => {
+  it('is taken trimmed in every box: Create sends the references without the white space', async () => {
+    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    await newSsl(user);
+    const box = main().getByRole('textbox', { name: t('ssl.pem.cert') });
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('  $secret://vault/1/ssl/cert\n');
+    // The box keeps what was typed (only the user changes the text); its details show the reference trimmed.
+    expect(box).toHaveValue('  $secret://vault/1/ssl/cert\n');
+    expect(main().getByRole('definition', { name: t('ssl.cert.reference') })).toHaveTextContent(`$secret://vault/1/ssl/cert ${t('ssl.cert.ref')}`);
+    await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
+    await user.paste('\t$env://SSL_KEY \n');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]).toEqual({ method: 'POST', path: 'ssls', body: { status: 1, sni: 'tls.apiseven.test', cert: '$secret://vault/1/ssl/cert', key: '$env://SSL_KEY' } });
+  });
+
+  it('a CA reference typed with a trailing space is saved without it', async () => {
+    const { user, admin } = await openSsl('#/ssls/apiseven-test?tab=client');
+    await user.keyboard('e');
+    await user.click(main().getByRole('switch', { name: t('ssl.client.enable') }));
+    await user.type(main().getByRole('textbox', { name: t('ssl.client.ca') }), '$env://CA_PEM ');
+    saveKeys();
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]).toEqual({ method: 'PATCH', path: 'ssls/apiseven-test', body: { client: { ca: '$env://CA_PEM' } } });
+  });
+});
+
 describe('a new SSL that is not a copy', () => {
   it('has no copy notice, and the key note is neutral', async () => {
     const { user } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
@@ -633,6 +662,19 @@ describe('the SSL list', () => {
     await user.click(main().getByRole('button', { name: t('action.disable') }));
     expect(await screen.findByText(t('bulk.done', { action: t('action.disable'), done: 1 }))).toBeInTheDocument();
     expect(writesOf(admin)).toEqual([{ method: 'PATCH', path: 'ssls/apiseven-test', body: { status: 0 } }]);
+    // The client certificate left alone is named, with the reason (Task 16b, item 87).
+    expect(await screen.findByText(t('bulk.statusIgnored', { action: t('action.disable'), names: 'to-backend', reason: t('ssl.status.ignored') }))).toBeInTheDocument();
+  });
+
+  it('bulk Enable over client certificates only: nothing is written, and the toast says which were left alone and why, not "0 done"', async () => {
+    const other = { ...CLIENT, id: 'to-billing' };
+    const { user, admin } = await openEditor('#/ssls', { objects: { ssls: [CLIENT, other], routes: [], services: [], upstreams: [] } });
+    await main().findByRole('link', { name: 'to-backend' });
+    await user.click(main().getByRole('checkbox', { name: t('table.selectAll', { count: 2 }) }));
+    await user.click(main().getByRole('button', { name: t('action.enable') }));
+    expect(await screen.findByText(t('bulk.statusIgnored', { action: t('action.enable'), names: 'to-backend, to-billing', reason: t('ssl.status.ignored') }))).toBeInTheDocument();
+    expect(screen.queryByText(t('bulk.done', { action: t('action.enable'), done: 0 }))).toBeNull();
+    expect(writesOf(admin)).toEqual([]);
   });
 
   it("search never finds a key (no listed SSL has one); a client certificate's status reads as not used, with no switch", async () => {

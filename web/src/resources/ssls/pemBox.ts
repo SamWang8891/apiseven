@@ -20,7 +20,7 @@
 //     what OpenSSL skips may come with it (an EC PARAMETERS block, lines after the key). It takes it
 //     from its first "-----BEGIN" line (takenValue), as APISIX refuses a key with anything before it,
 //     and says when lines that were not white space were left out (leftOutBefore). A reference is
-//     taken, in any box, only as the whole text (takes).
+//     taken, in any box, only as the whole text (takes), and without the white space around it.
 //  7. Dropped text is a paste, not a file; a drop with neither changes nothing (PemInput).
 //  8. The messages never contradict each other: why the text is held, and what is kept meanwhile.
 //  9. A box never opens or closes because focus moved (PemBoxes: Keep the entered key).
@@ -123,11 +123,14 @@ const FIRST_BEGIN = '-----BEGIN';
  * The field's value when a box of this kind takes `text` (rule 6): a key from its first "-----BEGIN"
  * line, since APISIX encrypts a key, and decrypts it before parsing, by whether its text starts with
  * "---" (ssl.lua 89–104), so anything before that line (Bag Attributes, comments, white space) makes
- * it refuse the key; a certificate or a reference as it is.
+ * it refuse the key; a reference without the white space around it (Task 16b, item 104: APISIX
+ * stores one with white space but never resolves it, and refuses one with white space before it,
+ * secret.lua 91–100 being a prefix test); a certificate as it is.
  */
 export function takenValue(kind: BoxKind, text: string): string {
+  if (isReference(text)) return text.trim();
   const at = text.indexOf(FIRST_BEGIN);
-  return kind === 'key' && at > 0 && !isReference(text) ? text.slice(at) : text;
+  return kind === 'key' && at > 0 ? text.slice(at) : text;
 }
 
 /** Whether taking `text` as a key leaves out lines before its first "-----BEGIN" line that are more than white space. */

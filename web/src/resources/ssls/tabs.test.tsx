@@ -201,6 +201,15 @@ describe('additional pairs', () => {
   const withPairs = { ...STORED, certs: [RSA_LEAF, EC_IPV6] };
   const original = itemOf('s1', withPairs);
 
+  it('the closed section counts its pairs in the singular for one (Task 16b, item 98)', async () => {
+    const one = { ...STORED, certs: [RSA_LEAF] };
+    const { user } = renderSsl(CertificateTab, one, { original: itemOf('s1', one), locked: true });
+    const toggle = screen.getByRole('button', { name: t('ssl.extra.title') });
+    await user.click(toggle);
+    expect(toggle).toHaveAccessibleDescription(t('ssl.extra.summaryOne'));
+    expect(t('ssl.extra.summaryOne')).toBe('1 pair');
+  });
+
   it('adding a pair through the dialog asks for the stored keys again, and says so per pair', async () => {
     const { user, value } = renderSsl(CertificateTab, withPairs, { original });
     expect(screen.getByRole('listitem', { name: t('ssl.extra.row', { n: 1 }) })).toHaveTextContent(t('ssl.extra.stored'));

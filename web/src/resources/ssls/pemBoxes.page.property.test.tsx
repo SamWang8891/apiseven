@@ -107,6 +107,11 @@ interface Place {
   hiddenAfterRemount?: (m: Model) => string | undefined;
   /** After a remount, with the value it cannot show in the draft, the box is reopened as the setup did (Replace CA). */
   reopen?: (app: App) => Promise<void>;
+  /**
+   * The locked view replaces the box (the CA shows its details), so a save in flight unmounts it: once
+   * APISIX's refusal unlocks the fields, it shows what a remount shows (the field's value; rule 21).
+   */
+  lockedView?: true;
 }
 
 const certTab = () => t('ssl.tab.certificate');
@@ -195,6 +200,7 @@ const PLACES: Place[] = [
     name: 'CA, none',
     kind: 'cert',
     label: () => t('ssl.client.ca'),
+    lockedView: true,
     setup: async () => ({ app: await storedCa(undefined), model: newModel('cert', undefined, '') }),
     sent: patchedCa(undefined),
     tab: clientTab,
@@ -203,6 +209,7 @@ const PLACES: Place[] = [
     name: 'CA, stored',
     kind: 'cert',
     label: () => t('ssl.client.ca'),
+    lockedView: true,
     setup: async () => ({ app: await storedCa(SEED_CERT), model: newModel('cert', SEED_CERT, SEED_CERT) }),
     sent: patchedCa(SEED_CERT),
     tab: clientTab,
@@ -211,6 +218,7 @@ const PLACES: Place[] = [
     name: 'CA, stored holding a key',
     kind: 'cert',
     label: () => t('ssl.client.ca'),
+    lockedView: true,
     setup: async () => {
       const app = await storedCa(COMBINED);
       await app.user.click(main().getByRole('button', { name: t('ssl.client.replaceCa') }));
@@ -241,8 +249,11 @@ function remounted(m: Model, place: Place): void {
     return;
   }
   m.hidden = place.hiddenAfterRemount?.(m);
-  m.text = m.value === undefined || m.value === m.hidden ? '' : m.value;
+  m.text = remountText(m);
 }
+
+/** A certificate box mounted anew shows the field's value, or nothing for none or for the value it cannot show. */
+const remountText = (m: Model): string => (m.kind === 'key' || m.value === undefined || m.value === m.hidden ? '' : m.value);
 
 /** What a save would do with the box as the model has it: go out (true), or be refused before any request. */
 const wouldSend = (place: Place, m: Model): boolean =>
@@ -277,7 +288,7 @@ describe('every PEM box follows one rule through the real editor frame (property
           for (let step = 0; step < STEPS; step++) {
             // The frame's own actions, now and then: a remount, a save APISIX refuses late.
             // A save is likelier once the box has taken a value over one it cannot show (A1's case).
-            const frame = m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden ? r.int(3) : r.int(5);
+            const frame = m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden ? r.int(2) : r.int(5);
             if (frame === 0 && !held(m) && !m.otherHeld) {
               where = `step ${step} (remount)`;
               await user.click(tab(t('ssl.tab.general')));
@@ -298,6 +309,11 @@ describe('every PEM box follows one rule through the real editor frame (property
               await waitFor(() => expect(writesOf(admin).length, `${where}: a request`).toBe(writes + 1));
               expect((await screen.findAllByText(REFUSAL)).length, `${where}: APISIX's refusal shown`).toBeGreaterThan(0);
               refusing.on = false;
+              // A box the locked view replaced meanwhile comes back as a remount shows it (only its text: the field around it kept the rest).
+              if (place.lockedView) {
+                if (m.text !== remountText(m)) cov.add('refusedSave: the box shows the value again');
+                m.text = remountText(m);
+              }
               const box = run.box();
               m.focused = box !== null && document.activeElement === box;
               cov.add('refusedSave');

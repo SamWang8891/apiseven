@@ -116,9 +116,18 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
       id: enable ? 'enable' : 'disable',
       label,
       disabled: readOnly,
-      // An object whose status does nothing (ResourceDef.statusIgnored: a client SSL) is left alone.
-      run: (items, progress) =>
-        each(label, items.filter((item) => def.statusIgnored?.(item.value) === undefined), (client, item) => client.patch(kind, item.id, { status: enable ? 1 : 0 }), progress),
+      // An object whose status does nothing (ResourceDef.statusIgnored: a client SSL) is left alone,
+      // and the toast names it with the reason; with nothing else selected, nothing is written.
+      run: async (items, progress) => {
+        const ignored = new Map<string, Item[]>();
+        for (const item of items) {
+          const reason = def.statusIgnored?.(item.value);
+          if (reason !== undefined) ignored.set(reason, [...(ignored.get(reason) ?? []), item]);
+        }
+        const applies = items.filter((item) => def.statusIgnored?.(item.value) === undefined);
+        if (applies.length > 0) await each(label, applies, (client, item) => client.patch(kind, item.id, { status: enable ? 1 : 0 }), progress);
+        for (const [reason, left] of ignored) toast.info(t('bulk.statusIgnored', { action: label, names: left.map((item) => def.nameOf(item)).join(', '), reason }));
+      },
     };
   };
 

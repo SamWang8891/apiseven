@@ -59,7 +59,7 @@ export function ExtraPairs({ draft, setDraft, isNew, original, issues, client }:
     <>
       <Section
       title={t('ssl.extra.title')}
-      summary={certs.length > 0 ? t('ssl.extra.summary', { count: certs.length }) : t('ssl.extra.none')}
+      summary={certs.length === 0 ? t('ssl.extra.none') : certs.length === 1 ? t('ssl.extra.summaryOne') : t('ssl.extra.summary', { count: certs.length })}
       issues={problems.length}
       defaultOpen={certs.length > 0}
     >

@@ -351,6 +351,7 @@ export const en: Record<string, string> = {
   'bulk.someFailed': '{action}: {done} done, {failed} failed ({names}). {error}',
   'bulk.stopped': '{action}: {done} of {total} done, then stopped: the admin key was refused. {error}',
   'bulk.stoppedAfterFailures': '{action}: {done} of {total} done, {failed} failed ({names}: {reason}), then stopped: the admin key was refused. {error}',
+  'bulk.statusIgnored': '{action}: skipped {names}. {reason}',
 
   // Editor frame (web/src/editor, web/src/pages/EditorPage.tsx)
   'editor.back': 'Back to {plural}',
@@ -1360,7 +1361,9 @@ export const en: Record<string, string> = {
   'ssl.type.client': 'Client',
   'ssl.status.ignored': 'APISIX ignores the status of a client certificate: an upstream that names it uses it either way, and TLS clients are never given it.',
   'ssl.usedBy.hosts': 'Presented for {count} route hosts',
+  'ssl.usedBy.hostsOne': 'Presented for 1 route host',
   'ssl.usedBy.shared': '(shared with {count} other certificates: APISIX presents the one it loaded first)',
+  'ssl.usedBy.sharedOne': '(shared with 1 other certificate: APISIX presents the one it loaded first)',
   'ssl.usedBy.noHost': 'no route host',
   'ssl.filter.none': 'No route host or upstream',
   'ssl.filter.some': 'A route host or upstream',
@@ -1378,6 +1381,7 @@ export const en: Record<string, string> = {
   'ssl.cert.serial': 'Serial',
   'ssl.cert.fingerprint': 'SHA-256 fingerprint',
   'ssl.cert.computing': 'computing…',
+  'ssl.cert.fingerprintInsecure': 'not computed here: the browser computes it only on a page served over HTTPS or from localhost',
   'ssl.cert.reference': 'Certificate',
   'ssl.cert.ref': '(a reference: APISIX resolves it at runtime, so its details aren’t known here)',
   'ssl.cert.unreadable': 'Could not read this certificate’s details here; APISIX will check it on save.',
@@ -1447,6 +1451,7 @@ export const en: Record<string, string> = {
   'ssl.pair.after': 'After',
   'ssl.extra.title': 'Additional certificates',
   'ssl.extra.summary': '{count} pairs',
+  'ssl.extra.summaryOne': '1 pair',
   'ssl.extra.none': 'none',
   'ssl.extra.help': 'More certificate and key pairs for the same SNIs, e.g. ECDSA beside RSA. APISIX never hands a key back, so a change to these pairs needs each of their keys entered again.',
   'ssl.extra.clientNote': 'Additional pairs are presented by a server certificate only; a client certificate uses its main pair.',

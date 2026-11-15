@@ -56,14 +56,14 @@ export function UsageCell({ item, ctx }: { item: Item; ctx: Ctx }) {
           {hosts.slice(0, SHOWN_HOSTS).map(({ host, others }) => (
             <span key={host}>
               <span className="mono">{host}</span>
-              {others > 0 && <span className="cell-tip-note"> {t('ssl.usedBy.shared', { count: others })}</span>}
+              {others > 0 && <span className="cell-tip-note"> {others === 1 ? t('ssl.usedBy.sharedOne') : t('ssl.usedBy.shared', { count: others })}</span>}
             </span>
           ))}
           {more > 0 && <span className="cell-tip-note">{t('cell.usedByMore', { count: more })}</span>}
         </span>
       }
     >
-      <button type="button" className="tbl-more cell-count" aria-label={t('ssl.usedBy.hosts', { count: hosts.length })}>
+      <button type="button" className="tbl-more cell-count" aria-label={hosts.length === 1 ? t('ssl.usedBy.hostsOne') : t('ssl.usedBy.hosts', { count: hosts.length })}>
         {hosts.length}
       </button>
     </Tooltip>

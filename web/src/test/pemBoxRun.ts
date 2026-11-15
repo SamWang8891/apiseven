@@ -53,10 +53,15 @@ export function takes(kind: Kind, text: string): boolean {
   );
 }
 
-/** The value a box takes from `text`: a key from its first BEGIN line (APISIX refuses anything before it, ssl.lua 89–104); anything else as it is. */
+/**
+ * The value a box takes from `text`: a reference without the white space around it (Task 16b, item
+ * 104); a key from its first BEGIN line (APISIX refuses anything before it, ssl.lua 89–104); anything
+ * else as it is.
+ */
 export function taken(kind: Kind, text: string): string {
+  if (isRef(text.trim())) return text.trim();
   const at = text.indexOf('-----BEGIN');
-  return kind === 'key' && !isRef(text.trim()) && at > 0 ? text.slice(at) : text;
+  return kind === 'key' && at > 0 ? text.slice(at) : text;
 }
 
 /** A key taken from `text` left out lines before its BEGIN line that were more than white space (the box says so). */
@@ -154,11 +159,11 @@ export function arrive(m: Model, next: string, focused: boolean): void {
     }
     m.leftOut = false;
     m.text = focused || isTaken ? next : masked(next);
-    m.value = isTaken ? next : m.stood;
+    m.value = isTaken ? taken('key', next) : m.stood;
     return;
   }
   m.text = focused || isTaken ? next : masked(next);
-  if (isTaken) m.value = next;
+  if (isTaken) m.value = taken('cert', next);
   else if (next.trim() === '') m.value = m.hidden;
 }
 
@@ -252,6 +257,8 @@ export const TEXTS: Record<string, string> = {
   encrypted: ENCRYPTED,
   ref: '$secret://vault/1/ssl/pem',
   envRef: '$ENV://SSL_PEM',
+  // Taken without the white space around it (Task 16b, item 104); the box keeps what was given.
+  refSpaced: '  $secret://vault/1/ssl/spaced \n',
   refThenKey: `$secret://vault/1/ssl\n${SEED_KEY}`,
   refThenText: '$env://SSL_PEM and more',
 };
@@ -267,6 +274,8 @@ export const FILES: Record<string, { file: () => File; text?: string }> = {
   keyPlusCert: { file: () => new File([SEED_KEY + SEED_CERT], 'both.pem', { type: 'text/plain' }), text: SEED_KEY + SEED_CERT },
   p12: { file: () => new File([TEXTS.p12 as string], 'export.pem', { type: 'text/plain' }), text: TEXTS.p12 },
   ref: { file: () => new File(['$secret://vault/1/ssl/file'], 'ref.txt', { type: 'text/plain' }), text: '$secret://vault/1/ssl/file' },
+  // A file as an editor saves it, with a final newline: taken without it (item 104).
+  refLine: { file: () => new File(['$env://SSL_FILE\n'], 'ref.env', { type: 'text/plain' }), text: '$env://SSL_FILE\n' },
   refThenKey: { file: () => new File([TEXTS.refThenKey as string], 'ref.pem', { type: 'text/plain' }), text: TEXTS.refThenKey },
   noLabel: { file: () => new File(['hello world'], 'notes.txt', { type: 'text/plain' }), text: 'hello world' },
   empty: { file: () => new File([''], 'empty.pem', { type: 'text/plain' }), text: '' },

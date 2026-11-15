@@ -41,9 +41,13 @@ function useFingerprint(pem: string): { value: string | undefined } | undefined 
   return found;
 }
 
+/** The browser computes a digest only in a secure context (HTTPS or localhost): without one there is no crypto.subtle. */
+const canDigest = (): boolean => globalThis.crypto?.subtle !== undefined;
+
 function Fingerprint({ pem }: { pem: string }) {
   const found = useFingerprint(pem);
   if (!found) return <span className="ssl-muted">{t('ssl.cert.computing')}</span>;
+  if (found.value === undefined && !canDigest()) return <span className="ssl-muted">{t('ssl.cert.fingerprintInsecure')}</span>;
   return <span className="mono ssl-wrap">{found.value ?? t('ui.empty')}</span>;
 }
 

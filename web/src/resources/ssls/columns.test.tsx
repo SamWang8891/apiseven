@@ -120,8 +120,12 @@ describe('SSL columns', () => {
     expect(value('used_by', EXACT, ctx)).toBe(1);
     expect(value('used_by', twin, ctx)).toBe(1);
     const { user, el } = cell('used_by', twin, ctx);
-    await user.hover(within(el).getByRole('button'));
-    expect(await screen.findByRole('tooltip')).toHaveTextContent(`a.apiseven.test ${t('ssl.usedBy.shared', { count: 1 })}`);
+    // One host, one other certificate: singular forms (Task 16b, item 98).
+    const count = within(el).getByRole('button', { name: t('ssl.usedBy.hostsOne') });
+    expect(count).toHaveAccessibleName('Presented for 1 route host');
+    await user.hover(count);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(`a.apiseven.test ${t('ssl.usedBy.sharedOne')}`);
+    expect(t('ssl.usedBy.sharedOne')).toMatch(/^\(shared with 1 other certificate: /);
   });
 
   it('used_by: no route host reads so, not "unused" (a TLS client gets the certificate for its SNIs all the same)', () => {
