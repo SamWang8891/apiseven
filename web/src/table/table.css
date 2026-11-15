@@ -366,6 +366,12 @@
 
 /* --- Empty, no-match and error states -------------------------------------------------------- */
 
+/* A search still reading plugin settings (the plugin list loads), above the rows found so far. */
+.tbl-searching {
+  margin: 0 0 var(--s2);
+  color: var(--text-2);
+}
+
 .tbl-state {
   display: flex;
   flex-direction: column;

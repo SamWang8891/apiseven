@@ -33,6 +33,16 @@ export function EmptyState({ kind, parent }: { kind: Kind; parent?: Parent }) {
   );
 }
 
+/** Nothing matches yet, but the plugin settings are still being read (the plugin list loads): not "no match". */
+export function SearchingState() {
+  return (
+    <section className="tbl-state" role="status">
+      <SearchX className="tbl-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />
+      <h2>{t('table.search.plugins')}</h2>
+    </section>
+  );
+}
+
 /** Items exist, but the search and filters hide them all. */
 export function NoMatchState({ plural, onClear }: { plural: string; onClear: () => void }) {
   const id = useId();

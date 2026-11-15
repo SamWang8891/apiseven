@@ -1,5 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
-import { usePluginsIfLoaded } from '../api/hooks';
+import { useSearchPlugins } from '../api/hooks';
 import type { ApiError } from '../api/errors';
 import type { Item, Kind, Parent } from '../api/types';
 import { t } from '../i18n';
@@ -8,13 +8,14 @@ import { Button, ConfirmDialog, type MenuItem } from '../ui';
 import { ColumnsMenu } from './ColumnsMenu';
 import { withStatusColumn } from './columns';
 import { FilterChip } from './FilterChip';
+import { scopeOfKind } from '../plugins/scope';
 import { redactObject } from '../plugins/secrets';
 import { applyFilters, terms, type FilterDef, type SearchValue } from './filter';
 import { Pager, SelectionBar } from './Footer';
 import { Grid } from './Grid';
 import { buildPage } from './rows';
 import { nextSort, sortItems } from './sort';
-import { EmptyState, ErrorState, NoMatchState } from './states';
+import { EmptyState, ErrorState, NoMatchState, SearchingState } from './states';
 import { useTableState } from './tableState';
 import { DensityButton, NewLink, RefreshButton, SearchBox, Toolbar } from './Toolbar';
 import { useView } from './useView';
@@ -91,7 +92,14 @@ export function DataTable(props: DataTableProps) {
 
   // A kind that holds secrets is searched as its locked views show it (masked), with the plugin list
   // when a page has loaded it (without it, every plugin value is masked: nothing is found by one).
-  const plugins = usePluginsIfLoaded();
+  // A search in a list whose objects carry plugins loads the plugin list (which plugin fields are
+  // secrets): until then every plugin value is masked, and the search says it is still looking.
+  const scope = scopeOfKind[kind];
+  const searched = terms(view.query).length > 0;
+  const carriesPlugins = def.masksSearch === true && (scope !== undefined || kind === 'plugin_metadata');
+  const pluginList = useSearchPlugins(scope === 'stream_route' ? 'stream' : undefined, carriesPlugins && searched);
+  const plugins = pluginList.data;
+  const searchingPlugins = carriesPlugins && searched && pluginList.loading;
   const read = useMemo<SearchValue | undefined>(() => (def.masksSearch ? (item) => redactObject(item.value, kind, plugins, item.id).value : undefined), [def, kind, plugins]);
   const filtered = useMemo(() => applyFilters(items, view.query, filters, view.selection, ctx, read), [items, view, filters, ctx, read]);
   const sorted = useMemo(() => sortItems(filtered, state.sort, allColumns, ctx), [filtered, state.sort, allColumns, ctx]);
@@ -185,7 +193,7 @@ export function DataTable(props: DataTableProps) {
   } else if (!props.loading && items.length === 0) {
     body = props.emptyState ?? <EmptyState kind={kind} parent={parent} />;
   } else if (!props.loading && filtered.length === 0) {
-    body = <NoMatchState plural={plural} onClear={clearView} />;
+    body = searchingPlugins ? <SearchingState /> : <NoMatchState plural={plural} onClear={clearView} />;
   } else {
     body = (
       <Grid
@@ -225,6 +233,11 @@ export function DataTable(props: DataTableProps) {
   return (
     <div className={`tbl tbl--${state.density}${embedded ? ' tbl--embedded' : ''}`}>
       {toolbar}
+      {searchingPlugins && filtered.length > 0 && (
+        <p className="tbl-searching" role="status">
+          {t('table.search.plugins')}
+        </p>
+      )}
       <div className="tbl-scroll">{body}</div>
       {showFooter && (
         <div className="tbl-foot">

@@ -75,6 +75,21 @@ export function usePluginsIfLoaded(subsystem?: 'stream'): Record<string, PluginI
   }).data;
 }
 
+/**
+ * The plugin list a list's search reads secrets by (DataTable): from the shared cache, and fetched once
+ * `load` (a search is typed in a list whose objects carry plugins), not before. `loading` while fetched.
+ */
+export function useSearchPlugins(subsystem: 'stream' | undefined, load: boolean): { data: Record<string, PluginInfo> | undefined; loading: boolean } {
+  const client = useClient();
+  const query = useQuery<Record<string, PluginInfo>, ApiError>({
+    queryKey: scopedKey(client.conn.id, ['plugins', 'all', subsystem ?? 'http']),
+    queryFn: () => client.allPlugins(subsystem),
+    enabled: load,
+    staleTime: Infinity,
+  });
+  return { data: query.data, loading: load && query.data === undefined && !query.isError };
+}
+
 /** A resource's JSON schema from this APISIX (`upstream`, `route`, …); see AdminClient.resourceSchema. */
 export function useResourceSchema(name: string): UseQueryResult<Obj, ApiError> {
   const client = useClient();

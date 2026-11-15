@@ -6,6 +6,7 @@ import { resetReadOnlyKeys } from '../api/write';
 import { t } from '../i18n';
 import { DEV_CONN, renderApp, resetApp, saveConnections } from '../test/app';
 import { json, type FakeAdminOptions } from '../test/fakeAdmin';
+import { pluginReplies } from '../test/plugins';
 
 afterEach(() => {
   resetApp();
@@ -295,6 +296,46 @@ describe('search never finds an object by a secret it holds', () => {
     await waitFor(() => expect(main().queryByRole('link', { name })).not.toBeInTheDocument());
     await search(user, plural, visible);
     expect(await main().findByRole('link', { name })).toBeInTheDocument();
+  });
+});
+
+// Fix round 1, R2: what a search finds does not depend on which pages were visited first.
+describe('search through plugin settings', () => {
+  const searchbox = (plural: string) => main().getByRole('searchbox', { name: t('table.search.label', { plural }) });
+
+  it("loads the plugin list once a search is typed: a plugin setting is found, key-auth's key (an encrypt field, not named like a secret) never", async () => {
+    const consumers: Obj[] = [{ username: 'jo', plugins: { 'key-auth': { key: 'jo-stored-key' }, 'proxy-rewrite': { uri: '/rewritten-path' } } }];
+    const { user, admin } = await open('#/consumers', { objects: { consumers }, replies: pluginReplies() });
+    expect(await main().findByRole('link', { name: 'jo' })).toBeInTheDocument();
+    expect(admin.requests.some((r) => r.url.pathname.endsWith('/plugins'))).toBe(false);
+    await user.type(searchbox(t('kind.consumers.plural')), 'rewritten-path');
+    expect(await main().findByRole('link', { name: 'jo' })).toBeInTheDocument();
+    expect(admin.requests.some((r) => r.url.pathname.endsWith('/plugins'))).toBe(true);
+    await user.clear(searchbox(t('kind.consumers.plural')));
+    await user.type(searchbox(t('kind.consumers.plural')), 'jo-stored-key');
+    await waitFor(() => expect(main().queryByRole('link', { name: 'jo' })).not.toBeInTheDocument());
+  });
+
+  it('while the plugin list loads it says it is still looking, not "No … match"; then it finds the row', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const routes: Obj[] = [{ id: 'r9', name: 'login', uri: '/login', plugins: { 'proxy-rewrite': { uri: '/rewritten-path' } } }];
+    const { user } = await open('#/routes', {
+      objects: { routes },
+      replies: {
+        plugins: async (req) => {
+          await gate;
+          return pluginReplies().plugins?.(req) as Response;
+        },
+      },
+    });
+    await main().findByRole('link', { name: 'login' });
+    await user.type(searchbox(t('kind.routes.plural')), 'rewritten-path');
+    expect(await main().findByText(t('table.search.plugins'))).toBeInTheDocument();
+    expect(main().queryByText(t('table.empty.noMatch', { plural: t('kind.routes.plural') }))).not.toBeInTheDocument();
+    release();
+    expect(await main().findByRole('link', { name: 'login' })).toBeInTheDocument();
+    expect(main().queryByText(t('table.search.plugins'))).not.toBeInTheDocument();
   });
 });
 
