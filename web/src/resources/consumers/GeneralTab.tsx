@@ -10,6 +10,7 @@ import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
 import { pathFor } from '../../router/paths';
+import { decryptsOnly } from '../../plugins/auth';
 import { consumerGroupLoading, consumerInheritedPlugins } from '../../plugins/inherited';
 import { Badge, Field, Input, useLocked } from '../../ui';
 import type { PluginChip } from '../cells';
@@ -27,16 +28,19 @@ const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String
 const named = (p: PluginChip) =>
   p.notApplied
     ? t('cs.overview.notApplied', { name: p.name })
-    : p.offIgnored
-      ? t('cs.overview.offIgnored', { name: p.name })
-      : p.disabled
-        ? t(p.unclassified ? 'cs.overview.markedOff' : 'rt.overview.pluginOff', { name: p.name })
-        : p.name;
+    : p.notUsed
+      ? t('cs.overview.notUsed', { name: p.name })
+      : p.offIgnored
+        ? t('cs.overview.offIgnored', { name: p.name })
+        : p.disabled
+          ? t(p.unclassified ? 'cs.overview.markedOff' : 'rt.overview.pluginOff', { name: p.name })
+          : p.name;
 
 /**
  * Its own plugins by name: one stored off reads "(off)", unless it is an auth plugin, whose off APISIX
- * ignores: with the field it matches by it still signs in (a danger badge), without it it signs nobody
- * in ("(off)"), and with that field unknown it reads "off ignored" (scopedPlugins).
+ * ignores: with what it is found by and checked against it still signs in (jwe-decrypt: is still
+ * used; a danger badge), without it it signs nobody in ("(off)"), and with its lookup field unknown it
+ * reads "off ignored"; one this APISIX doesn't know is not used (scopedPlugins).
  */
 function Own({ plugins }: { plugins: PluginChip[] }) {
   return (
@@ -48,7 +52,7 @@ function Own({ plugins }: { plugins: PluginChip[] }) {
           {p.stillSignsIn && (
             <>
               {' '}
-              <Badge tone="danger">{t('cs.overview.stillSignsIn')}</Badge>
+              <Badge tone="danger">{t(decryptsOnly(p.name) ? 'cs.overview.stillUsed' : 'cs.overview.stillSignsIn')}</Badge>
             </>
           )}
         </Fragment>

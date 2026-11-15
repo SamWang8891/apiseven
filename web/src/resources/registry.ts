@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import type { Item, Kind, Obj, Parent, PluginInfo } from '../api/types';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
-import type { RemovedSecret } from '../plugins/auth';
 import type { Scope } from '../plugins/scope';
 import { makePluginsTab } from '../plugins/tab';
 import { pluginIssues } from '../plugins/validate';
@@ -73,8 +72,6 @@ export interface TabProps {
    * new one, e.g. the Plugins tab opens the cards that have issues.
    */
   saveAttempts: number;
-  /** For a copy of a consumer or credential: what of its plugins was left out (its sign-in secrets). */
-  copyRemoved?: RemovedSecret[];
 }
 
 export interface TabDef {

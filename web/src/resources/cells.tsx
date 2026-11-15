@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { Item, Kind, Parent } from '../api/types';
 import { t } from '../i18n';
+import { decryptsOnly } from '../plugins/auth';
 import { pathFor } from '../router/paths';
 import { Empty, Lines, NameCell } from '../table/cells';
 import { formatAbsolute, formatRelative } from '../table/format';
@@ -91,8 +92,10 @@ export interface PluginChip {
   from?: string;
   /** Configured where APISIX never runs it (an auth plugin in a consumer group: plugins/auth.ts). */
   notApplied?: boolean;
-  /** Stored as off, but it still signs in: a consumer's or credential's auth plugin with the field it matches by (plugins/auth.ts). */
+  /** Stored as off, but it still signs in (jwe-decrypt: is still used): a consumer's or credential's auth plugin (plugins/auth.ts signInOf). */
   stillSignsIn?: boolean;
+  /** A consumer's or credential's plugin this APISIX doesn't know: it is not used. */
+  notUsed?: boolean;
   /** Stored as off, which APISIX ignores for a consumer's or credential's auth plugin, and what it matches by is not known. */
   offIgnored?: boolean;
   /** Whether it is an auth plugin is not known (not built in, the plugin list not loaded): "off" is only what is stored. */
@@ -107,18 +110,23 @@ const why = (plugin: PluginChip): string | undefined =>
   plugin.notApplied
     ? t('cell.plugin.notAppliedWhy')
     : plugin.stillSignsIn
-      ? t('cell.plugin.stillSignsInWhy')
-      : plugin.offIgnored
+      ? t(decryptsOnly(plugin.name) ? 'cell.plugin.stillUsedWhy' : 'cell.plugin.stillSignsInWhy')
+      : plugin.notUsed
+        ? t('cell.plugin.notUsedWhy')
+        : plugin.offIgnored
         ? t('cell.plugin.offIgnoredWhy')
         : plugin.unclassified
           ? t('cell.plugin.unclassifiedWhy')
           : undefined;
 
+/** "still signs in", or for jwe-decrypt (which signs nobody in, it decrypts) "still used". */
+const stillLabel = (name: string): string => t(decryptsOnly(name) ? 'cell.plugin.stillUsed' : 'cell.plugin.stillSignsIn');
+
 /** What an "off" stored for the plugin is shown as: "off", or only "marked off" while its meaning is unknown. */
 const offLabel = (plugin: PluginChip): string => t(plugin.unclassified ? 'cell.plugin.markedOff' : 'cell.plugin.off');
 
 function pluginChip(plugin: PluginChip): ReactNode {
-  const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', (plugin.disabled || plugin.notApplied) && 'cell-plugin--off'];
+  const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', (plugin.disabled || plugin.notApplied || plugin.notUsed) && 'cell-plugin--off'];
   const reason = why(plugin);
   const title = reason ? `${plugin.name}: ${reason}` : plugin.name;
   const chip = (
@@ -126,7 +134,8 @@ function pluginChip(plugin: PluginChip): ReactNode {
       <span className="cell-chip__text">{plugin.name}</span>
       {plugin.disabled && <span className="cell-plugin__off">{offLabel(plugin)}</span>}
       {plugin.notApplied && <span className="cell-plugin__off">{t('cell.plugin.notApplied')}</span>}
-      {plugin.stillSignsIn && <span className="cell-plugin__danger">{t('cell.plugin.stillSignsIn')}</span>}
+      {plugin.stillSignsIn && <span className="cell-plugin__danger">{stillLabel(plugin.name)}</span>}
+      {plugin.notUsed && <span className="cell-plugin__off">{t('cell.plugin.notUsed')}</span>}
       {plugin.offIgnored && <span className="cell-plugin__off">{t('cell.plugin.offIgnored')}</span>}
       {plugin.from && <span className="ui-sr-only"> ({plugin.from})</span>}
     </span>
@@ -153,7 +162,8 @@ function pluginLine(plugin: PluginChip): ReactNode {
   const notes = [
     plugin.disabled && offLabel(plugin),
     plugin.notApplied && t('cell.plugin.notApplied'),
-    plugin.stillSignsIn && t('cell.plugin.stillSignsIn'),
+    plugin.stillSignsIn && stillLabel(plugin.name),
+    plugin.notUsed && t('cell.plugin.notUsed'),
     plugin.offIgnored && t('cell.plugin.offIgnored'),
     plugin.from,
   ]

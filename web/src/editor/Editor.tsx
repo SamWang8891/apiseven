@@ -9,7 +9,6 @@ import { stripTimestamps } from '../api/sanitize';
 import type { Item, Kind, Obj, Parent } from '../api/types';
 import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
 import { t } from '../i18n';
-import type { RemovedSecret } from '../plugins/auth';
 import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { findInCtx, isEnabled } from '../resources/resolve';
@@ -20,12 +19,14 @@ import { EditorDialogs } from './EditorDialogs';
 import { deepEqual, setPath, useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
 import { takenFailure, uncheckedFailure, type Failure } from './failure';
+import { CopyNotice } from './CopyNotice';
 import { FailureBanner } from './FailureBanner';
 import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
 import { JSON_TAB } from './json';
 import { JsonTab } from './JsonTab';
 import { NewIdField } from './NewIdField';
 import { saveResource } from './save';
+import type { EditorStart } from './start';
 import { useEditorKeys } from './useEditorKeys';
 import { useActiveTab } from './useActiveTab';
 import { useLeaveGuard } from './useLeaveGuard';
@@ -41,15 +42,13 @@ export interface EditorProps {
   parent?: Parent;
   /** The stored object as the query has it now (it may refresh in the background); undefined when creating. */
   item?: Item;
-  start?: { baseline: Obj; draft: Obj; removed?: RemovedSecret[] };
+  start?: EditorStart;
   copyOf?: Item;
 }
-
 
 export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const def = registry[kind];
   const isNew = item === undefined;
-  const copyRemoved = start?.removed;
   const client = useClient();
   const ctx = useCtx();
   const plugins = useAllPlugins().data;
@@ -281,10 +280,10 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     [byTab, active, failureIssue, failureTab],
   );
   const content = useMemo(() => {
-    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues, copyRemoved };
+    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues };
     const tab = shownTabs.find((candidate) => candidate.id === active);
     return tab ? tab.render(props) : <JsonTab {...props} />;
-  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, copyRemoved]);
+  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues]);
   const changedHere = (fields: string[]) => fields.some((field) => !deepEqual(draft[field], baseline[field]));
   const label = (text: string, changed: boolean) => (
     <>
@@ -342,6 +341,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       />
       <div className="ed-body" ref={bodyRef}>
         {failure && <FailureBanner failure={failure} />}
+        {isNew && start?.copy && <CopyNotice notes={start.copy} />}
         {isNew && !def.idFromDraft && (
           <NewIdField
             kind={kind}

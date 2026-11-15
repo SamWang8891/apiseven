@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { ctxOf, itemOf } from '../test/ctx';
 import { pluginFixture } from '../test/pluginFixture';
-import { AUTH_SECRETS, isAuthPlugin, SIGN_IN_FIELD, signInOf, signsInAlways, withoutSignInSecrets } from './auth';
+import { AUTH_SECRETS, isAuthPlugin, sharedSignInFields, SIGN_IN_FIELD, signInOf, signInRole, withoutSignInSecrets } from './auth';
 import { consumerInheritedPlugins } from './inherited';
 import { AUTH_PLUGINS } from './subsystems';
 
@@ -34,16 +34,21 @@ describe("a consumer's inherited plugins", () => {
 });
 
 describe('sign-in plugins of consumers and credentials', () => {
-  it('signsInAlways: an auth plugin of a consumer or a credential; not a non-auth one, nor an auth plugin elsewhere', () => {
+  it("signInRole: an auth plugin of a consumer or credential signs in; one the loaded list doesn't know is not used; one not built in, before the list loads, is unknown", () => {
     const { http } = pluginFixture();
-    expect(signsInAlways('credential', 'key-auth', http['key-auth'])).toBe(true);
-    expect(signsInAlways('consumer', 'basic-auth', undefined)).toBe(true);
-    expect(signsInAlways('consumer', 'limit-count', http['limit-count'])).toBe(false);
-    expect(signsInAlways('route', 'key-auth', http['key-auth'])).toBe(false);
-    expect(signsInAlways('consumer_group', 'key-auth', http['key-auth'])).toBe(false);
-    // Every plugin of a credential is an auth plugin (APISIX refuses others): no lookup needed.
-    expect(signsInAlways('credential', 'my-auth', undefined)).toBe(true);
-    expect(signsInAlways('credential', 'limit-count', http['limit-count'])).toBe(false);
+    expect(signInRole('credential', 'key-auth', http['key-auth'], true)).toBe('signIn');
+    expect(signInRole('consumer', 'basic-auth', undefined, false)).toBe('signIn');
+    expect(signInRole('consumer', 'limit-count', http['limit-count'], true)).toBeUndefined();
+    expect(signInRole('route', 'key-auth', http['key-auth'], true)).toBeUndefined();
+    expect(signInRole('consumer_group', 'key-auth', http['key-auth'], true)).toBeUndefined();
+    // plugin_consumer skips a plugin plugin.get doesn't know (consumer.lua 166–167).
+    expect(signInRole('credential', 'gone-auth', undefined, true)).toBe('unused');
+    expect(signInRole('consumer', 'gone-auth', undefined, true)).toBe('unused');
+    // Before the list loads, nothing definite about a plugin that isn't built in.
+    expect(signInRole('credential', 'my-auth', undefined, false)).toBe('unknown');
+    expect(signInRole('consumer', 'my-auth', undefined, false)).toBe('unknown');
+    expect(signInRole('credential', 'my-auth', { schema: {}, type: 'auth' }, true)).toBe('signIn');
+    expect(signInRole('credential', 'limit-count', http['limit-count'], true)).toBeUndefined();
   });
 
   it("SIGN_IN_FIELD: each is a required property of the plugin's consumer schema in the fixture; every auth plugin but multi-auth (no consumer schema) has one", () => {
@@ -57,19 +62,32 @@ describe('sign-in plugins of consumers and credentials', () => {
     expect(http['multi-auth']?.consumer_schema).toBeUndefined();
   });
 
-  it('signInOf: off with its match field still signs in; off without it signs nobody in (create_consume_cache skips it); off with no known field, only that off is ignored', () => {
-    const { http } = pluginFixture();
+  it('signInOf: marked off, it still signs in with what it is found by and checked against; without either it signs nobody in; with no known lookup field, only that off is ignored', () => {
     const off = { _meta: { disable: true } };
-    expect(signInOf('key-auth', { key: 'k', ...off }, http['key-auth'])).toEqual({ state: 'stillSignsIn', field: 'key', change: ['key'] });
-    expect(signInOf('key-auth', off, http['key-auth'])).toEqual({ state: 'signsNobodyIn', field: 'key', change: ['key'] });
-    expect(signInOf('basic-auth', { username: 'u', password: 'p' }, http['basic-auth'])).toEqual({ state: 'on', field: 'username', change: ['password'] });
-    expect(signInOf('hmac-auth', { key_id: 'i', ...off }, undefined)).toEqual({ state: 'stillSignsIn', field: 'key_id', change: ['secret_key'] });
-    // No secret field: change the field it matches by.
-    expect(signInOf('ldap-auth', { user_dn: 'cn=a', ...off }, http['ldap-auth'])).toEqual({ state: 'stillSignsIn', field: 'user_dn', change: ['user_dn'] });
-    expect(signInOf('wolf-rbac', {}, http['wolf-rbac'])).toEqual({ state: 'on', field: 'appid', change: ['appid'] });
-    expect(signInOf('multi-auth', off, http['multi-auth'])).toEqual({ state: 'offIgnored', change: [] });
-    const custom = { schema: {}, type: 'auth', consumer_schema: { type: 'object', encrypt_fields: ['token'] } };
-    expect(signInOf('my-auth', { token: 't', ...off }, custom)).toEqual({ state: 'offIgnored', change: ['token'] });
+    expect(signInOf('key-auth', { key: 'k', ...off })).toEqual({ state: 'stillSignsIn', field: 'key' });
+    expect(signInOf('key-auth', off)).toEqual({ state: 'signsNobodyIn', field: 'key', missing: 'key' });
+    expect(signInOf('basic-auth', { username: 'u', password: 'p' })).toEqual({ state: 'on', field: 'username' });
+    // Found by its lookup field, then checked against its secret: without the secret nobody passes.
+    expect(signInOf('basic-auth', { username: 'u', ...off })).toEqual({ state: 'signsNobodyIn', field: 'username', missing: 'password' });
+    expect(signInOf('hmac-auth', { key_id: 'i', secret_key: 's', ...off })).toEqual({ state: 'stillSignsIn', field: 'key_id' });
+    expect(signInOf('hmac-auth', { key_id: 'i', ...off })).toEqual({ state: 'signsNobodyIn', field: 'key_id', missing: 'secret_key' });
+    // jwt-auth checks an HS token against its secret (the default), any other against its public_key (get_auth_secret).
+    expect(signInOf('jwt-auth', { key: 'k', secret: 's', ...off })).toEqual({ state: 'stillSignsIn', field: 'key' });
+    expect(signInOf('jwt-auth', { key: 'k', algorithm: 'RS256', public_key: 'P', ...off })).toEqual({ state: 'stillSignsIn', field: 'key' });
+    expect(signInOf('jwt-auth', { key: 'k', algorithm: 'RS256', secret: 's', ...off })).toEqual({ state: 'signsNobodyIn', field: 'key', missing: 'public_key' });
+    expect(signInOf('jwe-decrypt', { key: 'k', ...off })).toEqual({ state: 'signsNobodyIn', field: 'key', missing: 'secret' });
+    // Checked by their servers: the lookup field is all.
+    expect(signInOf('ldap-auth', { user_dn: 'cn=a', ...off })).toEqual({ state: 'stillSignsIn', field: 'user_dn' });
+    expect(signInOf('wolf-rbac', {})).toEqual({ state: 'on', field: 'appid' });
+    expect(signInOf('multi-auth', off)).toEqual({ state: 'offIgnored' });
+    expect(signInOf('my-auth', { token: 't', ...off })).toEqual({ state: 'offIgnored' });
+  });
+
+  it('sharedSignInFields: the lookup fields a copy still holds', () => {
+    expect(sharedSignInFields({ 'jwt-auth': { key: 'k' }, 'basic-auth': { username: 'u' }, 'key-auth': {}, 'limit-count': { count: 1 } })).toEqual([
+      { plugin: 'basic-auth', field: 'username' },
+      { plugin: 'jwt-auth', field: 'key' },
+    ]);
   });
 
   it("AUTH_SECRETS is each auth plugin's consumer schema encrypt_fields in the fixture", () => {

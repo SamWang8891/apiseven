@@ -36,29 +36,38 @@ export function authPluginOrUnknown(name: string, all?: Record<string, PluginInf
 }
 
 /**
- * Whether a plugin in `scope` is one whose `_meta.disable` APISIX ignores: an auth plugin of a
- * consumer or a credential. APISIX collects every auth config of every consumer and credential for
- * matching without looking at `_meta.disable` (plugin_consumer, apisix/consumer.lua 150–193;
- * create_consume_cache 251–274 and find_consumer 287–297 don't either), so "off" there revokes
- * nothing. (Elsewhere `_meta.disable` does switch a plugin off: plugin.filter skips it, plugin.lua
- * 595–597, which covers a route's auth plugin and a consumer's or group's other plugins.) Whether it
- * signs anyone in is signInOf's to say. `info` is the plugin as the loaded list has it; without it,
- * the source's auth list decides for a consumer, and a credential needs none: every plugin of a
- * credential is an auth plugin (APISIX refuses any other, admin/credentials.lua 38–45).
+ * What a plugin of a consumer or credential is for sign-in, so the card and the chips claim only
+ * what is true:
+ * - 'signIn': an auth plugin. APISIX collects every auth config of every consumer and credential for
+ *   matching without looking at `_meta.disable` (plugin_consumer, apisix/consumer.lua 150–193;
+ *   create_consume_cache 251–274 and find_consumer 287–297 don't either), so "off" revokes nothing
+ *   (signInOf says what it does instead). Elsewhere `_meta.disable` does switch a plugin off:
+ *   plugin.filter skips it (plugin.lua 595–597).
+ * - 'unused': the loaded list doesn't have it, so APISIX doesn't use the entry (plugin_consumer
+ *   skips a plugin plugin.get doesn't know, consumer.lua 166–167; plugin.filter skips it on a route).
+ * - 'unknown': not built in, and the list hasn't loaded: nothing definite can be said.
+ * - undefined: any other plugin, or any other scope: its switch means what it says.
+ * Every plugin of a credential is an auth plugin (APISIX refuses others, admin/credentials.lua
+ * 38–45), so one the list knows is 'signIn' unless the list says otherwise; a built-in one is
+ * classified by the generated lists before the list loads.
  */
-export function signsInAlways(scope: Scope, name: string, info?: PluginInfo): boolean {
-  if (scope === 'credential') return info ? info.type === 'auth' : true;
-  return scope === 'consumer' && isAuthPlugin(name, info ? { [name]: info } : undefined);
+export function signInRole(scope: Scope, name: string, info: PluginInfo | undefined, listLoaded: boolean): 'signIn' | 'unused' | 'unknown' | undefined {
+  if (scope !== 'consumer' && scope !== 'credential') return undefined;
+  if (info) return info.type === 'auth' ? 'signIn' : undefined;
+  if (listLoaded) return 'unused';
+  if (!BUILT_IN.has(name)) return 'unknown';
+  return AUTH.has(name) ? 'signIn' : undefined;
 }
 
 /**
- * The field of each auth plugin's consumer config that APISIX matches a request by, the one
+ * The field of each auth plugin's consumer config that APISIX looks the entry up by, the one
  * find_consumer or consumers_kv is called with: key-auth.lua 85, basic-auth.lua 139–140,
  * jwt-auth.lua 314, hmac-auth.lua 140, jwe-decrypt.lua 196, ldap-auth.lua 158,
  * ldap-auth-advanced.lua 387, wolf-rbac.lua 303 and 373 (consumer.lua's plugin_unique_key_attrs,
- * 302–309, lists the first six). A config without it signs nobody in: create_consume_cache skips it
- * (consumer.lua 256–265). multi-auth has none (no consumer schema: the plugins it lists match their
- * own configs), and a custom auth plugin's is not known.
+ * 302–309, lists the first six). A config without it is never found: create_consume_cache skips it
+ * (consumer.lua 256–265); and once it changes, nothing that named the old value finds it, whatever
+ * else the config holds. So it is the field revoke advice names. multi-auth has none (no consumer
+ * schema: the plugins it lists match their own configs), and a custom auth plugin's is not known.
  */
 export const SIGN_IN_FIELD: Readonly<Record<string, string>> = {
   'basic-auth': 'username',
@@ -71,29 +80,67 @@ export const SIGN_IN_FIELD: Readonly<Record<string, string>> = {
   'wolf-rbac': 'appid',
 };
 
-/** What a consumer's or credential's auth plugin (signsInAlways) does for sign-in, for its badge and notes. */
-export interface SignIn {
-  /**
-   * 'on': not marked off. Marked off (which APISIX ignores here): 'stillSignsIn' with the field it
-   * matches by, 'signsNobodyIn' without it (APISIX skips the config), 'offIgnored' when that field
-   * is not known (multi-auth, a custom plugin).
-   */
-  state: 'on' | 'stillSignsIn' | 'signsNobodyIn' | 'offIgnored';
-  /** The field requests are matched by (SIGN_IN_FIELD), when known. */
-  field?: string;
-  /** What to change to revoke it: the secret fields of its consumer schema, else its match field; empty when neither is known. */
-  change: readonly string[];
+/**
+ * Whether the plugin's entry is used to decrypt a token rather than to sign a request in: jwe-decrypt
+ * attaches no consumer, it decrypts a token whose `kid` names the entry's key (jwe-decrypt.lua 245–255).
+ */
+export const decryptsOnly = (name: string): boolean => name === 'jwe-decrypt';
+
+/**
+ * The field a found entry is then checked against, without which no request passes: basic-auth's
+ * password (basic-auth.lua 153–165), hmac-auth's secret_key (hmac-auth.lua 254–256), jwe-decrypt's
+ * secret (jwe-decrypt.lua 152–155), jwt-auth's secret for an HS algorithm (the default) and its
+ * public_key for any other (get_auth_secret, jwt-auth.lua 279–285). key-auth's key is all there is;
+ * ldap-auth's and wolf-rbac's users are checked by their servers.
+ */
+function verifierOf(name: string, conf: Obj): string | undefined {
+  switch (name) {
+    case 'basic-auth':
+      return 'password';
+    case 'hmac-auth':
+      return 'secret_key';
+    case 'jwe-decrypt':
+      return 'secret';
+    case 'jwt-auth':
+      return typeof conf.algorithm !== 'string' || conf.algorithm.startsWith('HS') ? 'secret' : 'public_key';
+    default:
+      return undefined;
+  }
 }
 
-/** signIn facts for `name` configured as `conf`; `info` is the plugin as the loaded list has it (else the source's lists decide). */
-export function signInOf(name: string, conf: unknown, info?: PluginInfo): SignIn {
+/** What a consumer's or credential's auth plugin (signInRole 'signIn') does, for its badge and notes. */
+export interface SignIn {
+  /**
+   * 'on': not marked off. Marked off (which APISIX ignores here): 'stillSignsIn' (for jwe-decrypt:
+   * still used) with the fields it is found by and checked against; 'signsNobodyIn' without one of
+   * them; 'offIgnored' when the plugin's lookup field is not known (multi-auth, a custom plugin).
+   */
+  state: 'on' | 'stillSignsIn' | 'signsNobodyIn' | 'offIgnored';
+  /** The field the entry is looked up by (SIGN_IN_FIELD), when known: the one to change to revoke it. */
+  field?: string;
+  /** For 'signsNobodyIn': the field it lacks (the lookup field, or the one a found entry is checked against). */
+  missing?: string;
+}
+
+/** signIn facts for the auth plugin `name` configured as `conf`. */
+export function signInOf(name: string, conf: unknown): SignIn {
   const field = SIGN_IN_FIELD[name];
-  const secrets = signInSecretsOf(name, info ? { [name]: info } : null);
-  const change = secrets.length > 0 ? secrets : field ? [field] : [];
-  const facts = field ? { field, change } : { change };
-  if (!isDisabled(conf)) return { state: 'on', ...facts };
-  if (!field) return { state: 'offIgnored', ...facts };
-  return { state: isObj(conf) && conf[field] !== undefined ? 'stillSignsIn' : 'signsNobodyIn', ...facts };
+  if (!field) return { state: isDisabled(conf) ? 'offIgnored' : 'on' };
+  if (!isDisabled(conf)) return { state: 'on', field };
+  const config = isObj(conf) ? conf : {};
+  const verifier = verifierOf(name, config);
+  const missing = config[field] === undefined ? field : verifier !== undefined && config[verifier] === undefined ? verifier : undefined;
+  return missing ? { state: 'signsNobodyIn', field, missing } : { state: 'stillSignsIn', field };
+}
+
+/** The lookup fields (SIGN_IN_FIELD) a copy's `plugins` still hold: the same as the original's, so they must change. */
+export function sharedSignInFields(plugins: Obj): { plugin: string; field: string }[] {
+  return Object.entries(plugins)
+    .flatMap(([plugin, conf]) => {
+      const field = SIGN_IN_FIELD[plugin];
+      return field && isObj(conf) && conf[field] !== undefined ? [{ plugin, field }] : [];
+    })
+    .sort((a, b) => (a.plugin < b.plugin ? -1 : a.plugin > b.plugin ? 1 : 0));
 }
 
 /**

@@ -221,6 +221,38 @@
   overflow-wrap: anywhere;
 }
 
+/* A copy of a consumer or credential: what it left out, and what it still shares (CopyNotice). */
+.ed-copynote {
+  display: flex;
+  gap: 10px;
+  margin-bottom: var(--s4);
+  padding: 10px var(--s3);
+  border: 1px solid var(--warn);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--text);
+}
+
+.ed-copynote > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warn);
+}
+
+.ed-copynote__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ed-copynote__title {
+  color: var(--warn);
+  font-weight: 600;
+}
+
 /* What to do about it: open the object that holds the id. */
 .ed-banner__link {
   color: var(--accent);

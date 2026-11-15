@@ -9,11 +9,12 @@ import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
 import { resetApp } from '../../test/app';
 import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
-import type { FakeAdminOptions } from '../../test/fakeAdmin';
+import { json, type FakeAdminOptions } from '../../test/fakeAdmin';
 import { MASK_CHANGED } from '../../plugins/secrets';
 import { pluginReplies } from '../../test/plugins';
 import { pluginFixture } from '../../test/pluginFixture';
 import { SIGN_IN_FIELD, signInOf } from '../../plugins/auth';
+import { signInNote } from '../../plugins/signInText';
 import { editableControls } from '../../test/schemaForm';
 
 beforeAll(async () => {
@@ -220,15 +221,15 @@ describe('an auth plugin of a credential signs in whatever "off" says (consumer.
         expect(within(card).getByText(t('pl.card.signIn.always'))).toBeInTheDocument();
       }
       if (within(card).getByRole('button', { name: plugin }).getAttribute('aria-expanded') !== 'true') await user.click(within(card).getByRole('button', { name: plugin }));
-      // The note names the field this plugin matches requests by and what to change; multi-auth has neither.
+      // The note names the field this plugin is looked up by, as what to change; multi-auth has none.
       const field = SIGN_IN_FIELD[plugin];
-      const facts = signInOf(plugin, {}, pluginFixture().http[plugin]);
-      const note = field ? t('pl.card.signIn.note', { field, change: facts.change.join(' or ') }) : t('pl.card.signIn.noteNeutral');
+      const note = !field ? t('pl.card.signIn.noteNeutral') : t(plugin === 'jwe-decrypt' ? 'pl.card.signIn.noteDecrypt' : 'pl.card.signIn.note', { field });
       expect(within(card).getAllByRole('note')[0]).toHaveTextContent(note);
+      expect(signInNote(plugin, signInOf(plugin, {}))).toBe(note);
       await user.click(within(card).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
       expect(within(card).queryByRole('switch')).toBeNull();
-      // Run options are shown, editable, and say they change nothing about sign-in here.
-      expect(within(card).getByText(t('pl.meta.signIn', { name: plugin }))).toBeInTheDocument();
+      // Run options are shown, editable, and say they change nothing here (a credential's plugin never runs).
+      expect(within(card).getByText(t('pl.meta.signInCredential', { name: plugin }))).toBeInTheDocument();
       const priority = card.querySelector('input[id$="-meta-priority"]');
       expect(priority).not.toBeNull();
       expect(priority).not.toHaveAttribute('readonly');
@@ -236,11 +237,38 @@ describe('an auth plugin of a credential signs in whatever "off" says (consumer.
     },
   );
 
-  it('the notes name the right field: key-auth "key", basic-auth matched by username and revoked by its password, ldap-auth by user_dn', () => {
-    const { http } = pluginFixture();
-    expect(t('pl.card.signIn.note', { field: 'key', change: signInOf('key-auth', {}, http['key-auth']).change.join(' or ') })).toContain('its key');
-    expect(signInOf('basic-auth', {}, http['basic-auth'])).toMatchObject({ field: 'username', change: ['password'] });
-    expect(signInOf('ldap-auth', {}, http['ldap-auth'])).toMatchObject({ field: 'user_dn', change: ['user_dn'] });
+  it('jwt-auth with RS256, stored: the note names its key as what to change, not a secret it does not use', async () => {
+    const RS: Obj = { id: 'c5', plugins: { 'jwt-auth': { key: 'jo-rs', algorithm: 'RS256', public_key: 'PUBLIC' } } };
+    const { user } = await openEditor('#/consumers/jo/credentials/c5?tab=plugins', { objects: { consumers: CONSUMERS }, credentials: { jo: [RS] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'c5' });
+    await settled();
+    const card = await main().findByRole('group', { name: 'jwt-auth' });
+    await user.click(within(card).getByRole('button', { name: 'jwt-auth' }));
+    const note = within(card).getAllByRole('note')[0];
+    expect(note).toHaveTextContent(t('pl.card.signIn.note', { field: 'key' }));
+    expect(note?.textContent).not.toMatch(/\bsecret\b/);
+  });
+
+  it("a plugin this APISIX doesn't know: not used (plugin_consumer skips it), no switch; before the list loads, nothing definite", async () => {
+    const GONE: Obj = { id: 'c6', plugins: { 'gone-auth': { token: 'T', _meta: { disable: true } } } };
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const replies = { ...pluginReplies(), plugins: async () => {
+      await held;
+      return json(200, pluginFixture().http);
+    } };
+    const { user } = await openEditor('#/consumers/jo/credentials/c6?tab=plugins', { objects: { consumers: CONSUMERS }, credentials: { jo: [GONE] }, replies });
+    await main().findByRole('heading', { level: 1, name: 'c6' });
+    const card = await main().findByRole('group', { name: 'gone-auth' });
+    expect(within(card).queryByRole('switch')).toBeNull();
+    expect(card.querySelector('.pl-card__signin')).toBeNull();
+    release();
+    expect(await within(card).findByText(t('pl.card.signIn.unused'))).toBeInTheDocument();
+    await user.keyboard('e');
+    expect(within(card).queryByRole('switch')).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'gone-auth' }));
+    expect(within(card).getByText(t('pl.card.signIn.unusedNote', { name: 'gone-auth' }))).toBeInTheDocument();
+    expect(card.textContent).not.toMatch(/Always on|signs in|Off ignored/);
   });
 
   it('stored off without the field it matches by, it signs nobody in (create_consume_cache skips it): never "still signs in"; the unchecked note fits a card with no switch', async () => {
@@ -253,7 +281,7 @@ describe('an auth plugin of a credential signs in whatever "off" says (consumer.
     expect(within(card).queryByText(t('pl.card.signIn.stillSignsIn'))).toBeNull();
     await user.click(within(card).getByRole('button', { name: 'key-auth' }));
     const notes = within(card).getAllByRole('note').map((n) => n.textContent);
-    expect(notes).toContain(t('pl.card.signIn.incompleteNote', { field: 'key' }));
+    expect(notes).toContain(t('pl.card.signIn.incompleteNote', { missing: 'key' }));
     expect(notes).toContain(t('pl.card.uncheckedSignIn', { first: 'key: Required' }));
     expect(card.textContent).not.toContain(t('pl.card.unchecked', { first: 'key: Required' }));
   });
@@ -279,7 +307,7 @@ describe('an auth plugin of a credential signs in whatever "off" says (consumer.
     expect(within(card).getByText(t('pl.card.signIn.stillSignsIn'))).toHaveClass('pl-card__signin--on-anyway');
     expect(card.textContent).not.toMatch(/\boff\b|\bOff\b/);
     await user.click(within(card).getByRole('button', { name: 'key-auth' }));
-    expect(within(card).getByRole('note')).toHaveTextContent(t('pl.card.signIn.offNote', { field: 'key', change: 'key' }));
+    expect(within(card).getByRole('note')).toHaveTextContent(t('pl.card.signIn.offNote', { field: 'key' }));
     await user.keyboard('e');
     await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cr.tab.general')}`) }));
     await settled();
@@ -327,7 +355,8 @@ describe('Duplicate', () => {
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     expect(document.body.innerHTML).not.toContain(KEY);
-    expect(main().getByText(t('pl.copy.removed', { list: t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }) }))).toBeInTheDocument();
+    const notice = main().getByRole('note', { name: t('editor.copyNotice.title') });
+    expect(notice).toHaveTextContent(t('editor.copyNotice.secrets', { list: [t('editor.copyNotice.secretItem', { plugin: 'key-auth', fields: 'key' })].join(', ') }));
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'c2');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     expect(writesOf(admin)).toEqual([]);

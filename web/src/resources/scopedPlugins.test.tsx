@@ -11,15 +11,29 @@ const off = { _meta: { disable: true } };
 const myAuth = { schema: {}, type: 'auth', consumer_schema: { type: 'object' } };
 
 describe('scopedPlugins', () => {
-  it("a credential's plugins are all auth plugins (APISIX refuses others): no lookup, a custom one included", () => {
+  it("a credential's built-in auth plugin needs no lookup; a custom one is an auth plugin APISIX may not know: nothing definite before the list loads, \"not used\" if it doesn't know it (consumer.lua 166–167)", () => {
     const value = { plugins: { 'my-auth': { token: 't', ...off } } };
-    expect(scopedPlugins(value, 'credential')).toEqual([{ name: 'my-auth', offIgnored: true }]);
     expect(scopedPlugins({ plugins: { 'key-auth': { key: 'k', ...off } } }, 'credential')).toEqual([{ name: 'key-auth', stillSignsIn: true }]);
+    expect(scopedPlugins(value, 'credential')).toEqual([{ name: 'my-auth', disabled: true, unclassified: true }]);
+    expect(scopedPlugins(value, 'credential', pluginFixture().http)).toEqual([{ name: 'my-auth', notUsed: true }]);
+    expect(scopedPlugins(value, 'credential', { ...pluginFixture().http, 'my-auth': myAuth })).toEqual([{ name: 'my-auth', offIgnored: true }]);
+  });
+
+  it('jwe-decrypt stored off with its key and secret is still used; without the secret it decrypts nothing ("off")', () => {
+    expect(scopedPlugins({ plugins: { 'jwe-decrypt': { key: 'k', secret: 's', ...off } } }, 'credential')).toEqual([{ name: 'jwe-decrypt', stillSignsIn: true }]);
+    expect(scopedPlugins({ plugins: { 'jwe-decrypt': { key: 'k', ...off } } }, 'credential')).toEqual([{ name: 'jwe-decrypt', disabled: true }]);
+    const { container } = render(<PluginChips plugins={[{ name: 'jwe-decrypt', stillSignsIn: true }, { name: 'gone-auth', notUsed: true }]} />);
+    const chips = [...container.querySelectorAll('.cell-plugin')];
+    expect(chips.map((c) => c.textContent)).toEqual([`jwe-decrypt${t('cell.plugin.stillUsed')}`, `gone-auth${t('cell.plugin.notUsed')}`]);
+    expect(chips[0]).toHaveAttribute('title', `jwe-decrypt: ${t('cell.plugin.stillUsedWhy')}`);
+    expect(chips[1]).toHaveAttribute('title', `gone-auth: ${t('cell.plugin.notUsedWhy')}`);
   });
 
   it('stored off without the field it matches by, it signs nobody in: plainly off, never "still signs in"', () => {
     expect(scopedPlugins({ plugins: { 'key-auth': off } }, 'credential')).toEqual([{ name: 'key-auth', disabled: true }]);
     expect(scopedPlugins({ plugins: { 'basic-auth': { password: 'p', ...off } } }, 'consumer')).toEqual([{ name: 'basic-auth', disabled: true }]);
+    // Found by its username, but without a password no request passes.
+    expect(scopedPlugins({ plugins: { 'basic-auth': { username: 'u', ...off } } }, 'consumer')).toEqual([{ name: 'basic-auth', disabled: true }]);
   });
 
   it("a consumer's plugin that is not built in, before the plugin list has loaded: unclassified, neither off nor still signing in", () => {

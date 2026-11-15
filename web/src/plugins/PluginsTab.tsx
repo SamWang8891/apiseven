@@ -241,13 +241,11 @@ function inheritance(scope: Scope, draft: Obj, ctx: TabProps['ctx'], all: Record
  * the object it inherits from is still loading. A consumer group that holds an auth plugin is told
  * that APISIX never runs it from there (plugins/auth.ts); APISIX stores it, so Save is not refused.
  */
-export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, scope, copyRemoved }: TabProps & { scope: Scope }) {
+export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, scope }: TabProps & { scope: Scope }) {
   const value = isObj(draft.plugins) ? (draft.plugins as Record<string, Obj>) : undefined;
   const all = useAllPlugins(subsystemOf(scope)).data;
   const { inherited, waiting } = inheritance(scope, draft, ctx, all);
   const groupAuth = scope === 'consumer_group' ? Object.keys(value ?? {}).filter((name) => isAuthPlugin(name, all)).sort(byName) : [];
-  // A copy of a consumer or credential: exactly what EditorFrame left out of its plugins.
-  const copied = (copyRemoved ?? []).map((r) => ('fields' in r ? t('pl.copy.fields', { plugin: r.plugin, fields: r.fields.join(', ') }) : t(`pl.copy.${r.why}`, { plugin: r.plugin })));
   return (
     <>
       <PluginsTab
@@ -259,11 +257,6 @@ export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, sc
         inherited={inherited}
         saveAttempts={saveAttempts}
       />
-      {copied.length > 0 && (
-        <p className="pl-note pl-note--warn" role="note">
-          {t('pl.copy.removed', { list: copied.join('; ') })}
-        </p>
-      )}
       {waiting && <p className="pl-note">{waiting}</p>}
       {groupAuth.length > 0 && (
         <p className="pl-note pl-note--warn" role="note">

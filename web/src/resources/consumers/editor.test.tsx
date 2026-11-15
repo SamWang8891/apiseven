@@ -2,9 +2,10 @@
 // creating one (its username is its id), what Save sends from each tab (an auth plugin's key
 // untouched), the key masked until revealed, and the Credentials tab left out on an APISIX without
 // credentials.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { focusManager } from '@tanstack/react-query';
 import type { UserEvent } from '@testing-library/user-event';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Obj } from '../../api/types';
 import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
@@ -52,6 +53,9 @@ async function openConsumer(hash = '#/consumers/jo', opts: FakeAdminOptions = {}
 }
 
 /** Waits for the active tab's body (lazy, and its cards) to settle. */
+/** The copy's notice above the tabs (CopyNotice). */
+const notice = () => main().getByRole('note', { name: t('editor.copyNotice.title') });
+
 async function settled() {
   const panel = await main().findByRole('tabpanel');
   await waitFor(() => expect(panel.querySelector('.ed-lazy__loading, [aria-busy="true"], .pl-note:not(.pl-note--warn)')).toBeNull());
@@ -215,7 +219,7 @@ describe('Duplicate', () => {
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     expect(document.body.innerHTML).not.toContain(KEY);
-    expect(main().getByText(t('pl.copy.removed', { list: t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }) }))).toBeInTheDocument();
+    expect(notice()).toHaveTextContent(t('editor.copyNotice.secrets', { list: [t('editor.copyNotice.secretItem', { plugin: 'key-auth', fields: 'key' })].join(', ') }));
     await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cs.tab.general')}`) }));
     await settled();
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo2');
@@ -260,22 +264,80 @@ describe('Duplicate on a cold cache (the plugin list not loaded yet when the cop
     await waitFor(() => expect(box.textContent).toContain('"my-auth": {}'));
     expect(document.body.innerHTML).not.toMatch(/SEKRET-1|K-9/);
     expect(box.textContent).toContain('"limit-count"');
+    const notes = [t('editor.copyNotice.secrets', { list: [t('editor.copyNotice.secretItem', { plugin: 'key-auth', fields: 'key' })].join(', ') }), t('editor.copyNotice.whole', { list: t('editor.copyNotice.noSecretFields', { plugin: 'my-auth' }) })];
+    for (const note of notes) expect(notice()).toHaveTextContent(note);
     await user.click(main().getByRole('tab', { name: /^Plugins/ }));
-    const note = t('pl.copy.removed', { list: [t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }), t('pl.copy.noSecretFields', { plugin: 'my-auth' })].join('; ') });
-    expect(await main().findByText(note)).toBeInTheDocument();
+    for (const note of notes) expect(notice()).toHaveTextContent(note);
   });
 
   it('the plugin list fails to load: fail closed (the built-in key-auth loses its key, a plugin not built in all of its settings) and the note says why', async () => {
     const replies = { plugins: () => json(503, { error_msg: 'down' }) };
-    const { user } = await openEditor('#/consumers/new?from=src&tab=json', { objects: { consumers: [SOURCE] }, replies });
+    await openEditor('#/consumers/new?from=src&tab=json', { objects: { consumers: [SOURCE] }, replies });
     await main().findByRole('button', { name: t('editor.create') });
     const box = await jsonEditor(t('kind.consumers.singular'));
     await waitFor(() => expect(box.textContent).toContain('"my-auth": {}'));
     expect(document.body.innerHTML).not.toMatch(/SEKRET-1|K-9/);
     expect(box.textContent).toContain('"time_window": 1');
-    await user.click(main().getByRole('tab', { name: /^Plugins/ }));
-    const note = t('pl.copy.removed', { list: [t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }), t('pl.copy.unloaded', { plugin: 'my-auth' })].join('; ') });
-    expect(await main().findByText(note)).toBeInTheDocument();
+    expect(notice()).toHaveTextContent(t('editor.copyNotice.secrets', { list: [t('editor.copyNotice.secretItem', { plugin: 'key-auth', fields: 'key' })].join(', ') }));
+    expect(notice()).toHaveTextContent(t('editor.copyNotice.whole', { list: t('editor.copyNotice.unloaded', { plugin: 'my-auth' }) }));
+  });
+});
+
+describe('what a copy left out is shown where it cannot be missed', () => {
+  const SOURCE: Obj = {
+    username: 'src',
+    plugins: { 'my-plugin': { token: 'T-1' }, 'basic-auth': { username: 'src-user', password: 'PW-1' }, 'jwt-auth': { key: 'src-jwt', secret: 'S-1' } },
+  };
+
+  it('the plugin list failed: the notice is on every tab from the start (General first), says why a plugin not built in was left out, and names the lookup fields the copy still shares', async () => {
+    const replies = { plugins: () => json(503, { error_msg: 'down' }) };
+    const { user } = await openEditor('#/consumers/new?from=src', { objects: { consumers: [SOURCE] }, replies });
+    await main().findByRole('button', { name: t('editor.create') });
+    const removed = [t('editor.copyNotice.secrets', { list: [t('editor.copyNotice.secretItem', { plugin: 'basic-auth', fields: 'password' }), t('editor.copyNotice.secretItem', { plugin: 'jwt-auth', fields: 'secret' })].join(', ') }), t('editor.copyNotice.whole', { list: t('editor.copyNotice.unloaded', { plugin: 'my-plugin' }) })];
+    const shared = t('editor.copyNotice.shared', { list: 'basic-auth username, jwt-auth key' });
+    expect(main().getByRole('tab', { name: /^General/ })).toHaveAttribute('aria-selected', 'true');
+    for (const tabName of [/^General/, /^Plugins/, /^Credentials/, /^JSON/]) {
+      await user.click(main().getByRole('tab', { name: tabName }));
+      for (const note of removed) expect(notice(), String(tabName)).toHaveTextContent(note);
+      expect(notice(), String(tabName)).toHaveTextContent(shared);
+    }
+    expect(document.body.innerHTML).not.toMatch(/T-1|PW-1|S-1/);
+  });
+
+  it('the notes stay those of the draft they were made with: a refetch of the original with new secrets (window focus) changes neither', async () => {
+    const { admin } = await openEditor('#/consumers/new?from=src', { objects: { consumers: [SOURCE] }, replies: pluginReplies() });
+    await main().findByRole('button', { name: t('editor.create') });
+    const before = notice().textContent;
+    expect(before).toContain(t('editor.copyNotice.unknown', { plugin: 'my-plugin' }));
+    admin.touch('consumers', 'src', { plugins: { ...(SOURCE.plugins as Obj), 'hmac-auth': { key_id: 'src-hmac', secret_key: 'HK-1' } } });
+    const reads = () => admin.requests.filter((r) => r.method === 'GET' && r.url.pathname.endsWith('/consumers/src')).length;
+    const first = reads();
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now + 60_000);
+    act(() => {
+      focusManager.setFocused(false);
+      focusManager.setFocused(true);
+    });
+    await waitFor(() => expect(reads()).toBeGreaterThan(first));
+    await new Promise((r) => setTimeout(r, 50));
+    focusManager.setFocused(undefined);
+    expect(notice().textContent).toBe(before);
+    expect(notice().textContent).not.toContain('hmac-auth');
+  });
+});
+
+describe("a consumer's custom auth plugin: its run options may matter (other phases), so they don't say \"never runs\"", () => {
+  it('the note says its sign-in step does not run here, and other phases may', async () => {
+    const myAuth = { schema: { type: 'object' }, type: 'auth', consumer_schema: { type: 'object' } };
+    const replies = { plugins: () => json(200, { ...pluginFixture().http, 'my-auth': myAuth }) };
+    const { user } = await openEditor('#/consumers/cu?tab=plugins', { objects: { consumers: [{ username: 'cu', plugins: { 'my-auth': { token: 't' } } }] }, replies });
+    await main().findByRole('heading', { level: 1, name: 'cu' });
+    await settled();
+    const card = await main().findByRole('group', { name: 'my-auth' });
+    await user.click(within(card).getByRole('button', { name: 'my-auth' }));
+    await user.click(within(card).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
+    expect(within(card).getByText(t('pl.meta.signInCustom', { name: 'my-auth' }))).toBeInTheDocument();
+    expect(card.textContent).not.toContain('never runs');
   });
 });
 
