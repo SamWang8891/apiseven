@@ -126,7 +126,7 @@ test.describe('a copy of a consumer with three auth plugins', () => {
     await expect.poll(async () => (await jwtSecret.inputValue()) === '', { message: 'the copy’s jwt-auth secret is empty' }).toBe(true);
     await expectNotInPage(page, Object.values(secrets), 'the copy, Plugins with three cards open');
     await openTab(page, t('editor.json.tab'));
-    await expectNotInPage(page, Object.values(secrets), 'the copy, JSON');
+    await expectNotInPage(page, Object.values(secrets), 'the copy, JSON', { codeEditor: true });
     await openTab(page, t('cs.tab.general'));
 
     // Create is refused while the copy has no key and password of its own.

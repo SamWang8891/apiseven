@@ -82,12 +82,12 @@ test.describe('a credential’s key', () => {
     await expect(card).toContainText(MASK);
     await expectNotInPage(page, [key], 'the card, locked');
     await openTab(page, t('editor.json.tab'));
-    await expectNotInPage(page, [key], 'the JSON tab, locked');
+    await expectNotInPage(page, [key], 'the JSON tab, locked', { codeEditor: true });
     await main.getByRole('button', { name: t('editor.more') }).click();
     await page.getByRole('menuitem', { name: t('action.viewJson') }).click();
     const view = page.getByRole('dialog', { name: t('json.title', { kind: CREDENTIAL, name: path.split('/').pop()! }) });
     await expect(view).toBeVisible();
-    await expectNotInPage(page, [key], 'View JSON');
+    await expectNotInPage(page, [key], 'View JSON', { codeEditor: true });
     // Copy while masked says it copied masks, and the clipboard holds no key.
     await view.getByRole('button', { name: t('json.copy') }).click();
     await expect(toast(page, t('json.copiedMasked'))).toBeVisible();
@@ -115,7 +115,7 @@ test.describe('a credential’s key', () => {
     // Locked again, still on the JSON tab: masked, with Show secrets offered again.
     await expect(main.getByRole('tab', { name: t('editor.json.tab') })).toHaveAttribute('aria-selected', 'true');
     await expect(main.getByRole('tabpanel').getByRole('button', { name: SHOW_SECRETS })).toBeVisible();
-    await expectNotInPage(page, [key], 'the JSON tab, after the Save');
+    await expectNotInPage(page, [key], 'the JSON tab, after the Save', { codeEditor: true });
     expect((await admin.value(path))?.desc).toBe('saved from the JSON tab');
   });
 
@@ -137,11 +137,11 @@ test.describe('a credential’s key', () => {
 
     // Locked again, on the same tab with the card still in its JSON view: masked, Show secrets offered.
     await expect(card.getByRole('button', { name: SHOW_SECRETS })).toBeVisible();
-    await expectNotInPage(page, [key, fresh], "the card's JSON view, after the Save");
+    await expectNotInPage(page, [key, fresh], "the card's JSON view, after the Save", { codeEditor: true });
     await cardView(card, 'form');
     await expectNotInPage(page, [key, fresh], 'the card form, after the Save');
     await openTab(page, t('editor.json.tab'));
-    await expectNotInPage(page, [key, fresh], 'the JSON tab, after the Save');
+    await expectNotInPage(page, [key, fresh], 'the JSON tab, after the Save', { codeEditor: true });
 
     // The next Edit starts unrevealed: the key field is a password field.
     await unlock(page);

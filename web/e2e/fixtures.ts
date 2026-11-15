@@ -169,16 +169,16 @@ export async function goto(page: Page, path: string): Promise<Locator> {
  * Waits until nothing in <main> is still loading: the editor's skeleton and a lazily loaded tab body
  * are each a status with aria-busy while they load.
  */
+export async function settled(page: Page): Promise<void> {
+  await expect(page.getByRole('main').locator('[role="status"][aria-busy="true"]')).toHaveCount(0);
+}
+
 /**
  * Waits two rendering updates: what the browser does at a rendering update (Chromium's focus fixup
  * for a focused control that became disabled, for one) has then happened.
  */
 export async function afterFrames(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-}
-
-export async function settled(page: Page): Promise<void> {
-  await expect(page.getByRole('main').locator('[role="status"][aria-busy="true"]')).toHaveCount(0);
 }
 
 /** A list's loading status (its rows are on their way). */
@@ -379,10 +379,12 @@ export function toast(page: Page, text: string | RegExp): Locator {
  * A code editor (CodeMirror) renders only the lines near its viewport, so its markup can miss the
  * rest: its whole document is read through the editor's own view, which CodeMirror links from its
  * content element (`cmTile`, @codemirror/view 6.4x). If that link is not there, this fails rather
- * than read part of the text.
+ * than read part of the text. Code editors are found by the role and aria-multiline CodeMirror gives
+ * that element; where the test knows one is shown (`codeEditor`), finding none fails too, so a change
+ * to those attributes cannot quietly turn the whole-text read off.
  */
-export async function holdsIn(where: Locator): Promise<string> {
-  const [markup, values] = await where.evaluate((root) => {
+export async function holdsIn(where: Locator, expected: { codeEditor?: boolean } = {}): Promise<string> {
+  const [markup, values, editors] = await where.evaluate((root) => {
     const controls = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')].map((el) => el.value);
     type Linked = { cmTile?: { root?: { view?: { state: { doc: { toString(): string } } } } } };
     const docs = [...root.querySelectorAll('[role="textbox"][aria-multiline="true"]')].map((el) => {
@@ -390,22 +392,26 @@ export async function holdsIn(where: Locator): Promise<string> {
       if (!view) throw new Error('a code editor whose whole text cannot be read (CodeMirror no longer links its view from the content element)');
       return view.state.doc.toString();
     });
-    return [root.outerHTML, [...controls, ...docs].join('\n')];
+    return [root.outerHTML, [...controls, ...docs].join('\n'), docs.length] as const;
   });
+  if (expected.codeEditor && editors === 0) {
+    throw new Error('a code editor is expected here, and none was found by role="textbox" with aria-multiline="true" (what CodeMirror sets)');
+  }
   return [markup, values, await where.ariaSnapshot()].join('\n');
 }
 
 /** Everything the page holds (holdsIn), its head included. */
-export async function pageHolds(page: Page): Promise<string> {
-  return [await page.content(), await holdsIn(page.locator('body'))].join('\n');
+export async function pageHolds(page: Page, expected: { codeEditor?: boolean } = {}): Promise<string> {
+  return [await page.content(), await holdsIn(page.locator('body'), expected)].join('\n');
 }
 
 /**
  * Fails if the page holds any of these secrets. The message names the secret by its position only,
- * so a failure never prints a secret into a log or a report.
+ * so a failure never prints a secret into a log or a report. `codeEditor`: the page shows one, so
+ * finding none fails (holdsIn).
  */
-export async function expectNotInPage(page: Page, secrets: string[], where: string): Promise<void> {
-  const holds = await pageHolds(page);
+export async function expectNotInPage(page: Page, secrets: string[], where: string, expected: { codeEditor?: boolean } = {}): Promise<void> {
+  const holds = await pageHolds(page, expected);
   secrets.forEach((secret, i) => expect(holds.includes(secret), `${where}: secret #${i + 1} is in the page`).toBe(false));
 }
 

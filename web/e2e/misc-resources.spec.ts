@@ -224,7 +224,7 @@ test.describe('secrets', () => {
     await openEditor(page, `secrets/vault%2F${id}`);
     await expectNotInPage(page, [token], 'the secret, opened');
     await openTab(page, t('editor.json.tab'));
-    await expectNotInPage(page, [token], 'the secret, JSON tab');
+    await expectNotInPage(page, [token], 'the secret, JSON tab', { codeEditor: true });
     await listShows(page, 'secrets', `vault/${id}`);
     await expectNotInPage(page, [token], 'the secrets list');
 

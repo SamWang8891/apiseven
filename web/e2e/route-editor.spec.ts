@@ -14,6 +14,7 @@ import {
   gatewayAnswers,
   idField,
   jsonEditor,
+  nextWrite,
   openCard,
   openEditor,
   openNew,
@@ -112,6 +113,24 @@ test.describe('edit, save, discard', () => {
     expect(write.method).toBe('PUT');
     expect(write.body?.uri).toBe('/health');
     await expect(page.getByRole('main').getByText(t('editor.locked'), { exact: true })).toBeVisible();
+    expect(await admin.value(`routes/${id}`)).toEqual({ ...stored, uri: '/health' });
+  });
+
+  test('Save pressed from the keyboard: once saved, the locked view’s Edit has focus', async ({ page, admin }) => {
+    const { id, stored } = await storedRoute(admin);
+    await openEditor(page, `routes/${id}?tab=matching`);
+    await unlock(page);
+    const panel = page.getByRole('main').getByRole('tabpanel');
+    await panel.getByRole('button', { name: t('ui.tags.remove', { tag: ECHO.path }) }).click();
+    await addTag(panel.getByRole('textbox', { name: URIS }), '/health');
+    const saveButton = page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true });
+    await saveButton.focus();
+    const write = await nextWrite(page, () => page.keyboard.press('Enter'));
+    expect(write.status).toBeLessThan(300);
+    const edit = page.getByRole('main').getByRole('button', { name: t('editor.edit'), exact: true });
+    await expect(edit).toBeVisible();
+    await afterFrames(page);
+    await expect(edit).toBeFocused();
     expect(await admin.value(`routes/${id}`)).toEqual({ ...stored, uri: '/health' });
   });
 
@@ -339,6 +358,37 @@ test.describe('APISIX’s own refusal', () => {
     await page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true }).click();
     await expect(banner(page, t('editor.rejected'))).toContainText("failed to validate the 'vars' expression: invalid operator 'bogus'");
     expect(await admin.value(`routes/${id}`)).toEqual(stored);
+  });
+
+  test('Save pressed from the keyboard keeps focus while the save is out and after APISIX refuses it', async ({ page, admin }) => {
+    const { id, stored } = await storedRoute(admin);
+    await openEditor(page, `routes/${id}?tab=json`);
+    await unlock(page);
+    await setCode(page, jsonEditor(page, ROUTE), JSON.stringify({ ...stored, vars: [['arg_x', 'bogus', '1']] }, null, 2));
+    // The PUT is held until released, so Save can be looked at while it is out.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route(`**/apisix/admin/routes/${id}`, async (r) => {
+      if (r.request().method() === 'PUT') await held;
+      await r.continue();
+    });
+    const saveButton = page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true });
+    const writes = recordWrites(page);
+    await saveButton.focus();
+    await page.keyboard.press('Enter');
+    await expect(saveButton).toHaveAttribute('aria-busy', 'true');
+    await afterFrames(page);
+    await expect(saveButton).toBeFocused();
+    await expect(saveButton).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Enter');
+    release();
+    await expect(banner(page, t('editor.rejected'))).toContainText("invalid operator 'bogus'");
+    await expect(saveButton).not.toHaveAttribute('aria-busy');
+    await afterFrames(page);
+    await expect(saveButton).toBeFocused();
+    expect(sentWrites(writes)).toEqual([`PUT routes/${id}`]);
+    expect(await admin.value(`routes/${id}`)).toEqual(stored);
+    await page.unroute(`**/apisix/admin/routes/${id}`);
   });
 
   test('the header’s status switch, toggled and saved from the keyboard, keeps focus while the save is out and after APISIX refuses it', async ({ page, admin }) => {
