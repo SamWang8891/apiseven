@@ -461,6 +461,8 @@ export class BoxRun {
   readonly cov: Coverage;
   /** Files whose reading was left pending (item 147), oldest first, with the way to finish each. */
   private slow: { read: PendingRead; release: () => void }[] = [];
+  /** One upload in this many (of a file that is read) is left pending; a level may make it likelier. */
+  slowOneIn = 3;
 
   constructor(m: Model, label: string, scope: () => HTMLElement, user: UserEvent, cov: Coverage) {
     this.m = m;
@@ -658,7 +660,7 @@ export class BoxRun {
         // binary one too, which is then unreadable (fix round 1, R3.3). A file too big is refused before
         // it is read, so it is never pending.
         const slowText = spec.text ?? (name === 'binary' ? '\u0000\u00ff' : undefined);
-        const slow = slowText !== undefined && r.int(3) === 0 ? deferredFile(spec.file(), slowText) : undefined;
+        const slow = slowText !== undefined && r.int(this.slowOneIn) === 0 ? deferredFile(spec.file(), slowText) : undefined;
         const el = await this.ensureBox();
         const input = el.closest('.ssl-pem')?.querySelector<HTMLInputElement>('input[type="file"]') as HTMLInputElement;
         let picker = 0;
@@ -865,6 +867,15 @@ export class BoxRun {
               : 'ssl.box.keptCert'
             : undefined;
       for (const key of ['ssl.box.hiddenStays', 'ssl.box.keptNone', 'ssl.box.keptCert']) expect(shows(key), `${where}: the note ${key}`).toBe(note === key);
+      // A CA box that gave way to the stored CA it cannot show: that CA's details stand in its place,
+      // with the warning that it holds a key and Replace CA (fix round 3); while the box is open, none of these.
+      if (m.closesOverHidden) {
+        const details = !present(m);
+        expect(this.button(t('ssl.client.replaceCa')) !== null, `${where}: Replace CA`).toBe(details);
+        expect(shows('ssl.cert.holdsKey'), `${where}: the stored CA's warning`).toBe(details);
+        expect(scope.queryByRole('definition', { name: t('ssl.cert.subject') }) !== null, `${where}: the stored CA's details`).toBe(details);
+        if (details) this.cov.add("the stored CA's details stand in for the box");
+      }
     }
   }
 }

@@ -268,6 +268,9 @@ function remounted(m: Model, place: Place): void {
   m.hiddenOpen = false;
 }
 
+/** The box stays on the page while a save is in flight (a new SSL's certificate box); the key box and the CA give way to a locked view. */
+const staysMounted = (place: Place): boolean => place.kind === 'cert' && place.lockedView !== true;
+
 /** A certificate box mounted anew shows the field's value, or nothing for none or for the value it cannot show. */
 const remountText = (m: Model): string => (m.kind === 'key' || m.value === undefined || m.value === m.hidden ? '' : m.value);
 
@@ -303,6 +306,40 @@ describe('every PEM box follows one rule through the real editor frame (property
           };
           check();
           cov.add(`place ${place.name}`);
+          /** A save APISIX refuses late (a delayed 400): the fields are locked meanwhile, then editable again. */
+          const refusedLate = async () => {
+            const writes = writesOf(admin).length;
+            refusing.on = true;
+            fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+            run.leftByClick();
+            await waitFor(() => expect(writesOf(admin).length, `${where}: a request`).toBe(writes + 1));
+            expect((await screen.findAllByText(REFUSAL)).length, `${where}: APISIX's refusal shown`).toBeGreaterThan(0);
+            refusing.on = false;
+            // A box the locked view replaced meanwhile comes back as a remount shows it (only its text: the field around it kept the rest).
+            if (place.lockedView) {
+              if (m.text !== remountText(m)) cov.add('refusedSave: the box shows the value again');
+              m.text = remountText(m);
+            }
+            // The lock made every read in progress stale, in every place (R3.2; fix round 2, I1), the box
+            // staying on the page or not (fix round 3: counted apart where it stays).
+            if (m.pending.length > 0) cov.add('a read pending at a save refused late');
+            if (m.pending.length > 0 && staysMounted(place)) cov.add('a read pending at a save refused late, the box staying on the page');
+            staleReads(m);
+            // Its input was gone meanwhile (the CA's details; a key box reads as a line while locked): a
+            // refused file's reason went, and an offer that file made with it (fix round 2, R1.2).
+            if (place.lockedView || place.kind === 'key') {
+              m.refused = false;
+              if (m.offer?.from === 'file') {
+                m.offer = undefined;
+                cov.add("refusedSave: a file's offer went with its reason");
+              }
+            }
+            const box = run.box();
+            m.focused = box !== null && document.activeElement === box;
+            cov.add('refusedSave');
+            if (m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden) cov.add('refusedSave: a value taken over one the box cannot show');
+            check();
+          };
           for (let step = 0; step < STEPS; step++) {
             if (await run.settleRead(r)) {
               where = `step ${step} (a pending read finished)`;
@@ -325,6 +362,8 @@ describe('every PEM box follows one rule through the real editor frame (property
               await settled();
               remounted(m, place);
               if (place.reopen && m.value !== undefined && m.value === m.hidden) {
+                // What the remount shows first: the stored CA's details in the box's place (fix round 3).
+                check();
                 await place.reopen(app);
                 m.hiddenOpen = true;
               }
@@ -334,35 +373,21 @@ describe('every PEM box follows one rule through the real editor frame (property
             }
             if (frame === 1 && wouldSend(place, m)) {
               where = `step ${step} (a save refused late)`;
-              const writes = writesOf(admin).length;
-              refusing.on = true;
-              fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-              run.leftByClick();
-              await waitFor(() => expect(writesOf(admin).length, `${where}: a request`).toBe(writes + 1));
-              expect((await screen.findAllByText(REFUSAL)).length, `${where}: APISIX's refusal shown`).toBeGreaterThan(0);
-              refusing.on = false;
-              // A box the locked view replaced meanwhile comes back as a remount shows it (only its text: the field around it kept the rest).
-              if (place.lockedView) {
-                if (m.text !== remountText(m)) cov.add('refusedSave: the box shows the value again');
-                m.text = remountText(m);
-              }
-              // The lock made every read in progress stale, in every place (R3.2; fix round 2, I1).
-              if (m.pending.length > 0) cov.add('a read pending at a save refused late');
-              staleReads(m);
-              // Its input was gone meanwhile (the CA's details; a key box reads as a line while locked): a
-              // refused file's reason went, and an offer that file made with it (fix round 2, R1.2).
-              if (place.lockedView || place.kind === 'key') {
-                m.refused = false;
-                if (m.offer?.from === 'file') {
-                  m.offer = undefined;
-                  cov.add("refusedSave: a file's offer went with its reason");
-                }
-              }
-              const box = run.box();
-              m.focused = box !== null && document.activeElement === box;
-              cov.add('refusedSave');
-              if (m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden) cov.add('refusedSave: a value taken over one the box cannot show');
+              await refusedLate();
+              continue;
+            }
+            // Where the box stays on the page during a save (a new SSL's certificate box) and stands over no
+            // value it cannot show (A1's place keeps its own draws), now and then (a user step in four that
+            // could save) a file whose reading is left pending and at once a save refused late, so the page
+            // is locked over that read: the case R3.2's lock rule changed (fix round 3).
+            if (frame === 2 && staysMounted(place) && m.hidden === undefined && m.pending.length === 0 && wouldSend(place, m) && r.int(4) === 0) {
+              where = `step ${step} (a file left pending, then a save refused late)`;
+              run.slowOneIn = 1;
+              const uploaded = await run.step('upload', r);
+              run.slowOneIn = 3;
+              if (uploaded) cov.add('upload');
               check();
+              if (m.pending.length > 0 && wouldSend(place, m)) await refusedLate();
               continue;
             }
             // A save is likelier once a split gave the other box its part, so the request is checked to carry both.
@@ -449,5 +474,9 @@ describe('every PEM box follows one rule through the real editor frame (property
     expect(cov.get('a stale read ignored')).toBeGreaterThan(2);
     // Fix round 2: a save locks the page over a pending read (I1).
     expect(cov.get('a read pending at a save refused late')).toBeGreaterThan(0);
+    // Fix round 3: also where the box stays on the page during the save, the case R3.2 changed.
+    expect(cov.get('a read pending at a save refused late, the box staying on the page')).toBeGreaterThan(2);
+    // Fix round 3: the CA box that gave way to the stored CA's details is checked for what shows.
+    expect(cov.get("the stored CA's details stand in for the box")).toBeGreaterThan(2);
   }, 300_000);
 });
