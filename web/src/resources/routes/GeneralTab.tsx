@@ -12,7 +12,7 @@ import { Field, Input, KeyValueInput, NumberInput, useLocked } from '../../ui';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { Ctx } from '../ctx';
 import type { TabProps } from '../registry';
-import { effectivePlugins, routeHosts } from '../resolve';
+import { effectivePlugins, routeHosts, routeScript } from '../resolve';
 import { inheritLoading } from './inherit';
 import { readPair } from './pairs';
 import { targetOf } from '../upstreamSource';
@@ -75,11 +75,16 @@ function upstream(draft: Obj, ctx: Ctx): ReactNode {
 }
 
 function plugins(draft: Obj, ctx: Ctx): ReactNode {
-  if (draft.script !== undefined) return t('rt.overview.script');
+  // A script runs instead of every plugin: the route's own, or its service's (routeScript).
+  const script = routeScript(draft, ctx);
+  if (script === 'route') return t('rt.overview.script');
+  if (script === 'service') return t('rt.overview.serviceScript');
   const names = effectivePlugins(draft, ctx).map((p) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name));
   const waiting = inheritLoading(draft, ctx);
-  // The inherited ones aren't known yet: show the route's own, and say the rest is loading.
-  if (waiting.service || waiting.pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), t('rt.overview.inheritedLoading')]} />;
+  // The inherited ones aren't known yet (nor, from a service, whether its script runs instead): show
+  // the route's own, and say the rest is loading.
+  const loading = waiting.service ? t('rt.overview.serviceLoading') : t('rt.overview.inheritedLoading');
+  if (waiting.service || waiting.pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), loading]} />;
   return names.length > 0 ? <Mono values={names} /> : t('rt.overview.noPlugins');
 }
 

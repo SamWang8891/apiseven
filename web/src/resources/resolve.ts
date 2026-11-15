@@ -248,6 +248,21 @@ export function effectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
 }
 
 /**
+ * Whose script runs for a route instead of every plugin: its own, else its service's. APISIX copies
+ * the service into the route, the route's script over the service's (merge_service_route,
+ * apisix/plugin.lua 705–735), and a merged route with a script runs it and none of its own, its
+ * plugin config's or its service's plugins (apisix/init.lua 1064–1070). `loading` while the services
+ * have not loaded, `unknown` when their read failed; undefined when no script runs.
+ */
+export function routeScript(route: Obj, ctx: Ctx): 'route' | 'service' | 'loading' | 'unknown' | undefined {
+  if (route.script !== undefined) return 'route';
+  const id = idOf(route.service_id);
+  if (id === undefined) return undefined;
+  if (!ctx.loaded.services) return ctx.failed.services ? 'unknown' : 'loading';
+  return find(ctx.services, id)?.value.script !== undefined ? 'service' : undefined;
+}
+
+/**
  * A stream route with only what the stream subsystem merges into it. stream_preread_phase merges a
  * route with its service (merge_service_stream_route: the service's plugins it doesn't set, and the
  * service's upstream when it has none) only when the route has no upstream_id of its own; with one,

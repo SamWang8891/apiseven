@@ -372,6 +372,35 @@ describe('Plugins', () => {
     renderRouteTab(RoutePluginsTab, { uri: '/x', script: 'return {}  -- x' }, { ctx: CTX });
     expect(screen.getByText(t('rt.pl.scriptNote'))).toBeInTheDocument();
   });
+
+  // Final wave E1: the service's script is inherited and runs instead of the route's plugins (apisix/plugin.lua 705–735, init.lua 1064–1070).
+  const SCRIPTED_SERVICE = ctxOf({ services: [itemOf('s3', { name: 'scripted', script: 'return {} -- service' })] });
+
+  it("a route whose service has a script says the service's script takes over, locked and editing", () => {
+    for (const locked of [true, false]) {
+      const view = renderRouteTab(RoutePluginsTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked, ctx: SCRIPTED_SERVICE });
+      expect(screen.getByText(t('rt.pl.serviceScriptNote'))).toBeInTheDocument();
+      expect(screen.queryByText(t('rt.pl.scriptNote'))).not.toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it("says whether the service's script takes over is loading until the services are in", () => {
+    renderRouteTab(RoutePluginsTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked: true, ctx: ctxOf({ loaded: { services: false } }) });
+    expect(screen.getByText(t('rt.pl.serviceScriptLoading'))).toBeInTheDocument();
+    expect(screen.queryByText(t('rt.pl.serviceScriptNote'))).not.toBeInTheDocument();
+  });
+
+  it("the overview says the service's script runs instead of plugins, and loading… before the services are in", () => {
+    const view = renderRouteTab(GeneralTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked: true, ctx: SCRIPTED_SERVICE });
+    const row = () => within(screen.getByRole('region', { name: t('rt.overview') })).getByRole('link', { name: t('pl.tab') }).closest('div') as HTMLElement;
+    expect(row()).toHaveTextContent(t('rt.overview.serviceScript'));
+    expect(row()).not.toHaveTextContent('key-auth');
+    view.unmount();
+    renderRouteTab(GeneralTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked: true, ctx: ctxOf({ loaded: { services: false } }) });
+    expect(row()).toHaveTextContent(t('rt.overview.serviceLoading'));
+    expect(row()).not.toHaveTextContent(t('rt.overview.serviceScript'));
+  });
 });
 
 describe('Advanced', () => {

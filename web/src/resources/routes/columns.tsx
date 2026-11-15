@@ -1,6 +1,7 @@
 // The routes list columns. Accessors return plain values for sorting (strings, numbers, string
 // arrays); cells present them (../cells.tsx). The status column is the table's own (DataTable puts
 // it first for kinds with a status), so it is not defined here.
+import type { ReactNode } from 'react';
 import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
@@ -9,7 +10,7 @@ import { HostsCell, IdCell, LabelChips, MethodChips, NameDescCell, PluginChips, 
 import type { Ctx } from '../ctx';
 import { ExpiryBadge } from '../expiry';
 import type { ColumnDef } from '../registry';
-import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, routeHostsLoading, routeHostsUnknown, sslExpiries, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
+import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, routeHostsLoading, routeHostsUnknown, routeScript, sslExpiries, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
 import { methodsOf } from './methods';
 
 function strings(value: unknown): string[] {
@@ -71,15 +72,28 @@ export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx
   return target && (target.item ? (nameOfValue(target.item.value) ?? target.id) : target.id);
 }
 
-/** The plugins that run (by default a route's, effectivePlugins), each saying where an inherited one comes from. */
+/**
+ * The plugins that run (by default a route's, effectivePlugins), each saying where an inherited one
+ * comes from; every one "not run" when a script runs instead (the route's own or its service's: routeScript).
+ */
 export function pluginChips(route: Obj, ctx: Ctx, plugins: EffectivePlugin[] = effectivePlugins(route, ctx)): PluginChip[] {
+  const script = routeScript(route, ctx);
+  const notRun = script === 'route' || script === 'service' ? script : undefined;
   return plugins.map(({ name, from, disabled }): PluginChip => {
-    if (from === 'service') return { name, disabled, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
+    if (from === 'service') return { name, disabled, notRun, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
     if (from === 'plugin_config') {
-      return { name, disabled, from: t('cell.plugin.fromPluginConfig', { name: refName('plugin_configs', route.plugin_config_id, ctx) ?? '' }) };
+      return { name, disabled, notRun, from: t('cell.plugin.fromPluginConfig', { name: refName('plugin_configs', route.plugin_config_id, ctx) ?? '' }) };
     }
-    return { name, disabled };
+    return { name, disabled, notRun };
   });
+}
+
+/** The plugins cell: "loading…" while whether a service's script runs instead isn't known yet, "unknown" when it can't be. */
+function pluginsCell(route: Obj, ctx: Ctx): ReactNode {
+  const script = routeScript(route, ctx);
+  if (script === 'loading') return <span className="cell-muted">{t('picker.loading')}</span>;
+  if (script === 'unknown') return <span className="cell-muted">{t('cell.pluginsUnknown')}</span>;
+  return <PluginChips plugins={pluginChips(route, ctx)} />;
 }
 
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
@@ -152,7 +166,7 @@ export const routeColumns: ColumnDef[] = [
       return t('column.plugins');
     },
     accessor: (item, ctx) => effectivePlugins(item.value, ctx).map((p) => p.name),
-    cell: (item, ctx) => <PluginChips plugins={pluginChips(item.value, ctx)} />,
+    cell: (item, ctx) => pluginsCell(item.value, ctx),
     defaultVisible: true,
     width: 124,
   },

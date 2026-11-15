@@ -3,7 +3,7 @@ import { t } from '../i18n';
 import { EC_IPV6, FAR } from '../test/certs';
 import { ctxOf, itemOf } from '../test/ctx';
 import * as resolve from './resolve';
-import { effectivePlugins, labelPairs, nameOfValue, referencesTo, resolveRef, routeHosts, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
+import { effectivePlugins, labelPairs, nameOfValue, referencesTo, resolveRef, routeHosts, routeScript, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
 
 describe('nameOfValue', () => {
   it('takes name, then username, then desc, skipping empty strings', () => {
@@ -224,6 +224,32 @@ describe('upstreamSummary', () => {
     expect(upstreamSummary({ service_id: 'empty' }, ctx)).toEqual(none);
     expect(upstreamSummary({ service_id: 'gone' }, ctx)).toEqual(none);
     expect(upstreamSummary({ upstream: { nodes: [] } }, ctx)).toEqual({ ...none, source: 'inline' });
+  });
+});
+
+// Final wave E1: merge_service_route keeps the route's script, else takes the service's (apisix/plugin.lua
+// 705–735), and a merged route with a script runs it instead of every plugin (apisix/init.lua 1064–1070).
+describe('routeScript', () => {
+  const ctx = ctxOf({ services: [itemOf('scripted', { script: 'return {} -- service' }), itemOf('plain', { plugins: { gzip: {} } })] });
+
+  it("is the route's own script first, else its service's", () => {
+    expect(routeScript({ script: 'return {} -- own', service_id: 'plain' }, ctx)).toBe('route');
+    expect(routeScript({ script: 'return {} -- own', service_id: 'scripted' }, ctx)).toBe('route');
+    expect(routeScript({ plugins: { 'key-auth': {} }, service_id: 'scripted' }, ctx)).toBe('service');
+    expect(routeScript({ plugins: { 'key-auth': {} }, service_id: 'plain' }, ctx)).toBeUndefined();
+    expect(routeScript({ plugins: { 'key-auth': {} } }, ctx)).toBeUndefined();
+  });
+
+  it('compares a numeric service id as a string, and a service that is gone has no script', () => {
+    expect(routeScript({ service_id: 7 }, ctxOf({ services: [itemOf('7', { script: 'return {} -- seven' })] }))).toBe('service');
+    expect(routeScript({ service_id: 'gone' }, ctx)).toBeUndefined();
+  });
+
+  it('is loading while the services have not loaded, unknown when they failed', () => {
+    expect(routeScript({ service_id: 'scripted' }, ctxOf({ loaded: { services: false } }))).toBe('loading');
+    expect(routeScript({ service_id: 'scripted' }, ctxOf({ loaded: { services: false }, failed: { services: true } }))).toBe('unknown');
+    // Its own script needs no service.
+    expect(routeScript({ script: 'return {} -- own', service_id: 'scripted' }, ctxOf({ loaded: { services: false } }))).toBe('route');
   });
 });
 
@@ -564,7 +590,7 @@ describe('every exported resolver, on odd shapes', () => {
   it('lists every exported function once, so a new one is added here', () => {
     expect(Object.keys(resolve).filter((name) => typeof (resolve as Record<string, unknown>)[name] === 'function').sort()).toEqual([
       'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referencesTo', 'resolveRef',
-      'routeHosts', 'routeHostsLoading', 'routeHostsUnknown', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter',
+      'routeHosts', 'routeHostsLoading', 'routeHostsUnknown', 'routeScript', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter',
       'streamEffectivePlugins', 'upstreamSummary',
     ]);
   });
@@ -580,6 +606,8 @@ describe('every exported resolver, on odd shapes', () => {
         resolve.routeHostsLoading(v, ctx);
         resolve.routeHostsUnknown(v, ctx);
         resolve.routeHostsUnknown(v, servicesFailed);
+        resolve.routeScript(v, ctx);
+        resolve.routeScript(v, servicesFailed);
         resolve.ownUpstream(v, ctx);
         resolve.ownUpstream(v, ctx, true);
         resolve.upstreamSummary(v, ctx);

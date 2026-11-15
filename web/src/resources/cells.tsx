@@ -165,6 +165,8 @@ export interface PluginChip {
   offIgnored?: boolean;
   /** Whether it is an auth plugin is not known (not built in, the plugin list not loaded): "off" is only what is stored. */
   unclassified?: boolean;
+  /** Whose script runs instead of every plugin (a route's own, or its service's: resolve.ts routeScript): the plugin is not run. */
+  notRun?: 'route' | 'service';
 }
 
 /**
@@ -173,7 +175,9 @@ export interface PluginChip {
  * in its tooltip above where it comes from.
  */
 const why = (plugin: PluginChip): string | undefined =>
-  plugin.notApplied
+  plugin.notRun
+    ? t(plugin.notRun === 'route' ? 'cell.plugin.notRunRouteWhy' : 'cell.plugin.notRunServiceWhy')
+    : plugin.notApplied
     ? t('cell.plugin.notAppliedWhy')
     : plugin.stillSignsIn
       ? t(decryptsOnly(plugin.name) ? 'cell.plugin.stillUsedWhy' : 'cell.plugin.stillSignsInWhy')
@@ -192,7 +196,7 @@ const stillLabel = (name: string): string => t(decryptsOnly(name) ? 'cell.plugin
 const offLabel = (plugin: PluginChip): string => t(plugin.unclassified ? 'cell.plugin.markedOff' : 'cell.plugin.off');
 
 function pluginChip(plugin: PluginChip): ReactNode {
-  const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', (plugin.disabled || plugin.notApplied || plugin.notUsed) && 'cell-plugin--off'];
+  const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', (plugin.disabled || plugin.notApplied || plugin.notUsed || plugin.notRun) && 'cell-plugin--off'];
   const reason = why(plugin);
   // The reason is more than the visible text, so it is always the title; the bare name only when cut off.
   const title = plugin.from ? {} : reason ? { title: `${plugin.name}: ${reason}` } : clipTitle(plugin.name);
@@ -205,6 +209,7 @@ function pluginChip(plugin: PluginChip): ReactNode {
       {plugin.stillSignsIn && <span className="cell-plugin__danger">{stillLabel(plugin.name)}</span>}
       {plugin.notUsed && <span className="cell-plugin__off">{t('cell.plugin.notUsed')}</span>}
       {plugin.offIgnored && <span className="cell-plugin__off">{t('cell.plugin.offIgnored')}</span>}
+      {plugin.notRun && <span className="cell-plugin__off">{t('cell.plugin.notRun')}</span>}
       {plugin.from && <span className="ui-sr-only"> ({plugin.from})</span>}
     </span>
   );
@@ -215,6 +220,7 @@ function pluginChip(plugin: PluginChip): ReactNode {
         <span className="cell-tip-list">
           <span>{plugin.name}</span>
           <span>{plugin.from}</span>
+          {plugin.notRun && <span>{reason}</span>}
         </span>
       }
     >
@@ -233,6 +239,7 @@ function pluginLine(plugin: PluginChip): ReactNode {
     plugin.stillSignsIn && stillLabel(plugin.name),
     plugin.notUsed && t('cell.plugin.notUsed'),
     plugin.offIgnored && t('cell.plugin.offIgnored'),
+    plugin.notRun && t('cell.plugin.notRun'),
     plugin.from,
   ]
     .filter(Boolean)

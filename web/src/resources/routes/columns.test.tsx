@@ -238,6 +238,29 @@ describe('plugins', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(/a-1.*a-2.*a-3.*a-4.*a-5.*a-6/);
   });
 
+  // Final wave E1: APISIX runs the service's script instead of every plugin (apisix/init.lua 1064–1070).
+  it("says not run on every plugin when the service's script takes over, with the reason", () => {
+    const scripted = ctxOf({ services: [itemOf('s9', { name: 'scripted', script: 'return {} -- x', plugins: { gzip: {} } })] });
+    const { el } = cell('plugins', route({ plugins: { 'key-auth': {} }, service_id: 's9' }), scripted);
+    for (const name of ['key-auth', 'gzip']) {
+      const chip = within(el).getByText(name).closest('.cell-plugin');
+      expect(chip).toHaveClass('cell-plugin--off');
+      expect(chip).toHaveTextContent(t('cell.plugin.notRun'));
+    }
+    expect(within(el).getByText('key-auth').closest('.cell-plugin')).toHaveAttribute('title', `key-auth: ${t('cell.plugin.notRunServiceWhy')}`);
+  });
+
+  it('says loading…, not the route\'s own plugins as running, until the services are in; unknown when they failed', () => {
+    const r = route({ plugins: { 'key-auth': {} }, service_id: 's9' });
+    expect(cell('plugins', r, ctxOf({ loaded: { services: false } })).el).toHaveTextContent(t('picker.loading'));
+    expect(screen.queryByText('key-auth')).not.toBeInTheDocument();
+  });
+
+  it('says unknown when the services failed to load', () => {
+    const r = route({ plugins: { 'key-auth': {} }, service_id: 's9' });
+    expect(cell('plugins', r, ctxOf({ loaded: { services: false }, failed: { services: true } })).el).toHaveTextContent(t('cell.pluginsUnknown'));
+  });
+
   it('says off on a disabled plugin', () => {
     const { el } = cell('plugins', route({ plugins: { cors: { _meta: { disable: true } }, gzip: {} } }));
     expect(within(el).getByText('cors').closest('.cell-plugin')).toHaveTextContent(`cors${t('cell.plugin.off')}`);

@@ -9,6 +9,7 @@ import { inheritedPlugins } from '../../plugins/inherited';
 import { PluginsTab } from '../../plugins/PluginsTab';
 import { useLocked } from '../../ui';
 import type { TabProps } from '../registry';
+import { routeScript } from '../resolve';
 import { ResourcePicker } from '../ResourcePicker';
 import { inheritLoading } from './inherit';
 import './routes.css';
@@ -19,9 +20,14 @@ export function RoutePluginsTab({ draft, setDraft, issues, ctx, saveAttempts, or
   const locked = useLocked();
   const configId = idOf(draft.plugin_config_id);
   const waiting = inheritLoading(draft, ctx);
+  // A script runs instead of every plugin: the route's own, or its service's, which it inherits.
+  const script = routeScript(draft, ctx);
   return (
     <div className="ed-stack">
-      {draft.script !== undefined && <p className="rt-note rt-note--warn">{t('rt.pl.scriptNote')}</p>}
+      {script === 'route' && <p className="rt-note rt-note--warn">{t('rt.pl.scriptNote')}</p>}
+      {script === 'service' && <p className="rt-note rt-note--warn">{t('rt.pl.serviceScriptNote')}</p>}
+      {script === 'loading' && <p className="rt-note">{t('rt.pl.serviceScriptLoading')}</p>}
+      {script === 'unknown' && <p className="rt-note rt-note--warn">{t('rt.pl.serviceScriptUnknown')}</p>}
       <div className="ed-grid">
         <ResourcePicker
           kind="plugin_configs"
