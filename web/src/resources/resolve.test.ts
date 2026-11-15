@@ -524,6 +524,22 @@ describe('referencesTo', () => {
     expect(referencesTo('upstreams', 'u9', withRule)).toEqual([{ kind: 'global_rules', id: 'g-split', name: 'g-split' }]);
   });
 
+  // Final wave F5: APISIX refuses to delete a stream route another names as protocol.superior_id (apisix/admin/stream_routes.lua 150–152).
+  it("finds the stream routes naming one as their protocol's superior, a numeric id compared as a string", () => {
+    const xrpc = ctxOf({
+      streamRoutes: [
+        itemOf('parent', { protocol: { name: 'redis' } }),
+        itemOf('child', { name: 'child-route', protocol: { name: 'redis', superior_id: 'parent' } }),
+        itemOf('7'),
+        itemOf('numbered', { protocol: { name: 'redis', superior_id: 7 } }),
+        itemOf('odd', { protocol: 'x' }),
+      ],
+    });
+    expect(referencesTo('stream_routes', 'parent', xrpc)).toEqual([{ kind: 'stream_routes', id: 'child', name: 'child-route' }]);
+    expect(referencesTo('stream_routes', '7', xrpc)).toEqual([{ kind: 'stream_routes', id: 'numbered', name: 'numbered' }]);
+    expect(referencesTo('stream_routes', 'child', xrpc)).toEqual([]);
+  });
+
   it('gives nothing for an unused id or a kind nothing references', () => {
     expect(referencesTo('upstreams', 'unused', ctx)).toEqual([]);
     expect(referencesTo('routes', 'r-up', ctx)).toEqual([]);

@@ -431,6 +431,11 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
     case 'plugin_configs':
       collect('routes', ctx.routes, (v) => is(v.plugin_config_id));
       break;
+    case 'stream_routes':
+      // A stream route another names as its protocol's superior (xRPC): APISIX refuses the delete
+      // (apisix/admin/stream_routes.lua 150–152, tostring(superior_id) == id).
+      collect('stream_routes', ctx.streamRoutes, (v) => is(dig(v, 'protocol', 'superior_id')));
+      break;
     case 'consumer_groups':
       collect('consumers', ctx.consumers, (v) => is(v.group_id));
       break;
