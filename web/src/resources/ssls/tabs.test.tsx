@@ -8,7 +8,7 @@ import { t } from '../../i18n';
 import { EC_IPV6, FAR, RSA_LEAF, V1 } from '../../test/certs';
 import { ctxOf, itemOf } from '../../test/ctx';
 import { editableControls } from '../../test/schemaForm';
-import { EC_PAIR } from '../../test/pairs';
+import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
 import { renderTab } from '../../test/tab';
 import { getToasts } from '../../ui/toast';
@@ -164,7 +164,7 @@ describe('a new SSL: the pair inline', () => {
     expect(value()).toEqual({ status: 1, cert: SEED_CERT });
   });
 
-  it('the key goes into the draft, leaves its box when the box is left, and never comes back as text', async () => {
+  it('the key goes into the draft, leaves its box at once, and never comes back as text; Replace key stays open until Keep', async () => {
     const { user, value, lock } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
     await user.click(screen.getByRole('textbox', { name: t('ssl.pem.key') }));
     await user.paste(SEED_KEY);
@@ -185,7 +185,10 @@ describe('a new SSL: the pair inline', () => {
     expect(box).toHaveFocus();
     // The empty box says the key entered before still stands.
     expect(screen.getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    // Leaving it does not close it (rule 9); Keep the entered key does.
     await user.tab();
+    expect(screen.getByRole('textbox', { name: t('ssl.pem.key') })).toBe(box);
+    await user.click(screen.getByRole('button', { name: t('ssl.key.keep') }));
     expect(screen.queryByRole('textbox', { name: t('ssl.pem.key') })).toBeNull();
     expect(value().key).toBe(SEED_KEY);
     await user.click(screen.getByRole('button', { name: t('ssl.key.remove') }));
@@ -633,6 +636,160 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
     await view.user.click(screen.getByRole('button', { name: t('ssl.client.replaceCa') }));
     expect(screen.getByRole('textbox', { name: t('ssl.client.ca') })).toHaveValue('');
+  });
+});
+
+describe('fix round 4: what a box takes, what it masks, and when it opens or closes', () => {
+  const HALF = '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49';
+  const marker = t('ssl.pem.marker');
+  const paste = async (user: ReturnType<typeof renderSsl>['user'], box: HTMLElement, text: string) => {
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(text);
+  };
+  const dropNothing = (target: Element) => fireEvent.drop(target, { dataTransfer: { files: [], getData: () => '' } });
+  const keyHeld = (problem: string) => [t('ui.pending.problem', { field: t('ssl.pem.key'), problem })];
+
+  it('O4: a half key followed by a certificate or a whole key: leaving masks the key blocks only, the rest stays', async () => {
+    const { user, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    await paste(user, cert, `${HALF}\n${RSA_LEAF}`);
+    await user.tab();
+    expect(cert).toHaveValue(`${marker}\n${RSA_LEAF}`);
+    expect(value().cert).toBe(SEED_CERT);
+    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.pem.markerCert') })]);
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    await paste(user, key, `${HALF}\n${SEED_KEY}`);
+    await user.tab();
+    expect(key).toHaveValue(`${marker}\n${marker}\n`);
+    await paste(user, key, `${HALF}\n${RSA_LEAF}`);
+    await user.tab();
+    expect(key).toHaveValue(`${marker}\n${RSA_LEAF}`);
+    expect(value()).not.toHaveProperty('key');
+    expect(document.body.innerHTML).not.toContain(KEY_TEXT);
+  });
+
+  it('O5: a drop with neither a file nor text changes nothing', async () => {
+    const { user, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    dropNothing(cert);
+    expect(cert).toHaveValue(SEED_CERT);
+    expect(value()).toEqual({ status: 1, cert: SEED_CERT });
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    await paste(user, key, HALF);
+    dropNothing(key.closest('.ssl-pem') as HTMLElement);
+    expect(key).toHaveValue(HALF);
+    expect(held()).toEqual(keyHeld(t('ssl.pem.incomplete')));
+  });
+
+  it('O6: the key box takes one key with what OpenSSL skips around it (an EC PARAMETERS block, lines after the key), typed or as a file', async () => {
+    for (const text of [EC_PARAMS_KEY, `${EC_PAIR.key}# rotated in November\n`]) {
+      const { user, value, unmount } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+      await paste(user, screen.getByRole('textbox', { name: t('ssl.pem.key') }), text);
+      expect(value().key).toBe(text);
+      expect(screen.queryByRole('textbox', { name: t('ssl.pem.key') })).toBeNull();
+      expect(screen.getByText(t('ssl.key.entered'))).toBeInTheDocument();
+      unmount();
+    }
+    const { user, container, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[1] as HTMLInputElement, new File([EC_PARAMS_KEY], 'ec.key', { type: 'text/plain' }));
+    await waitFor(() => expect(value().key).toBe(EC_PARAMS_KEY));
+  });
+
+  it('O6: text before the first -----BEGIN line (Bag Attributes, a comment, a blank line) is refused, as APISIX refuses it; typed or as a file', async () => {
+    const { user, container, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    for (const text of [BAG_KEY, `# my key\n${SEED_KEY}`, `\n${SEED_KEY}`]) {
+      await paste(user, key, text);
+      expect(held()).toEqual(keyHeld(t('ssl.pem.keyNotFirst')));
+      expect(value()).not.toHaveProperty('key');
+    }
+    await user.clear(key);
+    await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[1] as HTMLInputElement, new File([BAG_KEY], 'tls.pem', { type: 'text/plain' }));
+    // The file's reason first (the key is still required, which the field says after it).
+    await waitFor(() => expect(said(key)?.startsWith(t('ssl.pem.fileRefused', { problem: t('ssl.pem.keyNotFirst') }))).toBe(true));
+    expect(key).toHaveValue('');
+    expect(value()).not.toHaveProperty('key');
+  });
+
+  it('6″: a reference is taken only as the whole text, in a key box and in a certificate box', async () => {
+    const { user, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    for (const ref of ['$secret://vault/1/ssl/key', '$ENV://SSL_KEY', '$env://ssl_key']) {
+      await paste(user, key, ref);
+      expect(value().key).toBe(ref);
+      expect(held()).toEqual([]);
+    }
+    for (const text of ['$secret://vault/1/ssl key', '$env://SSL_KEY\nmore', `$secret://vault/1/ssl\n${SEED_KEY}`]) {
+      await paste(user, key, text);
+      expect(value()).not.toHaveProperty('key');
+      expect(held()).toEqual(keyHeld(t('ssl.pem.refNotAlone')));
+    }
+    const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    await paste(user, cert, '$secret://vault/1/ssl/cert');
+    expect(value().cert).toBe('$secret://vault/1/ssl/cert');
+    await paste(user, cert, `$secret://vault/1/ssl/cert\n${RSA_LEAF}`);
+    expect(value().cert).toBe('$secret://vault/1/ssl/cert');
+    expect(said(cert)).toBe(t('ssl.pem.refNotAlone'));
+  });
+
+  it('9: Replace key opens a box that stays open when left, until Keep the entered key (or a whole key) closes it', async () => {
+    const { user, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT, key: EC_PAIR.key }, { isNew: true });
+    await user.click(screen.getByRole('button', { name: t('ssl.key.replaceKey') }));
+    await user.tab();
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    expect(key).not.toHaveFocus();
+    expect(screen.getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    // A reference taken in the box stays shown when the box is left.
+    await paste(user, key, '$secret://vault/1/ssl/key');
+    await user.tab();
+    expect(key).toHaveValue('$secret://vault/1/ssl/key');
+    expect(value().key).toBe('$secret://vault/1/ssl/key');
+    await user.click(screen.getByRole('button', { name: t('ssl.key.keep') }));
+    expect(screen.queryByRole('textbox', { name: t('ssl.pem.key') })).toBeNull();
+    expect(screen.getByText(t('ssl.key.entered'))).toBeInTheDocument();
+    expect(value().key).toBe(EC_PAIR.key);
+  });
+
+  it('O7: Replace key → click Upload file reaches the picker → the chosen key is taken; the same in the dialog', async () => {
+    const { user, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT, key: EC_PAIR.key }, { isNew: true });
+    const pick = async (scope: HTMLElement, file: File) => {
+      await user.click(within(scope).getByRole('button', { name: t('ssl.key.replaceKey') }));
+      const box = within(scope).getByRole('textbox', { name: t('ssl.pem.key') });
+      const input = box.closest('.ssl-pem')?.querySelector<HTMLInputElement>('input[type="file"]') as HTMLInputElement;
+      const picker = vi.fn();
+      input.addEventListener('click', picker);
+      await user.click(within(scope).getByRole('button', { name: t('ssl.pem.uploadLabel', { label: t('ssl.pem.key') }) }));
+      expect(picker).toHaveBeenCalledTimes(1);
+      await user.upload(input, file);
+    };
+    await pick(document.body, new File([SEED_KEY], 'tls.key', { type: 'text/plain' }));
+    await waitFor(() => expect(value().key).toBe(SEED_KEY));
+    expect(screen.getByText(t('ssl.key.entered'))).toBeInTheDocument();
+
+    const stored = renderSsl(CertificateTab, STORED);
+    const dialog = await openReplace(stored.user);
+    await stored.user.click(within(dialog).getByRole('textbox', { name: t('ssl.pem.key') }));
+    await stored.user.paste(EC_PAIR.key);
+    await pick(dialog, new File([SEED_KEY], 'tls.key', { type: 'text/plain' }));
+    await waitFor(() => expect(within(dialog).getByText(t('ssl.key.entered'))).toBeInTheDocument());
+    await stored.user.click(within(dialog).getByRole('textbox', { name: t('ssl.pem.cert') }));
+    await stored.user.paste(SEED_CERT);
+    await stored.user.click(within(dialog).getByRole('button', { name: t('ssl.replace.apply') }));
+    expect(stored.value()).toEqual({ ...STORED, cert: SEED_CERT, key: SEED_KEY });
+  });
+
+  it("1′: text dropped on the dialog's certificate box without focus is masked at once, and Apply stays off", async () => {
+    const { user } = renderSsl(CertificateTab, STORED);
+    const dialog = await openReplace(user);
+    await user.click(within(dialog).getByRole('textbox', { name: t('ssl.pem.key') }));
+    await user.paste(SEED_KEY);
+    const cert = within(dialog).getByRole('textbox', { name: t('ssl.pem.cert') });
+    expect(cert).not.toHaveFocus();
+    fireEvent.drop(cert, { dataTransfer: { files: [], getData: () => SEED_CERT + SEED_KEY } });
+    expect(cert).toHaveValue(`${SEED_CERT}${marker}\n`);
+    expect(document.body.innerHTML).not.toContain(KEY_TEXT);
+    expect(within(dialog).getByRole('button', { name: t('ssl.replace.apply') })).toBeDisabled();
   });
 });
 

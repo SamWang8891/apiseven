@@ -4,9 +4,11 @@
 // marks itself aria-invalid, as every field that holds input does. A file is checked before it is read
 // (at most 64 KiB, the schema's limit for a certificate or key) and after (text, not DER or PKCS#12),
 // then judged by the caller (`onFile`) before anything changes; why it was refused is said at the
-// field, before any other problem, never with any of its content. Dropped text is a paste.
+// field, before any other problem, never with any of its content. Dropped text is a paste; a drop with
+// neither a file nor text changes nothing. A drop gives the box no focus, which is why the caller
+// decides what the box shows from whether its textarea (`inputRef`) has focus, not from focus events.
 import { Upload } from 'lucide-react';
-import { useRef, useState, type DragEvent, type ReactNode } from 'react';
+import { useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
 import { Button, Textarea, toast, useEditingState, useLocked, usePending } from '../../ui';
 
@@ -39,6 +41,8 @@ export interface PemInputProps {
   /** A problem with the stored value (an issue), shown when the text itself has none. */
   error?: string;
   onBlur?: () => void;
+  /** The textarea, so the caller can tell whether it has focus when text arrives. */
+  inputRef?: Ref<HTMLTextAreaElement>;
   /**
    * Judges an uploaded or dropped file's text before anything changes (pemBox.ts rule 5): returns why
    * it is refused (shown at the field, before any other problem, until the box next changes), or
@@ -49,7 +53,7 @@ export interface PemInputProps {
   rows?: number;
 }
 
-export function PemInput({ label, value, onChange, problem, help, error, onBlur, onFile, autoFocus, rows = 6 }: PemInputProps) {
+export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, onFile, autoFocus, rows = 6 }: PemInputProps) {
   const locked = useLocked();
   usePending(locked || problem === undefined ? undefined : t('ui.pending.problem', { field: label, problem }));
   const fileRef = useRef<HTMLInputElement>(null);
@@ -75,9 +79,10 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
     e.preventDefault();
     setOver(false);
     const file = e.dataTransfer.files[0];
-    // Dropped plain text is a paste, not a file (rule 7).
-    if (file) read(file);
-    else change(e.dataTransfer.getData('text/plain'));
+    if (file) return read(file);
+    // Dropped plain text is a paste, not a file; a drop that carries neither changes nothing (rule 7).
+    const text = e.dataTransfer.getData('text/plain');
+    if (text !== '') change(text);
   };
   // Both the file's reason and the text's problem show, the file's first (rule 5).
   const shown = [fileProblem, problem ?? error].filter((m): m is string => m !== undefined && m !== '');
@@ -93,6 +98,7 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
       onDrop={drop}
     >
       <Textarea
+        ref={inputRef}
         label={label}
         help={help}
         error={shown.length > 0 ? shown.join(' ') : undefined}

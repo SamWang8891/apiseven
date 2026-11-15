@@ -78,3 +78,29 @@ jgl1psnV7foT8KubnGCNgfG9Lg==
 -----END PRIVATE KEY-----
 `,
 };
+
+/**
+ * EC_PAIR's key as `openssl ecparam -genkey` writes one: an EC PARAMETERS block, then the SEC1 key
+ * (`openssl pkey -traditional`). OpenSSL skips the parameters when it reads the key; APISIX stores and
+ * serves it (the gated live test).
+ */
+export const EC_PARAMS_KEY = `-----BEGIN EC PARAMETERS-----
+BggqhkjOPQMBBw==
+-----END EC PARAMETERS-----
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIDgXHT6m/LYSZQkXGs4sR2TWCyU+IBHsgyVRKNTz1J03oAoGCCqGSM49
+AwEHoUQDQgAEJkR1XQnXPIDp3Eg9DBCk4LcI44DAukL39uZWhVTDpFYYrKN7mVQK
+H/sxMT/nq1kj79cv99b+0BLUmN5yt9qlJw==
+-----END EC PRIVATE KEY-----
+`;
+
+/**
+ * RSA_PAIR's key as a PKCS#12 export prints it (`openssl pkcs12 -nodes -nocerts`): Bag Attributes
+ * lines before the key. APISIX refuses it: the text does not start with "---", so it is taken for an
+ * encrypted key ("failed to decrypt previous encrypted key", the gated live test).
+ */
+export const BAG_KEY = `Bag Attributes
+    friendlyName: rsa-extra
+    localKeyID: 5D 10 50 76 B3 03 DC 30 63 E8 43 99 8D AB 0F 04 80 BE A1 81
+Key Attributes: <No Attributes>
+${RSA_PAIR.key}`;

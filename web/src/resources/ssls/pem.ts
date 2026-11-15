@@ -1,11 +1,10 @@
-// What a certificate or private-key field takes as it is typed: PEM text with the right label, or a
-// $secret:// / $env:// reference (APISIX resolves those at runtime). This is entry-time guidance
+// What a certificate or private-key field takes as it is typed: PEM text with the right label (a
+// $secret:// / $env:// reference is judged before these run, pemBox.ts). This is entry-time guidance
 // (addendum rule 10): APISIX itself parses the text with OpenSSL on save, and its verdict is shown as
 // it is. Text without any PEM label is refused here, as it can only be a mistake.
 import { t } from '../../i18n';
 import { holdsPrivateKey } from '../../schema/secrets';
 import { hostProblem } from '../routes/validate';
-import { isSecretRef } from './validate';
 
 const CERT_LABEL = /-----BEGIN CERTIFICATE-----/;
 const KEY_LABEL = /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/;
@@ -18,7 +17,7 @@ const ENCRYPTED_KEY = /-----BEGIN ENCRYPTED PRIVATE KEY-----|Proc-Type:\s*4,ENCR
  * the key in clear inside `cert` (checked live: GET returned it).
  */
 export function certProblem(text: string): string | undefined {
-  if (text.trim() === '' || isSecretRef(text.trim())) return undefined;
+  if (text.trim() === '') return undefined;
   if (holdsPrivateKey(text)) return t('ssl.pem.hasKey');
   return CERT_LABEL.test(text) ? undefined : t('ssl.pem.noCertLabel');
 }
@@ -28,7 +27,7 @@ export function certProblem(text: string): string | undefined {
  * is refused: APISIX parses the key without a passphrase (ngx.ssl parse_pem_priv_key, ssl.lua 126).
  */
 export function keyProblem(text: string): string | undefined {
-  if (text.trim() === '' || isSecretRef(text.trim())) return undefined;
+  if (text.trim() === '') return undefined;
   if (ENCRYPTED_KEY.test(text)) return t('ssl.pem.encrypted');
   if (KEY_LABEL.test(text)) return undefined;
   return CERT_LABEL.test(text) ? t('ssl.pem.isCert') : t('ssl.pem.noKeyLabel');
