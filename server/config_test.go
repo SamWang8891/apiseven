@@ -274,3 +274,23 @@ func TestConfigUnreadableFileNamesTheUserTheServerRunsAs(t *testing.T) {
 		}
 	}
 }
+
+// The key itself pasted into a _FILE variable: no slash and no such file. The error says the
+// variable takes a path, and does not repeat what was pasted.
+func TestConfigFileVariableHoldingAKeyIsNotRepeated(t *testing.T) {
+	for _, name := range []string{"APISIX_ADMIN_KEY_FILE", "BASIC_AUTH_PASSWORD_FILE"} {
+		vars := map[string]string{"APISIX_ADMIN_URL": adminURL, "BASIC_AUTH_USER": "ops", name: "edd1c9f034335f136f87ad84b625c8f1TOPSECRET"}
+		msg := loadErr(t, vars)
+		if strings.Contains(msg, "TOPSECRET") || strings.Contains(msg, "edd1c9f0") {
+			t.Errorf("%s: the error repeats the value: %q", name, msg)
+		}
+		if !strings.Contains(msg, name) || !strings.Contains(msg, "path to a file") {
+			t.Errorf("%s: error %q should name the variable and say it takes a path to a file", name, msg)
+		}
+	}
+	// A missing file given as a path is still named: a path is not a secret.
+	missing := filepath.Join(t.TempDir(), "apisix_admin_key")
+	if msg := loadErr(t, map[string]string{"APISIX_ADMIN_URL": adminURL, "APISIX_ADMIN_KEY_FILE": missing}); !strings.Contains(msg, missing) {
+		t.Errorf("error %q does not name the missing file", msg)
+	}
+}

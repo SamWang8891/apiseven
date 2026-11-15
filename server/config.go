@@ -113,6 +113,10 @@ func secret(getenv func(string) string, name string) (string, error) {
 	if file := getenv(name + "_FILE"); file != "" {
 		source = name + "_FILE"
 		data, err := os.ReadFile(file)
+		if err != nil && errors.Is(err, fs.ErrNotExist) && !strings.ContainsRune(file, '/') {
+			// No slash and no such file: likely the value itself pasted in. Do not repeat it.
+			return "", fmt.Errorf("%s: no such file; it takes the path to a file that holds the value, such as /run/secrets/%s", source, strings.ToLower(name))
+		}
 		if err != nil {
 			// Only the path and the reason: a *PathError's text is "open <path>: <reason>".
 			var pathErr *fs.PathError
