@@ -1,7 +1,8 @@
 // The theme switch, and the owner's logo and favicon in the preview build (proxy-mode.spec.ts and
 // single-file.spec.ts check them in the other two ways apiseven runs).
 import { fileURLToPath } from 'node:url';
-import { expect, expectIconsServed, expectMarkBesideName, goto, t, test } from './fixtures';
+import { expectIconsServed, expectMarkBesideName } from './brand';
+import { expect, goto, t, test } from './fixtures';
 import { serveStatic } from './servers';
 
 const DIST = fileURLToPath(new URL('../dist', import.meta.url));

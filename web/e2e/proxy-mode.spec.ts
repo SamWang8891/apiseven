@@ -4,7 +4,8 @@
 import { execFileSync } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import type { Browser, Page } from '@playwright/test';
-import { Admin, env, expect, expectIconsServed, expectMarkBesideName, openTab, t, test } from './fixtures';
+import { expectIconsServed, expectMarkBesideName } from './brand';
+import { Admin, env, expect, openTab, t, test } from './fixtures';
 import { freePort, servePage } from './servers';
 
 function docker(args: string[]): string {

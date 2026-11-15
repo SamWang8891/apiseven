@@ -3,7 +3,8 @@
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Page } from '@playwright/test';
-import { env, expect, expectMarkBesideName, t, test } from './fixtures';
+import { expectMarkBesideName } from './brand';
+import { env, expect, t, test } from './fixtures';
 
 const FILE = fileURLToPath(new URL('../dist-single/apiseven.html', import.meta.url));
 const URL_ = pathToFileURL(FILE).href;
