@@ -55,7 +55,15 @@ export function lazyPanel<P extends object>(load: () => Promise<ComponentType<P>
           setAttempt((n) => n + 1);
         }}
       >
-        <Suspense fallback={fallback()}>
+        {/* While it loads, the part is a busy status with a name, so assistive tech (and a test)
+            can tell it is still coming. */}
+        <Suspense
+          fallback={
+            <div role="status" aria-busy="true" aria-label={t('editor.lazy.loading')}>
+              {fallback()}
+            </div>
+          }
+        >
           <Loaded {...props} />
         </Suspense>
       </LoadBoundary>

@@ -44,6 +44,19 @@ describe('lazyPanel', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it('while it loads, the part is a busy status named Loading…, gone once loaded', async () => {
+    let resolve: (c: typeof Probe) => void = () => {};
+    const load = vi.fn(() => new Promise<typeof Probe>((r) => (resolve = r)));
+    const Panel = lazyPanel(load, () => <p>loading</p>);
+    render(<Panel word="a" />);
+    const status = await screen.findByRole('status', { name: t('editor.lazy.loading') });
+    expect(status).toHaveAttribute('aria-busy', 'true');
+    expect(status).toHaveTextContent('loading');
+    resolve(Probe);
+    expect(await screen.findByText('loaded a')).toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
   it('loads once and shares the result between panels', async () => {
     const load = vi.fn(() => Promise.resolve(Probe));
     const Panel = lazyPanel(load, () => <p>loading</p>);
