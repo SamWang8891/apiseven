@@ -44,4 +44,35 @@ describe('useViewState', () => {
     expect(screen.getByRole('button', { name: 'a 1' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'b 5' })).toBeInTheDocument();
   });
+
+  // Fix round 2, F2: a new key starts over (from the memory for that key, else the initial value); the old value is not carried to it.
+  it('when its key changes, the state starts over and nothing is written under the new key', async () => {
+    const user = userEvent.setup();
+    function Keyed({ id }: { id: string }) {
+      const [n, setN] = useViewState(id, 0);
+      return (
+        <button type="button" onClick={() => setN((v) => v + 1)}>
+          {id} {n}
+        </button>
+      );
+    }
+    const { rerender } = render(
+      <ViewMemory>
+        <Keyed id="s1" />
+      </ViewMemory>,
+    );
+    await user.click(screen.getByRole('button', { name: 's1 0' }));
+    rerender(
+      <ViewMemory>
+        <Keyed id="s2" />
+      </ViewMemory>,
+    );
+    expect(screen.getByRole('button', { name: 's2 0' })).toBeInTheDocument();
+    rerender(
+      <ViewMemory>
+        <Keyed id="s1" />
+      </ViewMemory>,
+    );
+    expect(screen.getByRole('button', { name: 's1 1' })).toBeInTheDocument();
+  });
 });

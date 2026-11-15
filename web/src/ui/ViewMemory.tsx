@@ -33,19 +33,27 @@ export function useViewState<T>(name: string | undefined, initial: T | (() => T)
   const scope = use(ViewScopeContext);
   const key = name === undefined ? undefined : scope ? `${scope}:${name}` : name;
   const memory = key === undefined ? null : page;
-  /** The value, and whether it was set (only a set value is remembered). */
-  const [cell, setCell] = useState<{ value: T; set: boolean }>(() =>
-    key !== undefined && memory?.has(key) ? { value: memory.get(key) as T, set: true } : { value: typeof initial === 'function' ? (initial as () => T)() : initial, set: false },
-  );
+  /** Where the state starts for `at`: what the memory holds for it, else `initial` (as of this render). */
+  const start = (at: string | undefined): { value: T; set: boolean } =>
+    at !== undefined && memory?.has(at) ? { value: memory.get(at) as T, set: true } : { value: typeof initial === 'function' ? (initial as () => T)() : initial, set: false };
+  /** The value, whether it was set (only a set value is remembered), and the key it belongs to. */
+  const [cell, setCell] = useState<{ value: T; set: boolean; key: string | undefined }>(() => ({ ...start(key), key }));
+  // A new key (another editing session for useSessionViewState) starts over: from the memory for that
+  // key, else `initial`; the value of the old key is never carried to it (as useEditingState starts over).
+  let current = cell;
+  if (cell.key !== key) {
+    current = { ...start(key), key };
+    setCell(current);
+  }
   // Remembered from the commit: a render React throws away never reaches the memory.
   useLayoutEffect(() => {
-    if (cell.set && key !== undefined) memory?.set(key, cell.value);
-  }, [cell, key, memory]);
+    if (current.set && current.key !== undefined) memory?.set(current.key, current.value);
+  }, [current, memory]);
   const set = useCallback<Dispatch<SetStateAction<T>>>(
-    (next) => setCell((prev) => ({ value: typeof next === 'function' ? (next as (p: T) => T)(prev.value) : next, set: true })),
+    (next) => setCell((prev) => ({ value: typeof next === 'function' ? (next as (p: T) => T)(prev.value) : next, set: true, key: prev.key })),
     [],
   );
-  return [cell.value, set];
+  return [current.value, set];
 }
 
 /**

@@ -199,6 +199,38 @@ describe('the upstream editor', () => {
     });
   });
 
+  // Fix round 2, F2: a save made from the same tab locks without remounting it; the next Edit starts over all the same.
+  it('a client-certificate mode chosen without typing, then a change on the same tab and a save: the next Edit reads None', async () => {
+    const { user, admin } = await openEditor('#/upstreams/web-pool?tab=tls', { objects: { upstreams: [POOL] } });
+    await main().findByRole('heading', { level: 1, name: 'web-pool' });
+    await main().findByText(t('up.tls.mode.none'));
+    await user.keyboard('e');
+    await user.click(await main().findByRole('radio', { name: t('up.tls.mode.inline') }));
+    await user.click(main().getByRole('combobox', { name: new RegExp(`^${t('up.tls.verify')}`) }));
+    await user.click(await screen.findByRole('option', { name: t('up.tls.verifyOff') }));
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    await main().findByRole('button', { name: t('editor.edit') });
+    expect(main().getByText(t('up.tls.mode.none'))).toBeInTheDocument();
+    await user.keyboard('e');
+    expect(await main().findByRole('radio', { name: t('up.tls.mode.none') })).toBeChecked();
+  });
+
+  it('a target mode chosen without typing, then a save from the same tab: the next Edit reads Nodes', async () => {
+    const { user, admin } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [POOL] } });
+    await main().findByRole('heading', { level: 1, name: 'web-pool' });
+    await user.keyboard('e');
+    await user.click(await main().findByRole('radio', { name: t('up.target.discovery') }));
+    // Neither nodes nor a discovery service is refused here; Save anyway sends it (the fake APISIX takes it).
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    await user.click(await main().findByRole('button', { name: t('editor.anyway.action') }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.anyway.confirm') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    await main().findByRole('button', { name: t('editor.edit') });
+    await user.keyboard('e');
+    expect(await main().findByRole('radio', { name: t('up.target.nodes') })).toBeChecked();
+  });
+
   // Task 16b item 50: sections opened or closed on a tab are as the user left them after a tab switch.
   it('health-check sections opened or closed come back so after a tab switch', async () => {
     const { user } = await openEditor('#/upstreams/web-pool?tab=health', { objects: { upstreams: [{ ...POOL, checks: { active: { http_path: '/h' } } }] } });
