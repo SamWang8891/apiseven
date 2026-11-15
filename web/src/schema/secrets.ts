@@ -77,3 +77,18 @@ export function redactSecrets(value: unknown, path: string, encrypt: string[]): 
   out = walk(out, own !== undefined && isSecretName(own));
   return { value: out, redacted: JSON.stringify(out) !== JSON.stringify(value) };
 }
+
+/** The first line of a PEM private key of any form (PKCS#8, PKCS#1 RSA, SEC1 EC, DSA, encrypted). */
+const KEY_BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
+
+/** Every PEM private-key block in a text, to its END line (or to the end of the text when that is missing). */
+const KEY_BLOCKS = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g;
+
+/** Whether `text` holds a PEM private key anywhere (a combined certificate + key file does). */
+export const holdsPrivateKey = (text: unknown): boolean => typeof text === 'string' && KEY_BEGIN.test(text);
+
+/** `text` with each PEM private-key block replaced by `by` (the rest, certificates included, kept). */
+export const withoutPrivateKeys = (text: string, by: string): string => text.replace(KEY_BLOCKS, by);
+
+/** The PEM private-key blocks in `text`, in order. */
+export const privateKeyBlocks = (text: string): string[] => text.match(KEY_BLOCKS) ?? [];

@@ -8,38 +8,58 @@ import type { Obj } from '../../api/types';
 import { setPath, setPathRaw } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
-import { Field, NumberInput, Switch, TagInput, useEditingState, useLocked } from '../../ui';
+import { holdsPrivateKey } from '../../schema/secrets';
+import { Button, Field, NumberInput, Switch, TagInput, useEditingState, useLocked } from '../../ui';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { TabProps } from '../registry';
 import { CertDetails } from './CertDetails';
 import { certProblem } from './pem';
-import { PemInput } from './PemInput';
+import { CertBox } from './PemBoxes';
 import { typeOf } from './usage';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
-/** The CA as typed: emitted when it can be taken (a cleared box removes it); text with no PEM label holds Save. Locked: its details. */
+/**
+ * The CA as typed: emitted when it can be taken (a cleared box removes it); text with no PEM label, or
+ * with a private key, holds Save. Locked: its details. A stored CA whose text also holds a private key
+ * (stored by another tool) is never put in the box: it says so, with Replace CA for an empty box.
+ */
 function CaField({ client, write, error }: { client: Obj; write: (ca: string | undefined) => void; error?: string }) {
   const locked = useLocked();
-  // Editing state: the text being typed (the draft keeps the last text that could be taken).
-  const [text, setText] = useEditingState(str(client.ca) ?? '');
-  if (locked) {
+  const keyInside = holdsPrivateKey(client.ca);
+  // Editing state: the text being typed (the draft keeps the last text that could be taken), and
+  // whether a stored CA that holds a key is being replaced.
+  const [text, setText] = useEditingState(keyInside ? '' : (str(client.ca) ?? ''));
+  const [replacing, setReplacing] = useEditingState(false);
+  const warning = keyInside && (
+    <p className="ssl-warn" role="note">
+      {t('ssl.cert.holdsKey')}
+    </p>
+  );
+  if (locked || (keyInside && !replacing)) {
     return (
       <div className="ssl-field">
         <span className="ssl-field__label">{t('ssl.client.ca')}</span>
+        {warning}
         <CertDetails pem={client.ca} />
         {error && <p className="ssl-issue">{error}</p>}
+        {!locked && (
+          <span>
+            <Button size="sm" onClick={() => setReplacing(true)}>
+              {t('ssl.client.replaceCa')}
+            </Button>
+          </span>
+        )}
       </div>
     );
   }
   return (
     <>
-      <PemInput
+      <CertBox
         label={t('ssl.client.ca')}
         help={t('ssl.client.caHelp')}
         value={text}
-        problem={certProblem(text)}
         error={error}
         onChange={(next) => {
           setText(next);

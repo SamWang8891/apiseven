@@ -12,13 +12,28 @@ import type { TabProps } from '../registry';
 import { servedToClients, sniList } from '../resolve';
 import { readPair, writePair } from '../routes/pairs';
 import { sniProblem } from './pem';
+import { parseCert } from './parseCert';
 import { certOf, typeOf } from './usage';
+import { isSecretRef } from './validate';
+
+/**
+ * What the SNIs tab says about the certificate's names: them, or that it names none, only when our
+ * reader read it; for a reference or a certificate it can't read, that the names aren't known here;
+ * nothing before there is a certificate.
+ */
+function sansNoteOf(cert: unknown, dns: string[]): string | undefined {
+  if (typeof cert !== 'string' || cert.trim() === '') return undefined;
+  if (isSecretRef(cert.trim())) return t('ssl.snis.sansRef');
+  if (!parseCert(cert)) return t('ssl.snis.sansUnreadable');
+  return dns.length > 0 ? t('ssl.snis.sansNote', { names: dns.join(', ') }) : t('ssl.snis.noSans');
+}
 
 export function SnisTab({ draft, setDraft, issues, ctx, original }: TabProps) {
   const locked = useLocked();
   const snis = readPair(draft, 'sni', 'snis');
   const error = [...issuesUnder(issues, 'sni'), ...issuesUnder(issues, 'snis')][0]?.message;
   const dns = certOf(draft)?.dns ?? [];
+  const sansNote = sansNoteOf(draft.cert, dns);
   const client = typeOf(draft) === 'client';
   // Other enabled server certificates with one of these SNIs, once the list has loaded.
   const own = new Set(sniList(draft));
@@ -44,7 +59,7 @@ export function SnisTab({ draft, setDraft, issues, ctx, original }: TabProps) {
               {t('ssl.snis.useSans')}
             </Button>
           </span>
-          <span className="ed-note">{dns.length > 0 ? t('ssl.snis.sansNote', { names: dns.join(', ') }) : t('ssl.snis.noSans')}</span>
+          {sansNote && <span className="ed-note">{sansNote}</span>}
         </div>
       )}
       {client && <p className="ed-note">{t('ssl.snis.clientNote')}</p>}

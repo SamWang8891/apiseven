@@ -102,6 +102,20 @@ describe('redactObject, per kind', () => {
     expect(redactObject({ snis: ['a.test'], cert: 'C' }, 'ssls', undefined)).toMatchObject({ redacted: false });
   });
 
+  it("an SSL stored with a private key inside cert, an extra cert or client.ca: the key block is never shown, the certificates are", () => {
+    const KEY = '-----BEGIN PRIVATE KEY-----\nSECRETKEYTEXT\n-----END PRIVATE KEY-----\n';
+    const CERT = '-----BEGIN CERTIFICATE-----\nCERTTEXT\n-----END CERTIFICATE-----\n';
+    const ssl = { snis: ['a.test'], cert: CERT + KEY, certs: [KEY + CERT], client: { ca: CERT + KEY } };
+    const out = redactObject(ssl, 'ssls', undefined);
+    expect(JSON.stringify(out.value)).not.toContain('SECRETKEYTEXT');
+    expect(JSON.stringify(out.revealed)).not.toContain('SECRETKEYTEXT');
+    expect(out).toMatchObject({ redacted: true, revealable: false });
+    expect(out.value.cert).toBe(`${CERT}${MASK}\n`);
+    expect((out.value.certs as string[])[0]).toBe(`${MASK}\n${CERT}`);
+    // Another kind's text is left to its own rules.
+    expect(redactObject({ desc: CERT + KEY }, 'routes', all()).value).toEqual({ desc: CERT + KEY });
+  });
+
   it("plugin metadata: its plugin's metadata encrypt_fields (azure-functions master_apikey); everything while loading", () => {
     expect(redactObject({ id: 'azure-functions', master_apikey: 'k1', other: 'x' }, 'plugin_metadata', all()).value).toEqual({ id: 'azure-functions', master_apikey: MASK, other: 'x' });
     expect(redactObject({ id: 'azure-functions', master_apikey: 'k1' }, 'plugin_metadata', undefined).value).toEqual({ id: 'azure-functions', master_apikey: MASK });

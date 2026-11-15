@@ -20,6 +20,13 @@ describe('matchesQuery', () => {
     expect(matchesQuery(exampleOnly, '   ')).toBe(true);
   });
 
+  it('never searches the text of a private key, wherever it is stored (an SSL cert that also holds its key)', () => {
+    const body = 'MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg59GD85BzOUzXl7Hu';
+    const ssl = itemOf('s1', { cert: `-----BEGIN CERTIFICATE-----\nCERTBODY\n-----END CERTIFICATE-----\n-----BEGIN PRIVATE KEY-----\n${body}\n-----END PRIVATE KEY-----\n` });
+    expect(matchesQuery(ssl, body.slice(0, 20))).toBe(false);
+    expect(matchesQuery(ssl, 'certbody')).toBe(true);
+  });
+
   it('searches the id too, even when the value does not repeat it', () => {
     const consumer: Item = { id: 'jo-ellen', value: { plugins: {} } };
     expect(matchesQuery(consumer, 'ellen')).toBe(true);

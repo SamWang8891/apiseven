@@ -15,7 +15,7 @@
 import { isObj } from '../api/sanitize';
 import type { Kind, Obj, PluginInfo } from '../api/types';
 import { t } from '../i18n';
-import { MASK, redactSecrets } from '../schema/secrets';
+import { holdsPrivateKey, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
 
 /** Keys whose value no view shows (see the head comment). */
@@ -32,7 +32,11 @@ export interface Redacted {
   revealable: boolean;
 }
 
-/** An SSL's top-level `key` and every text of `keys` masked (sslKeys: never shown). */
+/**
+ * An SSL's top-level `key` and every text of `keys` masked, and a private-key block inside `cert`, an
+ * entry of `certs` or `client.ca` (an SSL stored with a combined certificate + key file, which APISIX
+ * keeps in clear and returns) masked in place, its certificates kept: all never shown.
+ */
 function maskSslKeys(value: Obj): { value: Obj; redacted: boolean } {
   let redacted = false;
   const out: Obj = { ...value };
@@ -41,8 +45,17 @@ function maskSslKeys(value: Obj): { value: Obj; redacted: boolean } {
     redacted = true;
     return MASK;
   };
+  const hideBlocks = (v: unknown): unknown => {
+    if (!holdsPrivateKey(v)) return v;
+    redacted = true;
+    return withoutPrivateKeys(v as string, MASK);
+  };
   if (out.key !== undefined) out.key = hide(out.key);
-  if (Array.isArray(out.keys)) out.keys = out.keys.map(hide);
+  if (Array.isArray(out.keys)) out.keys = (out.keys as unknown[]).map(hide);
+  out.cert = hideBlocks(out.cert);
+  if (out.cert === undefined) delete out.cert;
+  if (Array.isArray(out.certs)) out.certs = (out.certs as unknown[]).map(hideBlocks);
+  if (isObj(out.client) && holdsPrivateKey(out.client.ca)) out.client = { ...out.client, ca: hideBlocks(out.client.ca) };
   return { value: out, redacted };
 }
 

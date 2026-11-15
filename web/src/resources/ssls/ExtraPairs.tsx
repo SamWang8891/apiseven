@@ -6,6 +6,7 @@ import { Trash2 } from 'lucide-react';
 import type { Item, Obj } from '../../api/types';
 import { issueAt, issuesUnder, type Issue } from '../../editor/issues';
 import { t } from '../../i18n';
+import { holdsPrivateKey } from '../../schema/secrets';
 import { Button, useEditingState, useLocked } from '../../ui';
 import { freshIds, useRowIds, withoutId } from '../../upstream/rowIds';
 import { ExpiryBadge } from '../expiry';
@@ -79,6 +80,7 @@ export function ExtraPairs({ draft, setDraft, isNew, original, issues, client }:
                 <li key={ids[i]} className="ssl-pair" aria-label={t('ssl.extra.row', { n: i + 1 })}>
                   <CertLine pem={cert} />
                   <span className={TONE[state]}>{t(`ssl.extra.${state}`)}</span>
+                  {holdsPrivateKey(cert) && <span className="ssl-warn">{t('ssl.cert.holdsKey')}</span>}
                   {problem && problem !== whole && <span className="ssl-issue">{problem}</span>}
                   {!locked && (
                     <span className="ssl-pair__tools">

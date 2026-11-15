@@ -319,11 +319,16 @@ describe('creating an SSL', () => {
     expect(writesOf(admin)).toEqual([]);
   });
 
-  it('Duplicate: the copy has everything but the key (APISIX never returns it); Create waits for one', async () => {
-    const { user, admin } = await openEditor('#/ssls/new?from=apiseven-test', { objects: { ssls: [STORED], routes: [], services: [] } });
+  it('Duplicate: a notice above the tabs (on any tab) names the keys left out and the SNIs still shared; Create waits for a key', async () => {
+    const { user, admin } = await openEditor('#/ssls/new?from=apiseven-test&tab=snis', { objects: { ssls: [STORED], routes: [], services: [] } });
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
-    expect(main().getByRole('note')).toHaveTextContent(t('ssl.key.copyNote'));
+    const notice = main().getByRole('note', { name: t('editor.copyNotice.title') });
+    expect(notice).toHaveTextContent(t('editor.copyNotice.sslKey'));
+    expect(notice).toHaveTextContent(t('editor.copyNotice.sslSnis', { list: 'apiseven.test, *.apiseven.test' }));
+    await user.click(tab(t('ssl.tab.certificate')));
+    await settled();
+    expect(main().getByText(t('ssl.key.needed'))).toBeInTheDocument();
     expect(main().getByRole('textbox', { name: t('ssl.pem.cert') })).toHaveValue(SEED_CERT);
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     expect(writesOf(admin)).toEqual([]);
@@ -332,6 +337,17 @@ describe('creating an SSL', () => {
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]).toEqual({ method: 'POST', path: 'ssls', body: { type: 'server', snis: STORED.snis, cert: SEED_CERT, key: SEED_KEY, labels: { env: 'dev' }, x_future: { kept: true } } });
+  });
+});
+
+describe('a new SSL that is not a copy', () => {
+  it('has no copy notice, and the key note is neutral', async () => {
+    const { user } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    await settled();
+    await user.click(main().getByRole('textbox', { name: t('ssl.pem.cert') }));
+    await user.paste(SEED_CERT);
+    expect(main().getByText(t('ssl.key.needed'))).toBeInTheDocument();
+    expect(main().queryByRole('note', { name: t('editor.copyNotice.title') })).toBeNull();
   });
 });
 

@@ -1,4 +1,5 @@
 import type { Item } from '../api/types';
+import { withoutPrivateKeys } from '../schema/secrets';
 import type { Ctx } from '../resources/ctx';
 import type { Option } from '../ui';
 
@@ -16,12 +17,14 @@ export interface FilterDef {
 export type FilterSelection = Record<string, string[]>;
 
 // The search text of an item, built once per stored object (lists keep item identity between fetches).
+// A private key's text is never in it, wherever it is stored (an SSL whose cert also holds its key):
+// a search must not tell whether a key starts with what was typed.
 const haystacks = new WeakMap<Item, string>();
 
 function haystack(item: Item): string {
   let text = haystacks.get(item);
   if (text === undefined) {
-    text = `${item.id} ${JSON.stringify(item.value)}`.toLowerCase();
+    text = withoutPrivateKeys(`${item.id} ${JSON.stringify(item.value)}`, ' ').toLowerCase();
     haystacks.set(item, text);
   }
   return text;

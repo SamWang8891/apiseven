@@ -3,17 +3,24 @@
 // (addendum rule 10): APISIX itself parses the text with OpenSSL on save, and its verdict is shown as
 // it is. Text without any PEM label is refused here, as it can only be a mistake.
 import { t } from '../../i18n';
+import { holdsPrivateKey } from '../../schema/secrets';
 import { hostProblem } from '../routes/validate';
 import { isSecretRef } from './validate';
 
 const CERT_LABEL = /-----BEGIN CERTIFICATE-----/;
 const KEY_LABEL = /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/;
+const KEY_END = /-----END (?:RSA |EC |DSA )?PRIVATE KEY-----/;
 const ENCRYPTED_KEY = /-----BEGIN ENCRYPTED PRIVATE KEY-----/;
 
-/** Why `text` can't be a certificate as typed, or undefined (also for nothing typed). */
+/**
+ * Why `text` can't be a certificate as typed, or undefined (also for nothing typed). Text that holds a
+ * private key is refused even beside a certificate (a combined file): APISIX would store and return
+ * the key in clear inside `cert` (checked live: GET returned it).
+ */
 export function certProblem(text: string): string | undefined {
-  if (text.trim() === '' || isSecretRef(text.trim()) || CERT_LABEL.test(text)) return undefined;
-  return KEY_LABEL.test(text) || ENCRYPTED_KEY.test(text) ? t('ssl.pem.isKey') : t('ssl.pem.noCertLabel');
+  if (text.trim() === '' || isSecretRef(text.trim())) return undefined;
+  if (holdsPrivateKey(text)) return t('ssl.pem.hasKey');
+  return CERT_LABEL.test(text) ? undefined : t('ssl.pem.noCertLabel');
 }
 
 /**
@@ -26,6 +33,9 @@ export function keyProblem(text: string): string | undefined {
   if (KEY_LABEL.test(text)) return undefined;
   return CERT_LABEL.test(text) ? t('ssl.pem.isCert') : t('ssl.pem.noKeyLabel');
 }
+
+/** A private key that can be taken and has its END line: it arrived whole (pasted, uploaded, dropped). */
+export const completeKey = (text: string): boolean => keyProblem(text) === undefined && KEY_END.test(text);
 
 /**
  * Why a typed SNI is refused: the schema's pattern (host_def_pat), or a wildcard that is not `*.`
