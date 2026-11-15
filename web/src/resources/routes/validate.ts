@@ -141,7 +141,7 @@ export function routeIssues(draft: Obj, env: ValidateEnv): Issue[] {
   // The schema's anyOf: a route needs plugins, an upstream (by any of its three sources) or a
   // script. A plugin config alone is refused.
   if (!['plugins', 'upstream', 'upstream_id', 'service_id', 'script'].some((key) => has(draft, key))) {
-    issues.push({ path: '', message: t('rt.issue.nothing'), tab: 'upstream' });
+    issues.push({ path: '', message: t('rt.issue.nothing'), tab: 'upstream', missing: true });
   }
   const script = draft.script;
   if (script !== undefined) {

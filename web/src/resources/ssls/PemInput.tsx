@@ -7,8 +7,12 @@
 // field, before any other problem, never with any of its content. Dropped text is a paste; a drop with
 // neither a file nor text changes nothing. A drop gives the box no focus, which is why the caller
 // decides what the box shows from whether its textarea (`inputRef`) has focus, not from focus events.
+// A file is read asynchronously: a read that finishes after anything later happened in the box (text
+// typed, pasted or dropped, another file, a change the caller made, the end of the editing session,
+// the box going away) is stale, and its result is ignored before the caller hears of it (Task 16b,
+// item 147).
 import { Upload } from 'lucide-react';
-import { useLayoutEffect, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
 import { Button, Textarea, toast, useEditingState, useLocked, usePending } from '../../ui';
 
@@ -53,11 +57,13 @@ export interface PemInputProps {
   onFile: (text: string) => string | undefined;
   /** A file reached the box that could not be read as text (too big, binary, unreadable): nothing changes but what the caller made of the last file. */
   onUnreadable?: () => void;
+  /** How the last refused file's reason reads now (the caller's split offer may point at its action instead); as it is by default. */
+  fileReason?: (why: string) => string;
   autoFocus?: boolean;
   rows?: number;
 }
 
-export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, changes, onFile, onUnreadable, autoFocus, rows = 6 }: PemInputProps) {
+export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, changes, onFile, onUnreadable, fileReason, autoFocus, rows = 6 }: PemInputProps) {
   const locked = useLocked();
   usePending(locked || problem === undefined ? undefined : t('ui.pending.problem', { field: label, problem }));
   const fileRef = useRef<HTMLInputElement>(null);
@@ -74,12 +80,31 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
     changesNow.current = changes;
   });
   const setFileProblem = (why: string | undefined) => setRefused(why === undefined ? undefined : { why, at: changesNow.current });
-  const fileProblem = refused && refused.at === changes ? refused.why : undefined;
+  const fileProblem = refused && refused.at === changes ? (fileReason?.(refused.why) ?? refused.why) : undefined;
+
+  /**
+   * Counts what happens in the box that makes a read still in progress stale: a text gesture, another
+   * file, and (below) the end of the editing session or of the box. A read also goes stale when the
+   * caller changed the text meanwhile (`changes`: a split's part arriving).
+   */
+  const gestures = useRef(0);
+  // Editing state: one token per editing session; its effect's cleanup runs when the session ends and when the box goes.
+  const [session] = useEditingState(() => ({}));
+  useEffect(
+    () => () => {
+      gestures.current++;
+    },
+    [session],
+  );
 
   const read = (file: File | undefined) => {
     if (!file) return;
+    const mine = ++gestures.current;
+    const at = changesNow.current;
+    const fresh = () => gestures.current === mine && changesNow.current === at;
     readPem(file)
       .then((result) => {
+        if (!fresh()) return;
         if ('text' in result) {
           setFileProblem(onFile(result.text));
           return;
@@ -88,12 +113,14 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
         setFileProblem(result.problem);
       })
       .catch(() => {
+        if (!fresh()) return;
         onUnreadable?.();
         setFileProblem(t('ssl.pem.readFailed'));
         toast.error(t('ssl.pem.readFailed'), { pageBound: true });
       });
   };
   const change = (text: string) => {
+    gestures.current++;
     setRefused(undefined);
     onChange(text);
   };

@@ -16,9 +16,13 @@
 // In a pair (a new SSL, the dialog) a combined text or file offers the split (Task 16 B23): the
 // action, when the model offers it, gives each part to its box, so the other field's value is
 // checked after every step too. Text the other box does not take may be typed there (fix round 2,
-// R8): it holds that box, and the split's name says it replaces it. In a new SSL the line "Enter the
-// private key" shows exactly while the pair has a certificate, no key and no offer (fix round 2, R11).
-// Every sequence runs to its end or its first failure; all failures are reported together.
+// R8): it holds that box, and the split's name says it replaces it, telling a value from text (Task
+// 16b, item 143); a combined text there makes the other box offer, and this box's messages point at
+// that action (item 145). In a new SSL the line "Enter the private key" shows exactly while the pair
+// has a certificate, no key and no offer (fix round 2, R11). A refused file that offers nothing
+// leaves the text's own offer (item 144); a file read left pending is ignored once anything happened
+// in the box (item 147). Every sequence runs to its end or its first failure; all failures are
+// reported together.
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Obj } from '../../api/types';
@@ -218,7 +222,9 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
                 expect({ cert: draft.cert, key: draft.key }, `${where}: the dialog's result`).toEqual(resultOf(m));
                 cov.add('save: applied');
                 if (m.other !== side.other) cov.add('save: applied after a split');
-                // A fresh dialog, and the model as it starts, so the sequence goes on.
+                // A fresh dialog, and the model as it starts, so the sequence goes on; reads still in
+                // progress in the closed dialog's box went with it (item 147).
+                run.dropReads();
                 side.fill(await openDialog(harness));
                 Object.assign(m, newModel(place.kind, undefined, '', undefined, { other: side.other }));
               }
@@ -250,6 +256,18 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
       expect(cov.get(`split from the ${kind} box over text in the other box`), kind).toBeGreaterThan(3);
     }
     expect(cov.get('save: applied after a split')).toBeGreaterThan(0);
+    // Task 16b: a refused file beside the text's offer (144); the other box offering, and this box
+    // pointing at its action (145); reads left pending, finished fresh or stale (147); a value and text
+    // named apart in the split's name (143).
+    expect(cov.get("a refused file left the text's offer")).toBeGreaterThan(5);
+    expect(cov.get('the other box offers')).toBeGreaterThan(30);
+    expect(cov.get('split from the other box')).toBeGreaterThan(15);
+    expect(cov.get("this box's messages point at the other box's action")).toBeGreaterThan(20);
+    expect(cov.get('upload: read left pending')).toBeGreaterThan(40);
+    expect(cov.get('a pending read finished')).toBeGreaterThan(10);
+    expect(cov.get('a stale read ignored')).toBeGreaterThan(10);
+    expect(cov.get('text:late file')).toBeGreaterThan(3);
+    for (const kind of ['cert', 'key']) expect(cov.get(`the ${kind} box's split names a value and text in the other box`), kind).toBeGreaterThan(3);
     for (const place of PLACES) expect(cov.get(`place ${place.name}`), place.name).toBe(SEEDS);
   }, 300_000);
 });

@@ -84,6 +84,54 @@ describe('which strings are references, and at which nodes', () => {
   });
 });
 
+/** `value`, frozen all the way down: a write to it throws (the test files are ES modules, so strict). */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+
+describe('literal data in a schema is data (Task 16b, item 148)', () => {
+  it('a $ref inside an enum member is a value, not a reference: kept as it is, and the published schema is never written to', () => {
+    const published = { type: 'object', properties: { a: { enum: [{ $ref: '#/properties/b' }] }, b: { type: 'string' } } };
+    const copy = structuredClone(published);
+    const schema = deepFreeze(published);
+    expect(validatorFor(schema)).not.toBeNull();
+    expect(fieldErrors(schema, { a: { $ref: '#/properties/b' } })).toEqual([]);
+    expect(fieldErrors(schema, { a: { $ref: '#/properties/c' } })?.map((e) => e.path)).toEqual(['a']);
+    expect(schema).toEqual(copy);
+  });
+
+  it('nor in const, default or examples; a real $ref beside them still resolves', () => {
+    const published = {
+      type: 'object',
+      definitions: { name: { type: 'string', maxLength: 3 } },
+      properties: {
+        c: { const: { $ref: '#/definitions/name' } },
+        d: { type: 'object', default: { $ref: '#/definitions/name' }, examples: [{ $ref: '#/definitions/name' }] },
+        n: { $ref: '#/definitions/name' },
+      },
+    };
+    const copy = structuredClone(published);
+    const schema = deepFreeze(published);
+    expect(fieldErrors(schema, { c: { $ref: '#/definitions/name' }, n: 'abc' })).toEqual([]);
+    expect(fieldErrors(schema, { n: 'abcd' })?.map((e) => e.path)).toEqual(['n']);
+    expect(fieldErrors(schema, { n: '$env://NAME' })).toEqual([]);
+    expect(schema).toEqual(copy);
+  });
+
+  it('every 3.20 plugin schema compiles from a frozen copy, unchanged', () => {
+    for (const { schema, label } of everySchema()) {
+      const copy = structuredClone(schema);
+      const frozen = deepFreeze(structuredClone(schema));
+      expect(() => fieldErrors(frozen, {}), label).not.toThrow();
+      expect(frozen, label).toEqual(copy);
+    }
+  });
+});
+
 describe('APISIX 3.20 plugin schemas', () => {
   it('proxy-rewrite: host (a pattern), method (an enum), uri (minLength and a pattern) take a reference', () => {
     const schema = schemaOf('proxy-rewrite');

@@ -195,6 +195,15 @@ describe('Form and JSON', () => {
     expect(within(el).queryByText(note)).not.toBeInTheDocument();
   });
 
+  it('a schema with formats the browser does not check: the note names them (Task 16b, item 153)', async () => {
+    const conf = { allowlist: ['10.0.0.1'] };
+    const { user } = renderPluginsTab({ scope: 'route', value: { 'ip-restriction': conf } });
+    const el = await card('ip-restriction');
+    await user.click(toggle(el, 'ip-restriction'));
+    await user.click(within(el).getByRole('button', { name: t('pl.card.json') }));
+    expect(await within(el).findByText(t('sf.gaps.some', { parts: t('sf.gaps.formats', { formats: 'ipv4, ipv6' }) }))).toBeInTheDocument();
+  });
+
   it('JSON that does not parse, or is not an object, is not emitted', async () => {
     const { user, changes } = renderPluginsTab({ scope: 'route', value: { cors: {} } });
     const el = await card('cors');

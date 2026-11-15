@@ -11,7 +11,8 @@ export type { SchemaGap, SchemaGaps } from './prepare';
 
 // strict: false, since APISIX schemas carry keys Ajv does not know (encrypt_fields, $comment on
 // odd places); formats are not checked (ip-restriction's ipv4/ipv6 would need ajv-formats, and the
-// server checks them anyway), so a format this browser does not know refuses nothing either.
+// server checks them anyway), so a format this browser does not know refuses nothing either: each is
+// a gap the note names (prepare.ts; Task 16b, item 153).
 // verbose: an error carries the schema object holding its keyword, which tells the wrapping's own tests
 // from the schema's (prepare.ts originalSchemaPath).
 const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false, verbose: true });
@@ -27,6 +28,8 @@ interface Compiled {
   plain?: ValidateFunction | null;
   /** What the checks leave to APISIX (prepare.ts); undefined when nothing. */
   gaps: SchemaGaps | undefined;
+  /** The formats left to APISIX, by name. */
+  formats: string[];
 }
 const compiled = new WeakMap<Obj, Compiled>();
 
@@ -47,7 +50,14 @@ function compile(schema: Obj): Compiled {
     const prepared = normalize(schema);
     const wrapped = prepared.gaps === 'all' ? undefined : skippingSecretRefs(prepared.schema);
     const validate = wrapped ? ajvCompile(wrapped) : null;
-    entry = { validate, wrapped, roots: wrapped ? refTargets(wrapped) : [], normalized: prepared.schema, gaps: validate === null ? 'all' : prepared.gaps.length > 0 ? prepared.gaps : undefined };
+    entry = {
+      validate,
+      wrapped,
+      roots: wrapped ? refTargets(wrapped) : [],
+      normalized: prepared.schema,
+      gaps: validate === null ? 'all' : prepared.gaps.length > 0 ? prepared.gaps : undefined,
+      formats: prepared.formats,
+    };
     compiled.set(schema, entry);
   }
   return entry;
@@ -82,6 +92,11 @@ function mapped(entry: Compiled, errors: ErrorObject[]): ErrorObject[] {
 /** What `schema`'s checks leave to APISIX (prepare.ts SchemaGaps), or undefined when they cover it whole. */
 export function schemaGaps(schema: Obj): SchemaGaps | undefined {
   return compile(schema).gaps;
+}
+
+/** The formats `schema` holds, which the browser leaves to APISIX (the 'formats' gap), by name. */
+export function skippedFormats(schema: Obj): string[] {
+  return compile(schema).formats;
 }
 
 /** The `properties` of `schema` with its $ref followed and its allOf parts merged in. */

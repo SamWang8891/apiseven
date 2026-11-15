@@ -141,6 +141,36 @@ describe('the route editor', () => {
   });
 });
 
+describe('a new route opens without red (Task 16b, item 154)', () => {
+  it('"Choose where requests go" waits for a refused Create: no badge, no message; then both, on the Upstream tab', async () => {
+    const { user, admin } = await openEditor('#/routes/new', { objects: objects([]), replies: pluginReplies() });
+    await settled();
+    for (const label of TAB_LABELS()) expect(tab(label)).toHaveAccessibleName(label);
+    // Typing elsewhere touches only that field.
+    await user.type(main().getByRole('textbox', { name: /^Name/ }), 'shop');
+    expect(tab(t('rt.tab.upstream'))).toHaveAccessibleName(t('rt.tab.upstream'));
+    await user.click(tab(t('rt.tab.upstream')));
+    await settled();
+    expect(main().getByRole('radiogroup', { name: t('rt.up.source') })).not.toHaveAccessibleDescription(t('rt.issue.nothing'));
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(tab(t('rt.tab.upstream'))).toHaveAccessibleName(`${t('rt.tab.upstream')} ${t('ui.tabs.errors', { count: 1 })}`));
+    expect(main().getByRole('radiogroup', { name: t('rt.up.source') })).toHaveAccessibleDescription(t('rt.issue.nothing'));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') }));
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('a required value the user emptied shows at once: the URI cleared', async () => {
+    const { user } = await openEditor('#/routes/new?tab=matching', { objects: objects([]), replies: pluginReplies() });
+    await settled();
+    expect(tab(t('rt.tab.matching'))).toHaveAccessibleName(t('rt.tab.matching'));
+    await user.click(main().getByRole('button', { name: t('ui.tags.remove', { tag: '/*' }) }));
+    await waitFor(() => expect(tab(t('rt.tab.matching'))).toHaveAccessibleName(`${t('rt.tab.matching')} ${t('ui.tabs.errors', { count: 1 })}`));
+    expect(main().getByText(t('rt.issue.noUri'))).toBeInTheDocument();
+    // The Upstream tab's problem still waits for a Save.
+    expect(tab(t('rt.tab.upstream'))).toHaveAccessibleName(t('rt.tab.upstream'));
+  });
+});
+
 describe('an inline upstream emptied of its nodes (Ruling 1)', () => {
   it('is saved as APISIX stores it: the route has an upstream, with an empty node list', async () => {
     const { user, admin } = await openEditor('#/routes/new?tab=upstream', { objects: objects([]), replies: pluginReplies() });

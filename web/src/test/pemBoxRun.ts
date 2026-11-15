@@ -3,7 +3,11 @@
 // reference model of the rule (task-14 r3 "The rule for every PEM box" with the r4 amendments, and
 // Task 16 B23: a key taken from its first BEGIN line, a combined PEM split between a pair's boxes),
 // the actions a user takes on a box, a seeded generator of them, and the checks made after every step.
-// The model states the rule on its own; it imports nothing from the boxes' code.
+// Task 16b adds: a reference taken without its white space (item 104); the split's name telling a
+// value from text a box holds (143); a refused file that offers nothing leaving the text's own offer
+// (144); the other box of a pair offering the split, which this box's messages then point at (145);
+// and file reads left pending across other actions, ignored when anything happened in the box since
+// (147). The model states the rule on its own; it imports nothing from the boxes' code.
 import { act, fireEvent, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { expect } from 'vitest';
@@ -108,9 +112,27 @@ export interface Model {
   otherHeld: boolean;
   /** The split this box offers now, if any, and what offered it: the box's text, or a file it refused. */
   offer: (Split & { from: 'text' | 'file' }) | undefined;
+  /** In a pair, the split the other box offers (its text is a combined one: item 145); its action gives this box its part. */
+  otherOffer: Split | undefined;
+  /** A refused file's reason stands: until the box next changes (rule 5), or its input goes (a remount, a closed key box). */
+  refused: boolean;
+  /** File reads still in progress (item 147): each goes stale when anything happens in the box before it finishes. */
+  pending: PendingRead[];
   /** A key box closed over a key whose lines before its BEGIN line were left out says so. */
   leftOut: boolean;
 }
+
+/** A file read still in progress: what it will give (undefined: unreadable), and whether it went stale. */
+export interface PendingRead {
+  text: string | undefined;
+  stale: boolean;
+}
+
+/** Something happened in the box (a change, another file, its input gone): every read in progress is stale (item 147). */
+export const staleReads = (m: Model): void => {
+  for (const read of m.pending) read.stale = true;
+  m.pending = [];
+};
 
 export const newModel = (kind: Kind, value: string | undefined, text: string, hidden?: string, pair?: { other: string | undefined }): Model => ({
   kind,
@@ -124,6 +146,9 @@ export const newModel = (kind: Kind, value: string | undefined, text: string, hi
   other: pair?.other,
   otherHeld: false,
   offer: undefined,
+  otherOffer: undefined,
+  refused: false,
+  pending: [],
   leftOut: false,
 });
 
@@ -140,10 +165,16 @@ function close(m: Model): void {
   m.stood = null;
   m.focused = false;
   m.offer = undefined;
+  // The box's input goes: its reads in progress and a refused file's reason with it.
+  m.refused = false;
+  staleReads(m);
 }
 
 /** Text arrives in the box (typed, pasted, dropped, an accepted file) while it has focus or not (1′). */
 export function arrive(m: Model, next: string, focused: boolean): void {
+  // The box changed: a refused file's reason goes (rule 5), and so does every read in progress (item 147).
+  m.refused = false;
+  staleReads(m);
   const isTaken = takes(m.kind, next);
   // A pair's box offers to split what arrives when it holds a certificate and its key (B23).
   const parts = m.pair ? splitOf(next) : undefined;
@@ -168,12 +199,14 @@ export function arrive(m: Model, next: string, focused: boolean): void {
 }
 
 /**
- * A file the box refused: the box and the value as they were; the split offer follows what the file
- * held (B23), and a file that could not be read (`text` '') offers nothing, so whatever the last file
- * or text offered ends with it.
+ * A file the box refused: the box and the value as they were, its reason standing; the split offer
+ * follows what the file held (B23). A file that offers nothing (one that could not be read: `text`
+ * '') ends an offer a file made, and leaves the one the box's own text makes (item 144).
  */
 export function refusedFile(m: Model, text: string): void {
+  m.refused = true;
   const parts = m.pair ? splitOf(text) : undefined;
+  if (!parts && m.offer?.from === 'text') return;
   m.offer = parts && { ...parts, from: 'file' };
 }
 
@@ -188,23 +221,69 @@ export function split(m: Model): void {
     arrive(m, parts.key, false);
     m.other = parts.certs;
   }
-  // The other box took its part: whatever it held is replaced.
+  // The other box took its part: whatever it held, and offered, is replaced.
   m.otherHeld = false;
+  m.otherOffer = undefined;
   m.offer = undefined;
 }
 
+/** The other box's split action, pressed (item 145): this box's part arrives here, the other part there. */
+export function otherSplit(m: Model): void {
+  const parts = m.otherOffer;
+  if (!parts) return;
+  arrive(m, m.kind === 'cert' ? parts.certs : parts.key, false);
+  m.other = m.kind === 'cert' ? parts.key : parts.certs;
+  m.otherHeld = false;
+  m.otherOffer = undefined;
+}
+
+/** What one box has that an action replaces: a value entered, and text it holds without having taken it. */
+interface Side {
+  value: boolean;
+  held: boolean;
+}
+const SIDES: Side[] = [false, true].flatMap((value) => [false, true].map((held) => ({ value, held })));
+
 /**
- * The split action's name in this box: it says what it replaces (fix round 1, R8). The certificate
- * box's replaces its certificate (the field has a value) and the key entered or text in the key box
- * (fix round 2, R8); the key box's replaces the key that stands and the certificate entered or text
- * in the certificate box. The other box's text is its value's, or text it holds (`otherHeld`).
+ * An action's name: it says what it replaces (fix round 1, R8; fix round 2, R8), a value entered
+ * told from text a box holds (item 143): each of the certificate entered, the text in the
+ * certificate box, the key entered, the text in the key box, in that order, joined with "and"; the
+ * two values alone read "the certificate and the key entered".
+ */
+function actionName(action: 'ssl.split.toKeyBox' | 'ssl.split.toCertBox', cert: Side, key: Side): string {
+  const parts =
+    cert.value && key.value && !cert.held && !key.held
+      ? [t('ssl.split.what.both')]
+      : [
+          ...(cert.value ? [t('ssl.split.what.cert')] : []),
+          ...(cert.held ? [t('ssl.split.what.certText')] : []),
+          ...(key.value ? [t('ssl.split.what.key')] : []),
+          ...(key.held ? [t('ssl.split.what.keyText')] : []),
+        ];
+  if (parts.length === 0) return t(action);
+  const what = parts.length === 1 ? (parts[0] as string) : t('ssl.split.what.list', { first: parts.slice(0, -1).join(', '), last: parts.at(-1) as string });
+  return t(`${action}Replacing`, { what });
+}
+
+/**
+ * The split action's name in this box: the certificate box's replaces its certificate (the field has
+ * a value) and the key entered and text in the key box; the key box's replaces the key that stands
+ * and the certificate entered and text in the certificate box. The other box's value is `other`, its
+ * text `otherHeld`; this box's own text is the action's subject and is not named.
  */
 export function splitLabel(m: Model): string {
-  const cert = m.kind === 'cert' ? m.value !== undefined : m.other !== undefined || m.otherHeld;
-  const key = m.kind === 'cert' ? m.other !== undefined || m.otherHeld : standing(m) !== undefined;
-  const what = cert && key ? 'both' : cert ? 'cert' : key ? 'key' : undefined;
-  const action = m.kind === 'cert' ? 'ssl.split.toKeyBox' : 'ssl.split.toCertBox';
-  return what ? t(`${action}Replacing`, { what: t(`ssl.split.what.${what}`) }) : t(action);
+  const other: Side = { value: m.other !== undefined, held: m.otherHeld };
+  return m.kind === 'cert'
+    ? actionName('ssl.split.toKeyBox', { value: m.value !== undefined, held: false }, other)
+    : actionName('ssl.split.toCertBox', other, { value: standing(m) !== undefined, held: false });
+}
+
+/** The name of the other box's action (item 145): it replaces this box's value and the text this box holds. */
+export function otherSplitLabel(m: Model): string {
+  const own: Side = { value: m.value !== undefined, held: held(m) };
+  return m.kind === 'cert'
+    ? actionName('ssl.split.toCertBox', own, { value: m.other !== undefined, held: false })
+    : actionName('ssl.split.toKeyBox', { value: m.other !== undefined, held: false }, own);
 }
 /**
  * What a box says to do by hand, past the split action (fix round 2, R7): none of it while an offer
@@ -215,7 +294,9 @@ const BY_HAND = [
   t('ssl.pem.fileRefused', { problem: '\u0000' }).split('\u0000')[0] as string,
 ];
 /** Every name a split action can have, to check that none but the model's is on the page. */
-const SPLIT_LABELS = ['ssl.split.toKeyBox', 'ssl.split.toCertBox'].flatMap((action) => [t(action), ...['cert', 'key', 'both'].map((what) => t(`${action}Replacing`, { what: t(`ssl.split.what.${what}`) }))]);
+const SPLIT_LABELS = [
+  ...new Set((['ssl.split.toKeyBox', 'ssl.split.toCertBox'] as const).flatMap((action) => SIDES.flatMap((cert) => SIDES.map((key) => actionName(action, cert, key))))),
+];
 
 /** The box loses focus: key blocks in text not taken become markers; nothing opens or closes (rule 9). */
 export function leave(m: Model): void {
@@ -229,8 +310,12 @@ const ENCRYPTED = `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${'E'.repeat(80)}\n---
 const HALF_KEY = '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49';
 /** Text the other box of a pair does not take (the `otherText` action): a half key, or a certificate box's text with no PEM label. */
 const OTHER_HELD: Record<Kind, string> = { key: HALF_KEY, cert: 'not a certificate yet' };
+/** A combined text given to the other box (the `otherText` action, item 145): it holds it, and offers the split. */
+const OTHER_COMBINED: Record<Kind, string> = { key: EC_PAIR.key + EC_PAIR.cert, cert: EC_PAIR.cert + EC_PAIR.key };
 /** The files that hold a certificate and its key: a pair's box refuses them and offers the split. */
 const COMBINED_FILES = ['combined', 'keyPlusCert', 'p12'];
+/** Files every box refuses that offer nothing: beside the text's own offer, they leave it (item 144). */
+const PLAIN_REFUSED = ['noLabel', 'empty', 'big', 'binary'];
 
 /** Every kind of text a user may type, paste or drop, for either kind of box. */
 export const TEXTS: Record<string, string> = {
@@ -287,10 +372,12 @@ export const FILE_NAMES = Object.keys(FILES);
 /**
  * What a user does to a box. Text arrives typed or pasted (focused), dropped on the box or on its
  * upload bar while it has no focus, or dropped on it while it has; a drop may carry nothing; a file
- * comes by a real click on Upload file; the box is emptied, left, returned to; a key box is kept
- * (Keep the entered key) or its key removed; a combined text is split between a pair's boxes (B23);
- * in a pair, text the other box does not take is typed there (fix round 2, R8); and saving is asked
- * for where the level has a save.
+ * comes by a real click on Upload file, now and then one whose reading is left pending across the
+ * actions that follow (item 147), each finishing at the start of a later step; the box is emptied,
+ * left, returned to; a key box is kept (Keep the entered key) or its key removed; a combined text is
+ * split between a pair's boxes (B23), by this box's action or the other's; in a pair, text the other
+ * box does not take is typed there (fix round 2, R8), a combined text among it (item 145); and saving
+ * is asked for where the level has a save.
  */
 export const ACTIONS = ['paste', 'dropBox', 'dropBar', 'dropFocused', 'dropNothing', 'upload', 'empty', 'leave', 'return', 'keep', 'remove', 'split', 'otherText', 'save'] as const;
 export type Action = (typeof ACTIONS)[number];
@@ -328,6 +415,8 @@ export class BoxRun {
   readonly scope: () => HTMLElement;
   readonly user: UserEvent;
   readonly cov: Coverage;
+  /** Files whose reading was left pending (item 147), oldest first, with the way to finish each. */
+  private slow: { read: PendingRead; release: () => void }[] = [];
 
   constructor(m: Model, label: string, scope: () => HTMLElement, user: UserEvent, cov: Coverage) {
     this.m = m;
@@ -397,24 +486,68 @@ export class BoxRun {
       case 'remove':
         return !present(m);
       case 'split':
-        return m.offer !== undefined;
+        return m.offer !== undefined || m.otherOffer !== undefined;
       case 'otherText':
-        // Once it holds that text, typing it again changes nothing.
-        return m.pair && !m.otherHeld;
+        // Once it holds text it does not take, typing more of it changes nothing; over a combined text, other text ends its offer.
+        return m.pair && (!m.otherHeld || m.otherOffer !== undefined);
       default:
         return true;
     }
   }
 
-  /** Picks the next action among those this box offers now; an offered split is made likelier, as the next text usually ends it. */
+  /**
+   * Picks the next action among those this box offers now; an offered split is made likelier, as the
+   * next text usually ends it; so is a file beside the text's own offer, which a refused one leaves
+   * standing (item 144).
+   */
   next(r: ReturnType<typeof prng>, save: boolean): Action {
+    // This box's own offer likelier still: a slow file or the other box's action often ends it first.
+    if (this.m.offer !== undefined && r.int(3) === 0) return 'split';
     if (this.possible('split') && r.int(3) === 0) return 'split';
+    if (this.m.offer?.from === 'text' && r.int(4) === 0) return 'upload';
     return r.pick(actionsFor(this.m.kind, save).filter((a) => this.possible(a)));
+  }
+
+  /**
+   * The oldest file read left pending finishes (item 147): ignored when anything happened in the box
+   * since it began (it went stale); otherwise judged as an upload is, the box having focus or not.
+   */
+  async finishRead(): Promise<void> {
+    const next = this.slow.shift();
+    if (!next) return;
+    await act(async () => {
+      next.release();
+      await Promise.resolve();
+    });
+    await settle();
+    const { read } = next;
+    if (read.stale) {
+      this.cov.add('a stale read ignored');
+      return;
+    }
+    const m = this.m;
+    m.pending = m.pending.filter((p) => p !== read);
+    this.cov.add('a pending read finished');
+    if (read.text !== undefined && takes(m.kind, read.text)) this.arrived(read.text, m.focused, 'late file');
+    else {
+      const heldBefore = held(m);
+      refusedFile(m, read.text ?? '');
+      this.cov.add('a pending read finished, refused');
+      if (m.offer?.from === 'file') this.cov.add('split offered for a refused file');
+      if (m.offer?.from === 'file' && heldBefore) this.cov.add('a refused combined file over held text');
+    }
+  }
+
+  /** Every pending read went stale with the model starting over (a fresh dialog): they finish as nothing. */
+  dropReads(): void {
+    staleReads(this.m);
   }
 
   /** Performs `action` (save excepted: the level does it); returns false when it could not run here. */
   async step(action: Exclude<Action, 'save'>, r: ReturnType<typeof prng>): Promise<boolean> {
     const m = this.m;
+    // A read left pending may finish now, before this step's action.
+    if (this.slow.length > 0 && r.int(3) === 0) await this.finishRead();
     switch (action) {
       case 'paste':
       case 'empty': {
@@ -453,10 +586,14 @@ export class BoxRun {
         return true;
       }
       case 'upload': {
-        // Over text the box holds, a combined file is likelier (fix round 2, R7: its offer over held text).
-        const name = m.pair && held(m) && r.int(2) === 0 ? r.pick(COMBINED_FILES) : r.pick(FILE_NAMES);
+        // Over text the box holds, a combined file is likelier (fix round 2, R7: its offer over held text);
+        // beside the text's own offer, so is a refused file that offers nothing (item 144).
+        const bias = m.offer?.from === 'text' ? r.int(3) : m.pair && held(m) ? r.int(2) + 1 : 2;
+        const name = bias === 0 ? r.pick(PLAIN_REFUSED) : bias === 1 ? r.pick(COMBINED_FILES) : r.pick(FILE_NAMES);
         const heldBefore = held(m);
         const spec = FILES[name] as (typeof FILES)[string];
+        // Now and then a file whose text arrives only later (item 147): its reading stays pending.
+        const slow = spec.text !== undefined && r.int(3) === 0 ? deferred(spec.file(), spec.text) : undefined;
         const el = await this.ensureBox();
         const input = el.closest('.ssl-pem')?.querySelector<HTMLInputElement>('input[type="file"]') as HTMLInputElement;
         let picker = 0;
@@ -468,16 +605,27 @@ export class BoxRun {
         this.leftByClick();
         expect(picker, `Upload file reached the file picker (${name})`).toBe(1);
         expect(input.isConnected, 'the file input is still on the page').toBe(true);
-        await this.user.upload(input, spec.file());
+        // Another file: every read still in progress in this box goes stale (item 147).
+        staleReads(m);
+        await this.user.upload(input, slow?.file ?? spec.file());
         await settle();
         this.cov.add(`file ${name}`);
+        if (slow) {
+          const read: PendingRead = { text: spec.text, stale: false };
+          m.pending.push(read);
+          this.slow.push({ read, release: slow.release });
+          this.cov.add('upload: read left pending');
+          return true;
+        }
         // Judged before anything changes (rule 5): a refused file changes nothing, but what it held may be split (B23).
         if (spec.text !== undefined && takes(m.kind, spec.text)) this.arrived(spec.text, false, 'file');
         else {
           this.cov.add('file refused');
+          const textOffer = m.offer?.from === 'text';
           refusedFile(m, spec.text ?? '');
-          if (m.offer) this.cov.add('split offered for a refused file');
-          if (m.offer && heldBefore) this.cov.add('a refused combined file over held text');
+          if (m.offer?.from === 'file') this.cov.add('split offered for a refused file');
+          if (m.offer?.from === 'file' && heldBefore) this.cov.add('a refused combined file over held text');
+          if (textOffer && m.offer?.from === 'text') this.cov.add("a refused file left the text's offer");
         }
         return true;
       }
@@ -511,8 +659,10 @@ export class BoxRun {
         return true;
       }
       case 'otherText': {
-        // Text the other box does not take, typed there (fix round 2, R8): a closed key box is opened
-        // with Replace key first. The focus moves there, so this box is left.
+        // Text the other box does not take, typed there (fix round 2, R8), now and then a combined text,
+        // which it then offers to split (item 145); over that, other text ends its offer. A closed key box
+        // is opened with Replace key first. The focus moves there, so this box is left.
+        const combined = m.otherOffer === undefined && r.int(2) === 0;
         const label = t(m.kind === 'cert' ? 'ssl.pem.key' : 'ssl.pem.cert');
         const find = () => within(this.scope()).queryByRole<HTMLTextAreaElement>('textbox', { name: label });
         if (!find()) {
@@ -526,21 +676,31 @@ export class BoxRun {
         const box = this.box();
         if (box && m.focused) this.blur(box);
         act(() => other.focus());
-        fireEvent.change(other, { target: { value: OTHER_HELD[m.kind === 'cert' ? 'key' : 'cert'] } });
+        const otherKind = m.kind === 'cert' ? 'key' : 'cert';
+        fireEvent.change(other, { target: { value: combined ? OTHER_COMBINED[otherKind] : OTHER_HELD[otherKind] } });
         m.otherHeld = true;
+        m.otherOffer = combined ? splitOf(OTHER_COMBINED[otherKind]) : undefined;
+        if (combined) this.cov.add('the other box offers');
         m.focused = false;
         return true;
       }
       case 'split': {
-        const action = this.button(splitLabel(m));
-        if (!action || !m.offer) return false;
-        this.cov.add(`split from the ${m.kind} box`);
-        if (m.otherHeld) this.cov.add(`split from the ${m.kind} box over text in the other box`);
+        // This box's action (likelier), or the other box's when it offers (item 145).
+        const own = m.offer !== undefined && (m.otherOffer === undefined || r.int(4) !== 0);
+        const action = this.button(own ? splitLabel(m) : otherSplitLabel(m));
+        if (!action) return false;
+        // Counted by the box whose action it is.
+        const pressedIn = own ? m.kind : m.kind === 'cert' ? 'key' : 'cert';
+        this.cov.add(`split from the ${pressedIn} box`);
+        if (own && m.otherHeld) this.cov.add(`split from the ${m.kind} box over text in the other box`);
+        if (!own) this.cov.add('split from the other box');
+        if (!own && held(m)) this.cov.add('split from the other box over text in this box');
         await this.user.click(action);
         // The click left the box (its key blocks became markers), then each part went to its box.
         this.leftByClick();
         m.focused = false;
-        split(m);
+        if (own) split(m);
+        else otherSplit(m);
         return true;
       }
     }
@@ -550,22 +710,34 @@ export class BoxRun {
   check(where: string): void {
     this.checkBox(where);
     const m = this.m;
-    // B23: the split is offered exactly when the model says, under its name, and nowhere else.
-    const offered = m.offer ? splitLabel(m) : undefined;
-    // R8, both ways: the name says it replaces text the other box holds, with no value there.
+    // B23: the split is offered exactly when the model says, under its name, and nowhere else: this
+    // box's action, and the other box's while it offers (item 145).
+    const offered = new Set([...(m.offer ? [splitLabel(m)] : []), ...(m.otherOffer ? [otherSplitLabel(m)] : [])]);
+    // R8, both ways: the name says it replaces text the other box holds, with no value there; and,
+    // item 143, both a value and text when both are there.
     if (m.offer && m.otherHeld && m.other === undefined) this.cov.add(`the ${m.kind} box's split names text in the other box`);
-    for (const label of SPLIT_LABELS) expect(this.button(label) !== null, `${where}: the split action "${label}"`).toBe(offered === label);
-    // R7 (fix rounds 1 and 2): an offer stands ⇒ no by-hand message in the box, whatever offered it;
-    // its messages point at the action: the combined text's (from the text), or the file's and, over
-    // text the box holds, that the action replaces it (from a file). Without an offer, none of these.
+    if (m.offer && m.otherHeld && m.other !== undefined) this.cov.add(`the ${m.kind} box's split names a value and text in the other box`);
+    for (const label of SPLIT_LABELS) expect(this.button(label) !== null, `${where}: the split action "${label}"`).toBe(offered.has(label));
+    // R7 (fix rounds 1 and 2), item 145: an offer stands in either box ⇒ no by-hand message in this
+    // box, whatever offered it; its messages point at the action: the combined text's (from the text),
+    // or the file's and, over text the box holds, that the action replaces it (from a file); a refused
+    // file beside the text's offer says only that it was not put here (item 144); while the other box
+    // offers, that its action replaces this box's text, and a refused file's reason says so too.
+    // Without an offer, none of these.
     const box = this.box();
     if (box) {
       const said = box.closest('.ui-field')?.querySelector('.ui-field__error')?.textContent ?? '';
-      if (m.offer) for (const message of BY_HAND) expect(said.includes(message), `${where}: a by-hand message beside the split: "${message}"`).toBe(false);
+      if (m.offer || m.otherOffer) for (const message of BY_HAND) expect(said.includes(message), `${where}: a by-hand message beside the split: "${message}"`).toBe(false);
+      if (!m.offer && m.otherOffer && (held(m) || m.refused)) this.cov.add("this box's messages point at the other box's action");
       expect(said.includes(t('ssl.split.held')), `${where}: the box's message points at the split (its text)`).toBe(m.offer?.from === 'text');
       expect(said.includes(t('ssl.split.file')), `${where}: the file's reason points at the split`).toBe(m.offer?.from === 'file');
       const over = t(m.kind === 'cert' ? 'ssl.split.overCert' : 'ssl.split.overKey');
       expect(said.includes(over), `${where}: the box's message says the split replaces its text`).toBe(m.offer?.from === 'file' && held(m));
+      expect(said.includes(t('ssl.split.fileOverText')), `${where}: a refused file beside the text's offer`).toBe(m.offer?.from === 'text' && m.refused);
+      const byOther = t(m.kind === 'cert' ? 'ssl.split.byKeyBox' : 'ssl.split.byCertBox');
+      expect(said.includes(byOther), `${where}: the box's message points at the other box's action`).toBe(!m.offer && m.otherOffer !== undefined && held(m));
+      const fileByOther = t(m.kind === 'cert' ? 'ssl.split.fileByKeyBox' : 'ssl.split.fileByCertBox');
+      expect(said.includes(fileByOther), `${where}: a refused file's reason points at the other box's action`).toBe(!m.offer && m.otherOffer !== undefined && m.refused);
     }
   }
 
@@ -578,7 +750,7 @@ export class BoxRun {
     const m = this.m;
     const [cert, key] = m.kind === 'cert' ? [m.value, m.other] : [m.other, m.value];
     const shown = within(this.scope()).queryByText(t('ssl.key.needed')) !== null;
-    expect(shown, `${where}: "Enter the private key"`).toBe(cert !== undefined && key === undefined && m.offer === undefined);
+    expect(shown, `${where}: "Enter the private key"`).toBe(cert !== undefined && key === undefined && m.offer === undefined && m.otherOffer === undefined);
   }
 
   private checkBox(where: string): void {
@@ -618,6 +790,14 @@ export class BoxRun {
       for (const key of ['ssl.box.hiddenStays', 'ssl.box.keptNone', 'ssl.box.keptCert']) expect(shows(key), `${where}: the note ${key}`).toBe(note === key);
     }
   }
+}
+
+/** `file` with its text arriving only when `release` is called (item 147): a read left pending. */
+function deferred(file: File, text: string): { file: File; release: () => void } {
+  let release = () => {};
+  const arrives = new Promise<string>((done) => (release = () => done(text)));
+  Object.defineProperty(file, 'text', { value: () => arrives });
+  return { file, release: () => release() };
 }
 
 /** Runs `run` and returns its first failure as one line, or undefined. */

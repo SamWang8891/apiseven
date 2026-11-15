@@ -19,20 +19,22 @@ export interface NewIdFieldProps {
   draft: Obj;
   setDraft: (next: Obj) => void;
   inputRef: Ref<HTMLInputElement>;
-  /** A required id is missing and a Save was tried. */
+  /** A required id is missing, and a Save was tried or the field typed in. */
   missing: boolean;
-  /** Why the kind can't take the id as it is (ResourceDef.idProblem); shown at once. */
+  /** Why the kind can't take the id as it is (ResourceDef.idProblem); shown at once, unless it only says a part is missing (the frame waits as for `missing`). */
   refused?: string;
   /** The id, when an object already has it. */
   taken?: string;
+  /** The user typed in a text box of the field (the frame's "touched", Task 16b item 154). */
+  onTyped?: () => void;
 }
 
-export function NewIdField({ kind, parent, value, onChange, draft, setDraft, inputRef, missing, refused, taken }: NewIdFieldProps) {
+export function NewIdField({ kind, parent, value, onChange, draft, setDraft, inputRef, missing, refused, taken, onTyped }: NewIdFieldProps) {
   const def = registry[kind];
   const error = missing ? t('editor.id.required') : (refused ?? (taken !== undefined ? t('editor.taken.message', { kind: def.singular, id: taken }) : undefined));
   const Own = def.NewId;
   return (
-    <div className={Own ? 'ed-newid ed-newid--own' : 'ed-newid'}>
+    <div className={Own ? 'ed-newid ed-newid--own' : 'ed-newid'} onInput={(e) => e.target instanceof HTMLInputElement && onTyped?.()}>
       {Own ? (
         <Own value={value} onChange={onChange} draft={draft} setDraft={setDraft} error={error} inputRef={inputRef} />
       ) : (

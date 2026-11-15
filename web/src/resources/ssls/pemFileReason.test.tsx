@@ -36,9 +36,11 @@ describe("a refused file's reason", () => {
     const box = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.click(box);
     await user.paste(SEED_CERT + SEED_KEY);
-    // A file the box refuses, dropped while the box has focus and shows a whole key.
+    // A file the box refuses, dropped while the box has focus and shows a whole key. The text's own
+    // offer of the split stands (Task 16b, item 144), so the reason says the file was not put here
+    // in the words that point at that offer.
     fireEvent.drop(box, { dataTransfer: { files: [new File(['hello world'], 'notes.txt', { type: 'text/plain' })], getData: () => '' } });
-    const reason = t('ssl.pem.fileRefused', { problem: t('ssl.pem.noCertLabel') });
+    const reason = t('ssl.split.fileOverText');
     await waitFor(() => expect(box).toHaveAccessibleDescription(expect.stringContaining(reason) as string));
     expect(box).toHaveFocus();
 

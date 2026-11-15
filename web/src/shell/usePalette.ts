@@ -20,7 +20,9 @@ const switchTarget = (state: unknown): string | undefined => (isObj(state) && ty
 /**
  * The palette's host, in the shell: whether it is open (Cmd/Ctrl-K, "/", the header button), where
  * focus goes when it closes (back to where it was; after a navigation, to `main` when the page left
- * it nowhere), and the connection switch a palette navigation asked for.
+ * it nowhere; after a navigation an editor's leave question held and the user answered Stay, back to
+ * where it was, or to `main` when that element is gone: Task 16b, item 136), and the connection
+ * switch a palette navigation asked for.
  */
 export function usePalette(main: RefObject<HTMLElement | null>) {
   const [open, setOpen] = useState(false);
@@ -63,6 +65,35 @@ export function usePalette(main: RefObject<HTMLElement | null>) {
     after.current = undefined;
     if (nothingFocused()) main.current?.focus({ preventScroll: true });
   }, [location.key, main]);
+
+  // A palette navigation the leave guard held: its question (a modal, in a portal on body) opens, and
+  // when it closes with the page unchanged (Stay), focus goes back where it was before the palette,
+  // or to `main` when that is gone. The dialog has no trigger to return focus to, so it is left on
+  // `body` (or `main`); nothing else is moved. Ends with the navigation, or with that answer.
+  const sawQuestion = useRef(false);
+  useEffect(() => {
+    if (open || after.current !== 'page') return;
+    sawQuestion.current = false;
+    const settle = () => {
+      if (after.current !== 'page') return observer.disconnect();
+      if (overlayOpen()) {
+        sawQuestion.current = true;
+        return;
+      }
+      if (!sawQuestion.current) return;
+      after.current = undefined;
+      observer.disconnect();
+      const active = document.activeElement;
+      if (!(nothingFocused() || active === main.current)) return;
+      const el = returnTo.current;
+      if (el?.isConnected) el.focus();
+      else main.current?.focus({ preventScroll: true });
+    };
+    const observer = new MutationObserver(settle);
+    observer.observe(document.body, { childList: true });
+    settle();
+    return () => observer.disconnect();
+  }, [open, main]);
 
   // A connection switch rides on its navigation (switchState): done once that navigation is through.
   const navigate = useNavigate();

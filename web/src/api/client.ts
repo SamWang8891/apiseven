@@ -81,9 +81,9 @@ export class AdminClient {
     return toItem(kind, body);
   }
 
-  /** POST when there is no ID and the kind allows POST; otherwise PUT (to the item when an ID is given). */
+  /** POST when there is no ID and the kind allows POST; otherwise PUT (to the item when an ID is given, even an empty one, which the path refuses). */
   async create(kind: Kind, body: Obj, id?: string, parent?: Parent): Promise<Item> {
-    if (id) return this.replace(kind, id, body, parent);
+    if (id !== undefined) return this.replace(kind, id, body, parent);
     const method = METHODS[kind].post ? 'POST' : 'PUT';
     const res = await this.request(method, collectionPath(kind, parent), undefined, body);
     return toItem(kind, res.body);

@@ -42,6 +42,7 @@ import { useSaveRequest } from './useSaveRequest';
 import { SaveRefusalsContext } from './saveRefusals';
 import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { useShownTabs } from './useShownTabs';
+import { useRequiredValues } from './untouched';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
 const valueOf = (item: Item): Obj => stripTimestamps(item.value);
@@ -124,12 +125,6 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   // The draft changes only while editing and not saving (what is typed during a save would be
   // replaced by the saved object). The tab area is locked meanwhile as well; this is the backstop.
   const editable = !locked && !saving;
-  const edit = useCallback(
-    (next: Obj) => {
-      if (editable) setDraft(next);
-    },
-    [editable, setDraft],
-  );
 
   // A background refresh shows on a locked, unchanged page; while editing, the save's conflict check handles it.
   const [seen, setSeen] = useState(item);
@@ -154,11 +149,25 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const checked = useMemo(() => def.validate?.(draft, env) ?? [], [def, draft, env]);
   const frameIssues = useMemo(() => idIssues(def, draft, { id, isNew, newId, typedId }), [def, draft, id, isNew, newId, typedId]);
   const issues = useMemo(() => [...checked, ...frameIssues], [checked, frameIssues]);
+  // A new object's required values wait for a refused Save or the user's touch (untouched.ts): such a
+  // problem is neither shown nor counted on a badge until then, though Save is refused for it.
+  const required = useRequiredValues({ isNew, attempted, draft, issues, createId, idWithSlash: def.idWithSlash });
+  const { shown: shownIssues, noteEdit } = required;
+  const edit = useCallback(
+    (next: Obj) => {
+      if (!editable) return;
+      noteEdit(next);
+      setDraft(next);
+    },
+    [editable, setDraft, noteEdit],
+  );
 
   const shownTabs = useShownTabs(def.tabs);
   const tabFields = useMemo(() => shownTabs.map((tab) => ({ id: tab.id, fields: tab.fields, rest: tab.restFields })), [shownTabs]);
   const tabIds = [...shownTabs.map((tab) => tab.id), JSON_TAB];
-  const byTab = useMemo(() => issuesByTab(issues, tabFields, JSON_TAB), [issues, tabFields]);
+  const byTab = useMemo(() => issuesByTab(shownIssues, tabFields, JSON_TAB), [shownIssues, tabFields]);
+  // A refused Save goes to the first tab with a problem, shown or not yet (it shows them all).
+  const byTabAll = useMemo(() => issuesByTab(issues, tabFields, JSON_TAB), [issues, tabFields]);
   // A taken id is an issue only while the draft still holds that id (a consumer's username is a field).
   const failureIssue = useMemo<Issue | undefined>(
     () => (failure?.path !== undefined && (failure.taken === undefined || failure.taken === createId) ? { path: failure.path, message: failure.message } : undefined),
@@ -240,7 +249,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       saveAnyway.refused(anywayGrounds);
       // Input this tab holds comes first: stay here, on the field that holds it (the one the toast names).
       const holding = pending.length > 0 ? heldField(pending[0], bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])')) : undefined;
-      const first = pending.length > 0 ? active : tabIds.find((tab) => byTab.has(tab));
+      const first = pending.length > 0 ? active : tabIds.find((tab) => byTabAll.has(tab));
       if (first !== undefined && first !== active) goTab(first);
       else if (holding) holding.focus();
       else if (first === undefined && (idMissing || idRefused)) idRef.current?.focus();
@@ -279,8 +288,13 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         lock(false);
       }
     } else if ('conflict' in result) {
+      // The frame's own outcomes (here and below) are not the local checks' refusal: the offer's
+      // memory of it goes, so nothing says "nothing else stops the save"; the session's yes stays
+      // (Task 16b, item 151). Overwrite goes on anyway through `conflict.anyway`.
+      saveAnyway.refused(false);
       setConflict({ item: result.conflict, anyway });
     } else if ('exists' in result || 'unchecked' in result) {
+      saveAnyway.refused(false);
       // A create never overwrites: the id is taken, or could not be checked (saveResource).
       // On a page fixed to that id (a plugin's metadata), the stored object is shown on request instead of linked.
       const refusal = 'exists' in result ? takenFailure(kind, result.exists, parent, fixedId !== undefined) : uncheckedFailure(createId ?? '', result.unchecked);
@@ -395,8 +409,9 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
             draft={draft}
             setDraft={edit}
             inputRef={idRef}
-            missing={attempted && idMissing}
-            refused={idRefused}
+            missing={!required.idWaits && idMissing}
+            refused={required.idWaits && required.idPartMissing ? undefined : idRefused}
+            onTyped={required.idTyped}
             // A refused create's id while the field still holds it, else an object of a loaded list that has it (the GET decides).
             taken={createId !== undefined && failure?.taken === createId ? createId : createId !== undefined ? findInCtx(kind, createId, ctx)?.id : undefined}
           />

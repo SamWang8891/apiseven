@@ -9,6 +9,12 @@ export interface Issue {
   message: string;
   /** The tab id, when the producer knows it (otherwise the tab owning the path's first segment). */
   tab?: string;
+  /**
+   * It only says a required value is missing, where its path can't show that (one about the object
+   * as a whole): a new object shows it once a Save was refused (untouched.ts). Otherwise judged by
+   * the path: nothing in the draft there.
+   */
+  missing?: boolean;
 }
 
 /** The message of the issue at exactly `path`. */

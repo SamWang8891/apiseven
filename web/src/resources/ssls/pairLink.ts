@@ -9,22 +9,30 @@ export interface BoxHandle {
   take: (text: string) => void;
 }
 
+/** What one box of the pair has, which the other box's action replaces: a value, and text it holds without having taken it (Task 16b, item 143). */
+export interface PairSide {
+  value: boolean;
+  held: boolean;
+}
+
 /** What links a pair's two boxes (usePairLink). */
 export interface PairLink {
   certRef: Ref<BoxHandle>;
   keyRef: Ref<BoxHandle>;
   /** Gives the certificates to the certificate box and the key to the key box, each through its own `set`. */
   split: (parts: SplitParts) => void;
-  /** The pair has a key already, or its key box holds text: the certificate box's action says it replaces it. */
-  keyEntered: boolean;
-  /** The pair has a certificate already, or its certificate box holds text: the key box's action says it replaces it. */
-  certEntered: boolean;
-  /** The certificate box says whether it holds text (it owns its text). */
-  reportCertText: (holds: boolean) => void;
-  /** The key box says whether it holds text (fix round 2, R8). */
-  reportKeyText: (holds: boolean) => void;
+  /** The key side: the certificate box's action says it replaces a key entered and text the key box holds (fix round 2, R8). */
+  key: PairSide;
+  /** The certificate side: the key box's action says it replaces a certificate entered and text the certificate box holds. */
+  cert: PairSide;
+  /** The certificate box says whether it holds text it has not taken (it owns its text). */
+  reportCertHeld: (held: boolean) => void;
+  /** The key box says whether it holds text it has not taken. */
+  reportKeyHeld: (held: boolean) => void;
   /** Either box offers the split now: a line beside the boxes that says to do by hand what the action does gives way (R11). */
   offered: boolean;
+  /** Which box offers: the other box's messages point at that action, which replaces its text (item 145). */
+  offers: { cert: boolean; key: boolean };
   /** A box says whether it offers the split. */
   reportOffer: (box: 'cert' | 'key', offers: boolean) => void;
 }
@@ -37,20 +45,21 @@ export interface PairLink {
 export function usePairLink(values: { cert: boolean; key: boolean }): PairLink {
   const certRef = useRef<BoxHandle>(null);
   const keyRef = useRef<BoxHandle>(null);
-  // View state, mirrors of each box's own state: whether it holds text (for the other box's label),
-  // and whether it offers the split.
-  const [certText, setCertText] = useState(false);
-  const [keyText, setKeyText] = useState(false);
+  // View state, mirrors of each box's own state: whether it holds text it has not taken (for the
+  // other box's label), and whether it offers the split.
+  const [certHeld, setCertHeld] = useState(false);
+  const [keyHeld, setKeyHeld] = useState(false);
   const [offers, setOffers] = useState({ cert: false, key: false });
   const reportOffer = useCallback((box: 'cert' | 'key', on: boolean) => setOffers((now) => (now[box] === on ? now : { ...now, [box]: on })), []);
   return {
     certRef,
     keyRef,
-    keyEntered: values.key || keyText,
-    certEntered: values.cert || certText,
-    reportCertText: setCertText,
-    reportKeyText: setKeyText,
+    key: { value: values.key, held: keyHeld },
+    cert: { value: values.cert, held: certHeld },
+    reportCertHeld: setCertHeld,
+    reportKeyHeld: setKeyHeld,
     offered: offers.cert || offers.key,
+    offers,
     reportOffer,
     split: ({ certs, key }) => {
       certRef.current?.take(certs);

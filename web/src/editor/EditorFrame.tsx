@@ -45,8 +45,8 @@ function NewEditor({ kind, parent, duplicateFrom, initial }: { kind: Kind; paren
   return <Editor kind={kind} parent={parent} start={start} copyOf={duplicateFrom} />;
 }
 
-/** The read says the object is not stored. */
-const absent = (error: ApiError | null): boolean => error?.status === 404;
+/** APISIX said the object is not stored: its 404, never the client's refusal of an id no path can hold (also 404; Task 16b, item 142). */
+const absent = (error: ApiError | null): boolean => error?.status === 404 && error.kind !== 'refused';
 
 /**
  * Loads the object, then edits it; the loading, not-found and failed states in between. For a kind

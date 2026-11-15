@@ -287,6 +287,29 @@ describe('leaving an editor', () => {
     expect(window.location.hash).toBe('#/routes/r1');
     expect(main().getByRole('textbox', { name: 'URI' })).toHaveValue('/cart/*more');
     expect(screen.queryByRole('dialog', { name: t('palette.title') })).not.toBeInTheDocument();
+    // Focus goes back where it was before the palette opened (Task 16b, item 136).
+    await waitFor(() => expect(main().getByRole('textbox', { name: 'URI' })).toHaveFocus());
+  });
+
+  it('after Stay, focus goes to the main area when what had it before the palette is gone (Task 16b, item 136)', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
+    const { user } = await open('#/routes/r1');
+    await main().findByRole('heading', { level: 1, name: 'shop' });
+    await user.keyboard('e');
+    await user.type(await main().findByRole('textbox', { name: 'URI' }), 'more');
+    // An element outside React that had focus, gone by the time the user answers.
+    const gone = document.createElement('button');
+    document.body.append(gone);
+    gone.focus();
+    const dialog = await openPalette(user);
+    await user.type(box(), 'blog');
+    await dialog.findByRole('option', { name: /^blog/ });
+    await user.keyboard('{Enter}');
+    const leave = await screen.findByRole('alertdialog', { name: t('editor.leave.title') });
+    gone.remove();
+    await user.click(within(leave).getByRole('button', { name: t('ui.cancel') }));
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
+    expect(window.location.hash).toBe('#/routes/r1');
   });
 
   it('Leave goes to the result', async () => {

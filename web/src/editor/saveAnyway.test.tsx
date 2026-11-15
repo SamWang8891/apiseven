@@ -308,6 +308,45 @@ describe('Save anyway', () => {
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/r1', body: { ...stripTimestamps(ROUTE), uri: '/strict' } }]));
   });
 
+  it('a Save anyway the frame itself refuses (Create over a taken id) leaves no "nothing else stops the save" behind; the session’s yes stays (Task 16b, item 151)', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB], validate: strict }));
+    const { user, admin } = await openEditor('#/routes/new?upstream_id=u1', {
+      objects: { routes: [{ ...ROUTE, id: 'taken' }], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] },
+    });
+    await user.type(await main().findByRole('textbox', { name: 'ID' }), 'taken');
+    await setUri(user, '/strict');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await user.click(await main().findByRole('button', { name: t('editor.anyway.action') }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.anyway.confirm') }));
+    // The frame's own refusal: nothing written, the banner says why, and the offer's claim is gone.
+    expect(await main().findByText(t('editor.taken.title'))).toBeInTheDocument();
+    expect(writesOf(admin)).toEqual([]);
+    expect(offer()).toBeNull();
+    expect(main().queryByRole('button', { name: t('editor.anyway.action') })).toBeNull();
+    // A new id, and Create refused for the local issue again: the offer is back, and the yes given in this session holds.
+    const id = main().getByRole('textbox', { name: 'ID' });
+    await user.clear(id);
+    await user.type(id, 'free');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await user.click(await main().findByRole('button', { name: t('editor.anyway.action') }));
+    expect(confirmDialog()).toBeNull();
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/free', body: { uri: '/strict', status: 1, upstream_id: 'u1' } }]));
+  });
+
+  it('a conflict found by Save anyway: Cancel leaves no offer standing that claims nothing else stops the save (item 151)', async () => {
+    const { user, admin } = await openRoute();
+    await user.keyboard('e');
+    await setUri(user, '/strict');
+    await refusedWithOffer(user, admin);
+    admin.touch('routes', 'r1', { name: 'theirs' });
+    await user.click(anywayButton());
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.anyway.confirm') }));
+    const conflict = await screen.findByRole('dialog', { name: t('editor.conflict.title', { kind: 'Route', name: 'web' }) });
+    await user.click(within(conflict).getByRole('button', { name: t('ui.cancel') }));
+    expect(offer()).toBeNull();
+    expect(writesOf(admin)).toEqual([]);
+  });
+
   /** The stored route with proxy-rewrite, opened on its JSON tab and unlocked, its text replaced by `draft`. */
   async function routeJson(draft: (stored: Obj) => Obj) {
     const stored = { ...ROUTE, plugins: { 'proxy-rewrite': { host: 'upstream.test' } } };

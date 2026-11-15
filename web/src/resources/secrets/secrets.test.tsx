@@ -97,6 +97,30 @@ describe('a new secret', () => {
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'secrets/aws/x', body: { access_key_id: 'AKIA1', secret_access_key: 'sek' } }]));
   });
 
+  it('choosing a manager does not ask for the ID in red before anything was typed; Create does, and so does an ID typed and taken out again (Task 16b, items 126, 154)', async () => {
+    const { user, admin } = await open('#/secrets/new', []);
+    await pickManager(user, t('sc.manager.vault'));
+    await settled();
+    expect(main().queryByText(t('sc.id.empty'))).toBeNull();
+    expect(idBox()).not.toHaveAttribute('aria-invalid', 'true');
+    // The manager's required settings wait as well: no badge on Settings.
+    expect(main().getByRole('tab', { name: new RegExp(`^${t('sc.tab.config')}`) })).toHaveAccessibleName(t('sc.tab.config'));
+    expect(main().queryByText(t('schema.required'))).toBeNull();
+    await create(user);
+    expect(await main().findByText(t('sc.id.empty'))).toBeInTheDocument();
+    expect(idBox()).toHaveAttribute('aria-invalid', 'true');
+    expect(main().getByRole('tab', { name: new RegExp(`^${t('sc.tab.config')}`) })).toHaveAccessibleName(`${t('sc.tab.config')} ${t('ui.tabs.errors', { count: 3 })}`);
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('an ID typed and taken out again says what is missing at once', async () => {
+    const { user } = await open('#/secrets/new', []);
+    await pickManager(user, t('sc.manager.vault'));
+    await user.type(idBox(), 'x');
+    await user.clear(idBox());
+    expect(main().getByText(t('sc.id.empty'))).toBeInTheDocument();
+  });
+
   it('an id with a slash is refused at once: Save and Cmd/Ctrl-S send nothing, and the toast names the ID', async () => {
     const { user, admin } = await open('#/secrets/~new', []);
     await pickManager(user, t('sc.manager.vault'));

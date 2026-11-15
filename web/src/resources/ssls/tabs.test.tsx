@@ -419,14 +419,17 @@ describe('S3: a refused file leaves the box and the draft as they were', () => {
     const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
     await user.click(key);
     await user.paste('-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49');
-    // Reaching Upload leaves the box: the half key is a marker now, still held.
+    // Reaching Upload leaves the box: the half key is a marker now, still held. While the certificate
+    // box offers the split, which replaces this text, neither message asks for anything by hand
+    // (Task 16b, item 145): both point at that action.
     await upload(user, container, 1, new File([SEED_CERT], 'cert.pem'));
-    await waitFor(() => expect(said(key)).toBe(`${t('ssl.pem.fileRefused', { problem: t('ssl.pem.isCert') })} ${t('ssl.pem.markerKey')}`));
+    await waitFor(() => expect(said(key)).toBe(`${t('ssl.split.fileByCertBox')} ${t('ssl.split.byCertBox')}`));
     expect(key).toHaveValue(t('ssl.pem.marker'));
     expect(value()).toEqual({ status: 1 });
-    // Until the box next changes.
+    // Until the certificate box next changes: its offer ends, and the key box's own reasons are back.
     await user.type(cert, 'd');
     expect(said(cert)).toBe(t('ssl.pem.noCertLabel'));
+    expect(said(key)).toBe(`${t('ssl.pem.fileRefused', { problem: t('ssl.pem.isCert') })} ${t('ssl.pem.markerKey')}`);
   });
 
   it('combined text pasted over a certificate is held, the certificate kept and said so; leaving turns its key block into a marker and it stays held', async () => {

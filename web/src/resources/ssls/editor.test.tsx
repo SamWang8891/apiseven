@@ -586,6 +586,47 @@ describe('O2: a reference is taken only when it is the whole text', () => {
   });
 });
 
+describe('a new SSL opens without red (Task 16b, item 154)', () => {
+  const certTab = () => tab(t('ssl.tab.certificate'));
+  const badge = (label: string, count: number) => `${label} ${t('ui.tabs.errors', { count })}`;
+
+  it('"A certificate is required" and "A private key is required" wait for a refused Create, or for the field to be touched', async () => {
+    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    await settled();
+    for (const label of TAB_LABELS()) expect(tab(label)).toHaveAccessibleName(label);
+    expect(main().queryByText(t('ssl.issue.certRequired'))).toBeNull();
+    expect(main().queryByText(t('ssl.issue.keyRequired'))).toBeNull();
+    // A certificate entered and taken out again: that field was touched (the draft changed there).
+    const cert = main().getByRole('textbox', { name: t('ssl.pem.cert') });
+    await user.click(cert);
+    await user.paste(SEED_CERT);
+    await user.clear(cert);
+    await waitFor(() => expect(certTab()).toHaveAccessibleName(badge(t('ssl.tab.certificate'), 1)));
+    expect(main().getByText(t('ssl.issue.certRequired'))).toBeInTheDocument();
+    expect(main().queryByText(t('ssl.issue.keyRequired'))).toBeNull();
+    // The first refused Create shows all of them.
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(certTab()).toHaveAccessibleName(badge(t('ssl.tab.certificate'), 2)));
+    expect(main().getByText(t('ssl.issue.keyRequired'))).toBeInTheDocument();
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('on the JSON tab: no badge for what is only missing; a value entered there is judged at once', async () => {
+    const { user, admin } = await openEditor('#/ssls/new?tab=json', { objects: { ssls: [], routes: [], services: [] } });
+    const box = await jsonEditor(t('kind.ssls.singular'));
+    for (const label of TAB_LABELS()) expect(tab(label)).toHaveAccessibleName(label);
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(JSON.stringify({ status: 1, sni: 'tls.apiseven.test', cert: 'not a certificate' }));
+    // The certificate is a value the user gave: its problem shows; the key is still only missing.
+    await waitFor(() => expect(certTab()).toHaveAccessibleName(badge(t('ssl.tab.certificate'), 1)));
+    // The refused save opens the Certificate tab, where the key's problem shows too.
+    fireEvent.keyDown(window, { key: 's', metaKey: true });
+    expect(await main().findByText(t('ssl.issue.keyRequired'))).toBeInTheDocument();
+    expect(writesOf(admin)).toEqual([]);
+  });
+});
+
 describe('a reference with white space around it (Task 16b, item 104)', () => {
   it('is taken trimmed in every box: Create sends the references without the white space', async () => {
     const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { schemaOf } from '../test/pluginFixture';
-import { fieldErrors, schemaErrors, schemaGaps, specificErrors, validatorFor, withDefaults } from './ajv';
+import { fieldErrors, schemaErrors, schemaGaps, skippedFormats, specificErrors, validatorFor, withDefaults } from './ajv';
 
 describe('validatorFor', () => {
   it('compiles once per schema object', () => {
@@ -56,10 +56,20 @@ describe('failing open (Task 16 B18): what JavaScript cannot read is left to API
     expect(schemaGaps(schema)).toEqual(['keys']);
   });
 
-  it('an unknown format produces no issue', () => {
-    const schema: Obj = { type: 'object', properties: { at: { type: 'string', format: 'lua-time' } } };
-    expect(fieldErrors(schema, { at: 'whenever' })).toEqual([]);
-    expect(schemaGaps(schema)).toBeUndefined();
+  it('a format produces no issue, and is a gap the note names: the browser checks none (Task 16b, item 153)', () => {
+    const schema: Obj = { type: 'object', properties: { at: { type: 'string', format: 'lua-time' }, ip: { type: 'string', format: 'ipv4' } } };
+    expect(fieldErrors(schema, { at: 'whenever', ip: 'nowhere' })).toEqual([]);
+    expect(schemaGaps(schema)).toEqual(['formats']);
+    expect(skippedFormats(schema)).toEqual(['ipv4', 'lua-time']);
+    // ip-restriction (3.20): its ipv4 / ipv6 formats, in an anyOf beside patterns.
+    expect(schemaGaps(schemaOf('ip-restriction'))).toEqual(['formats']);
+    expect(skippedFormats(schemaOf('ip-restriction'))).toEqual(['ipv4', 'ipv6']);
+  });
+
+  it('a format under not or in a oneOf branch is left to APISIX as an unreadable pattern is: the check never refuses more for it', () => {
+    const schema: Obj = { type: 'object', properties: { a: { type: 'string', not: { format: 'ipv4' } }, b: { oneOf: [{ type: 'string', format: 'ipv4' }, { type: 'string', format: 'ipv6' }] } } };
+    expect(fieldErrors(schema, { a: 'text', b: '10.0.0.1' })).toEqual([]);
+    expect(schemaGaps(schema)).toEqual(['conditions', 'formats']);
   });
 
   it('a schema Ajv cannot compile produces no issue, and says so', () => {

@@ -10,7 +10,7 @@ import { consumerIssues } from '../resources/consumers/validate';
 import type { ValidateEnv } from '../resources/registry';
 import { secretIdProblem } from '../resources/secrets/validate';
 import { resetApp } from '../test/app';
-import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
+import { GENERAL_TAB, jsonEditor, main, openEditor, overrideDef, writesOf } from '../test/editor';
 import { pluginReplies } from '../test/plugins';
 import { getToasts, toastsRaised } from '../ui/toast';
 import { ApiError } from '../api/errors';
@@ -48,6 +48,36 @@ describe('segmentProblem and newIdState', () => {
     expect(newIdState(consumer, { username: 'a/b' }, { isNew: true, newId: '' })).toMatchObject({ createId: 'a/b', refused: 'bad' });
     // A stored object's id is not judged.
     expect(newIdState(consumer, { username: 'a/b' }, { isNew: false, newId: '' })).toMatchObject({ missing: false, refused: undefined });
+  });
+
+  it('an id of "" in the JSON is the frame’s refusal, not "no id" (Task 16b, item 142)', () => {
+    const typed = { idMode: 'required' as const };
+    expect(newIdState(typed, { id: '' }, { isNew: true, newId: '' })).toMatchObject({ createId: '', missing: false, refused: t('editor.id.empty') });
+    expect(newIdState({ idMode: 'optional' as const }, { id: '' }, { isNew: true, newId: '' })).toMatchObject({ createId: '', refused: t('editor.id.empty') });
+    // No id at all stays "missing" (or, where optional, APISIX's to give).
+    expect(newIdState(typed, {}, { isNew: true, newId: '' })).toMatchObject({ createId: undefined, missing: true, refused: undefined });
+  });
+});
+
+describe('an empty id typed into the JSON of a new object (Task 16b, item 142)', () => {
+  it.each([
+    ['a global rule', '#/global_rules/new', { id: '', plugins: {} }],
+    ['a route', '#/routes/new?upstream_id=u1', { id: '', uri: '/a', upstream_id: 'u1' }],
+  ] as const)('%s: no request at all, and the ID is named', async (_, hash, body) => {
+    const { user, admin } = await openEditor(`${hash}${hash.includes('?') ? '&' : '?'}tab=json`, {
+      objects: { global_rules: [], routes: [], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] },
+      replies: pluginReplies(),
+    });
+    const box = await jsonEditor(hash.includes('global') ? t('kind.global_rules.singular') : t('kind.routes.singular'));
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(JSON.stringify(body));
+    const before = admin.requests.length;
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: t('editor.id.empty') })));
+    expect(admin.requests.slice(before).filter((r) => r.url.pathname.includes('/apisix/admin/'))).toEqual([]);
+    expect(writesOf(admin)).toEqual([]);
+    expect(offerButton()).toBeNull();
   });
 });
 

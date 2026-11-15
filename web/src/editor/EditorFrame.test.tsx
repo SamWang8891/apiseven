@@ -495,6 +495,13 @@ describe('a background refresh', () => {
     expect(screen.queryByRole('note', { name: t('editor.foundMeanwhile.title') })).toBeNull();
   });
 
+  it('a read the client refuses (an id no path can hold) is not "missing": no create form for it (Task 16b, item 142)', async () => {
+    const { admin } = renderWithProviders(<EditorPage kind="plugin_metadata" id=".." />, { path: '/plugin_metadata/..', counts: {} });
+    expect(await screen.findByRole('heading', { level: 1, name: t('editor.notFound.title', { kind: t('kind.plugin_metadata.singular'), id: '..' }) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('editor.create') })).toBeNull();
+    expect(admin.requests.filter((r) => r.url.pathname.includes('/apisix/admin/plugin_metadata'))).toEqual([]);
+  });
+
   it('never replaces a draft being edited (the save reports the conflict instead)', async () => {
     const { user, admin, queryClient } = await renderRoute();
     await user.keyboard('e');

@@ -40,6 +40,7 @@ export function newIdState(def: IdRules, draft: Obj, a: { isNew: boolean; fixedI
   const typedId = typeof draft.id === 'string' || typeof draft.id === 'number' ? String(draft.id) : undefined;
   const createId = def.idFromDraft ? def.idFromDraft(draft) : (a.fixedId ?? (a.newId.trim() || typedId));
   const missing = a.isNew && def.idMode !== 'optional' && createId === undefined;
-  const refused = a.isNew && createId !== undefined ? (def.idProblem?.(createId) ?? segmentProblem(createId, def.idWithSlash)) : undefined;
+  // An id of "" (typed into the JSON) is no id the path can hold, and not "no id": refused (Task 16b, item 142).
+  const refused = a.isNew && createId !== undefined ? (def.idProblem?.(createId) ?? (createId === '' ? t('editor.id.empty') : segmentProblem(createId, def.idWithSlash))) : undefined;
   return { typedId, createId, missing, refused };
 }

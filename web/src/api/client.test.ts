@@ -493,8 +493,8 @@ describe('an id that is not one path segment is never sent (fix round 2, R4)', (
     ['secrets', '../a'],
   ] as const)('%s %s: reads and writes fail before any request, as not found, naming the id', async (kind, id) => {
     const { api, calls } = setup(ok);
-    // create(kind, body, '') is a create without an id (POST or PUT to the collection), so '' is not tried there.
-    const calls_ = [() => api.get(kind, id), () => api.replace(kind, id, {}), () => api.remove(kind, id), ...(id === '' ? [] : [() => api.create(kind, {}, id)])];
+    // create(kind, body, '') is a create with an empty id, not one without (Task 16b, item 142): refused too.
+    const calls_ = [() => api.get(kind, id), () => api.replace(kind, id, {}), () => api.remove(kind, id), () => api.create(kind, {}, id)];
     for (const call of calls_) {
       const error = await apiError(call());
       expect(error.kind).toBe('refused');

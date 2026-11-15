@@ -6,7 +6,8 @@
 // fields hold (useSaveRequest):
 // - the model says held: no request, and the toast names the field;
 // - else the value is missing or shorter than the schema's minimum (certificate_scheme 128,
-//   private_key_schema 64; a reference is exempt): no request, and the toast names no held field;
+//   private_key_schema 64; a reference is exempt), or in a new SSL's pair the other field is missing:
+//   no request, and the toast names no held field;
 // - else the request carries exactly the model's value (POST of a new SSL; PATCH of a stored one,
 //   where a CA left as stored is not sent). A save that goes out ends the sequence.
 // Every sequence runs to its end or its first failure; all failures are reported together.
@@ -16,7 +17,10 @@
 // followed by the same checks. In a new SSL's pair a combined text offers the split (Task 16 B23):
 // a request then carries both parts, each where the model put it. Text the other box does not take
 // may be typed there (fix round 2, R8): a save is then refused for that box, and the split's name
-// says it replaces that text; "Enter the private key" shows only without an offer (R11).
+// says it replaces that text; "Enter the private key" shows only without an offer (R11). Task 16b: a
+// combined text there makes the other box offer, which this box's messages point at (item 145); a
+// file read left pending is ignored once anything happened in the box, a remount and a save in
+// flight that unmounts the box's input included (item 147).
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -27,7 +31,7 @@ import { resetApp } from '../../test/app';
 import { RSA_LEAF } from '../../test/certs';
 import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import { EC_PAIR } from '../../test/pairs';
-import { BoxRun, Coverage, actionsFor, firstFailure, held, newModel, takes, type Kind, type Model } from '../../test/pemBoxRun';
+import { BoxRun, Coverage, actionsFor, firstFailure, held, newModel, staleReads, takes, type Kind, type Model } from '../../test/pemBoxRun';
 import { json, type FakeRequest } from '../../test/fakeAdmin';
 import { prng } from '../../test/prng';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
@@ -234,16 +238,22 @@ const PLACES: Place[] = [
 /** The schema's own refusal of a value the box took or kept: missing, or shorter than its minimum (a reference is exempt). */
 const schemaRefuses = (kind: Kind, value: string | undefined) =>
   value === undefined || (!/^(?:\$secret:\/\/|\$env:\/\/)/i.test(value) && value.length < (kind === 'cert' ? 128 : 64));
+/** In a new SSL's pair, the other field is required as well: refused while it has no value (a split gives it one). */
+const pairRefuses = (m: Model) => m.pair && schemaRefuses(m.kind === 'cert' ? 'key' : 'cert', m.other);
 
 /** A remount (the tab switched away and back): the box's own state is lost; it shows what the draft holds. */
 function remounted(m: Model, place: Place): void {
   m.focused = false;
   m.opened = false;
   m.stood = null;
-  // Session flags go with the box: an offered split, the "left out" line; the other box's text too.
+  // Session flags go with the box: an offered split, the "left out" line, a refused file's reason,
+  // reads in progress (item 147); the other box's text and offer too.
   m.offer = undefined;
   m.leftOut = false;
   m.otherHeld = false;
+  m.otherOffer = undefined;
+  m.refused = false;
+  staleReads(m);
   if (m.kind === 'key') {
     m.text = '';
     return;
@@ -257,7 +267,7 @@ const remountText = (m: Model): string => (m.kind === 'key' || m.value === undef
 
 /** What a save would do with the box as the model has it: go out (true), or be refused before any request. */
 const wouldSend = (place: Place, m: Model): boolean =>
-  !held(m) && !m.otherHeld && !schemaRefuses(place.kind, m.value) && (m.text.trim() === '' || takes(m.kind, m.text));
+  !held(m) && !m.otherHeld && !schemaRefuses(place.kind, m.value) && !pairRefuses(m) && (m.text.trim() === '' || takes(m.kind, m.text));
 
 describe('every PEM box follows one rule through the real editor frame (property, seeded, page level)', () => {
   const SEEDS = 6;
@@ -314,6 +324,12 @@ describe('every PEM box follows one rule through the real editor frame (property
                 if (m.text !== remountText(m)) cov.add('refusedSave: the box shows the value again');
                 m.text = remountText(m);
               }
+              // Its input was gone meanwhile (the CA's details; a key box reads as a line while locked): a
+              // refused file's reason went, and so did every read in progress (item 147).
+              if (place.lockedView || place.kind === 'key') {
+                m.refused = false;
+                staleReads(m);
+              }
               const box = run.box();
               m.focused = box !== null && document.activeElement === box;
               cov.add('refusedSave');
@@ -352,7 +368,7 @@ describe('every PEM box follows one rule through the real editor frame (property
               expect(writesOf(admin).length, `${where}: held, so no request`).toBe(writes);
               expect(told.some((item) => named.some((p) => item.message.includes(p))), `${where}: the toast names a held field`).toBe(true);
               cov.add(held(m) ? 'save: refused, held' : 'save: refused, the other box held');
-            } else if (schemaRefuses(place.kind, m.value)) {
+            } else if (schemaRefuses(place.kind, m.value) || pairRefuses(m)) {
               expect(writesOf(admin).length, `${where}: the schema refuses the value, so no request`).toBe(writes);
               expect(told.length > 0 && told.every((item) => !item.message.includes(heldPrefix)), `${where}: refused for an issue, not a hold`).toBe(true);
               cov.add('save: refused, an issue');
@@ -392,5 +408,11 @@ describe('every PEM box follows one rule through the real editor frame (property
     expect(cov.get('a refused combined file over held text')).toBeGreaterThan(2);
     expect(cov.get('save: refused, the other box held')).toBeGreaterThan(2);
     for (const kind of ['cert', 'key']) expect(cov.get(`the ${kind} box's split names text in the other box`), kind).toBeGreaterThan(0);
+    // Task 16b through the frame: the other box's offer (item 145), reads left pending (item 147).
+    expect(cov.get('the other box offers')).toBeGreaterThan(4);
+    expect(cov.get("this box's messages point at the other box's action")).toBeGreaterThan(3);
+    expect(cov.get('upload: read left pending')).toBeGreaterThan(6);
+    expect(cov.get('a pending read finished')).toBeGreaterThan(2);
+    expect(cov.get('a stale read ignored')).toBeGreaterThan(2);
   }, 300_000);
 });

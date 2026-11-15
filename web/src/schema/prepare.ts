@@ -12,13 +12,15 @@
 //   `definitions` (a `$ref` may reach it from any position) leaves the whole schema to APISIX, and so
 //   does any unreadable part in a schema with a `$ref` that points elsewhere (`#`, `#/properties/a`),
 //   since such a ref may reach the part from under a `not` (fix round 2, R12.3).
+// - Formats: Ajv here checks none (ajv.ts validateFormats: false), so a `format` is left to APISIX
+//   the same way, and named in the note (Task 16b, item 153).
 // The walk knows which keywords hold sub-schemas, so a property named `not` or `pattern` is a
 // property. Pure.
 import type { Obj } from '../api/types';
 import { compiles, isObj, resolveRef } from './refs';
 
-/** A kind of part left to APISIX: unreadable patterns, the keys they cover, the conditions above them. */
-export type SchemaGap = 'patterns' | 'keys' | 'conditions';
+/** A kind of part left to APISIX: unreadable patterns, the keys they cover, the conditions above them, formats. */
+export type SchemaGap = 'patterns' | 'keys' | 'conditions' | 'formats';
 /** What a schema's checks leave to APISIX: some kinds of part, or all of it. */
 export type SchemaGaps = 'all' | SchemaGap[];
 
@@ -48,6 +50,9 @@ interface Found {
   patterns: boolean;
   keys: boolean;
   conditions: boolean;
+  formats: boolean;
+  /** The formats left to APISIX, by name. */
+  formatNames: Set<string>;
   all: boolean;
   /** A `$ref` points somewhere other than `definitions` / `$defs`. */
   refElsewhere: boolean;
@@ -62,7 +67,7 @@ interface Guard {
 
 function normalizeNode(node: unknown, found: Found, guard: Guard | undefined, inDefinitions: boolean): unknown {
   if (!isObj(node)) return node;
-  const unreadable = (kind: 'patterns' | 'keys') => {
+  const unreadable = (kind: 'patterns' | 'keys' | 'formats') => {
     if (inDefinitions) found.all = true;
     else if (guard) guard.hit = true;
     else found[kind] = true;
@@ -75,6 +80,13 @@ function normalizeNode(node: unknown, found: Found, guard: Guard | undefined, in
     if (key === '$ref' && typeof value === 'string' && !INTO_DEFINITIONS.test(value)) found.refElsewhere = true;
     if (key === 'pattern' && typeof value === 'string' && !compiles(value)) {
       unreadable('patterns');
+      continue;
+    }
+    if (key === 'format' && typeof value === 'string') {
+      // Skipped wherever it is (under a condition too, which then goes as well): the note names it.
+      found.formatNames.add(value);
+      found.formats = true;
+      unreadable('formats');
       continue;
     }
     if (key === 'patternProperties' && isObj(value)) {
@@ -120,12 +132,13 @@ function normalizeNode(node: unknown, found: Found, guard: Guard | undefined, in
   return out;
 }
 
-/** The copy Ajv compiles, and what it leaves to APISIX ('all': do not compile it; [] when nothing). */
-export function normalize(schema: Obj): { schema: Obj; gaps: SchemaGaps } {
-  const found: Found = { patterns: false, keys: false, conditions: false, all: false, refElsewhere: false };
+/** The copy Ajv compiles, and what it leaves to APISIX ('all': do not compile it; [] when nothing), with the formats by name. */
+export function normalize(schema: Obj): { schema: Obj; gaps: SchemaGaps; formats: string[] } {
+  const found: Found = { patterns: false, keys: false, conditions: false, formats: false, formatNames: new Set(), all: false, refElsewhere: false };
   const copy = normalizeNode(schema, found, undefined, false) as Obj;
-  if (found.all || (found.refElsewhere && (found.patterns || found.keys || found.conditions))) return { schema: copy, gaps: 'all' };
-  return { schema: copy, gaps: (['patterns', 'keys', 'conditions'] as const).filter((gap) => found[gap]) };
+  const formats = [...found.formatNames].sort();
+  if (found.all || (found.refElsewhere && (found.patterns || found.keys || found.conditions || found.formats))) return { schema: copy, gaps: 'all', formats };
+  return { schema: copy, gaps: (['patterns', 'keys', 'conditions', 'formats'] as const).filter((gap) => found[gap]), formats };
 }
 
 // --- Secret references (fix round 1, R1) ---------------------------------------------------------
@@ -209,13 +222,21 @@ function wrappedPointer(root: Obj, ref: string): string {
   return `#${out.map((segment) => `/${segment}`).join('')}`;
 }
 
+/**
+ * Points every `$ref` of the wrapped schema into it. Only schema nodes are walked (mapSubschemas'
+ * positions): literal data (`enum`, `const`, `default`, `examples`) may hold a "$ref" key that is a
+ * value, and is shared with the schema APISIX published, which is never written to (Task 16b, item
+ * 148). The nodes walked are the wrapping's own copies (wrapNode), so writing to them is safe.
+ */
 function rewriteRefs(node: unknown, root: Obj): void {
-  if (Array.isArray(node)) node.forEach((child) => rewriteRefs(child, root));
-  else if (isObj(node)) {
-    for (const [key, value] of Object.entries(node)) {
-      if (key === '$ref' && typeof value === 'string') node[key] = wrappedPointer(root, value);
-      else rewriteRefs(value, root);
-    }
+  if (!isObj(node)) return;
+  for (const [key, value] of Object.entries(node)) {
+    if (key === '$ref' && typeof value === 'string') node[key] = wrappedPointer(root, value);
+    else
+      mapSubschemas(key, value, (child) => {
+        rewriteRefs(child, root);
+        return child;
+      });
   }
 }
 
@@ -232,15 +253,18 @@ export function skippingSecretRefs(schema: Obj): Obj {
  */
 export function refTargets(wrapped: Obj): Obj[] {
   const out = new Set<Obj>();
+  // Schema nodes only, as rewriteRefs: a "$ref" in literal data is a value.
   const visit = (node: unknown) => {
-    if (Array.isArray(node)) node.forEach(visit);
-    else if (isObj(node)) {
-      for (const [key, value] of Object.entries(node)) {
-        if (key === '$ref' && typeof value === 'string') {
-          const target = value === '#' ? wrapped : resolveRef(wrapped, value);
-          if (target && target !== wrapped) out.add(target);
-        } else visit(value);
-      }
+    if (!isObj(node)) return;
+    for (const [key, value] of Object.entries(node)) {
+      if (key === '$ref' && typeof value === 'string') {
+        const target = value === '#' ? wrapped : resolveRef(wrapped, value);
+        if (target && target !== wrapped) out.add(target);
+      } else
+        mapSubschemas(key, value, (child) => {
+          visit(child);
+          return child;
+        });
     }
   };
   visit(wrapped);

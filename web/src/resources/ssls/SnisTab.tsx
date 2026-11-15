@@ -71,7 +71,8 @@ export function SnisTab({ draft, setDraft, issues, ctx, original }: TabProps) {
       {client && <p className="ed-note">{t('ssl.snis.clientNote')}</p>}
       {unnamed.length > 0 && (
         <p className="ssl-warn" role="note">
-          {t('ssl.snis.notNamed', { names: unnamed.join(', ') })}
+          {/* APISIX serves no disabled certificate: then only what would happen once enabled (Task 16b, item 152). */}
+          {t(servedToClients(draft) ? 'ssl.snis.notNamed' : 'ssl.snis.notNamedIfEnabled', { names: unnamed.join(', ') })}
         </p>
       )}
       {!client && others.length > 0 && (

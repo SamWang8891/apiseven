@@ -2,12 +2,13 @@ import { Check, ChevronDown, LogOut, Monitor, Moon, Plus, Search, Server, Sun } 
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { usePing } from '../api/hooks';
-import { needsKey, useConnections, type SavedConnection } from '../connection/store';
+import { useConnections, type SavedConnection } from '../connection/store';
 import { hostOf } from '../connection/url';
 import { t } from '../i18n';
 import { kindFromSegment, pathFor } from '../router/paths';
 import { Button, Menu, Tooltip, type MenuItem } from '../ui';
 import { useTheme, type ThemeChoice } from './theme';
+import { switchState } from './usePalette';
 import { isMac } from './usePaletteHotkey';
 
 export interface HeaderProps {
@@ -59,7 +60,7 @@ function Version() {
 }
 
 function ConnectionSwitcher() {
-  const { list, active, setActive, disconnect, serverManaged, keyRequired } = useConnections();
+  const { list, active, disconnect, serverManaged, keyRequired } = useConnections();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   if (!active) return null;
@@ -90,6 +91,8 @@ function ConnectionSwitcher() {
   }
 
   // Switching keeps the kind of page the user is on, as its list (an object ID means nothing elsewhere).
+  // The switch rides on that navigation (switchState), as the palette's does: an editor's leave guard
+  // holds both, and Stay cancels both (Task 16b, item 135).
   const listPath = pathFor(kindFromSegment(pathname.split('/')[1]) ?? 'routes');
   const label = (c: SavedConnection) => (c.name === hostOf(c.baseUrl) ? c.name : `${c.name} (${hostOf(c.baseUrl)})`);
   const items: MenuItem[] = [
@@ -99,10 +102,8 @@ function ConnectionSwitcher() {
         label: label(c),
         icon: c.id === active.id ? <Check size={14} /> : undefined,
         onSelect: () => {
-          if (c.id === active.id) return;
-          setActive(c.id);
-          // A connection without its key lands on Connect through the shell's guard.
-          if (!needsKey(c)) void navigate(listPath);
+          // A connection without its key lands on Connect through the shell's guard, once switched.
+          if (c.id !== active.id) void navigate(listPath, { state: switchState(c.id) });
         },
       }),
     ),

@@ -154,6 +154,16 @@ describe('saveResource, create never overwrites (APISIX takes a PUT to an id tha
     expect(result.unchecked.errorMsg).toBe('etcd unavailable');
   });
 
+  it('an id the client refuses to put in a path (empty, ".", "..", a slash) could not be checked: never free, nothing sent (Task 16b, item 142)', async () => {
+    for (const id of ['', '..', 'a/b']) {
+      const { client, admin } = setup({ objects: { global_rules: [] } });
+      const result = await saveResource(client, { kind: 'global_rules', id, isNew: true, draft: { id, plugins: {} } });
+      expect(admin.requests, id).toEqual([]);
+      if (result.ok || !('unchecked' in result)) throw new Error(`expected "${id}" to be unchecked`);
+      expect(result.unchecked.kind).toBe('refused');
+    }
+  });
+
   it('a POST (no id chosen) needs no check: APISIX picks a new id', async () => {
     const { client, admin } = setup({ objects: { routes: [] } });
     await saveResource(client, { kind: 'routes', isNew: true, draft: { uri: '/new' } });

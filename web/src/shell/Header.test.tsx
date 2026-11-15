@@ -3,8 +3,11 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
 import { DEV_CONN, renderApp, resetApp, saveConnections } from '../test/app';
+import { GENERAL_TAB, overrideDef } from '../test/editor';
 
+const undo: (() => void)[] = [];
 afterEach(() => {
+  for (const u of undo.splice(0)) u();
   resetApp();
   delete document.documentElement.dataset.theme;
 });
@@ -34,6 +37,32 @@ describe('Header', () => {
     await user.click(await screen.findByRole('menuitem', { name: /prod/ }));
     await waitFor(() => expect(header.getByRole('button', { name: /^Connection: prod/ })).toBeInTheDocument());
     await waitFor(() => expect(admin.requests.some((r) => r.url.origin === 'https://prod.test:9180')).toBe(true));
+    expect(window.location.hash).toBe('#/routes');
+  });
+
+  it('switching from an editor with unsaved changes asks first, as the palette does: Stay keeps the connection and the draft (Task 16b, item 135)', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
+    saveConnections([DEV_CONN, PROD], DEV_CONN.id);
+    const user = userEvent.setup();
+    renderApp({ hash: '#/routes/r1', counts: {}, objects: { routes: [{ id: 'r1', name: 'shop', uri: '/cart/*' }] } });
+    const main = within(await screen.findByRole('main'));
+    await main.findByRole('heading', { level: 1, name: 'shop' });
+    await user.keyboard('e');
+    await user.type(await main.findByRole('textbox', { name: 'URI' }), 'more');
+    // The shell's header (the editor has a header of its own).
+    const header = within(document.querySelector('.shell-header') as HTMLElement);
+    await user.click(header.getByRole('button', { name: /^Connection: dev/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /prod/ }));
+    const leave = await screen.findByRole('alertdialog', { name: t('editor.leave.title') });
+    await user.click(within(leave).getByRole('button', { name: t('ui.cancel') }));
+    expect(header.getByRole('button', { name: /^Connection: dev/ })).toBeInTheDocument();
+    expect(main.getByRole('textbox', { name: 'URI' })).toHaveValue('/cart/*more');
+    expect(window.location.hash).toBe('#/routes/r1');
+
+    await user.click(header.getByRole('button', { name: /^Connection: dev/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /prod/ }));
+    await user.click(within(await screen.findByRole('alertdialog', { name: t('editor.leave.title') })).getByRole('button', { name: t('editor.leave.confirm') }));
+    await waitFor(() => expect(header.getByRole('button', { name: /^Connection: prod/ })).toBeInTheDocument());
     expect(window.location.hash).toBe('#/routes');
   });
 

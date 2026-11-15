@@ -55,16 +55,17 @@ function asApiError(err: unknown): ApiError {
 /**
  * What already holds `id`, if anything: a create with a chosen id (typed, a consumer's username, a
  * copy's) is a PUT, which APISIX takes as a replace of whatever has that id, so the editor looks
- * first. 404 is free; any other failure is reported, as the id could not be checked. Someone could
- * still create the same id between this GET and the PUT: the Admin API has no "create only" PUT
- * (no If-None-Match, no PUT that fails on an existing key) to close that window.
+ * first. APISIX's 404 is free; any other failure is reported, as the id could not be checked, and so
+ * is the client's refusal of an id no path can hold (its 404 is not APISIX's: Task 16b, item 142).
+ * Someone could still create the same id between this GET and the PUT: the Admin API has no "create
+ * only" PUT (no If-None-Match, no PUT that fails on an existing key) to close that window.
  */
 async function holderOf(client: AdminClient, kind: Kind, id: string, parent?: Parent): Promise<{ exists: Item } | { unchecked: ApiError } | undefined> {
   try {
     return { exists: await client.get(kind, id, parent) };
   } catch (err) {
     const error = asApiError(err);
-    return error.status === 404 ? undefined : { unchecked: error };
+    return error.status === 404 && error.kind !== 'refused' ? undefined : { unchecked: error };
   }
 }
 

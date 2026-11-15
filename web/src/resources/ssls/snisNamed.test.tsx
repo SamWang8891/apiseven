@@ -50,6 +50,13 @@ describe('SNIs the certificate does not name', () => {
     expect(screen.queryByRole('note')).toBeNull();
   });
 
+  it('a disabled certificate is served to no client: the note says what would happen if it were enabled (Task 16b, item 152)', () => {
+    renderSnis({ cert: SEED_CERT, sni: 'elsewhere.test', status: 0 });
+    expect(screen.getByText(t('ssl.snis.notNamedIfEnabled', { names: 'elsewhere.test' }))).toBeInTheDocument();
+    expect(screen.queryByText(note('elsewhere.test'))).toBeNull();
+    expect(t('ssl.snis.notNamedIfEnabled', { names: 'x' })).toMatch(/if this certificate is enabled/);
+  });
+
   it('shown on a locked page too', () => {
     renderSnis({ cert: SEED_CERT, sni: 'elsewhere.test' }, { locked: true });
     expect(screen.getByText(note('elsewhere.test'))).toBeInTheDocument();
