@@ -193,6 +193,19 @@
   padding: 6px;
 }
 
+/* The Columns menu never runs past the window (a long column list at 800 px high hid Reset to
+   default): the list scrolls; the title, hint and Reset stay in view. */
+.tbl-menu--columns {
+  display: flex;
+  flex-direction: column;
+  max-height: var(--radix-popover-content-available-height);
+}
+
+.tbl-menu--columns .tbl-menu__list {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .tbl-menu__title {
   padding: 4px 6px 0;
   font-size: 13px;

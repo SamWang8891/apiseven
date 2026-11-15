@@ -94,7 +94,7 @@ export function ColumnsMenu({ columns, order, visible, onChange, onReset }: Colu
         <Button icon={<Columns3 size={15} />} aria-label={t('table.columns')} />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="ui-popover tbl-menu" align="end" sideOffset={4} collisionPadding={8} aria-labelledby={titleId} onKeyDown={escapeFallback(() => setOpen(false))}>
+        <Popover.Content className="ui-popover tbl-menu tbl-menu--columns" align="end" sideOffset={4} collisionPadding={8} aria-labelledby={titleId} onKeyDown={escapeFallback(() => setOpen(false))}>
           <h2 className="tbl-menu__title" id={titleId}>
             {t('table.columns.title')}
           </h2>

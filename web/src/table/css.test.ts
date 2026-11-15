@@ -59,6 +59,15 @@ describe('table and list page CSS', () => {
     }
   });
 
+  it('keeps the Columns menu inside the window: the list scrolls, the title and Reset to default stay', () => {
+    const toolbar = rules(files.find((f) => f.name === 'table/toolbar.css')?.css ?? '');
+    const body = (sel: string) => toolbar.find(([s]) => s === sel)?.[1] ?? '';
+    expect(body('.tbl-menu--columns')).toMatch(/max-height:\s*var\(--radix-popover-content-available-height\)/);
+    expect(body('.tbl-menu--columns')).toMatch(/display:\s*flex/);
+    expect(body('.tbl-menu--columns .tbl-menu__list')).toMatch(/overflow-y:\s*auto/);
+    expect(body('.tbl-menu--columns .tbl-menu__list')).toMatch(/min-height:\s*0/);
+  });
+
   it('ellipsises chip text that is wider than its column, inside a chip capped at the column width', () => {
     const cells = rules(files.find((f) => f.name === 'resources/cells.css')?.css ?? '');
     const body = (sel: string) => cells.find(([s]) => s === sel)?.[1] ?? '';
