@@ -1,6 +1,12 @@
 // Proxy mode: the Docker image serving the app and its Admin API proxy (task-17-report.md). Builds
-// nothing: it runs E2E_IMAGE (`make docker`) on APISIX's Docker network, one container per setup,
-// and removes each afterwards. Skipped, with the reason, when Docker or the image is missing.
+// nothing: it runs E2E_IMAGE (`make docker`) on APISIX's Docker network, one container per setup.
+// Every container is labelled `apiseven-e2e=1` (and the run's pid), named before it is started, and
+// removed by that name afterwards whether or not it started; the spec's setup also removes labelled
+// containers an earlier, interrupted run left behind. It never touches a container without the label.
+//
+// When Docker or the image is missing the spec is skipped, and the reason is printed; with
+// E2E_REQUIRE_PROXY=1 (which `make e2e` sets) that is a failure instead. A missing Docker network,
+// while APISIX answers, is a configuration error either way.
 import { execFileSync } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import type { Browser, Page } from '@playwright/test';
@@ -8,31 +14,44 @@ import { expectIconsServed, expectMarkBesideName } from './brand';
 import { Admin, env, expect, openTab, t, test } from './fixtures';
 import { freePort, servePage } from './servers';
 
-function docker(args: string[]): string {
-  return execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+const LABEL = 'apiseven-e2e';
+
+/** One docker command; it gives up after `timeoutMs` (a hanging daemon must not hang the run). */
+function docker(args: string[], timeoutMs = 15_000): string {
+  return execFileSync('docker', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: timeoutMs }).trim();
 }
 
+type Unavailable = { reason: string; config?: true };
+
 /** Why the spec cannot run here, or undefined. */
-function unavailable(): string | undefined {
+function unavailable(): Unavailable | undefined {
   try {
     docker(['version', '--format', '{{.Server.Version}}']);
-  } catch {
-    return 'Docker is not available';
+  } catch (err) {
+    const timedOut = (err as { code?: string }).code === 'ETIMEDOUT';
+    return { reason: `Docker is not available${timedOut ? ' (no answer within 15 s)' : ''}` };
   }
   try {
     docker(['image', 'inspect', env.image]);
   } catch {
-    return `the image ${env.image} is missing: build it with \`make docker\` (or set E2E_IMAGE)`;
+    return { reason: `the image ${env.image} is missing: build it with \`make docker\` (or set E2E_IMAGE)` };
   }
   try {
     docker(['network', 'inspect', env.dockerNetwork]);
   } catch {
-    return `the Docker network ${env.dockerNetwork} (APISIX's) is missing: start the dev stack (or set E2E_DOCKER_NETWORK)`;
+    return {
+      config: true,
+      reason: `E2E_DOCKER_NETWORK names no Docker network (${env.dockerNetwork}), although APISIX answers at ${env.adminUrl}: set it to the network of the APISIX container (docker network ls)`,
+    };
   }
   return undefined;
 }
 
-const reason = unavailable();
+const missing = unavailable();
+const required = process.env.E2E_REQUIRE_PROXY === '1';
+const skipped = missing !== undefined && !missing.config && !required;
+if (missing) console.warn(`proxy-mode.spec.ts: ${skipped ? 'skipped' : 'cannot run'}: ${missing.reason}`);
+
 const BASIC = { username: 'e2e', password: 'e2e-basic-password' };
 
 interface Container {
@@ -41,34 +60,65 @@ interface Container {
   port: number;
 }
 
-/** Runs the image with these variables, published on a free loopback port; waits for /healthz. */
-async function start(mode: string, vars: Record<string, string>): Promise<Container> {
-  const port = await freePort();
-  const name = `apiseven-e2e-${mode}-${process.pid}`;
-  stop({ name, url: '', port: 0 });
-  docker([
-    'run', '-d', '--name', name,
-    '--network', env.dockerNetwork,
-    '-p', `127.0.0.1:${port}:8080`,
-    '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
-    '-e', `APISIX_ADMIN_URL=${env.dockerAdminUrl}`,
-    ...Object.entries(vars).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
-    env.image,
-  ]);
-  const url = `http://127.0.0.1:${port}`;
-  await expect
-    .poll(async () => (await fetch(`${url}/healthz`).then((r) => r.text()).catch(() => '')).trim(), { timeout: 30_000 })
-    .toBe('ok');
-  return { name, url, port };
+/** The name a setup's container gets: known before it is started, so it can always be removed. */
+function containerName(mode: string): string {
+  return `apiseven-e2e-${mode}-${process.pid}`;
 }
 
-/** Removes this spec's container, by its name (only ever one this spec started). */
-function stop(container: Container | undefined): void {
-  if (!container) return;
+/** Removes a container of this spec by its name (absent is fine). */
+function stop(name: string): void {
   try {
-    docker(['rm', '-f', container.name]);
+    docker(['rm', '-f', name]);
   } catch {
     // Not there.
+  }
+}
+
+/** Whether a process with this pid is alive on this machine. */
+function alive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return (err as { code?: string }).code === 'EPERM';
+  }
+}
+
+/** Removes labelled containers whose run (by its pid label) is over: what an interrupted run left. */
+function removeLeftovers(): void {
+  const rows = docker(['ps', '-a', '--filter', `label=${LABEL}=1`, '--format', `{{.ID}} {{.Label "${LABEL}.pid"}}`]);
+  for (const row of rows.split('\n').filter(Boolean)) {
+    const [id, pid] = row.split(' ');
+    if (id && !alive(Number(pid))) docker(['rm', '-f', id]);
+  }
+}
+
+/** Runs the image with these variables, published on a free loopback port; waits for /healthz. */
+async function start(name: string, vars: Record<string, string>): Promise<Container> {
+  stop(name);
+  try {
+    const port = await freePort();
+    docker(
+      [
+        'run', '-d', '--name', name,
+        '--label', `${LABEL}=1`, '--label', `${LABEL}.pid=${process.pid}`,
+        '--network', env.dockerNetwork,
+        '-p', `127.0.0.1:${port}:8080`,
+        '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
+        '-e', `APISIX_ADMIN_URL=${env.dockerAdminUrl}`,
+        ...Object.entries(vars).flatMap(([k, v]) => ['-e', `${k}=${v}`]),
+        env.image,
+      ],
+      60_000,
+    );
+    const url = `http://127.0.0.1:${port}`;
+    await expect
+      .poll(async () => (await fetch(`${url}/healthz`).then((r) => r.text()).catch(() => '')).trim(), { timeout: 30_000 })
+      .toBe('ok');
+    return { name, url, port };
+  } catch (err) {
+    stop(name);
+    throw err;
   }
 }
 
@@ -95,15 +145,21 @@ async function watchCsp(page: Page): Promise<() => Promise<string[]>> {
 }
 
 test.describe('proxy mode (the Docker image)', () => {
-  test.skip(reason !== undefined, reason ?? '');
+  test.skip(skipped, missing?.reason ?? '');
   test.use({ connectAs: 'none' });
+  test.beforeAll(() => {
+    // Required here, or a configuration error: fail with the reason instead of skipping.
+    if (missing) throw new Error(`proxy mode cannot run: ${missing.reason}`);
+    removeLeftovers();
+  });
 
   test.describe('with a server key', () => {
+    const name = containerName('serverkey');
     let box: Container | undefined;
     test.beforeAll(async () => {
-      box = await start('serverkey', { APISIX_ADMIN_KEY: env.adminKey });
+      box = await start(name, { APISIX_ADMIN_KEY: env.adminKey });
     });
-    test.afterAll(() => stop(box));
+    test.afterAll(() => stop(name));
 
     test('the routes list loads with no Connect page; requests carry X-Apiseven-Request and no key', async ({ page }) => {
       const admin = page.waitForRequest((r) => r.url().startsWith(`${box!.url}/apisix/admin/`));
@@ -114,7 +170,7 @@ test.describe('proxy mode (the Docker image)', () => {
       await expect(page.getByRole('heading', { name: t('connect.title') })).toHaveCount(0);
       const req = await admin;
       expect(req.headers()['x-apiseven-request']).toBe('1');
-      expect(req.headers()['x-api-key']).toBeUndefined();
+      expect(req.headers()['x-api-key'] === undefined, 'the browser sends no key: the server holds it').toBe(true);
     });
 
     test('no Content-Security-Policy violation on the list, an editor, a plugin form and the JSON tab', async ({ page }) => {
@@ -157,20 +213,25 @@ test.describe('proxy mode (the Docker image)', () => {
         const evil = await servePage('<!doctype html><title>elsewhere</title><p>another origin</p>');
         try {
           await page.goto(evil.url);
-          const outcome = await page.evaluate(async (target) => {
-            try {
-              await fetch(`${target}/apisix/admin/routes`, {
-                method: 'POST',
-                mode: 'no-cors',
-                headers: { 'Content-Type': 'text/plain' },
-                body: JSON.stringify({ name: 'e2e-proxy-evil', uri: '/evil', upstream: { nodes: { '127.0.0.1:1': 1 } } }),
-              });
-              return 'sent';
-            } catch (e) {
-              return `refused: ${String(e)}`;
-            }
+          // The answer to the POST itself: apiseven refuses it as another origin's, before APISIX. The
+          // page only gets an opaque answer (no-cors), so its headers are read from the network layer.
+          const cdp = await page.context().newCDPSession(page);
+          await cdp.send('Network.enable');
+          const raw: { status: number; headers: Record<string, string> }[] = [];
+          cdp.on('Network.responseReceivedExtraInfo', (e) => raw.push({ status: e.statusCode, headers: e.headers }));
+          const answer = page.waitForResponse((r) => r.url() === `${box!.url}/apisix/admin/routes` && r.request().method() === 'POST');
+          await page.evaluate(async (target) => {
+            await fetch(`${target}/apisix/admin/routes`, {
+              method: 'POST',
+              mode: 'no-cors',
+              headers: { 'Content-Type': 'text/plain' },
+              body: JSON.stringify({ name: 'e2e-proxy-evil', uri: '/evil', upstream: { nodes: { '127.0.0.1:1': 1 } } }),
+            }).catch(() => undefined);
           }, box!.url);
-          expect(outcome).toMatch(/sent|refused/);
+          expect((await answer).status()).toBe(403);
+          await expect
+            .poll(() => raw.filter((r) => r.status === 403).map((r) => Object.entries(r.headers).find(([k]) => k.toLowerCase() === 'x-apiseven-refusal')?.[1]))
+            .toEqual(['origin']);
         } finally {
           await evil.close();
         }
@@ -193,11 +254,12 @@ test.describe('proxy mode (the Docker image)', () => {
   });
 
   test.describe('without a server key', () => {
+    const name = containerName('keymode');
     let box: Container | undefined;
     test.beforeAll(async () => {
-      box = await start('keymode', {});
+      box = await start(name, {});
     });
-    test.afterAll(() => stop(box));
+    test.afterAll(() => stop(name));
 
     test('the Connect page asks only for the key, and a good key opens the routes list', async ({ page }) => {
       await page.goto(`${box!.url}/`);
@@ -221,11 +283,12 @@ test.describe('proxy mode (the Docker image)', () => {
   });
 
   test.describe('with Basic auth', () => {
+    const name = containerName('basicauth');
     let box: Container | undefined;
     test.beforeAll(async () => {
-      box = await start('basicauth', { APISIX_ADMIN_KEY: env.adminKey, BASIC_AUTH_USER: BASIC.username, BASIC_AUTH_PASSWORD: BASIC.password });
+      box = await start(name, { APISIX_ADMIN_KEY: env.adminKey, BASIC_AUTH_USER: BASIC.username, BASIC_AUTH_PASSWORD: BASIC.password });
     });
-    test.afterAll(() => stop(box));
+    test.afterAll(() => stop(name));
 
     test('401 without credentials; with them the routes list loads', async ({ browser }: { browser: Browser }) => {
       expect((await fetch(`${box!.url}/`)).status).toBe(401);
@@ -247,11 +310,12 @@ test.describe('proxy mode (the Docker image)', () => {
   });
 
   test.describe('with ALLOWED_HOSTS', () => {
+    const name = containerName('allowedhosts');
     let box: Container | undefined;
     test.beforeAll(async () => {
-      box = await start('allowedhosts', { APISIX_ADMIN_KEY: env.adminKey, ALLOWED_HOSTS: 'apiseven.e2e.test' });
+      box = await start(name, { APISIX_ADMIN_KEY: env.adminKey, ALLOWED_HOSTS: 'apiseven.e2e.test' });
     });
-    test.afterAll(() => stop(box));
+    test.afterAll(() => stop(name));
 
     test('the name it lists is allowed as Host; another name is still refused', async () => {
       expect((await raw(box!, '/', { Host: 'apiseven.e2e.test' })).status).toBe(200);
