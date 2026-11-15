@@ -127,6 +127,44 @@ describe('opening and closing', () => {
     await openPalette(user);
   });
 
+  it('a refused Ctrl-K is still taken from the browser', async () => {
+    const { user } = await open('#/upstreams/u1');
+    await screen.findByRole('heading', { level: 1, name: 'web-pool' });
+    await user.click(screen.getByRole('button', { name: t('editor.more') }));
+    await user.click(await screen.findByRole('menuitem', { name: t('action.delete') }));
+    await screen.findByRole('alertdialog');
+    const event = new KeyboardEvent('keydown', { key: 'k', code: 'KeyK', ctrlKey: true, bubbles: true, cancelable: true });
+    document.body.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(dialog()).not.toBeInTheDocument();
+  });
+
+  it('only modal overlays hold its keys: a kit dialog, select or menu does; a list that is not modal (code completions, a lint panel) does not', async () => {
+    const { user } = await open();
+    // The kit Select (rows per page) is open.
+    await user.click(await screen.findByRole('combobox', { name: t('table.page.size') }));
+    await screen.findByRole('listbox', { name: t('table.page.size') });
+    await user.keyboard('{Control>}k{/Control}');
+    expect(dialog()).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('listbox')).not.toBeInTheDocument());
+    // A kit Dialog (View JSON) is open.
+    await user.click(screen.getByRole('button', { name: t('table.actionsFor', { name: 'web-a' }) }));
+    await user.click(await screen.findByRole('menuitem', { name: t('action.viewJson') }));
+    const json = await screen.findByRole('dialog');
+    await user.keyboard('{Control>}k{/Control}');
+    expect(screen.queryByRole('dialog', { name: t('palette.title') })).not.toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(json).not.toBeInTheDocument());
+    // A listbox in the page that is no overlay, as CodeMirror draws its completions and lint panel.
+    const list = document.createElement('ul');
+    list.setAttribute('role', 'listbox');
+    list.innerHTML = '<li role="option">completion</li>';
+    screen.getByRole('main').append(list);
+    await openPalette(user);
+    list.remove();
+  });
+
   it('the hints say what "/" does here: it opens the palette, except on a list, where it searches the list', async () => {
     const { user } = await open('#/upstreams/u1');
     await screen.findByRole('heading', { level: 1, name: 'web-pool' });
@@ -177,6 +215,19 @@ describe('moving through the results', () => {
     await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('routes', 'r2')}`));
   });
 
+  it('PageDown in the last group goes to its last row', async () => {
+    const { user } = await open('#/routes', { objects: { routes: ROUTES, upstreams: [...UPSTREAMS, { id: 'u2', name: 'web-pool-2', nodes: [] }] } });
+    await openPalette(user);
+    await user.type(box(), 'web');
+    await screen.findByRole('option', { name: /^web-pool-2/ });
+    await user.keyboard('{PageDown}');
+    expect(active()).toHaveTextContent(/^web-pool$|^web-pool[^-]/);
+    await user.keyboard('{PageDown}');
+    expect(active()).toHaveTextContent(/^web-pool-2/);
+    await user.keyboard('{PageDown}');
+    expect(active()).toHaveTextContent(/^web-pool-2/);
+  });
+
   it('PageDown / PageUp move by group', async () => {
     const { user } = await open();
     await openPalette(user);
@@ -218,6 +269,25 @@ describe('moving through the results', () => {
     expect(document.documentElement.dataset.theme).not.toBe('dark');
     expect(dialog()).toBeInTheDocument();
     delete document.documentElement.dataset.theme;
+  });
+
+  it('typing, then a list arriving above, keeps the first row typed for highlighted: Enter opens it, not a neighbour', async () => {
+    let release = () => {};
+    const gate = new Promise<undefined>((resolve) => {
+      release = () => resolve(undefined);
+    });
+    const { user } = await open('#/upstreams', {
+      replies: { routes: (req) => (req.url.searchParams.get('page_size') === '500' ? gate : undefined) },
+    });
+    await openPalette(user);
+    await user.type(box(), 'web');
+    await screen.findByRole('option', { name: /^web-pool/ });
+    expect(active()).toHaveTextContent(/^web-pool/);
+    release();
+    await screen.findByRole('option', { name: /^web-a/ });
+    expect(active()).toHaveTextContent(/^web-pool/);
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('upstreams', 'u1')}`));
   });
 
   it('the active row stays on its object when a list arrives later and rows appear above it', async () => {

@@ -69,6 +69,39 @@ describe('lazyPalette', () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
+  it('a load that fails after the palette was closed again is not replayed on the next open', async () => {
+    let reject: (error: Error) => void = () => {};
+    let calls = 0;
+    const load = vi.fn(() => {
+      calls++;
+      return calls === 1 ? new Promise<{ default: typeof Loaded }>((_, no) => (reject = no)) : Promise.resolve({ default: Loaded });
+    });
+    function Toggle({ Palette }: { Palette: ReturnType<typeof lazyPalette> }) {
+      const [open, setOpen] = useState(false);
+      return (
+        <TooltipProvider>
+          <button type="button" onClick={() => setOpen((o) => !o)}>
+            toggle
+          </button>
+          {open && <Palette onClose={() => setOpen(false)} />}
+          <Toaster />
+        </TooltipProvider>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Toggle Palette={lazyPalette(load)} />);
+    const before = getToasts().length;
+    await user.click(screen.getByRole('button', { name: 'toggle' }));
+    await user.click(screen.getByRole('button', { name: 'toggle' }));
+    // The first load fails with nothing mounted to see it.
+    reject(new Error(FAILED));
+    await Promise.resolve();
+    await user.click(screen.getByRole('button', { name: 'toggle' }));
+    expect(await screen.findByRole('button', { name: 'palette loaded' })).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(getToasts()).toHaveLength(before);
+  });
+
   it('a palette that throws while drawing closes with a message and leaves the page as it was', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     function Broken(): never {

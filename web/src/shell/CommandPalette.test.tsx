@@ -104,12 +104,19 @@ describe('finding objects', () => {
     // By keyboard: the "Show all" row is the 7th choice.
     for (let i = 0; i < 6; i++) await user.keyboard('{ArrowDown}');
     expect(box()).toHaveAttribute('aria-activedescendant', more.id);
+    // Enter on it shows the rest: the hints say so, not "open".
+    const hints = document.querySelector('.cp-hints');
+    expect(hints).toHaveTextContent(t('palette.hint.expand'));
+    expect(hints).not.toHaveTextContent(t('palette.hint.open'));
+    const moreId = more.id;
     await user.keyboard('{Enter}');
     const all = within(dialog.getByRole('group', { name: t('kind.routes.plural') })).getAllByRole('option');
     expect(all.map((o) => /^api-\d/.exec(o.textContent ?? '')?.[0])).toEqual(Array.from({ length: 8 }, (_, i) => `api-${i}`));
     expect(window.location.hash).toBe('#/upstreams');
-    // The first row that was hidden takes the place of "Show all", and the keys go on from there.
+    // The first row that was hidden takes the place of "Show all", under an id of its own (so the
+    // change is announced), and the keys go on from there.
     expect(box()).toHaveAttribute('aria-activedescendant', all[6]?.id);
+    expect(all[6]?.id).not.toBe(moreId);
     expect(all[6]).toHaveAttribute('aria-selected', 'true');
     await user.keyboard('{ArrowDown}');
     expect(box()).toHaveAttribute('aria-activedescendant', all[7]?.id);
@@ -141,6 +148,8 @@ describe('finding objects', () => {
     const dialog = await openPalette(user);
     await user.type(box(), 'shop');
     expect(await dialog.findByRole('option', { name: /^shop/ })).toBeInTheDocument();
+    // A count is not stated as complete while a list is missing.
+    expect(dialog.getByRole('status')).toHaveTextContent(t('palette.count.oneSoFar'));
     const loading = await dialog.findByRole('option', { name: t('palette.loading', { plural: t('kind.protos.plural') }) });
     expect(loading).toHaveAttribute('aria-disabled', 'true');
     const failed = await dialog.findByRole('option', { name: t('palette.failed', { plural: t('kind.secrets.plural') }) });

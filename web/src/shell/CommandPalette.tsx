@@ -16,7 +16,7 @@ import { NAV_KINDS } from './nav';
 import { usePaletteActions, type ActionGroup, type PaletteAction } from './paletteActions';
 import { PaletteRow, type Row } from './PaletteRow';
 import { entriesOf, KIND_ORDER, search, searchActions, type Entry, type Hit } from './search';
-import { isMac, modHeld } from './usePaletteHotkey';
+import { isMac, modHeld, overlayOpen } from './usePaletteHotkey';
 import type { PaletteExit } from './usePalette';
 import './palette.css';
 
@@ -163,6 +163,9 @@ function hrefOf(row: Row | undefined): string | undefined {
 const countText = (count: number): string =>
   count === 0 ? t('palette.count.none') : count === 1 ? t('palette.count.one') : t('palette.count.other', { count });
 
+/** A count while some list is still loading or failed: what was found so far. */
+const countSoFar = (count: number): string => (count === 1 ? t('palette.count.oneSoFar') : t('palette.count.otherSoFar', { count }));
+
 /** A list page: there "/" focuses the list's own search box, not the palette (table/Toolbar.tsx). */
 function onListPage(pathname: string): boolean {
   const segments = pathname.split('/').filter(Boolean);
@@ -174,6 +177,12 @@ export interface CommandPaletteProps {
 }
 
 export default function CommandPalette({ onClose }: CommandPaletteProps) {
+  // Read once, as the palette mounts and before it draws anything: another modal open now (opened
+  // while this code was loading) means the palette must not open over it.
+  const [blocked] = useState(() => overlayOpen());
+  useEffect(() => {
+    if (blocked) onClose('dismiss');
+  }, [blocked, onClose]);
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [query, setQuery] = useState('');
@@ -200,22 +209,28 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
   const choices = useMemo(() => groups.flatMap((g) => g.rows.filter((row) => row.type !== 'note')), [groups]);
   const positions = useMemo(() => new Map(choices.map((row, at) => [row.key, at])), [choices]);
 
-  // The active choice, by its key: it stays on its object when a list arrives and rows appear above
-  // it; the first choice when the query changes or it is gone. A move by key scrolls it into view;
-  // one by the pointer doesn't (the row is under it).
+  // The active choice, by its key: what Enter opens is the row highlighted when the user last looked.
+  // A new query starts at its first row, and that row's key is kept from then on, so rows that arrive
+  // later (a list loading, a refetch) never move the highlight to another object; if the object
+  // goes, the highlight goes to the first row. A move by key scrolls it into view; one by the
+  // pointer doesn't (the row is under it).
   const [cursor, setCursor] = useState<{ query: string; key?: string; byPointer: boolean }>({ query, byPointer: false });
   const kept = cursor.query === query && cursor.key !== undefined ? positions.get(cursor.key) : undefined;
+  const first = choices[0]?.key;
+  if (kept === undefined && first !== undefined) setCursor({ query, key: first, byPointer: false });
   const active = choices.length === 0 ? -1 : (kept ?? 0);
   const activeRow = choices[active];
   const moveTo = (index: number, byPointer = false) => setCursor({ query, key: choices[index]?.key, byPointer });
   const scrolls = !(cursor.byPointer && cursor.query === query);
 
+  // Each option's id follows its row (not its position), so a new active row is a new descendant.
   const base = useId();
   const listId = `${base}-list`;
-  const optionId = (index: number) => `${base}-o${index}`;
+  const optionId = (key: string) => `${base}-${encodeURIComponent(key)}`;
+  const activeId = activeRow ? optionId(activeRow.key) : undefined;
   useEffect(() => {
-    if (active >= 0 && scrolls) document.getElementById(`${base}-o${active}`)?.scrollIntoView?.({ block: 'nearest' });
-  }, [active, scrolls, base]);
+    if (activeId !== undefined && scrolls) document.getElementById(activeId)?.scrollIntoView?.({ block: 'nearest' });
+  }, [activeId, scrolls]);
 
   function run(row: Row, newTab: boolean) {
     if (row.type === 'more') {
@@ -272,7 +287,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
       ArrowUp: (active - 1 + n) % n,
       Home: 0,
       End: n - 1,
-      PageDown: groupStarts.find((start) => start > active) ?? groupStarts.at(-1) ?? 0,
+      PageDown: groupStarts.find((start) => start > active) ?? n - 1,
       PageUp: own < active ? own : (groupStarts.filter((start) => start < active).at(-1) ?? 0),
     };
     const to = next[e.key];
@@ -288,8 +303,14 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
   const typed = query.trim() !== '';
   const found = hits.length + (typed ? searchActions(actions, query).length : 0);
   const partial = sources.some((s) => s.state !== 'ready');
-  // Nothing found is never stated as a fact while a list is missing: not in words, not to a screen reader.
+  // Nothing found, or a count, is never stated as complete while a list is missing: not in words,
+  // not to a screen reader.
   const nothing = t(partial ? 'palette.noResultsPartial' : 'palette.noResults', { query: query.trim() });
+  const announced = !typed ? '' : found === 0 ? nothing : partial ? countSoFar(found) : countText(found);
+
+  // Opened over another modal (one that appeared while this code loaded): it owns the keyboard, and
+  // a result chosen here would unmount it. Close without drawing anything.
+  if (blocked) return null;
 
   return (
     <Dialog open onClose={() => onClose('dismiss')} title={t('palette.title')}>
@@ -303,7 +324,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
             aria-expanded={groups.length > 0}
             aria-controls={groups.length > 0 ? listId : undefined}
             aria-autocomplete="list"
-            aria-activedescendant={active >= 0 ? optionId(active) : undefined}
+            aria-activedescendant={activeId}
             placeholder={t('palette.placeholder')}
             autoComplete="off"
             spellCheck={false}
@@ -325,7 +346,7 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
                 {group.rows.map((row) => {
                   const at = positions.get(row.key);
                   if (at === undefined) return <PaletteRow key={row.key} row={row} />;
-                  return <PaletteRow key={row.key} row={row} index={at} id={optionId(at)} selected={at === active} onHover={onHover} onChoose={onChoose} />;
+                  return <PaletteRow key={row.key} row={row} index={at} id={optionId(row.key)} selected={at === active} onHover={onHover} onChoose={onChoose} />;
                 })}
               </div>
             ))}
@@ -333,9 +354,9 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
         )}
         {typed && choices.length === 0 && <p className="cp-empty">{nothing}</p>}
         <div className="cp-sr-only" role="status">
-          {!typed ? '' : found === 0 ? nothing : countText(found)}
+          {announced}
         </div>
-        <Hints newTab={hrefOf(activeRow) !== undefined} slash={!onListPage(pathname)} />
+        <Hints enter={activeRow?.type === 'more' ? 'expand' : 'open'} newTab={hrefOf(activeRow) !== undefined} slash={!onListPage(pathname)} />
       </div>
     </Dialog>
   );
@@ -343,8 +364,8 @@ export default function CommandPalette({ onClose }: CommandPaletteProps) {
 
 const NO_KINDS: readonly Kind[] = [];
 
-/** The keys that work on the active row, and "/" where it opens the palette. */
-function Hints({ newTab, slash }: { newTab: boolean; slash: boolean }) {
+/** The keys that work on the active row (what Enter does there), and "/" where it opens the palette. */
+function Hints({ enter, newTab, slash }: { enter: 'open' | 'expand'; newTab: boolean; slash: boolean }) {
   return (
     <div className="cp-hints" aria-hidden="true">
       <span>
@@ -353,7 +374,7 @@ function Hints({ newTab, slash }: { newTab: boolean; slash: boolean }) {
       </span>
       <span>
         <kbd>{t('palette.key.enter')}</kbd>
-        {t('palette.hint.open')}
+        {t(`palette.hint.${enter}`)}
       </span>
       {newTab && (
         <span>

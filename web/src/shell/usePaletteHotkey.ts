@@ -22,10 +22,15 @@ function editable(target: EventTarget | null): boolean {
   return target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.closest('[role="textbox"], [contenteditable=""], [contenteditable="true"]') !== null;
 }
 
-/** Open overlays own the keyboard (as editor/useEditorKeys.ts has it): a dialog, a menu, a listbox. */
-const OVERLAY = '[role="dialog"], [role="alertdialog"], [role="menu"], [role="listbox"]';
+/**
+ * The modal overlays of this app, which own the keyboard while open: the kit's dialogs (the plugin
+ * picker among them), alert dialogs, menus, and popovers (the kit Select's list sits in one, a
+ * `role="dialog"`). Not a bare listbox: CodeMirror draws its completions and its lint panel as one,
+ * in the page, and neither is modal.
+ */
+const OVERLAY = '[role="dialog"], [role="alertdialog"], [role="menu"]';
 
-/** Whether an overlay is open anywhere on the page, wherever focus is (it may be on the page's body). */
+/** Whether a modal overlay is open anywhere on the page, wherever focus is (it may be on the page's body). */
 export const overlayOpen = (): boolean => document.querySelector(OVERLAY) !== null;
 
 /**
@@ -34,7 +39,8 @@ export const overlayOpen = (): boolean => document.querySelector(OVERLAY) !== nu
  * of it is prevented. "/" opens it when focus is not in an editable element and nothing else took the
  * key first (a list page's "/" focuses that list's search box, as its hint says). While another
  * overlay is open (a dialog, a menu, a select's list), neither key does anything: that overlay owns
- * the keyboard. `isOpen` says whether the palette itself is the one open.
+ * the keyboard (Cmd/Ctrl-K is still kept from the browser). `isOpen` says whether the palette itself
+ * is the one open.
  */
 export function usePaletteHotkey(toggle: () => void, open: () => void, isOpen: () => boolean): void {
   const handlers = useRef({ toggle, open, isOpen });
@@ -44,8 +50,9 @@ export function usePaletteHotkey(toggle: () => void, open: () => void, isOpen: (
   useEffect(() => {
     const onCapture = (e: KeyboardEvent) => {
       if (e.repeat || e.altKey || e.shiftKey || !isK(e) || !modHeld(e)) return;
-      if (!handlers.current.isOpen() && overlayOpen()) return;
+      // The key never reaches the browser (its search or address bar), even when it does nothing here.
       e.preventDefault();
+      if (!handlers.current.isOpen() && overlayOpen()) return;
       e.stopPropagation();
       handlers.current.toggle();
     };
