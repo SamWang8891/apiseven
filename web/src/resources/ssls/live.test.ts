@@ -12,8 +12,9 @@ import { stripTimestamps } from '../../api/sanitize';
 import type { Item, Obj } from '../../api/types';
 import { saveResource, type SaveResult } from '../../editor/save';
 import { ctxOf } from '../../test/ctx';
-import { EC_PAIR, RSA_PAIR } from '../../test/pairs';
+import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY, RSA_PAIR } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
+import { takes } from './pemBox';
 import { sslIssues } from './validate';
 
 const env = import.meta.env as Record<string, string | undefined>;
@@ -154,6 +155,34 @@ describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => 
       // The new main certificate is presented, and the extra pair's stored key still serves its certificate.
       expect(await until(sni, 'rotated.apiseven.test', ECDSA)).toBe('rotated.apiseven.test');
       expect(await presented(sni, RSA)).toBe('rsa-extra.apiseven.test');
+    }
+  });
+
+  it('the key box takes what APISIX stores and serves (an EC PARAMETERS block first, a line after the key) and refuses what it refuses (Bag Attributes or a blank line first)', async () => {
+    const tlsOpen = (await presented('apiseven.test')) === 'apiseven.test';
+    // Taken by the key box, stored by APISIX, and presented for its SNI: OpenSSL skips what is not the key.
+    for (const [name, key] of [
+      ['ecparams', EC_PARAMS_KEY],
+      ['after', `${EC_PAIR.key}# rotated in November\n`],
+    ] as const) {
+      expect(takes('key', key), name).toBe(true);
+      const sni = `${tag}-${name}.live.test`;
+      const draft: Obj = { status: 1, sni, cert: EC_PAIR.cert, key };
+      expect(sslIssues(draft, { isNew: true, ctx: ctxOf() })).toEqual([]);
+      const created = saved(await saveResource(api, { kind: 'ssls', isNew: true, draft }));
+      undo.push(() => api.remove('ssls', created.id));
+      if (tlsOpen) expect(await until(sni, 'rotated.apiseven.test', ECDSA), name).toBe('rotated.apiseven.test');
+    }
+    // Refused by the key box, and by APISIX: a key whose text does not start with "---" is taken for an
+    // encrypted one (aes_decrypt_pkey, ssl.lua 98–104), and its decryption fails.
+    for (const [name, key] of [
+      ['bag', BAG_KEY],
+      ['blank', `\n${RSA_PAIR.key}`],
+    ] as const) {
+      expect(takes('key', key), name).toBe(false);
+      const refused = await saveResource(api, { kind: 'ssls', isNew: true, draft: { status: 1, sni: `${tag}-${name}.live.test`, cert: RSA_PAIR.cert, key } });
+      if (refused.ok) undo.push(() => api.remove('ssls', refused.item.id));
+      expect(!refused.ok && 'error' in refused && refused.error.errorMsg, name).toBe('failed to decrypt previous encrypted key');
     }
   });
 });
