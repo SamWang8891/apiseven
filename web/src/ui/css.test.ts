@@ -65,4 +65,15 @@ describe('ui CSS', () => {
       }
     }
   });
+
+  // Known item 16: base.css's global :focus-visible outline loads after the kit's CSS, so a field that
+  // sits in a box which rings itself (:focus-within) must say "no outline" for :focus-visible too, or
+  // it draws a second ring inside the box's.
+  it('a field inside a box that rings itself draws no second ring', () => {
+    const all = files.flatMap((f) => rules(f.css));
+    for (const field of ['.ui-tags__input', '.ui-input__bare', '.ui-select__trigger']) {
+      const covered = all.some(([sel, body]) => sel.split(',').some((s) => s.trim() === `${field}:focus-visible`) && /outline:\s*none/.test(body));
+      expect(covered, field).toBe(true);
+    }
+  });
 });

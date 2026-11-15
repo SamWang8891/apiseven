@@ -3,7 +3,7 @@ import type { Item } from '../../api/types';
 import { t } from '../../i18n';
 import { applyFilters, type FilterSelection } from '../../table/filter';
 import { ctxOf, itemOf } from '../../test/ctx';
-import { NO_SERVICE, routeFilters } from './filters';
+import { ANY_HOST, NO_SERVICE, routeFilters } from './filters';
 
 const filter = (id: string) => {
   const def = routeFilters.find((f) => f.id === id);
@@ -26,8 +26,8 @@ const CTX = ctxOf({
 const names = (selection: FilterSelection) => applyFilters(ROUTES, '', routeFilters, selection, CTX).map((i) => i.value.name);
 
 describe('routeFilters', () => {
-  it('offers status, plugin, service and label chips, in that order', () => {
-    expect(routeFilters.map((f) => f.id)).toEqual(['status', 'plugin', 'service', 'label']);
+  it('offers status, host, method, plugin, service and label chips, in that order', () => {
+    expect(routeFilters.map((f) => f.id)).toEqual(['status', 'host', 'method', 'plugin', 'service', 'label']);
     expect(filter('plugin').label).toBe(t('filter.plugin'));
   });
 
@@ -67,6 +67,29 @@ describe('routeFilters', () => {
     expect(filter('label').options(ROUTES, CTX).map((o) => o.value)).toEqual(['env:dev', 'team:core', 'team:edge']);
     expect(names({ label: ['team:core'] })).toEqual(['one', 'two']);
     expect(names({ label: ['env:dev', 'team:edge'] })).toEqual(['one', 'four']);
+  });
+
+  it('host: the hosts each route matches, its service\'s when it sets none, plus Any host (acceptance: filter by host)', () => {
+    const items = [
+      itemOf('h1', { name: 'own', hosts: ['b.example', 'a.example'] }),
+      itemOf('h2', { name: 'via', service_id: 'sh' }),
+      itemOf('h3', { name: 'anywhere', uri: '/*' }),
+    ];
+    const ctx = ctxOf({ routes: items, services: [itemOf('sh', { name: 'shop', hosts: ['shop.example'] })] });
+    expect(filter('host').options(items, ctx).map((o) => o.value)).toEqual(['a.example', 'b.example', 'shop.example', ANY_HOST]);
+    const pick = (values: string[]) => applyFilters(items, '', routeFilters, { host: values }, ctx).map((i) => i.value.name);
+    expect(pick(['a.example'])).toEqual(['own']);
+    expect(pick(['shop.example'])).toEqual(['via']);
+    expect(pick([ANY_HOST])).toEqual(['anywhere']);
+    expect(filter('host').options(items, ctx).at(-1)?.label).toBe(t('filter.anyHost'));
+  });
+
+  it('method: each method in use, ANY for routes that set none (acceptance: filter by method)', () => {
+    const items = [itemOf('m1', { name: 'get', methods: ['GET'] }), itemOf('m2', { name: 'write', methods: ['POST', 'PUT'] }), itemOf('m3', { name: 'any' })];
+    expect(filter('method').options(items, ctxOf()).map((o) => o.value)).toEqual(['ANY', 'GET', 'POST', 'PUT']);
+    const pick = (values: string[]) => applyFilters(items, '', routeFilters, { method: values }, ctxOf()).map((i) => i.value.name);
+    expect(pick(['PUT'])).toEqual(['write']);
+    expect(pick(['GET', 'ANY'])).toEqual(['get', 'any']);
   });
 
   it('combines filters: each must match', () => {

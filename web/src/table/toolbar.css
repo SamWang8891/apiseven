@@ -61,10 +61,11 @@
   white-space: nowrap;
 }
 
+/* It narrows first (to its minimum) before the chips give way. */
 .tbl-search {
   position: relative;
-  flex: 0 1 300px;
-  min-width: 180px;
+  flex: 0 1000 300px;
+  min-width: 172px;
 }
 
 .tbl-search__icon {

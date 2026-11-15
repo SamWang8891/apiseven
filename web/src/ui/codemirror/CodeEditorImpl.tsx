@@ -118,7 +118,9 @@ export default function CodeEditorImpl({
   }, [readOnly]);
 
   useLayoutEffect(() => {
-    const attributes: Record<string, string> = {};
+    // In the tab order said outright (a contenteditable already is): the keyboard reaches, and so
+    // scrolls, a long text, read-only ones included.
+    const attributes: Record<string, string> = { tabindex: '0' };
     if (ariaLabel) attributes['aria-label'] = ariaLabel;
     if (invalid) attributes['aria-invalid'] = 'true';
     viewRef.current?.dispatch({ effects: labelSlot.reconfigure(EditorView.contentAttributes.of(attributes)) });

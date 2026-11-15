@@ -34,7 +34,7 @@ export function CodeEditor(props: CodeEditorProps) {
     <div className={readOnly ? 'ui-code ui-code--readonly' : 'ui-code'} style={size}>
       <Suspense
         fallback={
-          <pre className="ui-code__fallback" aria-label={props['aria-label']} aria-busy="true" title={t('ui.code.loading')}>
+          <pre className="ui-code__fallback" tabIndex={0} aria-label={props['aria-label']} aria-busy="true" title={t('ui.code.loading')}>
             {props.value}
           </pre>
         }
