@@ -141,12 +141,20 @@ export function routeHosts(route: Obj, ctx: Ctx): { hosts: string[]; viaService:
   return { hosts: inherited, viaService: inherited.length > 0 };
 }
 
+/** A route that sets no hosts of its own and takes them from a service. */
+const hostsFromService = (route: Obj): boolean => strings(route.hosts).length === 0 && nonEmpty(route.host) === undefined && idOf(route.service_id) !== undefined;
+
 /**
  * Whether a route's hosts can't be known yet: it sets none of its own and takes them from a service
- * whose list has not loaded (until then "any host" would be a guess: addendum rule 12).
+ * whose list has not loaded (until then "any host" would be a guess: addendum rule 12), nor failed.
  */
 export function routeHostsLoading(route: Obj, ctx: Ctx): boolean {
-  return strings(route.hosts).length === 0 && nonEmpty(route.host) === undefined && idOf(route.service_id) !== undefined && !ctx.loaded.services;
+  return hostsFromService(route) && !ctx.loaded.services && !ctx.failed.services;
+}
+
+/** Whether a route's hosts can't be known at all: they come from a service, and the services read failed (Task 16b, item 162). */
+export function routeHostsUnknown(route: Obj, ctx: Ctx): boolean {
+  return hostsFromService(route) && ctx.failed.services;
 }
 
 function discoveryOf(upstream: Obj): string | undefined {

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { t } from '../../i18n';
 import { buildPage } from '../../table/rows';
 import { ctxOf, itemOf } from '../../test/ctx';
-import { hostGrouping } from './grouping';
+import { HOSTS_LOADING, HOSTS_UNKNOWN, hostGrouping } from './grouping';
 
 const DAY = 86_400_000;
 
@@ -56,6 +56,22 @@ describe('hostGrouping', () => {
     const { container } = render(<>{hostGrouping.header?.('api.example', [itemOf('r1')], ctx)}</>);
     expect(container.querySelector('.ui-badge')).toHaveClass('expiry--warn');
     expect(container.querySelector('.cell-group__cert')).toHaveAttribute('title', t('group.sharedCert', { host: 'api.example', count: 2 }));
+  });
+
+  it('waits for the services like the cell and the filter: a route that takes its hosts from one is "loading…", then "unknown" if they failed, never "any host" (Task 16b, item 162)', () => {
+    const via = itemOf('r1', { name: 'via', service_id: 's1' });
+    const loading = ctxOf({ loaded: { services: false } });
+    expect(hostGrouping.groupBy(via, loading)).toEqual([HOSTS_LOADING]);
+    const failed = ctxOf({ loaded: { services: false }, failed: { services: true } });
+    expect(hostGrouping.groupBy(via, failed)).toEqual([HOSTS_UNKNOWN]);
+    // Its header says so, with no certificate looked up for it.
+    const head = render(<>{hostGrouping.header?.(HOSTS_LOADING, [via], loading)}</>);
+    expect(head.container).toHaveTextContent(t('group.hostsLoading'));
+    expect(head.container.querySelector('.cell-group__cert')).toBeNull();
+    head.unmount();
+    const unknown = render(<>{hostGrouping.header?.(HOSTS_UNKNOWN, [via], failed)}</>);
+    expect(unknown.container).toHaveTextContent(t('group.hostsUnknown'));
+    expect(unknown.container.querySelector('.cell-group__cert')).toBeNull();
   });
 
   it('says nothing about a certificate while the SSL list loads', () => {

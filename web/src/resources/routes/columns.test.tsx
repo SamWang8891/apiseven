@@ -329,6 +329,13 @@ describe('hosts while the services load (fix round 1, R4.1)', () => {
     const loaded = cell('hosts', route({ service_id: 's2' }), CTX);
     expect(loaded.el).toHaveTextContent('b.example');
   });
+
+  it('after the services read failed: "unknown", not "loading…" for ever (Task 16b, item 162)', () => {
+    const failed = cell('hosts', route({ service_id: 's1' }), ctxOf({ services: [], loaded: { services: false }, failed: { services: true } }));
+    expect(failed.el).toHaveTextContent(t('cell.hostsUnknown'));
+    expect(failed.el).not.toHaveTextContent(t('picker.loading'));
+    expect(failed.el).not.toHaveTextContent(t('cell.anyHost'));
+  });
 });
 
 describe('times', () => {

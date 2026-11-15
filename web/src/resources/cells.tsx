@@ -43,10 +43,11 @@ export function ViaService() {
 
 /**
  * Hosts one per line in monospace, tagged when they come from the service; "any host" with none;
- * "loading…" while they would come from a service list that has not loaded.
+ * "loading…" while they would come from a service list that has not loaded, "unknown" when it failed.
  */
-export function HostsCell({ hosts, viaService, loading }: { hosts: string[]; viaService?: boolean; loading?: boolean }) {
+export function HostsCell({ hosts, viaService, loading, unknown }: { hosts: string[]; viaService?: boolean; loading?: boolean; unknown?: boolean }) {
   if (loading) return <span className="cell-muted">{t('picker.loading')}</span>;
+  if (unknown) return <span className="cell-muted">{t('cell.hostsUnknown')}</span>;
   if (hosts.length === 0) return <span className="cell-muted">{t('cell.anyHost')}</span>;
   return (
     <>

@@ -3,7 +3,7 @@ import type { Item } from '../../api/types';
 import { t } from '../../i18n';
 import { applyFilters, type FilterSelection } from '../../table/filter';
 import { ctxOf, itemOf } from '../../test/ctx';
-import { ANY_HOST, NO_SERVICE, routeFilters } from './filters';
+import { ANY_HOST, NO_SERVICE, routeFilters, UNKNOWN_HOST } from './filters';
 
 const filter = (id: string) => {
   const def = routeFilters.find((f) => f.id === id);
@@ -91,6 +91,20 @@ describe('routeFilters', () => {
     const pick = (values: string[]) => applyFilters(items, '', routeFilters, { host: values }, ctx).map((i) => i.value.name);
     expect(pick([ANY_HOST])).toEqual(['anywhere']);
     expect(pick(['a.example', ANY_HOST])).toEqual(['own', 'anywhere']);
+  });
+
+  it('host, after the services read failed: such a route is offered and matched under its own "unknown" option, not hidden (Task 16b, item 162)', () => {
+    const items = [itemOf('h1', { name: 'own', host: 'a.example' }), itemOf('h2', { name: 'via', service_id: 'sh' }), itemOf('h3', { name: 'anywhere' })];
+    const ctx = ctxOf({ routes: items, loaded: { services: false }, failed: { services: true } });
+    expect(filter('host').options(items, ctx)).toEqual([
+      { value: 'a.example', label: 'a.example' },
+      { value: ANY_HOST, label: t('filter.anyHost') },
+      { value: UNKNOWN_HOST, label: t('filter.hostUnknown') },
+    ]);
+    const pick = (values: string[]) => applyFilters(items, '', routeFilters, { host: values }, ctx).map((i) => i.value.name);
+    expect(pick([UNKNOWN_HOST])).toEqual(['via']);
+    expect(pick([ANY_HOST])).toEqual(['anywhere']);
+    expect(pick(['a.example', UNKNOWN_HOST])).toEqual(['own', 'via']);
   });
 
   it('method: each method in use, ANY for routes that set none (acceptance: filter by method)', () => {

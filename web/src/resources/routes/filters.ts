@@ -2,7 +2,7 @@
 import { t } from '../../i18n';
 import type { FilterDef } from '../../table/filter';
 import type { Option } from '../../ui';
-import { effectivePlugins, isEnabled, labelPairs, nameOfValue, resolveRef, routeHosts, routeHostsLoading } from '../resolve';
+import { effectivePlugins, isEnabled, labelPairs, nameOfValue, resolveRef, routeHosts, routeHostsLoading, routeHostsUnknown } from '../resolve';
 import { methodsOf } from './methods';
 
 export { ANY_METHOD } from './methods';
@@ -11,6 +11,8 @@ export { ANY_METHOD } from './methods';
 export const NO_SERVICE = '(no service)';
 /** The `host` filter's value for routes that match any host (a host never holds a space or parentheses: host_def_pat, schema_def.lua 56). */
 export const ANY_HOST = '(any host)';
+/** The `host` filter's value for routes whose hosts come from a service when the services could not be read (Task 16b, item 162). */
+export const UNKNOWN_HOST = '(hosts unknown)';
 
 const collator = new Intl.Collator(undefined, { numeric: true });
 const byLabel = (a: Option, b: Option): number => collator.compare(a.label, b.label);
@@ -31,6 +33,7 @@ export const routeFilters: FilterDef[] = [
     // The hosts it matches, its service's when it sets none (routeHosts, as the Hosts column). While the
     // services have not loaded, a route that takes its hosts from one has hosts unknown: it is neither
     // offered nor matched as Any host (addendum rule 12), and matches no host until they are known.
+    // When the services could not be read, such a route has an option of its own (item 162).
     id: 'host',
     get label() {
       return t('filter.host');
@@ -38,17 +41,23 @@ export const routeFilters: FilterDef[] = [
     options: (items, ctx) => {
       const hosts = new Set<string>();
       let anyHost = false;
+      let unknown = false;
       for (const item of items) {
         if (routeHostsLoading(item.value, ctx)) continue;
+        if (routeHostsUnknown(item.value, ctx)) {
+          unknown = true;
+          continue;
+        }
         const own = routeHosts(item.value, ctx).hosts;
         if (own.length === 0) anyHost = true;
         for (const host of own) hosts.add(host);
       }
       const options = [...hosts].sort(collator.compare).map((host) => ({ value: host, label: host }));
-      return anyHost ? [...options, { value: ANY_HOST, label: t('filter.anyHost') }] : options;
+      return [...options, ...(anyHost ? [{ value: ANY_HOST, label: t('filter.anyHost') }] : []), ...(unknown ? [{ value: UNKNOWN_HOST, label: t('filter.hostUnknown') }] : [])];
     },
     matches: (item, selected, ctx) => {
       if (routeHostsLoading(item.value, ctx)) return false;
+      if (routeHostsUnknown(item.value, ctx)) return selected.includes(UNKNOWN_HOST);
       const hosts = routeHosts(item.value, ctx).hosts;
       return hosts.length === 0 ? selected.includes(ANY_HOST) : hosts.some((host) => selected.includes(host));
     },

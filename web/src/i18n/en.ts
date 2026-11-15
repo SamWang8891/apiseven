@@ -191,6 +191,7 @@ export const en: Record<string, string> = {
   // Cells shared by the resource lists (web/src/resources/cells.tsx, expiry.tsx)
   'cell.viaService': 'via service',
   'cell.anyHost': 'any host',
+  'cell.hostsUnknown': 'unknown (Services didn’t load)',
   'cell.more': '+{count}',
   'cell.missing.upstreams': 'missing upstream {id}',
   'cell.missing.services': 'missing service {id}',
@@ -230,6 +231,7 @@ export const en: Record<string, string> = {
   // Quick filters and groupings of the lists (web/src/resources/routes)
   'filter.host': 'Host',
   'filter.anyHost': 'Any host',
+  'filter.hostUnknown': 'Unknown (Services didn’t load)',
   'filter.method': 'Method',
   'filter.plugin': 'Plugin',
   'filter.service': 'Service',
@@ -252,6 +254,8 @@ export const en: Record<string, string> = {
   'filter.noGroup': 'No group',
   'group.byHost': 'Group by host',
   'group.anyHost': '(any host)',
+  'group.hostsLoading': 'Hosts from a service: loading…',
+  'group.hostsUnknown': 'Hosts from a service: unknown (Services didn’t load)',
   'group.cert': 'Certificate',
   'group.noCert': 'No certificate is served for {host}',
   'group.sharedCert': '{count} certificates have the SNI {host}: APISIX serves the one it loaded first, which the dashboard can\'t tell. The sooner expiry is shown.',

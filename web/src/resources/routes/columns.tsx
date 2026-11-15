@@ -9,7 +9,7 @@ import { HostsCell, IdCell, LabelChips, MethodChips, NameDescCell, PluginChips, 
 import type { Ctx } from '../ctx';
 import { ExpiryBadge } from '../expiry';
 import type { ColumnDef } from '../registry';
-import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, routeHostsLoading, sslExpiries, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
+import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, routeHostsLoading, routeHostsUnknown, sslExpiries, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
 import { methodsOf } from './methods';
 
 function strings(value: unknown): string[] {
@@ -107,7 +107,7 @@ export const routeColumns: ColumnDef[] = [
     accessor: (item, ctx) => routeHosts(item.value, ctx).hosts,
     cell: (item, ctx) => {
       const { hosts, viaService } = routeHosts(item.value, ctx);
-      return <HostsCell hosts={hosts} viaService={viaService} loading={routeHostsLoading(item.value, ctx)} />;
+      return <HostsCell hosts={hosts} viaService={viaService} loading={routeHostsLoading(item.value, ctx)} unknown={routeHostsUnknown(item.value, ctx)} />;
     },
     defaultVisible: true,
     width: 164,
