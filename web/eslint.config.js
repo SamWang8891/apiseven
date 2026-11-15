@@ -24,4 +24,14 @@ export default defineConfig([
       },
     },
   },
+  {
+    // The Playwright suite runs in Node; its fixtures' `use` is Playwright's, not a React hook, and a
+    // fixture with no dependencies takes `{}` by Playwright's convention.
+    files: ['e2e/**/*.ts', 'playwright.config.ts'],
+    languageOptions: { globals: { ...globals.node, ...globals.browser } },
+    rules: {
+      'react-hooks/rules-of-hooks': 'off',
+      'no-empty-pattern': 'off',
+    },
+  },
 ]);

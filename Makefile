@@ -1,5 +1,5 @@
 # Thin wrappers; each target says what it runs.
-.PHONY: dev-up dev-down seed web check test build docker single static
+.PHONY: dev-up dev-down seed web check test build docker single static e2e
 
 # The local APISIX + etcd for development (dev/compose.yaml), and its sample data.
 dev-up:
@@ -32,6 +32,12 @@ test: | $(WEB_DEPS)
 	cd web && npm test
 	cd server && go test ./...
 
+# The Playwright suite against the dev stack (make dev-up first). It resets the dev APISIX to the seed.
+# proxy-mode needs `make docker`, single-file `make single`; web/playwright.config.ts lists the E2E_*
+# variables that point it at another APISIX.
+e2e:
+	cd web && npm run e2e
+
 # bin/apiseven: the server with the web build embedded (server/dist is a copy of web/dist).
 build: | $(WEB_DEPS)
 	cd web && npm run build
@@ -39,8 +45,10 @@ build: | $(WEB_DEPS)
 	cp -R web/dist/. server/dist/
 	cd server && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../bin/apiseven .
 
+# IMAGE=<tag> builds under another tag (the end-to-end suite reads E2E_IMAGE).
+IMAGE ?= apiseven:local
 docker:
-	docker build -t apiseven:local .
+	docker build -t $(IMAGE) .
 
 # The single-file export: dist/apiseven.html, which runs opened straight from disk.
 single: | $(WEB_DEPS)
