@@ -141,6 +141,20 @@ describe('a refused write', () => {
   });
 });
 
+describe('a save that never reached APISIX, or got no answer', () => {
+  it('is titled that way in direct mode, not "APISIX rejected the change"', async () => {
+    const client = new AdminClient({ id: 'c', name: 'c', baseUrl: 'http://apisix.test:9180' }, () => Promise.reject(new TypeError('Failed to fetch')));
+    const err = await failure(client.replace('routes', 'r1', { uri: '/' }));
+    expect(err.kind).toBe('network');
+    expect(saveFailure(err)).toEqual({ title: t('editor.unreachable'), message: 'Network error: Failed to fetch' });
+  });
+
+  it("is titled from the apiseven server's side when it could not reach APISIX, with its sentence", async () => {
+    const err = await failure(clientAnswering(() => refusal(502, 'upstream', UPSTREAM_MSG)).replace('routes', 'r1', { uri: '/' }));
+    expect(saveFailure(err)).toEqual({ title: t('api.server.upstream'), message: UPSTREAM_MSG });
+  });
+});
+
 describe('load errors', () => {
   const refused = new ApiError('server', 'x', { status: 403, refusal: { reason: 'origin', message: ORIGIN_MSG } });
   const client = new AdminClient({ id: 'c', name: 'c', baseUrl: '' }, () => Promise.reject(new Error('unused')));

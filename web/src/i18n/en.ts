@@ -397,6 +397,7 @@ export const en: Record<string, string> = {
   'editor.fixHeld': '{fix}. {message}',
   'editor.fixAnyway': '{fix}, or use Save anyway (beside Save)',
   'editor.rejected': 'APISIX rejected the change',
+  'editor.unreachable': "APISIX can't be reached: the change was not sent, or got no answer",
   'editor.notSent': 'Not sent',
   'api.notAddressable': '"{id}" can’t be an ID in the Admin API’s path (it is empty, . or .., or holds a slash), so nothing was sent.',
   'editor.anyway.title': 'Refused only by the checks in this browser',
@@ -456,11 +457,12 @@ export const en: Record<string, string> = {
   'time.months': '{n}mo ago',
   'time.years': '{n}y ago',
 
-  // Shown in the shell once a write is refused for the key's role (web/src/api/write.ts)
   // Answers apiseven's own server made (api/client.ts serverRefusal)
   'api.server.refused': 'The apiseven server refused this request',
   'api.server.signIn': 'Sign in again: reload the page',
   'api.server.upstream': "APISIX can't be reached from the apiseven server",
+
+  // Shown in the shell once a write is refused for the key's role (web/src/api/write.ts)
   'unreachable.title': 'Can’t reach the Admin API at',
   'unreachable.body': '{error}. What this page shows may be out of date.',
   'readOnly.banner': "This admin key is read-only: changes can't be saved. Connect with a key that may write to change anything.",

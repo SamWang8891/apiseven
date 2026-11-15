@@ -40,12 +40,17 @@ export function takenFailure(kind: Kind, holder: Item, parent?: Parent, here = f
 }
 
 /**
- * A save that failed: APISIX's refusal, shown verbatim; apiseven's server's, named as its; or the
- * client's own, never sent for an id the Admin API's path can't hold (api/segments.ts), named as not sent.
+ * A save that failed: APISIX's refusal, shown verbatim; apiseven's server's, named as its; no answer,
+ * named as that; or the client's own, never sent for an id the Admin API's path can't hold
+ * (api/segments.ts), named as not sent.
  */
 export function saveFailure(error: ApiError, path?: string): Failure {
   // Refused by apiseven's own server (Docker mode): not APISIX's refusal, and its sentence names the fix.
   if (error.kind === 'server' && error.refusal) return { title: refusalTitle(error.refusal), message: error.refusal.message };
+  // No answer from APISIX (or the apiseven server could not reach it): nothing says it rejected the change.
+  if (error.kind === 'network') {
+    return error.refusal ? { title: t('api.server.upstream'), message: error.refusal.message } : { title: t('editor.unreachable'), message: error.message };
+  }
   const message = error.errorMsg ?? error.message;
   return error.kind === 'refused' ? { title: t('editor.notSent'), message } : { message, path };
 }
