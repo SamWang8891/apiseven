@@ -15,6 +15,7 @@ import { resetApp } from '../test/app';
 import { GENERAL_TAB, jsonEditor, main, openEditor, overrideDef, writesOf } from '../test/editor';
 import { json } from '../test/fakeAdmin';
 import { pluginReplies } from '../test/plugins';
+import { SEED_CERT, SEED_KEY } from '../test/sslSeed';
 import { renderWithProviders } from '../test/providers';
 import { EditorPage } from '../pages/EditorPage';
 import { usePending } from '../ui';
@@ -65,7 +66,8 @@ async function refusedWithOffer(user: User, admin: Parameters<typeof writesOf>[0
   const writes = writesOf(admin).length;
   if (how === 'button') await user.click(main().getByRole('button', { name: t('editor.save') }));
   else fireEvent.keyDown(window, { key: 's', metaKey: true });
-  await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne')));
+  // The toast names the way out as well (R5.1).
+  await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') })));
   expect(writesOf(admin)).toHaveLength(writes);
   expect(await main().findByRole('region', { name: t('editor.anyway.title') })).toBeInTheDocument();
 }
@@ -182,11 +184,80 @@ describe('Save anyway', () => {
     await user.click(main().getByRole('tab', { name: /^Holder/ }));
     await user.type(main().getByRole('textbox', { name: 'holder' }), 'hold');
     await waitFor(() => expect(offer()).toBeNull());
+    const held = t('editor.fixHeld', { fix: t('editor.fixMany', { count: 2 }), message: 'Holder: not taken yet' });
+    // The button's refusal, then Cmd/Ctrl-S's: one more toast each, so each was refused on its own.
+    const before = getToasts().length;
     await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(getToasts().length).toBe(before + 1));
+    expect(getToasts().at(-1)?.message).toBe(held);
     fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixMany', { count: 2 }), message: 'Holder: not taken yet' })));
+    await waitFor(() => expect(getToasts().length).toBe(before + 2));
+    expect(getToasts().at(-1)?.message).toBe(held);
     expect(offer()).toBeNull();
+    expect(main().queryByRole('button', { name: t('editor.anyway.action') })).toBeNull();
     expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('only a refusal on its grounds offers it: not when the issue comes back while typing, nor after a refusal for held input once the hold clears (fix round 1, R2)', async () => {
+    const { user, admin } = await openRoute({}, [GENERAL_TAB, HOLDER_TAB]);
+    await user.keyboard('e');
+    await setUri(user, '/strict');
+    await refusedWithOffer(user, admin);
+    // The issue goes (the refusal is forgotten with it), then comes back while typing: no Save refused on it.
+    await setUri(user, '/ok');
+    expect(offer()).toBeNull();
+    await setUri(user, '/strict-later');
+    expect(offer()).toBeNull();
+    expect(main().queryByRole('button', { name: t('editor.anyway.action') })).toBeNull();
+    // A refusal for held input is not one on these grounds, even once the hold clears.
+    await user.click(main().getByRole('tab', { name: /^Holder/ }));
+    await user.type(main().getByRole('textbox', { name: 'holder' }), 'hold');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixMany', { count: 2 }), message: 'Holder: not taken yet' })));
+    await user.clear(main().getByRole('textbox', { name: 'holder' }));
+    expect(offer()).toBeNull();
+    // A Save refused on them now offers it.
+    await refusedWithOffer(user, admin);
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('the question never opens without a press: it closes when the offer goes, and is not open when the offer comes back (fix round 1, R3)', async () => {
+    // A check that depends on another object: the issue stands while upstream u1 is named "strict".
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB], validate: (_d, env) => (env.ctx.upstreams.find((u) => u.id === 'u1')?.value.name === 'strict' ? [{ path: 'uri', message: STRICT }] : []) }));
+    const user = userEvent.setup();
+    const { admin, queryClient } = renderWithProviders(<EditorPage kind="routes" id="r1" />, { path: '/routes/r1', counts: {}, objects: { routes: [ROUTE], upstreams: [{ id: 'u1', name: 'strict', type: 'roundrobin', nodes: [] }] } });
+    await screen.findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await setUri(user, '/b');
+    await user.click(screen.getByRole('button', { name: t('editor.save') }));
+    await user.click(await screen.findByRole('button', { name: t('editor.anyway.action') }));
+    expect(await screen.findByRole('alertdialog', { name: t('editor.anyway.confirmTitle') })).toBeInTheDocument();
+    admin.touch('upstreams', 'u1', { name: 'ok' });
+    await queryClient.invalidateQueries();
+    await waitFor(() => expect(confirmDialog()).toBeNull());
+    admin.touch('upstreams', 'u1', { name: 'strict' });
+    await queryClient.invalidateQueries();
+    await waitFor(() => expect(screen.getByRole('textbox', { name: 'URI' })).toHaveAccessibleDescription(STRICT));
+    expect(confirmDialog()).toBeNull();
+    await user.click(screen.getByRole('button', { name: t('editor.save') }));
+    expect(await screen.findByRole('button', { name: t('editor.anyway.action') })).toBeInTheDocument();
+    expect(confirmDialog()).toBeNull();
+    await user.click(screen.getByRole('button', { name: t('editor.anyway.action') }));
+    expect(await screen.findByRole('alertdialog', { name: t('editor.anyway.confirmTitle') })).toBeInTheDocument();
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('a stored SSL: Save anyway is the same PATCH of what changed', async () => {
+    undo.push(overrideDef('ssls', { validate: (d) => (d.desc === 'strict' ? [{ path: 'desc', message: STRICT }] : []) }));
+    const stored = { id: 's1', snis: ['a.test'], cert: SEED_CERT, key: SEED_KEY };
+    const { user, admin } = await openEditor('#/ssls/s1?tab=general', { objects: { ssls: [stored], routes: [], services: [] } });
+    await main().findByRole('heading', { level: 1 });
+    await user.keyboard('e');
+    await user.type(await main().findByRole('textbox', { name: t('ssl.general.desc') }), 'strict');
+    await refusedWithOffer(user, admin);
+    await user.click(anywayButton());
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.anyway.confirm') }));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PATCH', path: 'ssls/s1', body: { desc: 'strict' } }]));
   });
 
   it('a new object: Create anyway is a POST of the draft as it is', async () => {
@@ -254,7 +325,7 @@ describe('Save anyway', () => {
   it('a real disagreement no fix removes: PCRE\'s $ matches before a final newline (APISIX stores "upstream.test\\n"), JavaScript\'s does not', async () => {
     const { user, admin, value } = await routeJson((stored) => ({ ...stored, plugins: { 'proxy-rewrite': { host: 'upstream.test\n' } } }));
     await user.click(main().getByRole('button', { name: t('editor.save') }));
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne')));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') })));
     await user.click(await main().findByRole('button', { name: t('editor.anyway.action') }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByRole('listitem').textContent).toMatch(/^Plugins, plugins\.proxy-rewrite\.host: must match pattern/);

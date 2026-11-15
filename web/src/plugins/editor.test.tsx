@@ -33,7 +33,7 @@ describe('a route with an incomplete limit-count', () => {
 
     await user.keyboard('e');
     await user.click(await main().findByRole('button', { name: t('editor.save') }));
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixMany', { count: 2 }));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixMany', { count: 2 }) }));
     expect(writesOf(admin)).toEqual([]);
 
     const card = main().getByRole('group', { name: 'limit-count' });

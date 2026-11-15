@@ -183,7 +183,7 @@ describe("a plugin's metadata page", () => {
     await user.type(await main().findByRole('spinbutton', { name: 'max_pending_entries' }), '0');
     await save(user);
     expect(writesOf(admin)).toEqual([]);
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') }));
     expect(main().getByRole('tab', { name: new RegExp(`^${t('pm.tab.config')}`) })).toHaveTextContent(t('ui.tabs.errors', { count: 1 }));
   });
 

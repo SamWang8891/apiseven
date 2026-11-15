@@ -197,8 +197,14 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   }, [locked]);
 
   // --- Save --------------------------------------------------------------------------------------
-  /** Only the kind's own checks (which can be stricter than APISIX) stand in the way: nothing held, no problem with the id. */
+  // Save anyway's grounds: only the kind's own checks (which can be stricter than APISIX) refuse the
+  // draft: nothing held, no problem with the id. useSaveAnyway remembers a refusal on them.
   const onlyLocal = pending.length === 0 && frameIssues.length === 0 && !idMissing && !idRefused;
+  const anywayGrounds = onlyLocal && checked.length > 0 && !readOnly;
+
+  // Save from the button, Cmd/Ctrl-S, Save anyway or the conflict dialog: after the focused field is left.
+  const requestSave = useSaveRequest(bodyRef, save, !saving && !locked);
+  const saveAnyway = useSaveAnyway({ session, grounds: !locked && anywayGrounds, checked, shown: shownTabs, tabFields, send: () => requestSave(false, true) });
 
   /** `anyway`: Save anyway, which sends the draft past the kind's own checks (only those). */
   async function save(force = false, left?: HTMLElement, anyway = false) {
@@ -206,9 +212,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     if (problems > 0 && !(anyway && onlyLocal)) {
       setSaveAttempts((n) => n + 1);
       const fix = problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems });
-      // Input a field holds comes first: the toast names it, as its own error may not ("Not valid JSON").
+      // Input a field holds comes first: the toast names it, as its own error may not ("Not valid JSON");
+      // a refusal on Save anyway's grounds names that way out.
       const named = pending[0]?.message ?? idRefused;
-      toast.error(named ? t('editor.fixHeld', { fix, message: named }) : fix);
+      toast.error(named ? t('editor.fixHeld', { fix, message: named }) : anywayGrounds ? t('editor.fixAnyway', { fix }) : fix);
+      saveAnyway.refused(anywayGrounds);
       // Input this tab holds comes first: stay here, on the field that holds it.
       const holding = pending.length > 0 ? bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"] [aria-invalid="true"]') : undefined;
       const first = pending.length > 0 ? active : tabIds.find((tab) => byTab.has(tab));
@@ -265,9 +273,6 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     }
   }
 
-  // Save from the button, Cmd/Ctrl-S, Save anyway or the conflict dialog: after the focused field is left.
-  const requestSave = useSaveRequest(bodyRef, save, !saving && !locked);
-  const anyway = useSaveAnyway({ session, offered: !locked && !readOnly && attempted && onlyLocal && checked.length > 0, checked, shown: shownTabs, tabFields, send: () => requestSave(false, true) });
 
   function discard() {
     if (isNew) {
@@ -328,7 +333,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         readOnly={readOnly}
         saving={saving}
         saveBlocked={active === JSON_TAB && pending.length > 0}
-        onSaveAnyway={anyway.offered ? anyway.press : undefined}
+        onSaveAnyway={saveAnyway.offered ? saveAnyway.press : undefined}
         editRef={editRef}
         onEdit={unlock}
         onSave={() => requestSave()}
@@ -340,7 +345,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       />
       <div className="ed-body" ref={bodyRef}>
         {failure && <FailureBanner failure={failure} onShow={showStored} />}
-        {anyway.offered && <SaveAnywayNotice count={checked.length} kind={def.singular} />}
+        {saveAnyway.offered && <SaveAnywayNotice count={checked.length} kind={def.singular} />}
         {notice}
         {isNew && start?.copy && <CopyNotice notes={start.copy} />}
         {isNew && !def.idFromDraft && fixedId === undefined && (
@@ -387,7 +392,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
           setConflict(undefined);
           requestSave(true, conflict?.anyway);
         }}
-        anyway={anyway}
+        anyway={saveAnyway}
         onReload={reloadTheirs}
         onCancelConflict={() => setConflict(undefined)}
         onDeleted={() => {

@@ -128,7 +128,7 @@ describe('the route editor', () => {
     expect(main().getByRole('textbox', { name: t('up.nodes.new') })).toBeInTheDocument();
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     expect(writesOf(admin)).toEqual([]);
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') }));
     expect(tab(t('rt.tab.upstream'))).toHaveAccessibleName(`${t('rt.tab.upstream')} ${t('ui.tabs.errors', { count: 1 })}`);
     expect(main().getByRole('radiogroup', { name: t('rt.up.source') })).toHaveAccessibleDescription(t('rt.issue.nothing'));
 

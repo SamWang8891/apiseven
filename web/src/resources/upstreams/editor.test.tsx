@@ -108,7 +108,7 @@ describe('the upstream editor', () => {
     await waitFor(() => expect(tab(/^Load balancing/)).toHaveAccessibleName(`${t('up.section.balancing')} ${t('ui.tabs.errors', { count: 1 })}`));
     await user.keyboard('e');
     await user.click(main().getByRole('button', { name: t('editor.save') }));
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') }));
     expect(writesOf(admin)).toEqual([]);
     // Hashing on vars, the key field suggests the variables APISIX allows: a combobox.
     expect(await main().findByRole('combobox', { name: req(t('up.balance.key')) })).toHaveAccessibleDescription(t('up.issue.key'));

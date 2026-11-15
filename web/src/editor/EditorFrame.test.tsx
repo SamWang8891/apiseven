@@ -230,7 +230,7 @@ describe('issues', () => {
     await user.type(main().getByRole('textbox', { name: 'URI' }), '/bad');
     await user.click(tab('JSON'));
     await user.click(button(t('editor.save')));
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne')));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') })));
     expect(tab(/^General/)).toHaveAttribute('aria-selected', 'true');
     expect(tab(/^General/)).toHaveAccessibleName(`General ${t('ui.tabs.errors', { count: 1 })}`);
     expect(main().getByRole('textbox', { name: 'URI' })).toHaveAccessibleDescription('URIs start with /, not /bad');

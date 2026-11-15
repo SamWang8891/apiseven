@@ -371,6 +371,7 @@ export const en: Record<string, string> = {
   'editor.fixOne': 'Fix 1 problem before saving',
   'editor.fixMany': 'Fix {count} problems before saving',
   'editor.fixHeld': '{fix}. {message}',
+  'editor.fixAnyway': '{fix}, or use Save anyway (beside Save)',
   'editor.rejected': 'APISIX rejected the change',
   'editor.anyway.title': 'Refused only by the checks in this browser',
   'editor.anyway.bodyOne': "They found 1 problem, and nothing else stops the save. These checks can be stricter than APISIX (a custom plugin, a pattern JavaScript reads differently, a newer APISIX): Save anyway, beside Save, sends the {kind} as it is, and APISIX's answer decides.",

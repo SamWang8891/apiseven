@@ -130,7 +130,7 @@ describe('creating a consumer', () => {
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo e');
     fireEvent.keyDown(window, { key: 's', ctrlKey: true });
     expect(writesOf(admin)).toEqual([]);
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') }));
     expect(main().getByRole('textbox', { name: /^Username/ })).toHaveAccessibleDescription(t('cs.issue.usernamePattern'));
   });
 
