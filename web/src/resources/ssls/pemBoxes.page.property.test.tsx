@@ -19,8 +19,11 @@
 // may be typed there (fix round 2, R8): a save is then refused for that box, and the split's name
 // says it replaces that text; "Enter the private key" shows only without an offer (R11). Task 16b: a
 // combined text there makes the other box offer, which this box's messages point at (item 145); a
-// file read left pending is ignored once anything happened in the box, a remount and a save in
-// flight that unmounts the box's input included (item 147).
+// file read left pending is ignored once anything happened in the box, a remount included, and a save
+// in flight in every place, as a lock makes it stale whether or not the box's input stays (item 147;
+// fix round 1, R3.2; fix round 2, I1). Where the input is gone while locked (the CA's details, a key
+// box's line), a refused file's reason goes, and an offer that file made goes with it (fix round 2,
+// R1.2).
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -226,7 +229,8 @@ const PLACES: Place[] = [
     setup: async () => {
       const app = await storedCa(COMBINED);
       await app.user.click(main().getByRole('button', { name: t('ssl.client.replaceCa') }));
-      return { app, model: newModel('cert', COMBINED, '', COMBINED) };
+      // Opened by Replace CA; after a remount (the flag lost) it gives way to the details over the stored CA.
+      return { app, model: { ...newModel('cert', COMBINED, '', COMBINED), closesOverHidden: true } };
     },
     sent: patchedCa(COMBINED),
     tab: clientTab,
@@ -260,6 +264,8 @@ function remounted(m: Model, place: Place): void {
   }
   m.hidden = place.hiddenAfterRemount?.(m);
   m.text = remountText(m);
+  // Replace CA's flag goes with the field around the box (the setup's reopen gives it back where needed).
+  m.hiddenOpen = false;
 }
 
 /** A certificate box mounted anew shows the field's value, or nothing for none or for the value it cannot show. */
@@ -303,12 +309,14 @@ describe('every PEM box follows one rule through the real editor frame (property
               check();
             }
             // The frame's own actions, now and then: a remount, a save APISIX refuses late. Once the box
-            // has taken a value over one it cannot show (A1's case), a refused-late save is likelier, and
-            // a user action keeps a quarter: 0 a remount, 1–2 a save refused late, 3 a user action (fix
-            // round 1, F3); otherwise a fifth each for the two, three fifths for a user action.
+            // has taken a value over one it cannot show (A1's case), or while a file read is pending (so
+            // a save locks the page over it: fix round 2, I1), a refused-late save is likelier, and a user
+            // action keeps a quarter: 0 a remount, 1–2 a save refused late, 3 a user action (fix round 1,
+            // F3); otherwise a fifth each for the two, three fifths for a user action.
             const over = m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden;
-            const draw = over ? r.int(4) : r.int(5);
-            const frame = draw === 0 ? 0 : (over ? draw <= 2 : draw === 1) ? 1 : 2;
+            const likelier = over || m.pending.length > 0;
+            const draw = likelier ? r.int(4) : r.int(5);
+            const frame = draw === 0 ? 0 : (likelier ? draw <= 2 : draw === 1) ? 1 : 2;
             if (over) cov.add(frame === 2 ? 'over a hidden value: a user action drawn' : 'over a hidden value: a frame action drawn');
             if (frame === 0 && !held(m) && !m.otherHeld) {
               where = `step ${step} (remount)`;
@@ -316,7 +324,10 @@ describe('every PEM box follows one rule through the real editor frame (property
               await user.click(tab(place.tab()));
               await settled();
               remounted(m, place);
-              if (place.reopen && m.value !== undefined && m.value === m.hidden) await place.reopen(app);
+              if (place.reopen && m.value !== undefined && m.value === m.hidden) {
+                await place.reopen(app);
+                m.hiddenOpen = true;
+              }
               cov.add('remount');
               check();
               continue;
@@ -335,11 +346,17 @@ describe('every PEM box follows one rule through the real editor frame (property
                 if (m.text !== remountText(m)) cov.add('refusedSave: the box shows the value again');
                 m.text = remountText(m);
               }
+              // The lock made every read in progress stale, in every place (R3.2; fix round 2, I1).
+              if (m.pending.length > 0) cov.add('a read pending at a save refused late');
+              staleReads(m);
               // Its input was gone meanwhile (the CA's details; a key box reads as a line while locked): a
-              // refused file's reason went, and so did every read in progress (item 147).
+              // refused file's reason went, and an offer that file made with it (fix round 2, R1.2).
               if (place.lockedView || place.kind === 'key') {
                 m.refused = false;
-                staleReads(m);
+                if (m.offer?.from === 'file') {
+                  m.offer = undefined;
+                  cov.add("refusedSave: a file's offer went with its reason");
+                }
               }
               const box = run.box();
               m.focused = box !== null && document.activeElement === box;
@@ -430,5 +447,7 @@ describe('every PEM box follows one rule through the real editor frame (property
     expect(cov.get('upload: read left pending')).toBeGreaterThan(6);
     expect(cov.get('a pending read finished')).toBeGreaterThan(2);
     expect(cov.get('a stale read ignored')).toBeGreaterThan(2);
+    // Fix round 2: a save locks the page over a pending read (I1).
+    expect(cov.get('a read pending at a save refused late')).toBeGreaterThan(0);
   }, 300_000);
 });

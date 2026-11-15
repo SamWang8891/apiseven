@@ -274,6 +274,7 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
     expect(cov.get('a pending read finished')).toBeGreaterThan(10);
     expect(cov.get('a stale read ignored')).toBeGreaterThan(10);
     expect(cov.get('a pending read finished, unreadable')).toBeGreaterThan(0);
+    expect(cov.get('a stale read ignored, unreadable')).toBeGreaterThan(0);
     expect(cov.get("a refused file's reason in full")).toBeGreaterThan(50);
     expect(cov.get('text:late file')).toBeGreaterThan(3);
     for (const kind of ['cert', 'key']) expect(cov.get(`the ${kind} box's split names a value and text in the other box`), kind).toBeGreaterThan(3);

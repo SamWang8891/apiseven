@@ -121,6 +121,13 @@ export interface Model {
   pending: PendingRead[];
   /** A key box closed over a key whose lines before its BEGIN line were left out says so. */
   leftOut: boolean;
+  /**
+   * A CA box over a stored CA it cannot show gives way to that CA's details whenever the field holds
+   * it, unless Replace CA opened it in this session (ClientTab CaField: `replacing`, a session flag of
+   * the field around the box, lost on a remount): whether this box does so, and whether it is open.
+   */
+  closesOverHidden: boolean;
+  hiddenOpen: boolean;
 }
 
 /** A file read still in progress: what it will give (undefined: unreadable), and whether it went stale. */
@@ -151,10 +158,13 @@ export const newModel = (kind: Kind, value: string | undefined, text: string, hi
   refused: false,
   pending: [],
   leftOut: false,
+  closesOverHidden: false,
+  hiddenOpen: true,
 });
 
 /** Whether the box (its textarea) is on the page: a key box is closed over a key taken, until Replace key or Remove. */
-export const present = (m: Model): boolean => m.kind === 'cert' || !(m.value !== undefined && !m.opened && m.text === '');
+export const present = (m: Model): boolean =>
+  m.kind === 'cert' ? !(m.closesOverHidden && !m.hiddenOpen && m.hidden !== undefined && m.value === m.hidden) : !(m.value !== undefined && !m.opened && m.text === '');
 /** Text that was not taken (rule 2). */
 export const held = (m: Model): boolean => m.text.trim() !== '' && !takes(m.kind, m.text);
 /** A key box: the key that stands while nothing new is taken. */
@@ -197,6 +207,11 @@ export function arrive(m: Model, next: string, focused: boolean): void {
   m.text = focused || isTaken ? next : masked(next);
   if (isTaken) m.value = taken('cert', next);
   else if (next.trim() === '') m.value = m.hidden;
+  // A CA box not opened by Replace CA gives way to the stored CA's details once the field holds it again.
+  if (!present(m)) {
+    m.focused = false;
+    m.text = '';
+  }
 }
 
 /**
@@ -467,6 +482,13 @@ export class BoxRun {
   async ensureBox(): Promise<HTMLTextAreaElement> {
     const el = this.box();
     if (el) return el;
+    if (this.m.kind === 'cert') {
+      // A CA box that gave way to the stored CA's details: Replace CA opens it again (no focus moves into it).
+      await this.user.click(this.button(t('ssl.client.replaceCa')) as HTMLButtonElement);
+      this.m.hiddenOpen = true;
+      this.m.focused = false;
+      return this.box() as HTMLTextAreaElement;
+    }
     await this.user.click(this.button(t('ssl.key.replaceKey')) as HTMLButtonElement);
     this.m.opened = true;
     this.m.focused = true;
@@ -553,6 +575,7 @@ export class BoxRun {
     const { read } = next;
     if (read.stale) {
       this.cov.add('a stale read ignored');
+      if (read.text === undefined) this.cov.add('a stale read ignored, unreadable');
       return;
     }
     const m = this.m;
@@ -832,8 +855,15 @@ export class BoxRun {
       expect(shows('ssl.key.none'), `${where}: no key`).toBe(quiet && m.value === undefined);
     } else {
       const empty = m.text.trim() === '';
-      const note =
-        m.hidden !== undefined && m.value === m.hidden && (held(m) || empty) ? 'ssl.box.hiddenStays' : held(m) ? (m.value === undefined ? 'ssl.box.keptNone' : 'ssl.box.keptCert') : undefined;
+      const note = !present(m)
+        ? undefined
+        : m.hidden !== undefined && m.value === m.hidden && (held(m) || empty)
+          ? 'ssl.box.hiddenStays'
+          : held(m)
+            ? m.value === undefined
+              ? 'ssl.box.keptNone'
+              : 'ssl.box.keptCert'
+            : undefined;
       for (const key of ['ssl.box.hiddenStays', 'ssl.box.keptNone', 'ssl.box.keptCert']) expect(shows(key), `${where}: the note ${key}`).toBe(note === key);
     }
   }
