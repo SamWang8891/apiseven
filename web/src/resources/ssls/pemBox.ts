@@ -180,11 +180,36 @@ export function valueAfter(kind: BoxKind, text: string, a: { held: string | unde
   return a.held;
 }
 
+/**
+ * Why a file was refused (rule 5): in full, as the box says it, and bare: what was wrong and that the
+ * file was not put in the box, with no instruction, for beside a split offer, whose action is what
+ * resolves it (rule 8; fix round 1, R3.1).
+ */
+export interface FileReason {
+  full: string;
+  bare: string;
+}
+
+/** The bare form of each problem a box states, by its message key. */
+const BARE: [string, string][] = [
+  ['ssl.pem.noCertLabel', 'ssl.pem.bare.noCertLabel'],
+  ['ssl.pem.noKeyLabel', 'ssl.pem.bare.noKeyLabel'],
+  ['ssl.pem.isCert', 'ssl.pem.bare.isCert'],
+  ['ssl.pem.encrypted', 'ssl.pem.bare.encrypted'],
+  ['ssl.pem.notOneKey', 'ssl.pem.bare.notOneKey'],
+  ['ssl.pem.incomplete', 'ssl.pem.bare.incomplete'],
+  ['ssl.pem.refNotAlone', 'ssl.pem.bare.refNotAlone'],
+  ['ssl.pem.markerCert', 'ssl.pem.bare.marker'],
+  ['ssl.pem.markerKey', 'ssl.pem.bare.marker'],
+  ['ssl.pem.hasKey', 'ssl.pem.bare.hasKey'],
+];
+const bareOf = (problem: string): string => t(BARE.find(([key]) => t(key) === problem)?.[1] ?? 'ssl.pem.bare.other');
+
 /** Why a file's text is refused by a box of this kind (rule 5), or undefined: it is put in the box (a certificate) or taken (a key). */
-export function fileRefusal(kind: BoxKind, text: string): string | undefined {
-  if (kind === 'cert' && holdsPrivateKey(text)) return t('ssl.pem.fileHasKey');
+export function fileRefusal(kind: BoxKind, text: string): FileReason | undefined {
+  if (kind === 'cert' && holdsPrivateKey(text)) return { full: t('ssl.pem.fileHasKey'), bare: t('ssl.pem.bare.hasKey') };
   const why = text.trim() === '' ? t(kind === 'cert' ? 'ssl.pem.noCertLabel' : 'ssl.pem.noKeyLabel') : heldWhy(kind, text);
-  return why === undefined ? undefined : t('ssl.pem.fileRefused', { problem: why });
+  return why === undefined ? undefined : { full: t('ssl.pem.fileRefused', { problem: why }), bare: bareOf(why) };
 }
 
 /**

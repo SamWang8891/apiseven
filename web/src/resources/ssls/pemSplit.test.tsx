@@ -323,10 +323,11 @@ describe('the split, Task 16b follow-ups', () => {
     await paste(user, document.body, t('ssl.pem.cert'), SEED_CERT + SEED_KEY);
     const action = () => screen.queryByRole('button', { name: t('ssl.split.toKeyBox') });
     fireEvent.drop(cert, { dataTransfer: { files: [new File(['hello world'], 'notes.txt', { type: 'text/plain' })], getData: () => '' } });
-    await waitFor(() => expect(says(cert)).toBe(`${t('ssl.split.fileOverText')} ${t('ssl.split.held')}`));
+    // The file's reason stays (rule 5), without telling the user to do by hand what the action does (fix round 1, R3.1).
+    await waitFor(() => expect(says(cert)).toBe(`${t('ssl.split.fileOverText', { reason: t('ssl.pem.bare.noCertLabel') })} ${t('ssl.split.held')}`));
     expect(action()).toBeInTheDocument();
     fireEvent.drop(cert, { dataTransfer: { files: [new File([new Uint8Array([0x30, 0x82, 0x00, 0xff])], 'cert.der', { type: 'text/plain' })], getData: () => '' } });
-    await waitFor(() => expect(says(cert)).toBe(`${t('ssl.split.fileOverText')} ${t('ssl.split.held')}`));
+    await waitFor(() => expect(says(cert)).toBe(`${t('ssl.split.fileOverText', { reason: t('ssl.pem.bare.binary') })} ${t('ssl.split.held')}`));
     // Left: the key in the text is a marker now; the offer still stands, and still splits the text as given.
     await user.tab();
     noKeyInPage();

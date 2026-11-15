@@ -16,6 +16,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type Reac
 import { t } from '../../i18n';
 import { FILE_DROP_ZONE } from '../../shell/fileDrops';
 import { Button, Textarea, toast, useEditingState, useLocked, usePending } from '../../ui';
+import type { FileReason } from './pemBox';
 
 /** certificate_scheme / private_key_schema maxLength (schema_def.lua 407–415). */
 const MAX_BYTES = 64 * 1024;
@@ -30,10 +31,13 @@ function binary(text: string): boolean {
 }
 
 /** A file's text, or why it can't be put in the box. The size is checked before anything is read. */
-async function readPem(file: File): Promise<{ text: string } | { problem: string }> {
-  if (file.size > MAX_BYTES) return { problem: t('ssl.pem.tooBig', { size: `${Math.ceil(file.size / 1024)} KiB` }) };
+async function readPem(file: File): Promise<{ text: string } | { problem: FileReason }> {
+  if (file.size > MAX_BYTES) {
+    const size = `${Math.ceil(file.size / 1024)} KiB`;
+    return { problem: { full: t('ssl.pem.tooBig', { size }), bare: t('ssl.pem.bare.tooBig', { size }) } };
+  }
   const text = await file.text();
-  return binary(text) ? { problem: t('ssl.pem.binary') } : { text };
+  return binary(text) ? { problem: { full: t('ssl.pem.binary'), bare: t('ssl.pem.bare.binary') } } : { text };
 }
 
 export interface PemInputProps {
@@ -55,11 +59,11 @@ export interface PemInputProps {
    * it is refused (shown at the field, before any other problem, until the box next changes), or
    * undefined once the caller has put it in the box or taken it.
    */
-  onFile: (text: string) => string | undefined;
+  onFile: (text: string) => FileReason | undefined;
   /** A file reached the box that could not be read as text (too big, binary, unreadable): nothing changes but what the caller made of the last file. */
   onUnreadable?: () => void;
-  /** How the last refused file's reason reads now (the caller's split offer may point at its action instead); as it is by default. */
-  fileReason?: (why: string) => string;
+  /** How the last refused file's reason reads now (beside the caller's split offer, its bare form); in full by default. */
+  fileReason?: (reason: FileReason) => string;
   autoFocus?: boolean;
   rows?: number;
 }
@@ -75,13 +79,13 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
    * the reason shows until the box next changes, however it changes (typed, or given its part of a
    * split PEM), and not because it was left. Never the text itself, which may hold a key.
    */
-  const [refused, setRefused] = useEditingState<{ why: string; at: number } | undefined>(undefined);
+  const [refused, setRefused] = useEditingState<{ why: FileReason; at: number } | undefined>(undefined);
   const changesNow = useRef(changes);
   useLayoutEffect(() => {
     changesNow.current = changes;
   });
-  const setFileProblem = (why: string | undefined) => setRefused(why === undefined ? undefined : { why, at: changesNow.current });
-  const fileProblem = refused && refused.at === changes ? (fileReason?.(refused.why) ?? refused.why) : undefined;
+  const setFileProblem = (why: FileReason | undefined) => setRefused(why === undefined ? undefined : { why, at: changesNow.current });
+  const fileProblem = refused && refused.at === changes ? (fileReason?.(refused.why) ?? refused.why.full) : undefined;
 
   /**
    * Counts what happens in the box that makes a read still in progress stale: a text gesture, another
@@ -117,7 +121,7 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
       .catch(() => {
         if (!fresh()) return;
         onUnreadable?.();
-        setFileProblem(t('ssl.pem.readFailed'));
+        setFileProblem({ full: t('ssl.pem.readFailed'), bare: t('ssl.pem.bare.readFailed') });
         toast.error(t('ssl.pem.readFailed'), { pageBound: true });
       });
   };

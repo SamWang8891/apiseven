@@ -294,6 +294,9 @@ const BY_HAND = [
   ...['hasKey', 'fileHasKey', 'incomplete', 'notOneKey', 'refNotAlone', 'markerCert', 'markerKey', 'noCertLabel', 'noKeyLabel', 'isCert', 'encrypted'].map((key) => t(`ssl.pem.${key}`)),
   t('ssl.pem.fileRefused', { problem: '\u0000' }).split('\u0000')[0] as string,
 ];
+/** What a message that names a refused file's bare reason says after it (fix round 1, R3.1: the reason itself stays). */
+const after = (key: string): string => t(key, { reason: '\u0000' }).split('\u0000')[1] as string;
+
 /** Every name a split action can have, to check that none but the model's is on the page. */
 const SPLIT_LABELS = [
   ...new Set((['ssl.split.toKeyBox', 'ssl.split.toCertBox'] as const).flatMap((action) => SIDES.flatMap((cert) => SIDES.map((key) => actionName(action, cert, key))))),
@@ -734,10 +737,10 @@ export class BoxRun {
       expect(said.includes(t('ssl.split.file')), `${where}: the file's reason points at the split`).toBe(m.offer?.from === 'file');
       const over = t(m.kind === 'cert' ? 'ssl.split.overCert' : 'ssl.split.overKey');
       expect(said.includes(over), `${where}: the box's message says the split replaces its text`).toBe(m.offer?.from === 'file' && held(m));
-      expect(said.includes(t('ssl.split.fileOverText')), `${where}: a refused file beside the text's offer`).toBe(m.offer?.from === 'text' && m.refused);
+      expect(said.includes(after('ssl.split.fileOverText')), `${where}: a refused file beside the text's offer`).toBe(m.offer?.from === 'text' && m.refused);
       const byOther = t(m.kind === 'cert' ? 'ssl.split.byKeyBox' : 'ssl.split.byCertBox');
       expect(said.includes(byOther), `${where}: the box's message points at the other box's action`).toBe(!m.offer && m.otherOffer !== undefined && held(m));
-      const fileByOther = t(m.kind === 'cert' ? 'ssl.split.fileByKeyBox' : 'ssl.split.fileByCertBox');
+      const fileByOther = after(m.kind === 'cert' ? 'ssl.split.fileByKeyBox' : 'ssl.split.fileByCertBox');
       expect(said.includes(fileByOther), `${where}: a refused file's reason points at the other box's action`).toBe(!m.offer && m.otherOffer !== undefined && m.refused);
     }
   }

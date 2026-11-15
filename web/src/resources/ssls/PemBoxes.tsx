@@ -19,7 +19,7 @@ import { Button, Field, useEditingState, useLocked } from '../../ui';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import { CertDetails } from './CertDetails';
 import { learnKey } from './keyMatch';
-import { fileRefusal, heldWhy, isReference, kept, leftOutBefore, shown, splitOf, takenValue, takes, valueAfter, type BoxKind, type SplitParts } from './pemBox';
+import { fileRefusal, heldWhy, isReference, kept, leftOutBefore, shown, splitOf, takenValue, takes, valueAfter, type BoxKind, type FileReason, type SplitParts } from './pemBox';
 import type { PairLink, PairSide } from './pairLink';
 import { PemInput } from './PemInput';
 
@@ -82,11 +82,12 @@ function useSplitOffer(pair: PairLink | undefined, own: BoxKind) {
   };
   /**
    * How the last refused file's reason reads while an offer stands: the file's own offer (`from`
-   * file), a file that was not put here beside the text's offer, or beside the other box's action.
+   * file); beside the text's offer or the other box's action, its bare reason (what was wrong, no
+   * instruction: fix round 1, R3.1) and what the action does; with no offer, in full.
    */
-  const fileReason = (why: string) => {
-    if (offered) return t(from === 'file' ? 'ssl.split.file' : 'ssl.split.fileOverText');
-    return byOther ? t(own === 'cert' ? 'ssl.split.fileByKeyBox' : 'ssl.split.fileByCertBox') : why;
+  const fileReason = (reason: FileReason) => {
+    if (offered) return from === 'file' ? t('ssl.split.file') : t('ssl.split.fileOverText', { reason: reason.bare });
+    return byOther ? t(own === 'cert' ? 'ssl.split.fileByKeyBox' : 'ssl.split.fileByCertBox', { reason: reason.bare }) : reason.full;
   };
   return { offered, consider, apply, problem, fileReason };
 }

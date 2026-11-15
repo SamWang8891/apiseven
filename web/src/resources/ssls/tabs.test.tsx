@@ -423,7 +423,7 @@ describe('S3: a refused file leaves the box and the draft as they were', () => {
     // box offers the split, which replaces this text, neither message asks for anything by hand
     // (Task 16b, item 145): both point at that action.
     await upload(user, container, 1, new File([SEED_CERT], 'cert.pem'));
-    await waitFor(() => expect(said(key)).toBe(`${t('ssl.split.fileByCertBox')} ${t('ssl.split.byCertBox')}`));
+    await waitFor(() => expect(said(key)).toBe(`${t('ssl.split.fileByCertBox', { reason: t('ssl.pem.bare.isCert') })} ${t('ssl.split.byCertBox')}`));
     expect(key).toHaveValue(t('ssl.pem.marker'));
     expect(value()).toEqual({ status: 1 });
     // Until the certificate box next changes: its offer ends, and the key box's own reasons are back.
