@@ -12,6 +12,7 @@ import {
   jsonEditor,
   openCard,
   openEditor,
+  openNew,
   openTab,
   recordWrites,
   setCode,
@@ -145,4 +146,24 @@ test.describe('an empty id in a new object’s JSON', () => {
       expect(writes).toEqual([]);
     });
   }
+});
+
+// Task 16b item 154: a new object shows no "required" problems before its first refused Save.
+test.describe('a new object before its first Save', () => {
+  test.fixme('16b-154: a new route and a new SSL show no required-field problems or tab badges until Create is refused', async ({ page }) => {
+    let main = await openNew(page, 'routes/new');
+    await expect(main.getByRole('tab', { name: new RegExp(t('ui.tabs.errors', { count: 1 })) })).toHaveCount(0);
+    const writes = recordWrites(page);
+    await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
+    await expect(main.getByRole('tab', { name: `${t('rt.tab.upstream')} ${t('ui.tabs.errors', { count: 1 })}` })).toBeVisible();
+    expect(writes).toEqual([]);
+
+    main = await openNew(page, 'ssls/new');
+    await expect(main.getByText(t('ssl.issue.certRequired'))).toHaveCount(0);
+    await expect(main.getByRole('tab', { name: /to fix/ })).toHaveCount(0);
+    await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
+    await expect(main.getByText(t('ssl.issue.certRequired')).first()).toBeVisible();
+    await expect(main.getByRole('tab', { name: /to fix/ }).first()).toBeVisible();
+    expect(writes).toEqual([]);
+  });
 });

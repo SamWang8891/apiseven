@@ -92,6 +92,17 @@ test.describe('a viewer (read-only) key', () => {
     const editor = await openEditor(page, 'routes/old-wiki');
     await expect(editor.getByRole('button', { name: t('editor.edit'), exact: true })).toBeDisabled();
   });
+
+  test('a Save from an editor shows APISIX’s refusal and the read-only banner; nothing is stored', async ({ page, admin }) => {
+    const before = await admin.value('routes/old-wiki');
+    const main = await openEditor(page, 'routes/old-wiki');
+    await main.getByRole('button', { name: t('editor.edit'), exact: true }).click();
+    await main.getByRole('textbox', { name: t('rt.general.desc') }).fill('a viewer cannot save this');
+    await main.getByRole('button', { name: t('editor.save'), exact: true }).click();
+    await expect(main.locator('.ed-banner')).toContainText('invalid method for role viewer');
+    await expect(page.getByRole('status').filter({ hasText: t('readOnly.banner') })).toBeVisible();
+    expect(await admin.value('routes/old-wiki')).toEqual(before);
+  });
 });
 
 test.describe('two saved connections', () => {
