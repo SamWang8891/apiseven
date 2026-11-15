@@ -28,6 +28,14 @@ describe('Header', () => {
     expect(await header.findByText('APISIX 3.20.0')).toHaveClass('mono');
   });
 
+  it('the connection button shows the words of its name: the connection, a space, the host (label in name)', async () => {
+    saveConnections([DEV_CONN, PROD], DEV_CONN.id);
+    renderApp({ hash: '#/routes' });
+    const header = await banner();
+    const switcher = header.getByRole('button', { name: t('header.connection', { name: 'dev', host: 'apisix.test:9180' }) });
+    expect(switcher.textContent).toBe('dev apisix.test:9180');
+  });
+
   it('switches to another saved connection', async () => {
     saveConnections([DEV_CONN, PROD], DEV_CONN.id);
     const user = userEvent.setup();

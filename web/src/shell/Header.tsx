@@ -127,6 +127,8 @@ function ConnectionSwitcher() {
       trigger={
         <Button variant="ghost" className="shell-conn" aria-label={t('header.connection', { name: active.name, host })}>
           <span className="shell-conn__name">{active.name}</span>
+          {/* A space between the two, so the text read as the label is "name host", as the name says. */}
+          {active.name !== host && ' '}
           {active.name !== host && <span className="shell-conn__host mono">{host}</span>}
           <ChevronDown className="shell-conn__chevron" aria-hidden="true" size={14} />
         </Button>
