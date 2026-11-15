@@ -8,6 +8,9 @@ import {
   create,
   echoRoute,
   expect,
+  expectNoCredentials,
+  expectSameQuietly,
+  expectNotInPage,
   goto,
   jsonEditor,
   openCard,
@@ -30,11 +33,15 @@ test.afterAll(async () => {
 
 /** Create is refused: the "Not created" banner links to the stored object, and nothing was written. */
 async function expectNotCreated(page: Page, kind: string, id: string, href: string, writes: unknown[]) {
-  await expect(banner(page)).toContainText(t('editor.taken.title'));
-  await expect(banner(page)).toContainText(t('editor.taken.message', { kind, id }));
-  await expect(banner(page).getByRole('link', { name: t('editor.taken.open', { kind, id }) })).toHaveAttribute('href', href);
+  const notCreated = banner(page, t('editor.taken.title'));
+  await expect(notCreated).toContainText(t('editor.taken.message', { kind, id }));
+  await expect(notCreated.getByRole('link', { name: t('editor.taken.open', { kind, id }) })).toHaveAttribute('href', href);
   expect(writes).toEqual([]);
 }
+
+const USERNAME = new RegExp(`^${t('cs.general.username')}\\b`);
+/** A tab's "N to fix" badge, any N. */
+const TO_FIX = new RegExp(t('ui.tabs.errors', { count: '\\d+' }));
 
 test.describe('Create never replaces what is stored', () => {
   test('New consumer with a username that exists: refused, with a link; the stored consumer is untouched', async ({ page, admin }) => {
@@ -42,12 +49,12 @@ test.describe('Create never replaces what is stored', () => {
     await admin.put('consumers', { username, desc: 'the stored one', plugins: { 'key-auth': { key: `${PREFIX}${uid()}` } } });
     const before = await admin.item(`consumers/${username}`);
     const main = await goto(page, 'consumers/new');
-    await main.getByRole('textbox', { name: /^Username/ }).fill(username);
+    await main.getByRole('textbox', { name: USERNAME }).fill(username);
     await main.getByRole('textbox', { name: t('cs.general.desc') }).fill('would replace it');
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expectNotCreated(page, t('kind.consumers.singular'), username, `#/consumers/${username}`, writes);
-    expect(await admin.item(`consumers/${username}`)).toEqual(before);
+    expectSameQuietly(await admin.item(`consumers/${username}`), before, 'the stored consumer, byte for byte');
   });
 
   test('New route with an ID that exists: refused, with a link; the stored route is untouched', async ({ page, admin }) => {
@@ -75,7 +82,7 @@ test.describe('Create never replaces what is stored', () => {
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expectNotCreated(page, t('kind.credentials.singular'), credential, `#/consumers/${username}/credentials/${credential}`, writes);
-    expect(await admin.item(`consumers/${username}/credentials/${credential}`)).toEqual(before);
+    expectSameQuietly(await admin.item(`consumers/${username}/credentials/${credential}`), before, 'the stored credential, byte for byte');
   });
 });
 
@@ -93,6 +100,9 @@ test.describe('a copy of a consumer with three auth plugins', () => {
       },
     });
     const original = await admin.item(`consumers/${username}`);
+    const copy = `${PREFIX}copy-${id}`.replace(/-/g, '_');
+    expectNoCredentials(page, username);
+    expectNoCredentials(page, copy);
     const main = await openEditor(page, `consumers/${username}`);
     await main.getByRole('button', { name: t('editor.more') }).click();
     await page.getByRole('menuitem', { name: t('action.duplicate') }).click();
@@ -100,12 +110,21 @@ test.describe('a copy of a consumer with three auth plugins', () => {
     await expect(notice).toBeVisible();
     for (const notCopied of ['basic-auth password', 'jwt-auth secret', 'key-auth key']) await expect(notice).toContainText(notCopied);
     for (const shared of ['basic-auth username', 'jwt-auth key']) await expect(notice).toContainText(shared);
-    const html = await page.content();
-    for (const secret of Object.values(secrets)) expect(html).not.toContain(secret);
+    // Before anything is entered: the copy's Plugins tab with its three cards open, and its JSON tab,
+    // hold none of the original's secrets, and jwt-auth's secret is empty.
+    await expectNotInPage(page, Object.values(secrets), 'the copy, General');
+    await openTab(page, t('pl.tab'));
+    await openCard(page, 'key-auth');
+    await openCard(page, 'basic-auth');
+    const jwtCard = await openCard(page, 'jwt-auth');
+    await expect(jwtCard.getByRole('textbox', { name: /^secret\b/ })).toHaveValue('');
+    await expectNotInPage(page, Object.values(secrets), 'the copy, Plugins with three cards open');
+    await openTab(page, t('editor.json.tab'));
+    await expectNotInPage(page, Object.values(secrets), 'the copy, JSON');
+    await openTab(page, t('cs.tab.general'));
 
     // Create is refused while the copy has no key and password of its own.
-    const copy = `${PREFIX}copy-${id}`.replace(/-/g, '_');
-    await main.getByRole('textbox', { name: /^Username/ }).fill(copy);
+    await main.getByRole('textbox', { name: USERNAME }).fill(copy);
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expect(toast(page, t('editor.fixMany', { count: 2 }))).toBeVisible();
@@ -123,10 +142,16 @@ test.describe('a copy of a consumer with three auth plugins', () => {
     await jwt.getByRole('textbox', { name: /^secret\b/ }).fill(`${PREFIX}own-jwt-secret-${id}-0123456789`);
     await create(page);
     const stored = (await admin.value(`consumers/${copy}`))?.plugins as Record<string, Record<string, unknown>>;
-    expect(stored['key-auth']).toEqual({ key: `${PREFIX}own-key-${id}` });
-    expect(stored['basic-auth']).toEqual({ username: `${PREFIX}own-basic-${id}`, password: `${PREFIX}own-password-${id}` });
-    expect(stored['jwt-auth']).toEqual({ key: `${PREFIX}own-jwt-${id}`, secret: `${PREFIX}own-jwt-secret-${id}-0123456789` });
-    expect(await admin.item(`consumers/${username}`)).toEqual(original);
+    expectSameQuietly(
+      stored,
+      {
+        'key-auth': { key: `${PREFIX}own-key-${id}` },
+        'basic-auth': { username: `${PREFIX}own-basic-${id}`, password: `${PREFIX}own-password-${id}` },
+        'jwt-auth': { key: `${PREFIX}own-jwt-${id}`, secret: `${PREFIX}own-jwt-secret-${id}-0123456789` },
+      },
+      "the copy's plugins",
+    );
+    expectSameQuietly(await admin.item(`consumers/${username}`), original, 'the original, byte for byte');
   });
 });
 
@@ -142,7 +167,9 @@ test.describe('an empty id in a new object’s JSON', () => {
       await setCode(page, jsonEditor(page, label), JSON.stringify(body, null, 2));
       const writes = recordWrites(page);
       await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
-      await expect(toast(page, /ID/)).toBeVisible();
+      // The frame's own refusal of the id (Task 16-2's segment rule; 16b may word the empty case anew).
+      await expect(toast(page, t('editor.id.segment', { id: '' }))).toBeVisible();
+      await expect(main.getByRole('button', { name: t('editor.anyway.action'), exact: true })).toHaveCount(0);
       expect(writes).toEqual([]);
     });
   }
@@ -152,18 +179,18 @@ test.describe('an empty id in a new object’s JSON', () => {
 test.describe('a new object before its first Save', () => {
   test.fixme('16b-154: a new route and a new SSL show no required-field problems or tab badges until Create is refused', async ({ page }) => {
     let main = await openNew(page, 'routes/new');
-    await expect(main.getByRole('tab', { name: new RegExp(t('ui.tabs.errors', { count: 1 })) })).toHaveCount(0);
+    await expect(main.getByRole('tab', { name: TO_FIX })).toHaveCount(0);
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
-    await expect(main.getByRole('tab', { name: `${t('rt.tab.upstream')} ${t('ui.tabs.errors', { count: 1 })}` })).toBeVisible();
+    await expect(main.getByRole('tab', { name: TO_FIX }).first()).toBeVisible();
     expect(writes).toEqual([]);
 
     main = await openNew(page, 'ssls/new');
     await expect(main.getByText(t('ssl.issue.certRequired'))).toHaveCount(0);
-    await expect(main.getByRole('tab', { name: /to fix/ })).toHaveCount(0);
+    await expect(main.getByRole('tab', { name: TO_FIX })).toHaveCount(0);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expect(main.getByText(t('ssl.issue.certRequired')).first()).toBeVisible();
-    await expect(main.getByRole('tab', { name: /to fix/ }).first()).toBeVisible();
+    await expect(main.getByRole('tab', { name: TO_FIX }).first()).toBeVisible();
     expect(writes).toEqual([]);
   });
 });

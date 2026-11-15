@@ -108,7 +108,7 @@ kind(
       tab: t('rt.tab.upstream'),
       field: 'upstream_id',
       value: () => `${PREFIX}svc-b`,
-      change: (panel, page) => choose(page, panel.getByRole('combobox', { name: t('rt.up.upstream') }), new RegExp(`^${PREFIX}svc-b`)),
+      change: (panel, page) => choose(page, panel.getByRole('combobox', { name: t('rt.up.upstream') }), `${PREFIX}svc-b`),
     },
     {
       tab: t('pl.tab'),

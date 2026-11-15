@@ -35,12 +35,14 @@ export async function expectIconsServed(page: Page): Promise<void> {
 
 /**
  * The mark beside the name: loaded (decoded, not a broken image), left of the name and centred on
- * it. The image is decorative (alt=""), so it has no accessible handle; it is found by its class.
+ * it. The image is decorative (alt=""), so it has no accessible handle: it is the one image inside
+ * the brand — the sidebar's home link, or on the Connect page the element whose text is the name.
  */
 export async function expectMarkBesideName(page: Page, where: 'sidebar' | 'connect'): Promise<void> {
-  const brand = where === 'sidebar' ? page.getByRole('link', { name: t('shell.home') }) : page.locator('.connect-brand').first();
+  const brand = where === 'sidebar' ? page.getByRole('link', { name: t('shell.home') }) : page.getByText(t('app.name'), { exact: true }).first();
   await expect(brand).toBeVisible();
-  const mark = brand.locator(where === 'sidebar' ? 'img.shell-brand__logo' : 'img.connect-brand__logo');
+  const mark = brand.locator('img');
+  await expect(mark).toHaveCount(1);
   await expect(mark).toBeVisible();
   await expect.poll(() => mark.evaluate((img: HTMLImageElement) => img.complete && img.naturalWidth > 0)).toBe(true);
   // The name is the brand's own text node, beside the image.

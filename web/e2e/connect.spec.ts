@@ -1,15 +1,8 @@
-import { createServer } from 'node:net';
-import { env, expect, goto, openEditor, openList, t, test, toast } from './fixtures';
+import { banner, env, expect, goto, openEditor, openList, saveConnections, t, test, toast } from './fixtures';
+import { freePort } from './servers';
 
-/** A loopback port nothing listens on. */
-async function closedPort(): Promise<number> {
-  return new Promise((resolve) => {
-    const server = createServer().listen(0, '127.0.0.1', () => {
-      const { port } = server.address() as { port: number };
-      server.close(() => resolve(port));
-    });
-  });
-}
+/** A key is never an argument of an assertion that could print it: only whether it is there. */
+const holds = (text: string | null | undefined, key: string) => (text ?? '').includes(key);
 
 test.describe('the Connect page', () => {
   test.use({ connectAs: 'none' });
@@ -36,7 +29,7 @@ test.describe('the Connect page', () => {
   test.describe('an unreachable address', () => {
     test.use({ allowConsole: /^failed GET http:\/\/127\.0\.0\.1:\d+\/apisix\/admin\/routes/ });
     test('the message names allow_admin and enable_admin_cors', async ({ page }) => {
-      const url = `http://127.0.0.1:${await closedPort()}`;
+      const url = `http://127.0.0.1:${await freePort()}`;
       await fill(page, url, env.adminKey);
       await page.getByRole('button', { name: t('connect.submit') }).click();
       const alert = page.getByRole('alert');
@@ -55,7 +48,7 @@ test.describe('the Connect page', () => {
     expect(new URL(page.url()).hash).toBe('#/routes');
     // Remembered: the key is in localStorage.
     const saved = await page.evaluate(() => localStorage.getItem('apiseven.connections'));
-    expect(saved).toContain(env.adminKey);
+    expect(holds(saved, env.adminKey), 'the key is in localStorage').toBe(true);
   });
 
   test('with "remember" off the key never reaches localStorage, and stays for this tab', async ({ page }) => {
@@ -66,8 +59,9 @@ test.describe('the Connect page', () => {
     await expect(page.getByRole('main').getByRole('link', { name: 'api-v1', exact: true })).toBeVisible();
     const local = await page.evaluate(() => JSON.stringify({ ...localStorage }));
     expect(local).toContain('apiseven.connections');
-    expect(local).not.toContain(env.adminKey);
-    expect(await page.evaluate(() => sessionStorage.getItem('apiseven.sessionKeys'))).toContain(env.adminKey);
+    expect(holds(local, env.adminKey), 'the key is in localStorage').toBe(false);
+    const session = await page.evaluate(() => sessionStorage.getItem('apiseven.sessionKeys'));
+    expect(holds(session, env.adminKey), 'the key is in sessionStorage').toBe(true);
     // A reload in the same tab stays connected.
     await page.reload();
     await expect(page.getByRole('main').getByRole('link', { name: 'api-v1', exact: true })).toBeVisible();
@@ -99,7 +93,7 @@ test.describe('a viewer (read-only) key', () => {
     await main.getByRole('button', { name: t('editor.edit'), exact: true }).click();
     await main.getByRole('textbox', { name: t('rt.general.desc') }).fill('a viewer cannot save this');
     await main.getByRole('button', { name: t('editor.save'), exact: true }).click();
-    await expect(main.locator('.ed-banner')).toContainText('invalid method for role viewer');
+    await expect(banner(page, t('editor.rejected'))).toContainText('invalid method for role viewer');
     await expect(page.getByRole('status').filter({ hasText: t('readOnly.banner') })).toBeVisible();
     expect(await admin.value('routes/old-wiki')).toEqual(before);
   });
@@ -109,21 +103,10 @@ test.describe('two saved connections', () => {
   test.use({ connectAs: 'none' });
 
   test('the header menu switches between them, and requests then carry the other key', async ({ page, context }) => {
-    await context.addInitScript(
-      ([baseUrl, adminKey, viewerKey]) => {
-        if (sessionStorage.getItem('e2e.connection')) return;
-        sessionStorage.setItem('e2e.connection', '1');
-        localStorage.setItem(
-          'apiseven.connections',
-          JSON.stringify([
-            { id: 'alpha', name: 'alpha', baseUrl, key: adminKey },
-            { id: 'beta', name: 'beta', baseUrl, key: viewerKey },
-          ]),
-        );
-        localStorage.setItem('apiseven.activeConnection', 'alpha');
-      },
-      [env.adminUrl, env.adminKey, env.viewerKey],
-    );
+    await saveConnections(context, [
+      { id: 'alpha', name: 'alpha', key: env.adminKey },
+      { id: 'beta', name: 'beta', key: env.viewerKey },
+    ]);
     const main = await goto(page, 'upstreams');
     await expect(main.getByRole('link', { name: 'web-pool', exact: true })).toBeVisible();
     const host = new URL(env.adminUrl).host;
@@ -141,28 +124,17 @@ test.describe('two saved connections', () => {
 test.describe('switching connections from the header with unsaved changes', () => {
   test.use({ connectAs: 'none' });
   test.fixme('16b-135: the header menu asks before dropping an editor’s unsaved changes', async ({ page, context }) => {
-    await context.addInitScript(
-      ([baseUrl, adminKey]) => {
-        if (sessionStorage.getItem('e2e.connection')) return;
-        sessionStorage.setItem('e2e.connection', '1');
-        localStorage.setItem(
-          'apiseven.connections',
-          JSON.stringify([
-            { id: 'alpha', name: 'alpha', baseUrl, key: adminKey },
-            { id: 'beta', name: 'beta', baseUrl, key: adminKey },
-          ]),
-        );
-        localStorage.setItem('apiseven.activeConnection', 'alpha');
-      },
-      [env.adminUrl, env.adminKey],
-    );
+    await saveConnections(context, [
+      { id: 'alpha', name: 'alpha', key: env.adminKey },
+      { id: 'beta', name: 'beta', key: env.adminKey },
+    ]);
     const main = await openEditor(page, 'routes/api-v1');
     await main.getByRole('button', { name: t('editor.edit'), exact: true }).click();
     await main.getByRole('textbox', { name: t('rt.general.desc') }).fill('unsaved');
     const host = new URL(env.adminUrl).host;
     await page.getByRole('button', { name: t('header.connection', { name: 'alpha', host }) }).click();
     await page.getByRole('menuitem', { name: `beta (${host})` }).click();
-    const leave = page.getByRole('alertdialog');
+    const leave = page.getByRole('alertdialog', { name: t('editor.leave.title') });
     await expect(leave).toBeVisible();
     await leave.getByRole('button', { name: t('ui.cancel') }).click();
     await expect(main.getByRole('textbox', { name: t('rt.general.desc') })).toHaveValue('unsaved');

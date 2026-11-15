@@ -5,6 +5,8 @@ import {
   deleteFromEditor,
   echoRoute,
   expect,
+  expectNoCredentials,
+  expectSameQuietly,
   gateway,
   gatewayAnswers,
   idField,
@@ -28,6 +30,7 @@ test.afterAll(async () => {
 
 test('a consumer: created in the form → in the list → edited → deleted', async ({ page, admin }) => {
   const username = user(uid());
+  expectNoCredentials(page, username);
   const main = await openNew(page, 'consumers/new');
   await main.getByRole('textbox', { name: new RegExp(`^${t('cs.general.username')}`) }).fill(username);
   await main.getByRole('textbox', { name: t('cs.general.desc') }).fill('made in the form');
@@ -53,6 +56,8 @@ test('a credential: made from the consumer’s Credentials tab, signs in at the 
   const credential = `${PREFIX}cred-${id}`;
   const key = `${PREFIX}key-${id}`;
   const host = `${PREFIX}${id}.e2e.test`;
+  // Before its credential and after its delete, the consumer has none.
+  expectNoCredentials(page, username);
   await admin.put('consumers', { username });
   await admin.put(`routes/${PREFIX}${id}`, echoRoute(`${PREFIX}${id}`, host, { plugins: { 'key-auth': {} } }));
   await gatewayAnswers(host, 401);
@@ -65,7 +70,7 @@ test('a credential: made from the consumer’s Credentials tab, signs in at the 
   const card = await addPlugin(page, 'key-auth');
   await card.getByRole('textbox', { name: /^key\b(?!-)/ }).fill(key);
   await create(page);
-  expect(await admin.value(`consumers/${username}/credentials/${credential}`)).toEqual({ id: credential, plugins: { 'key-auth': { key } } });
+  expectSameQuietly(await admin.value(`consumers/${username}/credentials/${credential}`), { id: credential, plugins: { 'key-auth': { key } } }, 'the stored credential');
   await gatewayAnswers(host, 200, { headers: { apikey: key } });
   expect((await gateway('/version', { host })).status).toBe(401);
   expect((await gateway('/version', { host, headers: { apikey: `${key}-wrong` } })).status).toBe(401);
@@ -82,6 +87,11 @@ test('a credential: made from the consumer’s Credentials tab, signs in at the 
 
   await deleteFromEditor(page, t('kind.credentials.singular'));
   expect(await admin.value(`consumers/${username}/credentials/${credential}`)).toBeUndefined();
+  // Gone from the consumer's Credentials tab too (the delete leads there).
+  await expect(page).toHaveURL(new RegExp(`#/consumers/${username}\\?tab=credentials$`));
+  const tab = page.getByRole('main').getByRole('tabpanel');
+  await expect(tab.getByText(t('cs.credentials.none'))).toBeVisible();
+  await expect(tab.getByRole('link', { name: credential, exact: true })).toHaveCount(0);
   await gatewayAnswers(host, 401, { headers: { apikey: key } });
 });
 
@@ -98,6 +108,7 @@ test('a consumer group: created in the form → in the list → a consumer joins
   await openEditor(page, `consumer_groups/${id}?tab=members`);
   await page.getByRole('main').getByRole('link', { name: t('cg.members.new') }).first().click();
   const username = user(uid());
+  expectNoCredentials(page, username);
   await page.getByRole('main').getByRole('textbox', { name: new RegExp(`^${t('cs.general.username')}`) }).fill(username);
   await create(page);
   expect((await admin.value(`consumers/${username}`))?.group_id).toBe(id);

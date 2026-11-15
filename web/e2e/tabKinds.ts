@@ -4,7 +4,7 @@
 // anywhere). Tabs that own no field (a service's Routes, a consumer's Credentials, a group's
 // Consumers, a plugin config's Used by) are covered by lock.spec.ts.
 import type { Page } from '@playwright/test';
-import { Admin, ECHO, changeOnTab, openCard, t, test, type Json, type TabChange } from './fixtures';
+import { Admin, ECHO, changeOnTab, expectNotFound, openCard, t, test, type Json, type TabChange } from './fixtures';
 
 export const PREFIX = 'e2e-tabs-';
 export const KEPT = 'kept';
@@ -41,13 +41,18 @@ export const nodeWeight = (tab: string, field = 'upstream'): TabChange => ({
 });
 
 /** One object of a kind, made through the Admin API, and one test per tab change. */
-export function kind(name: string, setup: { editor: string; api: string; create: (admin: Admin) => Promise<void> }, changes: TabChange[]) {
+export function kind(
+  name: string,
+  setup: { editor: string; api: string; create: (admin: Admin) => Promise<void>; notFound?: string[] },
+  changes: TabChange[],
+) {
   test.describe(name, () => {
     test.beforeAll(async () => {
       await setup.create(new Admin());
     });
     for (const change of changes) {
       test(`${name}, ${change.tab} tab: a change to ${change.field} is saved, and nothing else changes`, async ({ page, admin }) => {
+        for (const path of setup.notFound ?? []) expectNotFound(page, path);
         await changeOnTab(page, admin, setup.editor, setup.api, change);
       });
     }

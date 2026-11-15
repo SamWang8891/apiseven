@@ -23,6 +23,19 @@ export const KINDS = [
 ] as const;
 export type ListKind = (typeof KINDS)[number];
 
+/** JSON with every object's keys sorted, so two equal values give the same text. */
+function stable(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    return `{${Object.keys(obj)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stable(obj[k])}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 /** A stored value without its timestamps (what a write changes by itself). */
 export function withoutTimes(value: Json | undefined): Json | undefined {
   if (!value) return value;
@@ -134,6 +147,28 @@ export class Admin {
         for (const { value } of items) {
           const username = String(value.username);
           out[`credentials of ${username}`] = (await this.list(`consumers/${encodeURIComponent(username)}/credentials`)).length;
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Every stored object by its etcd key, credentials included, as JSON without `update_time` (a write
+   * changes it by itself): what the teardown compares with the seed.
+   */
+  async snapshot(): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    const add = (key: string, value: Json) => {
+      const copy = { ...value };
+      delete copy.update_time;
+      out[key] = stable(copy);
+    };
+    for (const kind of KINDS) {
+      for (const { key, value } of await this.list(kind)) {
+        add(key, value);
+        if (kind === 'consumers') {
+          for (const cred of await this.list(`consumers/${encodeURIComponent(String(value.username))}/credentials`)) add(cred.key, cred.value);
         }
       }
     }

@@ -26,6 +26,8 @@ export default async function globalSetup(): Promise<void> {
     env: { ...process.env, APISIX_ADMIN_URL: env.adminUrl, APISIX_ADMIN_KEY: env.adminKey },
     stdio: 'inherit',
   });
-  // The teardown compares against these: every spec leaves the seed as it found it.
+  // The teardown compares against these: every spec leaves the seed as it found it, in number and
+  // in content.
   process.env.E2E_SEED_COUNTS = JSON.stringify(await admin.counts());
+  process.env.E2E_SEED_OBJECTS = JSON.stringify(await admin.snapshot());
 }

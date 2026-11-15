@@ -39,7 +39,7 @@ test('a service: created in the form → in the list → a route made in it prox
   await hosts.press('Enter');
   const up = await openTab(page, t('rt.tab.upstream'));
   await up.getByRole('radio', { name: t('rt.up.source.existing') }).click();
-  await choose(page, up.getByRole('combobox', { name: t('rt.up.upstream') }), new RegExp(`^${upstream}`));
+  await choose(page, up.getByRole('combobox', { name: t('rt.up.upstream') }), upstream);
   await create(page);
   expect(await admin.value(`services/${id}`)).toEqual({ id, name: id, hosts: [host], upstream_id: upstream });
 
@@ -53,7 +53,7 @@ test('a service: created in the form → in the list → a route made in it prox
   await idField(page).fill(route);
   const matching = await openTab(page, t('rt.tab.matching'));
   await matching.getByRole('button', { name: t('ui.tags.remove', { tag: '/*' }) }).click();
-  const uris = matching.getByRole('textbox', { name: /^URIs/ });
+  const uris = matching.getByRole('textbox', { name: new RegExp(`^${t('rt.match.uris')}\\b`) });
   await uris.fill(ECHO.path);
   await uris.press('Enter');
   const routeUp = await openTab(page, t('rt.tab.upstream'));

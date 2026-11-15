@@ -3,8 +3,8 @@ import {
   ECHO,
   addPlugin,
   codeText,
-  echoRoute,
   expect,
+  expectSameQuietly,
   gateway,
   gatewayAnswers,
   eventually,
@@ -15,9 +15,11 @@ import {
   t,
   tabNamed,
   test,
+  storedRoute as stored_,
   toast,
   uid,
   unlock,
+  type Json,
 } from './fixtures';
 
 const PREFIX = 'e2e-plug-';
@@ -26,12 +28,7 @@ test.afterAll(async () => {
   await new Admin().removePrefixed(PREFIX);
 });
 
-async function storedRoute(admin: Admin, extra: Record<string, unknown> = {}) {
-  const id = `${PREFIX}${uid()}`;
-  const host = `${id}.e2e.test`;
-  await admin.put(`routes/${id}`, echoRoute(id, host, extra));
-  return { id, host };
-}
+const storedRoute = (admin: Admin, extra: Json = {}) => stored_(admin, PREFIX, extra);
 
 test('limit-count added in the form: the JSON view shows the same values, and the third request is refused with the configured code', async ({ page, admin }) => {
   const { id, host } = await storedRoute(admin);
@@ -61,16 +58,22 @@ test('limit-count added in the form: the JSON view shows the same values, and th
 });
 
 test('switched off on its card, limit-count no longer limits', async ({ page, admin }) => {
-  const { id, host } = await storedRoute(admin, { plugins: { 'limit-count': { count: 1, time_window: 60, rejected_code: 503 } } });
-  await eventually(
+  const { id, host, stored } = await storedRoute(admin, { plugins: { 'limit-count': { count: 1, time_window: 60, rejected_code: 503 } } });
+  // Limited before: the second request in the window is refused.
+  const limited = await eventually(
     () => gateway(ECHO.path, { host }),
     (r) => r.status === 503,
   );
+  expect(limited.status, 'limit-count limits before it is switched off').toBe(503);
   await openEditor(page, `routes/${id}?tab=plugins`);
   await unlock(page);
   await pluginCard(page, 'limit-count').getByRole('switch', { name: t('pl.card.enable', { name: 'limit-count' }) }).click();
   const write = await save(page);
   expect((write.body?.plugins as Record<string, Record<string, unknown>>)['limit-count']?._meta).toEqual({ disable: true });
+  expect(await admin.value(`routes/${id}`)).toEqual({
+    ...stored,
+    plugins: { 'limit-count': { count: 1, time_window: 60, rejected_code: 503, _meta: { disable: true } } },
+  });
   await gatewayAnswers(host, 200);
   for (let i = 0; i < 3; i++) expect((await gateway(ECHO.path, { host })).status).toBe(200);
 });
@@ -133,7 +136,7 @@ test('key-auth on a consumer asks for its key (on a route it has none)', async (
   expect(writes).toEqual([]);
   await key.fill('e2e-consumer-key');
   await save(page);
-  expect(((await admin.value(`consumers/${username}`))?.plugins as Record<string, unknown>)['key-auth']).toEqual({ key: 'e2e-consumer-key' });
+  expectSameQuietly(((await admin.value(`consumers/${username}`))?.plugins as Record<string, unknown>)['key-auth'], { key: 'e2e-consumer-key' }, "the consumer's key-auth");
   await admin.del(`consumers/${username}`);
 
   // A route's key-auth has no key field.

@@ -2,7 +2,6 @@
 // saved as shown or holds the save back, and leaving it never loses or changes what is stored.
 import {
   Admin,
-  echoRoute,
   expect,
   jsonEditor,
   openCard,
@@ -13,9 +12,10 @@ import {
   setCode,
   t,
   test,
+  storedRoute as stored_,
   toast,
-  uid,
   unlock,
+  type Json,
 } from './fixtures';
 
 const PREFIX = 'e2e-wysiwyg-';
@@ -25,12 +25,7 @@ test.afterAll(async () => {
   await new Admin().removePrefixed(PREFIX);
 });
 
-async function storedRoute(admin: Admin, extra: Record<string, unknown> = {}) {
-  const id = `${PREFIX}${uid()}`;
-  const host = `${id}.e2e.test`;
-  await admin.put(`routes/${id}`, echoRoute(id, host, extra));
-  return { id, host, stored: (await admin.value(`routes/${id}`))! };
-}
+const storedRoute = (admin: Admin, extra: Json = {}) => stored_(admin, PREFIX, extra);
 
 /** Switches tab while the current one holds input: the question, and the choice made. */
 async function switchTabAnswering(page: import('@playwright/test').Page, label: string, answer: 'stay' | 'discard') {
@@ -62,8 +57,11 @@ test('a host the check refuses holds the save: the toast names Hosts, nothing is
   await hosts.fill('not a host!');
   const writes = recordWrites(page);
   await page.keyboard.press('ControlOrMeta+s');
-  await expect(toast(page, new RegExp(t('rt.match.hosts')))).toBeVisible();
+  const refusal = toast(page, new RegExp(t('rt.match.hosts')));
+  await expect(refusal).toBeVisible();
   await page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true }).click();
+  // The second refusal is the same toast, now counted twice: only then is the request log read.
+  await expect(refusal).toContainText(t('ui.toast.repeat', { count: 2 }));
   await expect(hosts).toHaveValue('not a host!');
   await expect(hosts).toHaveAttribute('aria-invalid', 'true');
   expect(writes).toEqual([]);
@@ -99,7 +97,7 @@ test('broken JSON-tab text asks before another tab: Stay keeps it; Discard and s
   const json = jsonEditor(page, ROUTE);
   await setCode(page, json, '{"name": "broken", ');
   await switchTabAnswering(page, t('rt.tab.general'), 'stay');
-  await expect(page.getByRole('main').getByRole('tab', { name: 'JSON' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('main').getByRole('tab', { name: t('editor.json.tab'), exact: true })).toHaveAttribute('aria-selected', 'true');
   await expect(json).toContainText('"name": "broken",');
   await switchTabAnswering(page, t('rt.tab.general'), 'discard');
   await page.getByRole('main').getByRole('textbox', { name: t('rt.general.desc') }).fill('the only change');
@@ -130,7 +128,8 @@ test('a label whose key is cleared, then discarded on a tab switch, is still sto
   const labels = main.getByRole('group', { name: t('rt.general.labels') });
   const keyOf = async (value: string) => {
     for (let n = 1; n <= 2; n++) {
-      if ((await labels.getByRole('textbox', { name: `Key ${n}` }).inputValue()) === value) return labels.getByRole('textbox', { name: `Key ${n}` });
+      const key = labels.getByRole('textbox', { name: t('ui.kv.keyN', { n }), exact: true });
+      if ((await key.inputValue()) === value) return key;
     }
     throw new Error(`no label ${value}`);
   };

@@ -3,16 +3,20 @@ import { ECHO, expect, openList, t, test, toast, uid, type Admin, type Json } fr
 
 const PREFIX = 'e2e-list-';
 
+const SELECT_ROW = t('table.selectRow', { name: '' });
+const SELECT_ALL = t('table.selectAll', { count: '\u0000' }).split('\u0000')[0]!;
+const selectRow = (name: string) => t('table.selectRow', { name });
+
 /** The routes' names in the order the table shows them (each row's "Select <name>" box). */
 async function rowNames(main: Locator): Promise<string[]> {
   const labels = await main.locator('tbody').getByRole('checkbox').evaluateAll((boxes) => boxes.map((b) => b.getAttribute('aria-label') ?? ''));
-  return labels.map((l) => l.replace(/^Select /, ''));
+  return labels.map((l) => (l.startsWith(SELECT_ROW) ? l.slice(SELECT_ROW.length) : l));
 }
 
 /** The visible column headers, in order (without the selection and actions columns). */
 async function headers(main: Locator): Promise<string[]> {
   const names = await main.locator('thead th[aria-label]').evaluateAll((ths) => ths.map((th) => th.getAttribute('aria-label') ?? ''));
-  return names.filter((n) => n !== t('table.actions') && !n.startsWith('Select all'));
+  return names.filter((n) => n !== t('table.actions') && !n.startsWith(SELECT_ALL));
 }
 
 function header(main: Locator, name: string): Locator {
@@ -73,7 +77,7 @@ test.describe('columns', () => {
       t('column.plugins'),
       t('column.updated'),
     ]);
-    const row = main.getByRole('row').filter({ has: page.getByRole('checkbox', { name: 'Select api-v1', exact: true }) });
+    const row = main.getByRole('row').filter({ has: page.getByRole('checkbox', { name: selectRow('api-v1'), exact: true }) });
     await expect(row).toContainText('api.apiseven.test');
     await expect(row).toContainText('/v1/*');
     await expect(row).toContainText('GET');
@@ -81,7 +85,7 @@ test.describe('columns', () => {
     await expect(row).toContainText('limit-count');
     await expect(row.locator('time')).toBeVisible();
     // A route bound to a service shows the service's hosts, marked as inherited.
-    const viaService = main.getByRole('row').filter({ has: page.getByRole('checkbox', { name: 'Select web-home', exact: true }) });
+    const viaService = main.getByRole('row').filter({ has: page.getByRole('checkbox', { name: selectRow('web-home'), exact: true }) });
     await expect(viaService).toContainText('www.apiseven.test');
     await expect(viaService).toContainText(t('cell.viaService'));
   });
@@ -134,11 +138,18 @@ test.describe('sorting', () => {
     const body = (name: string, host: string) => ({ name, uri: '/u', host, upstream: { type: 'roundrobin', nodes: [{ host: ECHO.host, port: ECHO.port, weight: 1 }] } });
     await admin.put(`routes/${late}`, body(late, 'late.e2e.test'));
     await admin.put(`routes/${early}`, body(early, 'early.e2e.test'));
-    // update_time has a resolution of one second: wait until the clock has passed early's, then change late.
+    // update_time has a resolution of one second, on APISIX's clock: change late again until APISIX
+    // stamps it later than early (no assumption that this machine's clock is APISIX's).
     const earlyTime = Number((await admin.raw(`routes/${early}`))!.update_time);
-    await expect.poll(() => Math.floor(Date.now() / 1000), { timeout: 5_000 }).toBeGreaterThan(earlyTime);
-    await admin.patch(`routes/${late}`, { desc: 'changed later' });
-    expect(Number((await admin.raw(`routes/${late}`))!.update_time)).toBeGreaterThan(earlyTime);
+    await expect
+      .poll(
+        async () => {
+          await admin.patch(`routes/${late}`, { desc: 'changed later' });
+          return Number((await admin.raw(`routes/${late}`))!.update_time);
+        },
+        { timeout: 10_000, intervals: [250] },
+      )
+      .toBeGreaterThan(earlyTime);
 
     const main = await openList(page, 'routes');
     const times = new Map((await storedRoutes(admin)).map((r) => [nameOf(r), Number(r.update_time)]));
@@ -191,9 +202,9 @@ test.describe('search and filters', () => {
   }
 
   const cases: [string, string, string[]][] = [
-    ['table.status', 'Disabled', ['old-wiki']],
+    ['table.status', t('table.status.disabled'), ['old-wiki']],
     ['filter.host', 'api.apiseven.test', ['api-v1', 'api-v2']],
-    ['filter.host', 'Any host', ['healthz']],
+    ['filter.host', t('filter.anyHost'), ['healthz']],
     ['filter.method', 'DELETE', ['api-v1']],
     ['filter.plugin', 'limit-count', ['api-v1']],
     ['filter.service', 'billing', ['billing-api']],
@@ -246,8 +257,7 @@ test.describe('writes from the list', () => {
     await toggle.click();
     await expect.poll(async () => (await admin.raw(`routes/${id}`))?.status).toBe(0);
     await expect(toggle).not.toBeChecked();
-    // While its write is out (until the list has reloaded) the switch is busy and takes no click.
-    await expect(toggle).not.toHaveAttribute('aria-busy', 'true');
+    // While its write is out the switch is disabled; the click waits until it can be made.
     await toggle.click();
     await expect.poll(async () => (await admin.raw(`routes/${id}`))?.status).toBe(1);
     await expect(toggle).toBeChecked();
@@ -258,7 +268,7 @@ test.describe('writes from the list', () => {
     const ids = [`${PREFIX}bulk-a-${uid()}`, `${PREFIX}bulk-b-${uid()}`];
     for (const [i, id] of ids.entries()) await admin.put(`routes/${id}`, route(`bulk${i}.e2e.test`));
     const main = await openList(page, 'routes');
-    for (const id of ids) await main.getByRole('checkbox', { name: `Select ${id}`, exact: true }).click();
+    for (const id of ids) await main.getByRole('checkbox', { name: selectRow(id), exact: true }).click();
     const bar = main.getByRole('group', { name: t('table.selected', { count: 2 }) });
     await bar.getByRole('button', { name: t('action.disable'), exact: true }).click();
     await expect(toast(page, t('bulk.done', { action: t('action.disable'), done: 2 }))).toBeVisible();
@@ -267,13 +277,13 @@ test.describe('writes from the list', () => {
     expect((await admin.raw('routes/api-v1'))?.status ?? 1).toBe(1);
 
     for (const id of ids) {
-      const box = main.getByRole('checkbox', { name: `Select ${id}`, exact: true });
+      const box = main.getByRole('checkbox', { name: selectRow(id), exact: true });
       if (!(await box.isChecked())) await box.click();
     }
     await main.getByRole('group', { name: t('table.selected', { count: 2 }) }).getByRole('button', { name: t('action.delete'), exact: true }).click();
     const confirm = page.getByRole('alertdialog', { name: t('bulk.delete.title', { count: 2, plural: t('kind.routes.plural') }) });
     await confirm.getByRole('button', { name: t('bulk.delete.confirm', { count: 2 }) }).click();
-    await expect(main.getByRole('checkbox', { name: `Select ${ids[0]}`, exact: true })).toHaveCount(0);
+    await expect(main.getByRole('checkbox', { name: selectRow(ids[0]!), exact: true })).toHaveCount(0);
     for (const id of ids) expect(await admin.raw(`routes/${id}`)).toBeUndefined();
     expect(await admin.raw('routes/api-v1')).toBeDefined();
   });
@@ -282,11 +292,14 @@ test.describe('writes from the list', () => {
 test.describe('pages', () => {
   const MANY = 60;
   const ids = Array.from({ length: MANY }, (_, i) => `${PREFIX}page-${String(i).padStart(2, '0')}`);
+  /** How many routes there were before this block added its sixty. */
+  let before = 0;
 
   test.beforeAll(async ({}, info) => {
     info.setTimeout(120_000);
     const { Admin } = await import('./admin');
     const admin = new Admin();
+    before = (await admin.list('routes')).length;
     for (const id of ids) {
       await admin.put(`routes/${id}`, { uri: `/${id}`, upstream: { type: 'roundrobin', nodes: [{ host: ECHO.host, port: ECHO.port, weight: 1 }] } });
     }
@@ -298,25 +311,27 @@ test.describe('pages', () => {
     for (const id of ids) await admin.del(`routes/${id}`);
   });
 
-  test('a page size change pages the 70 routes, and a sort orders all of them, not one page', async ({ page, admin }) => {
+  test('a page size change pages the routes (sixty more than the seed), and a sort orders all of them, not one page', async ({ page, admin }) => {
     const main = await openList(page, 'routes');
     const total = (await storedRoutes(admin)).length;
-    expect(total).toBe(MANY + 10);
+    expect(total).toBe(before + MANY);
+    const pages = Math.ceil(total / 25);
+    expect(pages).toBeGreaterThan(2);
     const pager = main.getByRole('combobox', { name: t('table.page.size') });
     await expect(pager).toHaveText('50');
-    expect(await rowNames(main)).toHaveLength(50);
+    expect(await rowNames(main)).toHaveLength(Math.min(50, total));
     await pager.click();
     await page.getByRole('option', { name: '25', exact: true }).click();
-    await expect(main.getByText(t('table.page.of', { page: 1, count: 3 }))).toBeVisible();
+    await expect(main.getByText(t('table.page.of', { page: 1, count: pages }))).toBeVisible();
     expect(await rowNames(main)).toHaveLength(25);
 
     await sortBy(main, t('column.name'));
     await sortBy(main, t('column.name'));
     await expect(header(main, t('column.name'))).toHaveAttribute('aria-sort', 'descending');
     const seen: string[] = [];
-    for (let p = 1; p <= 3; p++) {
+    for (let p = 1; p <= pages; p++) {
       if (p > 1) await main.getByRole('button', { name: t('table.page.next') }).click();
-      await expect(main.getByText(t('table.page.of', { page: p, count: 3 }))).toBeVisible();
+      await expect(main.getByText(t('table.page.of', { page: p, count: pages }))).toBeVisible();
       seen.push(...(await rowNames(main)));
     }
     const all = (await storedRoutes(admin)).map(nameOf);

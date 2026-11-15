@@ -39,7 +39,7 @@ test.describe('the single file, opened from disk', () => {
     await expect(main.getByRole('link', { name: 'api-v1', exact: true })).toBeVisible();
     await main.getByRole('link', { name: 'api-v1', exact: true }).click();
     await expect(main.getByRole('heading', { level: 1, name: 'api-v1' })).toBeVisible();
-    await main.getByRole('tab', { name: 'JSON' }).click();
+    await main.getByRole('tab', { name: t('editor.json.tab') }).click();
     await expect(main.getByRole('textbox', { name: t('editor.json.label', { kind: t('kind.routes.singular') }) })).toBeVisible();
     expect(new URL(page.url()).protocol).toBe('file:');
     // The other requests went to APISIX, or to the file itself (its own hash routes), only.
@@ -63,7 +63,7 @@ test.describe('the single file, opened from disk', () => {
       await expect(page.getByRole('main').getByRole('link', { name: 'api-v1', exact: true })).toBeVisible();
       expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe(scheme);
       await expectMarkBesideName(page, 'sidebar');
-      expect(await page.locator('img.shell-brand__logo').getAttribute('src')).toMatch(/^data:image\/png;base64,/);
+      expect(await page.getByRole('link', { name: t('shell.home') }).locator('img').getAttribute('src')).toMatch(/^data:image\/png;base64,/);
     });
   }
 });

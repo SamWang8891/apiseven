@@ -7,6 +7,8 @@ import {
   deleteFromEditor,
   eventually,
   expect,
+  expectNotInPage,
+  expectSameQuietly,
   idField,
   listShows,
   openEditor,
@@ -29,9 +31,9 @@ test.afterAll(async () => {
   await new Admin().removePrefixed(PREFIX);
 });
 
+/** No line of either private key in anything the page holds (markup, form values, accessible text). */
 async function noKeyInPage(page: import('@playwright/test').Page): Promise<void> {
-  const html = await page.content();
-  for (const line of KEY_LINES) expect(html, 'a private key line in the page').not.toContain(line);
+  await expectNotInPage(page, KEY_LINES, 'a private key line');
 }
 
 /** The common name of the certificate the HTTPS listener presents for `sni`, once it is `cn`. */
@@ -55,7 +57,7 @@ test('upload a certificate and its key in the form: stored, served on the HTTPS 
   await snis.getByRole('button', { name: t('ssl.snis.useSans') }).click();
   await expect(snis).toContainText(SNI);
   const write = await create(page);
-  expect(write.body?.key).toBe(EC_PAIR.key);
+  expect(write.body?.key === EC_PAIR.key, 'the create sends the private key').toBe(true);
   // One SNI is stored as sni (APISIX takes either; the editor writes one name as sni).
   expect(await admin.value(`ssls/${id}`)).toEqual({ id, status: 1, sni: SNI, cert: EC_PAIR.cert });
   await noKeyInPage(page);
@@ -106,13 +108,14 @@ test('Replace certificate sends the new certificate and key; APISIX then serves 
   await noKeyInPage(page);
   const write = await save(page);
   expect(write.method).toBe('PATCH');
-  expect(write.body).toEqual({ cert: RSA_PAIR.cert, key: RSA_PAIR.key });
+  expectSameQuietly(write.body, { cert: RSA_PAIR.cert, key: RSA_PAIR.key }, 'the PATCH body');
   expect((await admin.value(`ssls/${id}`))?.cert).toBe(RSA_PAIR.cert);
   await servedFor(sni, 'rsa-extra.apiseven.test');
   await noKeyInPage(page);
 
   await deleteFromEditor(page, t('kind.ssls.singular'));
   expect(await admin.value(`ssls/${id}`)).toBeUndefined();
+  await listShows(page, 'ssls', sni, false);
   // Back to the seed's wildcard certificate.
   await servedFor(sni, 'apiseven.test');
 });

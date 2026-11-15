@@ -6,6 +6,8 @@ import {
   echoRoute,
   echoUpstream,
   expect,
+  expectNoCredentials,
+  gateway,
   gatewayAnswers,
   openEditor,
   pluginCard,
@@ -39,6 +41,8 @@ test.describe('auth plugins on consumers and credentials', () => {
     await expect(card.getByRole('switch')).toHaveCount(0);
     await expect(card).toContainText(t('pl.card.signIn.stillSignsIn'));
     await gatewayAnswers(host, 200, { headers: { apikey: key } });
+    // key-auth is in force on the route: a wrong key is refused.
+    expect((await gateway(ECHO.path, { host, headers: { apikey: `${key}-wrong` } })).status).toBe(401);
   });
 
   test('a consumer’s own auth plugin marked off: no switch, still signs in, and the gateway agrees', async ({ page, admin }) => {
@@ -47,6 +51,7 @@ test.describe('auth plugins on consumers and credentials', () => {
     const key = `${PREFIX}own-${id}`;
     const host = `${PREFIX}${id}.e2e.test`;
     await admin.put('consumers', { username, plugins: { 'key-auth': { key, _meta: { disable: true } } } });
+    expectNoCredentials(page, username);
     await admin.put(`routes/${PREFIX}${id}`, echoRoute(`${PREFIX}${id}`, host, { plugins: { 'key-auth': {} } }));
     await openEditor(page, `consumers/${username}?tab=plugins`);
     await unlock(page);
@@ -54,6 +59,7 @@ test.describe('auth plugins on consumers and credentials', () => {
     await expect(card).toContainText(t('pl.card.signIn.stillSignsIn'));
     await expect(card.getByRole('switch')).toHaveCount(0);
     await gatewayAnswers(host, 200, { headers: { apikey: key } });
+    expect((await gateway(ECHO.path, { host, headers: { apikey: `${key}-wrong` } })).status).toBe(401);
   });
 });
 
@@ -94,6 +100,7 @@ test.describe('consumer groups', () => {
       },
     });
     await admin.put('consumers', { username, group_id: group, plugins: { 'key-auth': { key } } });
+    expectNoCredentials(page, username);
     await admin.put(`routes/${PREFIX}${id}`, echoRoute(`${PREFIX}${id}`, host, { plugins: { 'key-auth': {} } }));
 
     const main = await openEditor(page, `consumers/${username}?tab=plugins`);

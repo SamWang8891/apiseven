@@ -18,6 +18,8 @@ kind(
     editor: `consumers/${username}`,
     api: `consumers/${username}`,
     create: (a) => a.put('consumers', { username, desc: 'stored', plugins: { 'limit-count': { count: 5, time_window: 60, x_e2e: KEPT } } }).then(() => undefined),
+    // It has no credentials: APISIX answers 404 to the list of them, which its editor reads.
+    notFound: [`consumers/${username}/credentials`],
   },
   [
     desc(t('cs.tab.general'), t('cs.general.desc')),
@@ -43,11 +45,12 @@ kind(
     },
   },
   [
-    desc(t('cr.tab.general'), t('cr.general.desc')),
+    { ...desc(t('cr.tab.general'), t('cr.general.desc')), secret: true },
     {
       tab: t('pl.tab'),
       field: 'plugins',
       value: () => ({ 'key-auth': { key: `${PREFIX}key-2`, x_e2e: KEPT } }),
+      secret: true,
       change: (_panel, page) => pluginField(page, 'key-auth', 'key(?!-)', `${PREFIX}key-2`),
     },
   ],
@@ -78,7 +81,7 @@ kind(
   {
     editor: `ssls/${ssl}`,
     api: `ssls/${ssl}`,
-    create: (a) => a.put(`ssls/${ssl}`, { type: 'server', snis: ['rotated.apiseven.test'], cert: EC_PAIR.cert, key: EC_PAIR.key }).then(() => undefined),
+    create: (a) => a.put(`ssls/${ssl}`, { type: 'server', snis: ['tabs-ssl.apiseven.test'], cert: EC_PAIR.cert, key: EC_PAIR.key }).then(() => undefined),
   },
   [
     {
@@ -202,6 +205,7 @@ kind(
   [
     {
       tab: t('sc.tab.config'),
+      secret: true,
       field: 'uri',
       value: () => 'http://127.0.0.1:8201',
       change: (panel) => panel.getByRole('textbox', { name: /^uri\b/ }).fill('http://127.0.0.1:8201'),

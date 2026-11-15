@@ -1,6 +1,7 @@
 // The lock means no writes (addendum rule 14 and the Task 12 ruling): every editor of every kind opens
 // locked with nothing to type into, embedded tables offer no one-click write, and a save leaves the
 // page where it was.
+import type { Locator } from '@playwright/test';
 import {
   Admin,
   addPlugin,
@@ -13,6 +14,7 @@ import {
   save,
   settled,
   t,
+  tabNamed,
   test,
   uid,
   unlock,
@@ -55,9 +57,33 @@ const EDITORS = [
   `secrets/${secretId.replace('/', '%2F')}`,
 ];
 
+/**
+ * Opens everything a locked tab can open without unlocking: every collapsed card and section (until
+ * none is left: a card opens its Run options toggle), and in each plugin card the other view (JSON,
+ * then back to Form). Popup triggers (menus, the table's column menu) are left alone.
+ */
+async function openEverything(panel: Locator, check: (where: string) => Promise<void>): Promise<void> {
+  for (let round = 0; round < 6; round++) {
+    const closed = panel.locator('button[aria-expanded="false"]:not([aria-haspopup])');
+    const n = await closed.count();
+    if (n === 0) break;
+    for (let i = n - 1; i >= 0; i--) await closed.nth(i).click();
+  }
+  await expect(panel.locator('button[aria-expanded="false"]:not([aria-haspopup])')).toHaveCount(0);
+  await check('everything open');
+  const views = panel.getByRole('group', { name: new RegExp(`^${t('pl.card.view', { name: '\u0000' }).split('\u0000')[0]}`) });
+  for (let i = 0; i < (await views.count()); i++) {
+    const view = views.nth(i);
+    await view.getByRole('button', { name: t('pl.card.json'), exact: true }).click();
+    await check(`${(await view.getAttribute('aria-label')) ?? 'a card'}, JSON view`);
+    await view.getByRole('button', { name: t('pl.card.form'), exact: true }).click();
+  }
+}
+
 test.describe('every editor opens locked', () => {
   for (const path of EDITORS) {
-    test(`${path}: every tab has no control to type into or switch`, async ({ page }) => {
+    test(`${path}: every tab, with every card, section and inner view opened, has no control to type into or switch, and nothing is written`, async ({ page }) => {
+      const writes = recordWrites(page);
       const main = await openEditor(page, path);
       await expect(main.getByText(t('editor.locked'), { exact: true })).toBeVisible();
       const tabs = main.getByRole('tablist').first().getByRole('tab');
@@ -68,34 +94,51 @@ test.describe('every editor opens locked', () => {
         await tab.click();
         await expect(tab).toHaveAttribute('aria-selected', 'true');
         await settled(page);
-        expect(await operableControls(page), `${path}, tab ${await tab.textContent()}`).toEqual([]);
+        const label = (await tab.textContent()) ?? '';
+        const check = async (where: string) => expect(await operableControls(page), `${path}, tab ${label}, ${where}`).toEqual([]);
+        await check('as opened');
+        await openEverything(main.getByRole('tabpanel'), check);
       }
+      await expect(main.getByText(t('editor.locked'), { exact: true })).toBeVisible();
+      expect(writes).toEqual([]);
     });
   }
 });
 
 test.describe('tables inside an editor', () => {
-  const EMBEDDED: [string, string][] = [
-    ['services/web?tab=routes', 'web-home'],
-    ['plugin_configs/common-headers?tab=used_by', 'shop'],
-    ['consumers/alice?tab=credentials', 'alice-key'],
-    ['consumer_groups/partners?tab=members', 'alice'],
+  // [path, a row, whether the table has a status column]
+  const EMBEDDED: [string, string, boolean][] = [
+    ['services/web?tab=routes', 'web-home', true],
+    ['plugin_configs/common-headers?tab=used_by', 'shop', true],
+    ['consumers/alice?tab=credentials', 'alice-key', false],
+    ['consumer_groups/partners?tab=members', 'alice', false],
   ];
-  for (const [path, row] of EMBEDDED) {
-    test(`${path}: no status switch, and clicking the status sends nothing`, async ({ page }) => {
+  for (const [path, row, hasStatus] of EMBEDDED) {
+    const title = hasStatus
+      ? `${path}: no status switch, clicking the status sends nothing, and the row menu writes nothing`
+      : `${path}: no control, and the row menu writes nothing`;
+    test(title, async ({ page }) => {
       const main = await openEditor(page, path);
       const panel = main.getByRole('tabpanel');
       await expect(panel.getByRole('link', { name: row, exact: true })).toBeVisible();
       await expect(panel.getByRole('switch')).toHaveCount(0);
       expect(await operableControls(page)).toEqual([]);
       const writes = recordWrites(page);
-      const status = panel.getByRole('row').filter({ has: page.getByRole('link', { name: row, exact: true }) }).getByText(t('table.status.enabled'), { exact: true });
-      if ((await status.count()) > 0) await status.click();
+      const theRow = panel.getByRole('row').filter({ has: page.getByRole('link', { name: row, exact: true }) });
+      if (hasStatus) {
+        const status = theRow.getByText(t('table.status.enabled'), { exact: true });
+        await expect(status).toBeVisible();
+        await status.click();
+      }
       // The row's own menu only navigates or asks first.
       await panel.getByRole('button', { name: t('table.actionsFor', { name: row }) }).click();
-      const items = await page.getByRole('menuitem').allTextContents();
+      const menu = page.getByRole('menu', { name: t('table.actionsFor', { name: row }) });
+      await expect(menu).toBeVisible();
+      const items = await menu.getByRole('menuitem').allTextContents();
+      expect(items.length).toBeGreaterThan(0);
       expect(items.filter((i) => [t('action.enable'), t('action.disable')].includes(i))).toEqual([]);
       await page.keyboard.press('Escape');
+      await expect(menu).toBeHidden();
       expect(writes).toEqual([]);
     });
   }
@@ -135,7 +178,7 @@ test('after a Save the page stays on the same tab, with the same cards open, scr
   expect(before).toBeGreaterThan(0);
   const write = await save(page);
   expect((write.body?.plugins as Record<string, Record<string, unknown>>).cors?.max_age).toBe(600);
-  await expect(main.getByRole('tab', { name: /^Plugins/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(tabNamed(page, t('pl.tab'))).toHaveAttribute('aria-selected', 'true');
   for (const name of ['limit-count', 'proxy-rewrite', 'cors', 'request-id']) {
     await expect(main.getByRole('group', { name, exact: true }).getByRole('button', { name: new RegExp(`^${name}\\b`) }).first()).toHaveAttribute('aria-expanded', 'true');
   }

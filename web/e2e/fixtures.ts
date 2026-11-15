@@ -1,5 +1,6 @@
 // Shared fixtures and flows of the end-to-end suite. Specs import `test`, `expect` and the helpers
 // from here; labels come from the app's own strings through `t()`, so a spec reads like the UI.
+import { isDeepStrictEqual } from 'node:util';
 import { test as base, expect, type BrowserContext, type Locator, type Page, type Request } from '@playwright/test';
 import { t } from '../src/i18n';
 import { Admin, eventually, gateway, type Json } from './admin';
@@ -32,28 +33,48 @@ interface Fixtures {
   admin: Admin;
 }
 
-/** Puts one saved, active connection into localStorage before the app first loads in a context. */
-export async function saveConnection(context: BrowserContext, key: string, name = 'e2e'): Promise<void> {
+export interface SavedConnection {
+  id: string;
+  name: string;
+  key: string;
+  baseUrl?: string;
+}
+
+/**
+ * Puts saved connections into localStorage before the app first loads in a context (once per tab:
+ * a reload keeps what the app changed since), the one named `active` active.
+ */
+export async function saveConnections(context: BrowserContext, list: SavedConnection[], active = list[0]?.id): Promise<void> {
   await context.addInitScript(
-    ([baseUrl, k, n]) => {
+    ([connections, activeId]) => {
       if (sessionStorage.getItem('e2e.connection')) return;
       sessionStorage.setItem('e2e.connection', '1');
-      localStorage.setItem('apiseven.connections', JSON.stringify([{ id: 'e2e', name: n, baseUrl, key: k }]));
-      localStorage.setItem('apiseven.activeConnection', 'e2e');
+      localStorage.setItem('apiseven.connections', JSON.stringify(connections));
+      if (activeId) localStorage.setItem('apiseven.activeConnection', activeId);
     },
-    [env.adminUrl, key, name],
+    [list.map((c) => ({ ...c, baseUrl: c.baseUrl ?? env.adminUrl })), active] as const,
   );
+}
+
+interface Failed {
+  url: string;
+  status: number | undefined;
+  method: string;
+  text: string;
 }
 
 /** Collects what the page logs as errors, so a test fails on any it did not expect. */
 function watchConsole(page: Page) {
-  const failed: { url: string; text: string }[] = [];
+  const failed: Failed[] = [];
   const messages: { text: string; url: string }[] = [];
   page.on('response', (res) => {
-    if (res.status() >= 400) failed.push({ url: res.url(), text: `${res.status()} ${res.request().method()} ${res.url()}` });
+    if (res.status() >= 400) {
+      const method = res.request().method();
+      failed.push({ url: res.url(), status: res.status(), method, text: `${res.status()} ${method} ${res.url()}` });
+    }
   });
   page.on('requestfailed', (req: Request) => {
-    failed.push({ url: req.url(), text: `failed ${req.method()} ${req.url()} ${req.failure()?.errorText ?? ''}` });
+    failed.push({ url: req.url(), status: undefined, method: req.method(), text: `failed ${req.method()} ${req.url()} ${req.failure()?.errorText ?? ''}` });
   });
   page.on('pageerror', (err) => messages.push({ text: `pageerror: ${err.message}`, url: '' }));
   page.on('console', (msg) => {
@@ -62,37 +83,71 @@ function watchConsole(page: Page) {
   return { failed, messages };
 }
 
-/** What a failed load means: the request behind a "Failed to load resource" line, else the line. */
-function describeProblems(seen: ReturnType<typeof watchConsole>): string[] {
+/**
+ * What each logged line means: a "Failed to load resource" line is matched to the request behind it
+ * (the first one on that URL not matched yet, so a later failure on the same URL is described as
+ * itself), anything else is its own text.
+ */
+function describeProblems(seen: ReturnType<typeof watchConsole>): { text: string; failed?: Failed }[] {
+  const used = new Set<Failed>();
   return seen.messages.map((m) => {
-    if (m.text.startsWith('Failed to load resource')) {
-      const request = seen.failed.find((f) => f.url === m.url);
-      return request ? request.text : `${m.text} (${m.url})`;
-    }
-    return m.text;
+    if (!m.text.startsWith('Failed to load resource')) return { text: m.text };
+    const status = /status of (\d+)/.exec(m.text)?.[1];
+    const request = seen.failed.find((f) => !used.has(f) && f.url === m.url && (status === undefined || String(f.status) === status));
+    if (!request) return { text: `${m.text} (${m.url})` };
+    used.add(request);
+    return { text: request.text, failed: request };
   });
 }
 
 /**
- * Failed loads every page may log: the app's probe for server mode (`config.json`, absent from a
- * static build), and a GET that answers 404, which is how APISIX says "not stored" to the checks the
- * app makes on purpose (a create checks its id first; an editor of a kind that is created when
- * missing; support probes).
+ * The one failed load every page may log: the app's probe for server mode (`config.json`), which a
+ * static build does not have (Task 17, concern 4). Nothing else is allowed globally: a 404 that a test
+ * expects (a create checks its id first; a kind created when missing) is declared by that test.
  */
-const ALWAYS_ALLOWED = [/^404 GET .*\/config\.json$/, /^404 GET .*\/apisix\/admin\//];
+const ALWAYS_ALLOWED = [/^404 GET [^ ]*\/config\.json$/];
+
+/** Object reads each page is expected to see answered 404, as paths below /apisix/admin. */
+const expectedNotFound = new WeakMap<Page, Set<string>>();
+
+/**
+ * Declares that this test expects APISIX to answer 404 to a read of one object (`routes/e2e-x`): the
+ * create check before a create, a kind created when missing, an object deleted while shown.
+ */
+export function expectNotFound(page: Page, path: string): void {
+  const set = expectedNotFound.get(page) ?? new Set<string>();
+  set.add(path);
+  expectedNotFound.set(page, set);
+}
+
+/** A consumer with no credentials: APISIX answers 404 to the list of them, which its pages read. */
+export function expectNoCredentials(page: Page, username: string): void {
+  expectNotFound(page, `consumers/${username}/credentials`);
+}
+
+function adminPathOf(url: string): string | undefined {
+  const match = /\/apisix\/admin\/([^?]*)/.exec(url);
+  return match ? decodeURIComponent(match[1]!) : undefined;
+}
 
 export const test = base.extend<Options & Fixtures>({
   connectAs: ['admin', { option: true }],
   allowConsole: [undefined, { option: true }],
   context: async ({ context, connectAs }, use) => {
-    if (connectAs !== 'none') await saveConnection(context, connectAs === 'admin' ? env.adminKey : env.viewerKey);
+    if (connectAs !== 'none') await saveConnections(context, [{ id: 'e2e', name: 'e2e', key: connectAs === 'admin' ? env.adminKey : env.viewerKey }]);
     await use(context);
   },
   page: async ({ page, allowConsole }, use) => {
     const seen = watchConsole(page);
     await use(page);
     const allowed = allowConsole ? [...ALWAYS_ALLOWED, allowConsole] : ALWAYS_ALLOWED;
-    const unexpected = describeProblems(seen).filter((text) => !allowed.some((a) => a.test(text)));
+    const notFound = expectedNotFound.get(page) ?? new Set<string>();
+    const expected = (p: { text: string; failed?: Failed }) =>
+      allowed.some((a) => a.test(p.text)) ||
+      (p.failed?.status === 404 && p.failed.method === 'GET' && notFound.has(adminPathOf(p.failed.url) ?? ''));
+    const unexpected = describeProblems(seen)
+      .filter((p) => !expected(p))
+      .map((p) => p.text);
     expect(unexpected, 'no console errors or unhandled rejections').toEqual([]);
   },
   admin: async ({}, use) => {
@@ -110,9 +165,17 @@ export async function goto(page: Page, path: string): Promise<Locator> {
   return main;
 }
 
-/** Waits until the editor's lazy tab body (and any skeleton) has rendered. */
+/**
+ * Waits until nothing in <main> is still loading: the editor's skeleton and a lazily loaded tab body
+ * are each a status with aria-busy while they load.
+ */
 export async function settled(page: Page): Promise<void> {
-  await expect(page.locator('.ed-lazy__loading, .ed-skel, [aria-busy="true"].ed')).toHaveCount(0);
+  await expect(page.getByRole('main').locator('[role="status"][aria-busy="true"]')).toHaveCount(0);
+}
+
+/** A list's loading status (its rows are on their way). */
+function listLoading(main: Locator, kind: string): Locator {
+  return main.getByRole('status', { name: t('table.loading', { plural: t(`kind.${kind}.plural`) }), exact: true });
 }
 
 /** Opens a stored object's editor (`routes/api-v1`, optionally `?tab=…`) and waits until it is shown, locked. */
@@ -128,7 +191,7 @@ export async function openEditor(page: Page, path: string): Promise<Locator> {
 export async function openList(page: Page, kind: string): Promise<Locator> {
   const main = await goto(page, kind);
   await expect(main.getByRole('table').first()).toBeVisible();
-  await expect(main.locator('.tbl-state')).toHaveCount(0);
+  await expect(listLoading(main, kind)).toHaveCount(0);
   return main;
 }
 
@@ -163,6 +226,14 @@ export function echoUpstream(): Json {
 /** A route to ECHO for one host name. */
 export function echoRoute(name: string, host: string, extra: Json = {}): Json {
   return { name, host, uri: ECHO.path, upstream: echoUpstream(), ...extra };
+}
+
+/** A throwaway route to ECHO stored through the Admin API: its id (`<prefix><random>`), host and stored value. */
+export async function storedRoute(admin: Admin, prefix: string, extra: Json = {}): Promise<{ id: string; host: string; stored: Json }> {
+  const id = `${prefix}${uid()}`;
+  const host = `${id}.e2e.test`;
+  await admin.put(`routes/${id}`, echoRoute(id, host, extra));
+  return { id, host, stored: await admin.must(`routes/${id}`) };
 }
 
 /** Waits until the gateway answers a request for `host` with `status` (APISIX applies changes within moments). */
@@ -231,6 +302,8 @@ export async function create(page: Page): Promise<SentWrite & { status: number }
   const main = page.getByRole('main');
   const write = await nextWrite(page, () => main.getByRole('button', { name: t('editor.create'), exact: true }).click());
   expect(write.status, `${write.method} ${write.path} answered`).toBeLessThan(300);
+  // A create with an id first reads that id, and APISIX answers 404: expected here.
+  if (write.method === 'PUT') expectNotFound(page, write.path);
   await expect(main.getByRole('button', { name: t('editor.edit'), exact: true })).toBeVisible();
   return write;
 }
@@ -252,7 +325,8 @@ export async function operableControls(page: Page): Promise<string[]> {
       '[contenteditable="true"]',
       ...['checkbox', 'radio', 'combobox', 'switch', 'spinbutton', 'textbox', 'slider', 'listbox'].map((r) => `[role="${r}"]`),
     ].join(', ');
-    const skip = ['.cm-content[aria-readonly="true"]', 'input[type="hidden"]', 'input[aria-hidden="true"][tabindex="-1"]'].join(', ');
+    // A read-only textbox is the locked code editor's content; the other two are inputs nobody sees.
+    const skip = ['[role="textbox"][aria-readonly="true"]', 'input[type="hidden"]', 'input[aria-hidden="true"][tabindex="-1"]'].join(', ');
     return [...main.querySelectorAll(controls)]
       .filter((el) => !el.matches(skip) && el.closest('[data-view-control]') === null)
       .map((el) => `${el.tagName.toLowerCase()}${el.getAttribute('role') ? `[role=${el.getAttribute('role')}]` : ''} ${el.getAttribute('aria-label') ?? (el as HTMLInputElement).name ?? ''}`.trim());
@@ -266,23 +340,50 @@ export async function operableControls(page: Page): Promise<string[]> {
  */
 export function toast(page: Page, text: string | RegExp): Locator {
   return page
-    .getByRole('region', { name: /^Notifications/, includeHidden: true })
+    .getByRole('region', { name: new RegExp(`^${escape(t('ui.toast.region', { hotkey: '\u0000' }).split('\u0000')[0]!)}`), includeHidden: true })
     .getByRole('listitem', { includeHidden: true })
     .filter({ hasText: text });
 }
 
-/** The editor's banner (APISIX's refusal, "Not created", …). */
-export function banner(page: Page): Locator {
-  return page.getByRole('main').locator('.ed-banner');
+/**
+ * Everything the page holds that a secret could hide in: its markup, the live value of every form
+ * control (the markup does not carry what was typed), and the text of its accessibility tree.
+ */
+export async function pageHolds(page: Page): Promise<string> {
+  const values = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')].map((el) => el.value).join('\n'),
+  );
+  return [await page.content(), values, await page.locator('body').ariaSnapshot()].join('\n');
 }
 
 /**
- * Replaces the text of a CodeMirror editor: the editor the locator names, or the one inside it. Typed
- * through insertText, so brackets are not auto-closed.
+ * Fails if the page holds any of these secrets. The message names the secret by its position only,
+ * so a failure never prints a secret into a log or a report.
+ */
+export async function expectNotInPage(page: Page, secrets: string[], where: string): Promise<void> {
+  const holds = await pageHolds(page);
+  secrets.forEach((secret, i) => expect(holds.includes(secret), `${where}: secret #${i + 1} is in the page`).toBe(false));
+}
+
+/**
+ * A deep equality whose failure prints no value: for stored objects that hold a key, a password or a
+ * token, so a failure never puts one into a log or a report.
+ */
+export function expectSameQuietly(actual: unknown, expected: unknown, what: string): void {
+  expect(isDeepStrictEqual(actual, expected), `${what} (values not printed: they hold a secret)`).toBe(true);
+}
+
+/** The editor's banner (an alert) with this title: APISIX's refusal, "Not created", … */
+export function banner(page: Page, title: string): Locator {
+  return page.getByRole('main').getByRole('alert').filter({ hasText: title });
+}
+
+/**
+ * Replaces the text of a code editor (its textbox, by role and name). Typed through insertText, so
+ * brackets are not auto-closed.
  */
 export async function setCode(page: Page, editor: Locator, text: string): Promise<void> {
-  const content = (await editor.evaluate((el) => el.classList.contains('cm-content'))) ? editor : editor.locator('.cm-content');
-  await content.click();
+  await editor.click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.press('Delete');
   await page.keyboard.insertText(text);
@@ -293,12 +394,9 @@ export function jsonEditor(page: Page, kindLabel: string): Locator {
   return page.getByRole('main').getByRole('textbox', { name: t('editor.json.label', { kind: kindLabel }) });
 }
 
-/** The text a CodeMirror editor holds, line breaks included. */
+/** The text a code editor (its textbox) shows, line breaks included. */
 export async function codeText(editor: Locator): Promise<string> {
-  return editor.evaluate((el) => {
-    const content = el.classList.contains('cm-content') ? el : el.querySelector('.cm-content');
-    return [...(content?.querySelectorAll('.cm-line') ?? [])].map((line) => line.textContent ?? '').join('\n');
-  });
+  return editor.evaluate((el) => (el as HTMLElement).innerText.replace(/\n$/, ''));
 }
 
 // ---- Plugins ------------------------------------------------------------------------------------
@@ -341,6 +439,8 @@ export interface TabChange {
   value: (before: Json) => unknown;
   /** Makes the change inside the unlocked tab panel. */
   change: (panel: Locator, page: Page) => Promise<void>;
+  /** The object holds a secret: compare without printing it. */
+  secret?: true;
 }
 
 /**
@@ -356,20 +456,22 @@ export async function changeOnTab(page: Page, admin: Admin, editor: string, api:
   await unlock(page);
   await change.change(page.getByRole('main').getByRole('tabpanel'), page);
   await save(page);
-  expect(await admin.value(api)).toEqual({ ...before, [change.field]: change.value(before) });
+  const expected = { ...before, [change.field]: change.value(before) };
+  if (change.secret) expectSameQuietly(await admin.value(api), expected, `${api} after a change on ${change.tab}`);
+  else expect(await admin.value(api)).toEqual(expected);
 }
 
-/** Picks an option of a kit Select or an object picker by its visible name. */
-export async function choose(page: Page, combobox: Locator, option: string | RegExp): Promise<void> {
+/** Picks an option of a kit Select or an object picker by its exact name. */
+export async function choose(page: Page, combobox: Locator, option: string): Promise<void> {
   await combobox.click();
-  await page.getByRole('option', { name: option }).first().click();
+  await page.getByRole('option', { name: option, exact: true }).click();
 }
 
 // ---- Create, list, delete ------------------------------------------------------------------------
 
 /** A new object's ID field ("ID", or "ID (required)" for kinds that need one). */
 export function idField(page: Page): Locator {
-  return page.getByRole('main').getByRole('textbox', { name: /^ID( \(required\))?$/ });
+  return page.getByRole('main').getByRole('textbox', { name: new RegExp(`^${escape(t('editor.id.label'))}( \\(${escape(t('ui.required'))}\\))?$`) });
 }
 
 /** Opens a new object's page (going through another page first, so no earlier draft is reused). */
@@ -396,9 +498,8 @@ export async function deleteFromEditor(page: Page, kindSingular: string): Promis
 /** A list page shows (or no longer shows) the row linking to `name`. */
 export async function listShows(page: Page, kindPath: string, name: string, shown = true): Promise<void> {
   const main = await goto(page, kindPath);
-  // Loaded: the table, or the empty state of a list with nothing in it.
-  await expect(main.getByRole('table').or(main.locator('.tbl-state')).first()).toBeVisible();
-  await expect(main.getByText(/^Loading /)).toHaveCount(0);
+  await expect(main.getByRole('heading', { level: 1, name: t(`kind.${kindPath}.plural`) })).toBeVisible();
+  await expect(listLoading(main, kindPath)).toHaveCount(0);
   const link = main.getByRole('link', { name, exact: true });
   if (shown) await expect(link).toBeVisible();
   else await expect(link).toHaveCount(0);

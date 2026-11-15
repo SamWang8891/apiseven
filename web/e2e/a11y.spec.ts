@@ -1,13 +1,16 @@
 // Accessibility scans with axe-core, in light and in dark: no colour-contrast violation, and no
 // serious or critical violation of any rule, on the pages people spend their time in.
 //
-// One exclusion, for one rule on three controls (see NAMED_BY_TITLE): label-content-name-mismatch reads
-// every word shown on a button as its label. These three show more than their label: the header's
-// search button its shortcut hint (also given as aria-keyshortcuts), a plugin card's and a collapsible
-// section's toggle a one-line summary (and a card its category) after the title. Each is named by its
-// title and described (aria-describedby) by the rest, so a screen reader announces the title, then the
-// summary; a speech user says the title shown first on the button. Every other rule, and this rule on
-// every other element, runs everywhere.
+// One exclusion, for one rule on three controls (see NAMED_BY_TITLE): label-content-name-mismatch
+// (WCAG 2.5.3) reads every word shown on a button as its label. These three show more than their
+// name: the header's search button its shortcut hint (also given as aria-keyshortcuts), a plugin
+// card's and a collapsible section's toggle a one-line summary (and a card its category) after the
+// title, which is the name; the rest is their description (aria-describedby). The mismatch is real.
+// The way out is structural and keeps every name: move the summary, the category and the shortcut
+// hint out of the three buttons into siblings, laid out by CSS and still referenced by
+// aria-describedby; then this exclusion goes. That is a recorded follow-up, after Task 16b (which is
+// editing PluginCard and Section). Every other rule, and this rule on every other element, runs
+// everywhere.
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { env, expect, goto, openCard, openEditor, openList, openTab, settled, t, test, unlock } from './fixtures';
@@ -24,17 +27,25 @@ async function still(page: Page): Promise<void> {
   );
 }
 
-const NAMED_BY_TITLE = /^<button[^>]* class="[^"]*\b(shell-search|pl-card__toggle|res-section__toggle)\b/;
+/**
+ * The three, told by their ARIA, not their classes: the button with a keyboard shortcut (the header's
+ * search), and the buttons named by their title (aria-labelledby) that open and close a part (a
+ * plugin card's or a section's toggle).
+ */
+const NAMED_BY_TITLE = 'button[aria-keyshortcuts], button[aria-expanded][aria-labelledby]';
 
 async function scan(page: Page, what: string): Promise<void> {
   await settled(page);
   await still(page);
   const { violations } = await new AxeBuilder({ page }).analyze();
-  const excused = (id: string, html: string) => id === 'label-content-name-mismatch' && NAMED_BY_TITLE.test(html);
-  const failing = violations
-    .filter((v) => v.id === 'color-contrast' || v.impact === 'serious' || v.impact === 'critical')
-    .map((v) => ({ ...v, nodes: v.nodes.filter((n) => !excused(v.id, n.html)) }))
-    .filter((v) => v.nodes.length > 0);
+  const excusable = async (id: string, target: string) =>
+    id === 'label-content-name-mismatch' && (await page.evaluate(([sel, named]) => document.querySelector(sel)?.matches(named) ?? false, [target, NAMED_BY_TITLE] as const));
+  const failing = [];
+  for (const v of violations.filter((x) => x.id === 'color-contrast' || x.impact === 'serious' || x.impact === 'critical')) {
+    const nodes = [];
+    for (const n of v.nodes) if (!(await excusable(v.id, String(n.target[0])))) nodes.push(n);
+    if (nodes.length > 0) failing.push({ ...v, nodes });
+  }
   const described = failing.flatMap((v) => v.nodes.map((n) => `${v.id} (${v.impact}): ${n.target.join(' ')} — ${n.failureSummary?.split('\n')[1]?.trim() ?? ''}`));
   expect(described, `axe on ${what}`).toEqual([]);
 }
@@ -72,6 +83,7 @@ for (const scheme of ['light', 'dark'] as const) {
       const main = await openEditor(page, 'routes/api-v1');
       const tabs = main.getByRole('tablist').first().getByRole('tab');
       const labels = (await tabs.allTextContents()).map((l) => l.trim());
+      expect(labels).toEqual([t('rt.tab.general'), t('rt.tab.matching'), t('rt.tab.upstream'), t('pl.tab'), t('rt.tab.advanced'), t('editor.json.tab')]);
       for (const label of labels) {
         await openTab(page, label);
         await scan(page, `api-v1, ${label}, locked`);

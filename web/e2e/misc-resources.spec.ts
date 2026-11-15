@@ -11,6 +11,9 @@ import {
   env,
   eventually,
   expect,
+  expectNotFound,
+  expectNotInPage,
+  expectSameQuietly,
   gateway,
   gatewayAnswers,
   idField,
@@ -70,9 +73,16 @@ test.describe('global rules', () => {
     await card.getByRole('textbox', { name: /^allow_origins\b/ }).fill(`${origin}:8443`);
     await save(page);
     expect(await admin.value(`global_rules/${id}`)).toEqual({ id, plugins: { cors: { allow_origins: `${origin}:8443` } } });
+    // The gateway has the edit before the delete, so "it stops" below cannot be the edit not yet seen.
+    const edited = await eventually(
+      () => gateway('/healthz', { headers: { Origin: `${origin}:8443` } }),
+      (r) => r.headers['access-control-allow-origin'] === `${origin}:8443`,
+    );
+    expect(edited.headers['access-control-allow-origin']).toBe(`${origin}:8443`);
 
     await deleteFromEditor(page, t('kind.global_rules.singular'));
     expect(await admin.value(`global_rules/${id}`)).toBeUndefined();
+    await listShows(page, 'global_rules', id, false);
     const without = await eventually(
       () => gateway('/healthz', { headers: { Origin: `${origin}:8443` } }),
       (r) => r.headers['access-control-allow-origin'] === undefined,
@@ -145,6 +155,8 @@ test.describe('plugin configs', () => {
 test.describe('plugin metadata', () => {
   test('set from the list (Not set → Configured), edited, then Reset back to Not set', async ({ page, admin }) => {
     await admin.del('plugin_metadata/http-logger');
+    // Not set: its editor reads it, and APISIX answers 404 (the create-when-missing form follows).
+    expectNotFound(page, 'plugin_metadata/http-logger');
     const row = (main: import('@playwright/test').Locator) => main.getByRole('row').filter({ has: page.getByRole('link', { name: 'http-logger', exact: true }) });
     const main = await openList(page, 'plugin_metadata');
     await expect(row(main)).toContainText(t('pm.state.notSet'));
@@ -197,30 +209,31 @@ test.describe('secrets', () => {
     const id = `${PREFIX}sec-${uid()}`;
     const token = `${PREFIX}vault-token-${uid()}`;
     const main = await openNew(page, 'secrets/new');
-    await choose(page, main.getByRole('combobox', { name: new RegExp(`^${t('sc.manager.label')}`) }), new RegExp(`^${t('sc.manager.vault')}`));
+    // An option shows the manager's name and its id.
+    await choose(page, main.getByRole('combobox', { name: new RegExp(`^${t('sc.manager.label')}`) }), `${t('sc.manager.vault')} vault`);
     await idField(page).fill(id);
     await main.getByRole('textbox', { name: /^uri\b/ }).fill('http://127.0.0.1:8200');
     await main.getByRole('textbox', { name: /^prefix\b/ }).fill('kv/apisix');
     await main.getByRole('textbox', { name: /^token\b/ }).fill(token);
     const write = await create(page);
     expect(write.path).toBe(`secrets/vault/${id}`);
-    expect(await admin.value(`secrets/vault/${id}`)).toEqual({ id: `vault/${id}`, uri: 'http://127.0.0.1:8200', prefix: 'kv/apisix', token });
+    expectSameQuietly(await admin.value(`secrets/vault/${id}`), { id: `vault/${id}`, uri: 'http://127.0.0.1:8200', prefix: 'kv/apisix', token }, 'the stored secret');
     // Stored and locked: the token is nowhere in the page.
     await expect(main.getByRole('button', { name: t('editor.edit'), exact: true })).toBeVisible();
-    expect(await page.content()).not.toContain(token);
+    await expectNotInPage(page, [token], 'the secret, locked after Create');
     await openEditor(page, `secrets/vault%2F${id}`);
-    expect(await page.content()).not.toContain(token);
+    await expectNotInPage(page, [token], 'the secret, opened');
     await openTab(page, t('editor.json.tab'));
-    expect(await page.content()).not.toContain(token);
+    await expectNotInPage(page, [token], 'the secret, JSON tab');
     await listShows(page, 'secrets', `vault/${id}`);
-    expect(await page.content()).not.toContain(token);
+    await expectNotInPage(page, [token], 'the secrets list');
 
     await openEditor(page, `secrets/vault%2F${id}`);
     await unlock(page);
     await main.getByRole('textbox', { name: /^uri\b/ }).fill('http://127.0.0.1:8201');
     await save(page);
-    expect(await admin.value(`secrets/vault/${id}`)).toEqual({ id: `vault/${id}`, uri: 'http://127.0.0.1:8201', prefix: 'kv/apisix', token });
-    expect(await page.content()).not.toContain(token);
+    expectSameQuietly(await admin.value(`secrets/vault/${id}`), { id: `vault/${id}`, uri: 'http://127.0.0.1:8201', prefix: 'kv/apisix', token }, 'the stored secret after the edit');
+    await expectNotInPage(page, [token], 'the secret, locked after Save');
 
     await deleteFromEditor(page, t('kind.secrets.singular'));
     expect(await admin.value(`secrets/vault/${id}`)).toBeUndefined();
