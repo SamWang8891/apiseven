@@ -1,12 +1,12 @@
 import { Plus, X } from 'lucide-react';
-import { useCallback, useState, type ReactNode } from 'react';
+import { use, useCallback, useState, type ReactNode } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
 import { Button, Input, KeyValueInput, useEditingState, useLocked, usePending } from '../../ui';
 import { changedEntry, commitEntry, entriesOf, entryHeld, entryRefusals, keepHeldRows, type EntryRow, type EntryRules } from '../../ui/entryRows';
 import type { MapNode } from '../analyze';
-import { useFieldError, useFieldId, useFieldName, useLatest } from '../context';
+import { RowNameContext, useFieldError, useFieldId, useFieldName, useLatest } from '../context';
 import { blankOf, isEmpty, joinPath, mapMode, type Key } from '../model';
 import { ErrorLine, FieldLabel, RequiredMark } from './chrome';
 import { useFieldHelp } from './help';
@@ -133,6 +133,7 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
 
   const refused = entryRefusals(rows, rules);
   const fieldName = useFieldName(path);
+  const outerRow = use(RowNameContext);
   usePending(locked ? undefined : heldRows(rows, refused, rules, fieldName));
 
   return (
@@ -187,15 +188,18 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
                     onChange={(e) => update(latestRef.current.rows.map((r) => (r.id === row.id ? changedEntry({ ...r, key: e.target.value }, rules) : r)))}
                   />
                 )}
-                <NodeField
-                  node={node.value}
-                  value={row.value}
-                  name={row.id}
-                  path={joinPath(path, row.key === '' ? `~${row.id}` : row.key)}
-                  onChange={onValue}
-                  required
-                  ariaLabel={row.key === '' ? t('sf.map.valueOfEntry', { n }) : t('sf.map.valueOf', { key: row.key })}
-                />
+                {/* A row without a key is named by its place in messages, never by its internal path; a keyed one, as around it. */}
+                <RowNameContext value={row.key === '' ? { at: joinPath(path, `~${row.id}`), name: t('sf.map.rowName', { field: fieldName, n }) } : outerRow}>
+                  <NodeField
+                    node={node.value}
+                    value={row.value}
+                    name={row.id}
+                    path={joinPath(path, row.key === '' ? `~${row.id}` : row.key)}
+                    onChange={onValue}
+                    required
+                    ariaLabel={row.key === '' ? t('sf.map.valueOfEntry', { n }) : t('sf.map.valueOf', { key: row.key })}
+                  />
+                </RowNameContext>
                 {!locked && (
                   <Button
                     variant="ghost"

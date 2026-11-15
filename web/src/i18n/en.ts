@@ -627,6 +627,7 @@ export const en: Record<string, string> = {
   'sf.map.keyOf': 'Key of entry {n}',
   'sf.map.valueOf': 'Value of {key}',
   'sf.map.valueOfEntry': 'Value of entry {n}',
+  'sf.map.rowName': '{field}, row {n}',
   'sf.map.add': 'Add entry',
   'sf.map.remove': 'Remove {key}',
   'sf.map.badKey': 'Key "{key}" must match {pattern}',

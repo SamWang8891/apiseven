@@ -44,15 +44,18 @@ export function atEncryptPath(conf: unknown, path: readonly string[], leaf: (val
   return next === conf[head] ? conf : { ...conf, [head]: next };
 }
 
-/** Every string at any depth in `value` masked. */
+/** A value a secret can be: text, or a number (a PIN, a numeric key). A boolean is a flag (`base64_secret`), never one. */
+const secretValue = (v: unknown): boolean => typeof v === 'string' || typeof v === 'number';
+
+/** Every string and number at any depth in `value` masked. */
 function maskStrings(value: unknown): unknown {
-  if (typeof value === 'string') return MASK;
+  if (secretValue(value)) return MASK;
   if (Array.isArray(value)) return value.map(maskStrings);
   return isObj(value) ? Object.fromEntries(Object.entries(value).map(([k, x]) => [k, maskStrings(x)])) : value;
 }
 
 /**
- * `value` (shown at the field `path`) with every secret string masked: those an encrypt path names
+ * `value` (shown at the field `path`) with every secret string or number masked: those an encrypt path names
  * (atEncryptPath; all of a map or object there, a map of headers say) or that lie below one, and those
  * under a key whose name says secret, at any depth from the field's own key down. `redacted` says
  * whether anything was.
@@ -68,7 +71,7 @@ export function redactSecrets(value: unknown, path: string, encrypt: string[]): 
     else if (keys.every((k, i) => segments[i] === k)) out = atEncryptPath(out, segments.slice(keys.length), maskStrings);
   }
   const walk = (v: unknown, secret: boolean): unknown => {
-    if (typeof v === 'string') return secret ? MASK : v;
+    if (secretValue(v)) return secret ? MASK : v;
     if (Array.isArray(v)) return v.map((x) => walk(x, secret));
     if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, secret || isSecretName(k))]));
     return v;

@@ -190,7 +190,7 @@ export function redactPair(
   const l = redactObject(loaded, kind, all, id);
   const r = redactObject(theirs, kind, all, id);
   const marked = (shown: unknown, real: unknown, other: unknown): unknown => {
-    if (shown === MASK && typeof real === 'string') return real === other ? MASK : MASK_CHANGED;
+    if (shown === MASK && (typeof real === 'string' || typeof real === 'number')) return real === other ? MASK : MASK_CHANGED;
     if (Array.isArray(shown) && Array.isArray(real)) return shown.map((s, i) => marked(s, real[i], Array.isArray(other) ? other[i] : undefined));
     if (isObj(shown) && isObj(real)) return Object.fromEntries(Object.entries(shown).map(([k, s]) => [k, marked(s, real[k], isObj(other) ? other[k] : undefined)]));
     return shown;

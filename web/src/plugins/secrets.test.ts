@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { MASK } from '../schema/secrets';
+import { MASK, redactSecrets } from '../schema/secrets';
 import { pluginFixture } from '../test/pluginFixture';
 import { copiedWithout, copiedWithoutKey, MASK_CHANGED, newKeyNotes, redactObject, redactPair, unveilKeys, veilKeys, type KeyNotes } from './secrets';
 import { t } from '../i18n';
@@ -149,6 +149,29 @@ describe('redactObject, per kind', () => {
   it("plugin metadata: its plugin's metadata encrypt_fields (azure-functions master_apikey); everything while loading", () => {
     expect(redactObject({ id: 'azure-functions', master_apikey: 'k1', other: 'x' }, 'plugin_metadata', all()).value).toEqual({ id: 'azure-functions', master_apikey: MASK, other: 'x' });
     expect(redactObject({ id: 'azure-functions', master_apikey: 'k1' }, 'plugin_metadata', undefined).value).toEqual({ id: 'azure-functions', master_apikey: MASK });
+  });
+});
+
+// Task 16b item 27: a secret may be a number; an encrypt path matches a field inside a list.
+describe('redactSecrets: every secret value, numbers included', () => {
+  it('masks a number under a secret-named key and where an encrypt path points; a boolean flag stays', () => {
+    expect(redactSecrets({ password: 123456, base64_secret: true, name: 'x' }, '', [])).toEqual({ value: { password: MASK, base64_secret: true, name: 'x' }, redacted: true });
+    expect(redactSecrets({ auth: { pin: 4242, port: 80 } }, '', ['auth.pin']).value).toEqual({ auth: { pin: MASK, port: 80 } });
+    expect(redactSecrets({ pin: 4242, port: 80 }, 'auth', ['auth']).value).toEqual({ pin: MASK, port: MASK });
+  });
+
+  it('a field inside a list matches the encrypt path without the indices', () => {
+    expect(redactSecrets({ pin: 'p1', port: 80 }, 'rules.0.auth', ['rules.auth.pin']).value).toEqual({ pin: MASK, port: 80 });
+    expect(redactSecrets({ pin: 4242, port: 80 }, 'rules.0.auth', ['rules.auth.pin']).value).toEqual({ pin: MASK, port: 80 });
+    expect(redactSecrets(4242, 'rules.1.auth.pin', ['rules.auth.pin']).value).toBe(MASK);
+  });
+
+  it('a number secret that differs reads as changed on their side of a conflict', () => {
+    const pair = redactPair({ id: 'r1', password: 1111 }, { id: 'r1', password: 2222 }, 'routes', all());
+    expect(pair.masked).toEqual([
+      { id: 'r1', password: MASK },
+      { id: 'r1', password: MASK_CHANGED },
+    ]);
   });
 });
 

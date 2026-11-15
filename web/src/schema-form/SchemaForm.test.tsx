@@ -73,6 +73,24 @@ describe('SchemaForm: real plugins', () => {
     expect(form.value()).toEqual({ count: '$http_quota' });
   });
 
+  // Task 16b item 26: "1." is on the way to "1.5"; the box keeps what was typed while it reads as the value.
+  it('a number-or-text field takes a decimal typed character by character; locked, it shows the value', async () => {
+    const schema: Obj = { type: 'object', properties: { rate: { type: ['number', 'string'] } } };
+    const form = renderSchemaForm(schema, {});
+    const rate = screen.getByRole('textbox', { name: 'rate' });
+    await form.user.type(rate, '1.5');
+    expect(rate).toHaveValue('1.5');
+    expect(form.value()).toEqual({ rate: 1.5 });
+    await form.user.clear(rate);
+    await form.user.type(rate, '2.0');
+    expect(rate).toHaveValue('2.0');
+    expect(form.value()).toEqual({ rate: 2 });
+    await form.user.type(rate, '5');
+    expect(form.value()).toEqual({ rate: 2.05 });
+    form.update({ locked: true });
+    expect(screen.getByText('2.05')).toBeInTheDocument();
+  });
+
   it('limit-count: the one-of hint names both ways; with rules, count is no longer required', () => {
     renderSchemaForm(schemaOf('limit-count'), { rules: [{ count: 1, time_window: 1, key: 'k' }] });
     expect(screen.getByText('Set one of: count + time_window or rules')).toBeInTheDocument();

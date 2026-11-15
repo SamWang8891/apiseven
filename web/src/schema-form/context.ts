@@ -44,11 +44,20 @@ export function useFieldId(path: string): string {
 }
 
 /**
+ * The nearest map row without a key (MapField): its path (`headers.~5`, an internal row id) and how
+ * messages name it instead, by its place ("headers, row 3").
+ */
+export const RowNameContext = createContext<{ at: string; name: string } | undefined>(undefined);
+
+/**
  * How a message about the field at `path` names it (usePending: a refused Save lists it): the dotted
- * path, after the form's name when it has one ("limit-count.count").
+ * path, after the form's name when it has one ("limit-count.count"); inside a map row without a key,
+ * the row by its place, then the rest of the path ("limit-count.headers, row 3.port").
  */
 export function useFieldName(path: string): string {
   const { name } = use(FormContext);
+  const row = use(RowNameContext);
+  if (row && (path === row.at || path.startsWith(`${row.at}.`))) return row.name + path.slice(row.at.length);
   return [name, path].filter((part) => part !== undefined && part !== '').join('.') || t('ui.pending.field');
 }
 

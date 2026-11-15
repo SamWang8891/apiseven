@@ -15,7 +15,7 @@ import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { findInCtx } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
-import { LockProvider, PendingProvider, Tabs, toast } from '../ui';
+import { heldField, LockProvider, PendingProvider, Tabs, toast } from '../ui';
 import { backOf, ownerPath } from './back';
 import { EditorDialogs } from './EditorDialogs';
 import { useDraft } from './draft';
@@ -221,8 +221,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       // About this page's form: it ends with the page (ui/toast.ts pageBound).
       toast.error(named ? t('editor.fixHeld', { fix, message: named }) : anywayGrounds ? t('editor.fixAnyway', { fix }) : fix, { pageBound: true });
       saveAnyway.refused(anywayGrounds);
-      // Input this tab holds comes first: stay here, on the field that holds it.
-      const holding = pending.length > 0 ? bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"] [aria-invalid="true"]') : undefined;
+      // Input this tab holds comes first: stay here, on the field that holds it (the one the toast names).
+      const holding = pending.length > 0 ? heldField(pending[0], bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])')) : undefined;
       const first = pending.length > 0 ? active : tabIds.find((tab) => byTab.has(tab));
       if (first !== undefined && first !== active) goTab(first);
       else if (holding) holding.focus();

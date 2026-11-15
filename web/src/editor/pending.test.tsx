@@ -11,7 +11,8 @@ import { t } from '../i18n';
 import type { TabDef } from '../resources/registry';
 import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
-import { NumberInput, TagInput, usePending } from '../ui';
+import { Section } from '../resources/Section';
+import { Input, NumberInput, TagInput, usePending } from '../ui';
 import { getToasts } from '../ui/toast';
 
 const undo: (() => void)[] = [];
@@ -108,6 +109,50 @@ describe('pending input', () => {
     await user.click(button(t('editor.save')));
     expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
     expect(writesOf(admin)).toEqual([]);
+  });
+});
+
+// Task 16b item 33: a field flagged by a validation problem above the held one does not take its focus.
+describe('a refusal focuses the field that holds input', () => {
+  const ISSUE_ABOVE: TabDef = {
+    id: 'hold',
+    label: 'Hold',
+    fields: [],
+    render: () => (
+      <>
+        <Input label="Flagged" error="Something is wrong here" value="v" onChange={() => {}} />
+        <Section title="Part" defaultOpen>
+          <Input label="Flagged inside" error="Wrong too" value="v" onChange={() => {}} />
+          <HoldingField />
+        </Section>
+      </>
+    ),
+  };
+
+  async function open() {
+    undo.push(overrideDef('routes', { tabs: [ISSUE_ABOVE, GENERAL_TAB] }));
+    const app = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await app.user.keyboard('e');
+    await app.user.type(await main().findByRole('textbox', { name: 'held' }), 'x');
+    return app;
+  }
+
+  it('a refused Save, from the button and from Cmd/Ctrl-S', async () => {
+    const { user } = await open();
+    await user.click(button(t('editor.save')));
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: 'Held: "x" is not in the draft' }));
+    expect(main().getByRole('textbox', { name: 'held' })).toHaveFocus();
+    main().getByRole('textbox', { name: /^Flagged$/ }).focus();
+    fireEvent.keyDown(main().getByRole('textbox', { name: /^Flagged$/ }), { key: 's', ctrlKey: true });
+    await waitFor(() => expect(main().getByRole('textbox', { name: 'held' })).toHaveFocus());
+  });
+
+  it('a refused collapse', async () => {
+    const { user } = await open();
+    await user.click(main().getByRole('button', { name: 'Part' }));
+    expect(main().getByRole('button', { name: 'Part' })).toHaveAttribute('aria-expanded', 'true');
+    expect(main().getByRole('textbox', { name: 'held' })).toHaveFocus();
   });
 });
 

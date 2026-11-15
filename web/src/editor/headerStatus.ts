@@ -5,7 +5,7 @@ import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import type { ResourceDef } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
-import { toast, type PendingEntry } from '../ui';
+import { heldField, toast, type PendingEntry } from '../ui';
 import { setPath } from './draft';
 import type { EditorHeaderProps } from './EditorHeader';
 
@@ -34,7 +34,7 @@ export function useHeaderStatus({ def, draft, name, held, body, edit }: HeaderSt
     onChange: (on: boolean) => {
       if (held) {
         toast.error(t('ui.pending.refused', { message: held.message }), { pageBound: true });
-        body.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden]) [aria-invalid="true"]')?.focus();
+        heldField(held, body.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])'))?.focus();
         return;
       }
       edit(setPath(draft, ['status'], on ? 1 : 0));

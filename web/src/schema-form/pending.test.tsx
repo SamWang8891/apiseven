@@ -62,6 +62,26 @@ describe('schema-form fields hold what they do not emit', () => {
     expect(form.value()).toEqual({ headers: { 'X-A': 'v' } });
   });
 
+  // Task 16b item 32: a row without a key has only its place to be named by.
+  it('a field inside a map row without a key is named by the row, by its place', async () => {
+    const schema: Obj = {
+      type: 'object',
+      properties: {
+        limits: { type: 'object', additionalProperties: { type: 'integer' } },
+        pools: { type: 'object', additionalProperties: { type: 'object', properties: { port: { type: 'integer' } } } },
+      },
+    };
+    const form = renderSchemaForm(schema, { limits: { a: 1 } }, { name: 'p' });
+    await form.user.click(group('limits').getByRole('button', { name: t('sf.map.add') }));
+    await form.user.type(group('limits').getByRole('spinbutton', { name: t('sf.map.valueOfEntry', { n: 2 }) }), '-');
+    expect(form.held()).toEqual([t('ui.pending.notNumber', { field: t('sf.map.rowName', { field: 'p.limits', n: 2 }), text: '-' })]);
+    await form.user.clear(group('limits').getByRole('spinbutton', { name: t('sf.map.valueOfEntry', { n: 2 }) }));
+    await form.user.click(group('pools').getByRole('button', { name: t('sf.map.add') }));
+    await form.user.type(group('pools').getByRole('spinbutton', { name: /^port/ }), '-');
+    expect(form.held()).toEqual([t('ui.pending.notNumber', { field: `${t('sf.map.rowName', { field: 'p.pools', n: 1 })}.port`, text: '-' })]);
+    expect(form.held().join()).not.toContain('~');
+  });
+
   it('map rows: a key without a value, a repeated key and a key the pattern refuses are held', async () => {
     const form = renderSchemaForm(SCHEMA, { limits: { a: 1 }, keyed: { a: 1 } });
     await form.user.click(group('limits').getByRole('button', { name: t('sf.map.add') }));
