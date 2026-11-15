@@ -372,6 +372,15 @@
   color: var(--text-2);
 }
 
+/* The plugin list could not be loaded: said with its error and a retry, beside the result. */
+.tbl-searching--failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  color: var(--text);
+}
+
 .tbl-state {
   display: flex;
   flex-direction: column;

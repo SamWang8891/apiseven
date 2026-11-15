@@ -100,6 +100,9 @@ export function DataTable(props: DataTableProps) {
   const pluginList = useSearchPlugins(scope === 'stream_route' ? 'stream' : undefined, carriesPlugins && searched);
   const plugins = pluginList.data;
   const searchingPlugins = carriesPlugins && searched && pluginList.loading;
+  // The plugin list could not be loaded: plugin values stay masked, so the result may miss rows; said
+  // next to it (rows or none), with the error and a retry.
+  const pluginsFailed = carriesPlugins && searched ? pluginList.error : undefined;
   const read = useMemo<SearchValue | undefined>(() => (def.masksSearch ? (item) => redactObject(item.value, kind, plugins, item.id).value : undefined), [def, kind, plugins]);
   const filtered = useMemo(() => applyFilters(items, view.query, filters, view.selection, ctx, read), [items, view, filters, ctx, read]);
   const sorted = useMemo(() => sortItems(filtered, state.sort, allColumns, ctx), [filtered, state.sort, allColumns, ctx]);
@@ -236,6 +239,14 @@ export function DataTable(props: DataTableProps) {
       {searchingPlugins && filtered.length > 0 && (
         <p className="tbl-searching" role="status">
           {t('table.search.plugins')}
+        </p>
+      )}
+      {pluginsFailed && (
+        <p className="tbl-searching tbl-searching--failed" role="status">
+          <span>{t('table.search.pluginsFailed', { error: pluginsFailed.message })}</span>
+          <Button size="sm" onClick={pluginList.retry}>
+            {t('table.retry')}
+          </Button>
         </p>
       )}
       <div className="tbl-scroll">{body}</div>

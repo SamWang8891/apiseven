@@ -261,6 +261,7 @@ export const en: Record<string, string> = {
   'table.search.placeholder': 'Search any field',
   'table.search.hint': 'Press / to search',
   'table.search.plugins': 'Still looking through plugin settings…',
+  'table.search.pluginsFailed': 'Plugin settings could not be searched: the plugin list did not load ({error}).',
   'table.countFiltered': '{shown} of {total}',
   'table.filter.label': '{label} filter',
   'table.filter.labelCount': '{label} filter, {count} selected',

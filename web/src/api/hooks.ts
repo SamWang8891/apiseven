@@ -77,9 +77,13 @@ export function usePluginsIfLoaded(subsystem?: 'stream'): Record<string, PluginI
 
 /**
  * The plugin list a list's search reads secrets by (DataTable): from the shared cache, and fetched once
- * `load` (a search is typed in a list whose objects carry plugins), not before. `loading` while fetched.
+ * `load` (a search is typed in a list whose objects carry plugins), not before. `loading` while fetched
+ * (a retry too); `error` when it could not be loaded and nothing is being fetched, and `retry` asks again.
  */
-export function useSearchPlugins(subsystem: 'stream' | undefined, load: boolean): { data: Record<string, PluginInfo> | undefined; loading: boolean } {
+export function useSearchPlugins(
+  subsystem: 'stream' | undefined,
+  load: boolean,
+): { data: Record<string, PluginInfo> | undefined; loading: boolean; error: ApiError | undefined; retry: () => void } {
   const client = useClient();
   const query = useQuery<Record<string, PluginInfo>, ApiError>({
     queryKey: scopedKey(client.conn.id, ['plugins', 'all', subsystem ?? 'http']),
@@ -87,7 +91,15 @@ export function useSearchPlugins(subsystem: 'stream' | undefined, load: boolean)
     enabled: load,
     staleTime: Infinity,
   });
-  return { data: query.data, loading: load && query.data === undefined && !query.isError };
+  const { refetch } = query;
+  const retry = useCallback(() => void refetch(), [refetch]);
+  const failed = load && query.data === undefined && query.isError && !query.isFetching;
+  return {
+    data: query.data,
+    loading: load && query.data === undefined && !failed,
+    error: failed ? (query.error ?? undefined) : undefined,
+    retry,
+  };
 }
 
 /** A resource's JSON schema from this APISIX (`upstream`, `route`, …); see AdminClient.resourceSchema. */

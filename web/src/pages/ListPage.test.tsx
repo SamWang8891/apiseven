@@ -357,6 +357,25 @@ describe('search through plugin settings', () => {
   });
 });
 
+// Fix round 2, R1.4: a plugin list that cannot be loaded is said next to the result, with a retry.
+describe('search when the plugin list cannot be loaded', () => {
+  it('says plugin settings could not be searched, with the error and Try again; a retry that works finds the row', async () => {
+    let calls = 0;
+    const routes: Obj[] = [{ id: 'r9', name: 'login', uri: '/login', plugins: { 'proxy-rewrite': { uri: '/rewritten-path' } } }];
+    const { user } = await open('#/routes', {
+      objects: { routes },
+      replies: { plugins: (req) => (++calls === 1 ? json(500, { error_msg: 'etcd down' }) : pluginReplies().plugins?.(req)) },
+    });
+    await main().findByRole('link', { name: 'login' });
+    await user.type(main().getByRole('searchbox', { name: t('table.search.label', { plural: t('kind.routes.plural') }) }), 'rewritten-path');
+    const note = await main().findByText(t('table.search.pluginsFailed', { error: 'HTTP 500: etcd down' }));
+    expect(main().getByText(t('table.empty.noMatch', { plural: t('kind.routes.plural') }))).toBeInTheDocument();
+    await user.click(within(note.closest('[role="status"]') as HTMLElement).getByRole('button', { name: t('table.retry') }));
+    expect(await main().findByRole('link', { name: 'login' })).toBeInTheDocument();
+    expect(main().queryByText(t('table.search.pluginsFailed', { error: 'HTTP 500: etcd down' }))).not.toBeInTheDocument();
+  });
+});
+
 describe('read-only key', () => {
   it('a rejected write shows the error, marks the key read-only with a banner, and stays on the page', async () => {
     const { user } = await open('#/routes', {
