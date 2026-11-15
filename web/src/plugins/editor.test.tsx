@@ -57,6 +57,35 @@ describe('a route with an incomplete limit-count', () => {
   });
 });
 
+describe('a switched-off plugin with settings APISIX would refuse when on (plugin.lua 1033–1046)', () => {
+  it('a route: no issue and Save is not refused; the card says so quietly; switched on, the issues are there at once', async () => {
+    const off = { ...ROUTE, plugins: { 'limit-count': { _meta: { disable: true } } } };
+    const { user, admin } = await openEditor('#/routes/r1?tab=plugins', { objects: { routes: [off] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    const card = await main().findByRole('group', { name: 'limit-count' });
+    await waitFor(() => expect(within(card).getByRole('button', { name: 'limit-count' })).toBeInTheDocument());
+    expect(main().getByRole('tab', { name: /^Plugins/ })).toHaveAccessibleName('Plugins');
+    await user.click(within(card).getByRole('button', { name: 'limit-count' }));
+    expect(await within(card).findByRole('note')).toHaveTextContent(t('pl.card.unchecked', { first: 'count: Required' }));
+
+    await user.keyboard('e');
+    await user.click(main().getByRole('switch', { name: 'Enable limit-count' }));
+    await waitFor(() => expect(main().getByRole('tab', { name: /^Plugins/ })).toHaveAccessibleName(`Plugins ${t('ui.tabs.errors', { count: 2 })}`));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    expect(writesOf(admin)).toEqual([]);
+
+    // Off again: no issue; a change elsewhere saves it as it is.
+    await user.click(main().getByRole('switch', { name: 'Enable limit-count' }));
+    await waitFor(() => expect(main().getByRole('tab', { name: /^Plugins/ })).toHaveAccessibleName('Plugins'));
+    await user.click(main().getByRole('tab', { name: /^General/ }));
+    const name = await main().findByRole('textbox', { name: t('rt.general.name') });
+    await user.type(name, '2');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ name: 'web2', plugins: { 'limit-count': { _meta: { disable: true } } } });
+  });
+});
+
 describe('every plugin-bearing kind has the Plugins tab', () => {
   it.each([
     // Services, stream routes and consumers open on General (Tasks 12, 13): land on Plugins through the URL.

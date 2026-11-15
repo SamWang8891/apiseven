@@ -72,6 +72,8 @@ export interface TabProps {
    * new one, e.g. the Plugins tab opens the cards that have issues.
    */
   saveAttempts: number;
+  /** For a copy: the object it was copied from (a tab can say what was not copied). */
+  copyOf?: Item;
 }
 
 export interface TabDef {
@@ -138,6 +140,8 @@ export interface ResourceDef {
   validate?(draft: Obj, env: ValidateEnv): Issue[];
   /** For kinds whose id is a field of the body (a consumer's `username`): the frame shows no ID input. */
   idFromDraft?(draft: Obj): string | undefined;
+  /** That field's path (a consumer's `username`): where the frame says an id is taken. */
+  idField?: string;
   /**
    * Search params the create page copies into a new object (`#/routes/new?service_id=s1` starts
    * with `service_id: 's1'`); any other param is ignored.
@@ -258,6 +262,7 @@ export const registry: Record<Kind, ResourceDef> = {
     // Includes the plugin checks (the consumer schemas).
     validate: (draft, env) => consumerIssues(draft, env),
     idFromDraft: (draft) => (typeof draft.username === 'string' && draft.username !== '' ? draft.username : undefined),
+    idField: 'username',
     // A group's "New consumer in this group" starts a consumer in it.
     prefill: ['group_id'],
     columns: consumerColumns,

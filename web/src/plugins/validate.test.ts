@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PluginInfo } from '../api/types';
+import { t } from '../i18n';
 import type { ValidateEnv } from '../resources/registry';
 import { ctxOf } from '../test/ctx';
 import { pluginFixture } from '../test/pluginFixture';
@@ -78,6 +79,27 @@ describe('validatePlugins', () => {
     expect(validatePlugins({ 'limit-count': { count: 1, time_window: 1 } }, http, 'credential')).toEqual([
       { plugin: 'limit-count', path: '', message: 'a credential holds only auth plugins' },
     ]);
+  });
+});
+
+describe('a switched-off plugin (_meta.disable: true): APISIX does not check its settings (plugin.lua 1033–1046)', () => {
+  const off = { _meta: { disable: true } };
+
+  it('its schema errors are not issues, in every scope', () => {
+    expect(validatePlugins({ 'limit-count': { ...off } }, http, 'route')).toEqual([]);
+    expect(validatePlugins({ 'limit-count': { ...off, rejected_code: 'teapot' } }, http, 'consumer_group')).toEqual([]);
+    expect(validatePlugins({ 'key-auth': { ...off } }, http, 'credential')).toEqual([]);
+    expect(validatePlugins({ 'key-auth': { ...off } }, http, 'consumer')).toEqual([]);
+    expect(validatePlugins({ 'limit-conn': { ...off } }, stream, 'stream_route')).toEqual([]);
+  });
+
+  it('switched on again, they are issues at once', () => {
+    expect(validatePlugins({ 'limit-count': { _meta: { disable: false } } }, http, 'route').map((i) => i.path)).toEqual(['count', 'time_window']);
+  });
+
+  it('APISIX still refuses an unknown plugin and, in a credential, a plugin that is not auth', () => {
+    expect(validatePlugins({ nope: { ...off } }, http, 'route')).toEqual([{ plugin: 'nope', path: '', message: t('pl.issue.unknown') }]);
+    expect(validatePlugins({ 'limit-count': { ...off } }, http, 'credential')).toEqual([{ plugin: 'limit-count', path: '', message: t('pl.issue.credentialAuth') }]);
   });
 });
 

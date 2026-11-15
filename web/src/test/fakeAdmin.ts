@@ -1,4 +1,8 @@
 import type { Kind, Obj } from '../api/types';
+import { pluginFixture } from './pluginFixture';
+
+/** The epoch seconds the fake's timestamps count from (one tick per write). */
+const CLOCK = 1_800_000_000;
 
 /** Object counts per kind in dev/seed.mjs. */
 export const SEED_COUNTS: Partial<Record<Kind, number>> = {
@@ -120,6 +124,7 @@ export function fakeAdmin(opts: FakeAdminOptions = {}) {
     const [kind = '', ...rest] = path.split('/');
     if (kind === 'consumers' && rest[1] === 'credentials') return credentialsOf(rest, req);
     if (path === 'credentials') {
+      if (req.method !== 'GET') return json(405, { error_msg: 'not supported `' + req.method + '` method for credential' });
       const all = [...credentials.entries()].flatMap(([consumer, list]) =>
         list.map((s) => ({ key: `/apisix/consumers/${consumer}/credentials/${String(s.value.id)}`, value: s.value })),
       );
@@ -196,20 +201,39 @@ const isPlain = (v: unknown): v is Obj => typeof v === 'object' && v !== null &&
 /**
  * Secrets as APISIX 3.20 keeps them (checked on the dev APISIX):
  * - a plugin's `encrypt_fields`, in any kind's `plugins`, are stored encrypted and echoed by a
- *   write's response as `$ENC$v1$…`, while a GET returns the clear text (ENCRYPTED lists the ones the
- *   tests use);
+ *   write's response as `$ENC$v1$…`, while a GET returns the clear text. The fields come from the
+ *   plugin fixture: the schema the kind checks the plugin with (a consumer's and a credential's: the
+ *   consumer schema; a stream route's: the stream set), every path as `process_encrypt_field` walks
+ *   it (apisix/plugin.lua 1116–1190: dotted, arrays walked at each step, a string, a list of
+ *   strings or a map of strings at the end);
  * - a private key in PEM form (an SSL's `key` / `keys`, an upstream's or an inline upstream's
  *   `tls.client_key`) is stored AES-encrypted: only PEM is (`aes_encrypt_pkey`, apisix/ssl.lua
  *   89–95), anything else passes through. The write's response echoes the ciphertext; an upstream's
  *   GET returns it as stored; an SSL's GET leaves `key` / `keys` out.
  */
-const ENCRYPTED: Record<string, string[]> = {
-  'key-auth': ['key'],
-  'basic-auth': ['password'],
-  'jwt-auth': ['secret'],
-  'hmac-auth': ['secret_key'],
-  'http-logger': ['auth_header'],
-};
+function encryptFieldsOf(kind: string, name: string): string[] {
+  const fixture = pluginFixture();
+  const info = kind === 'stream_routes' ? fixture.stream[name] : fixture.http[name];
+  const schema = kind === 'consumers' || kind === 'credentials' ? (info?.consumer_schema ?? info?.schema) : info?.schema;
+  const list: unknown = schema?.encrypt_fields;
+  return Array.isArray(list) ? list.filter((f): f is string => typeof f === 'string') : [];
+}
+
+const enc = (v: string): string => `$ENC$v1$${btoa(encodeURIComponent(v))}`;
+
+/** `conf` with the strings at `path` (dotted) encrypted, as process_encrypt_field does. */
+function encryptAt(conf: unknown, path: string[]): unknown {
+  const [head, ...rest] = path;
+  if (head === undefined) return conf;
+  if (Array.isArray(conf)) return conf.map((item) => encryptAt(item, path));
+  if (!isPlain(conf) || conf[head] === undefined) return conf;
+  const v = conf[head];
+  if (rest.length > 0) return { ...conf, [head]: encryptAt(v, rest) };
+  if (typeof v === 'string') return { ...conf, [head]: enc(v) };
+  if (Array.isArray(v)) return { ...conf, [head]: (v as unknown[]).map((x) => (typeof x === 'string' ? enc(x) : x)) };
+  if (isPlain(v)) return { ...conf, [head]: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, typeof x === 'string' ? enc(x) : x])) };
+  return conf;
+}
 
 /** The stand-in for APISIX's AES ciphertext of a PEM key: no longer PEM, so a later write passes it through. */
 const aes = (v: unknown): unknown => (typeof v === 'string' && v.startsWith('---') ? `AES:${btoa(encodeURIComponent(v))}` : v);
@@ -233,20 +257,25 @@ function storedAs(kind: string, value: Obj): Obj {
 }
 
 /** What a write's response shows: the stored value, its plugins' encrypted fields as `$ENC$v1$…`. */
-function echoed(value: Obj): Obj {
+function echoed(kind: string, value: Obj): Obj {
   if (!isPlain(value.plugins)) return value;
   const plugins = Object.fromEntries(
-    Object.entries(value.plugins).map(([name, conf]) => {
-      if (!isPlain(conf)) return [name, conf];
-      const out = { ...conf };
-      for (const field of ENCRYPTED[name] ?? []) {
-        const v = out[field];
-        if (typeof v === 'string') out[field] = `$ENC$v1$${btoa(encodeURIComponent(v))}`;
-      }
-      return [name, out];
-    }),
+    Object.entries(value.plugins).map(([name, conf]) => [name, encryptFieldsOf(kind, name).reduce<unknown>((out, field) => encryptAt(out, field.split('.')), conf)]),
   );
   return { ...value, plugins };
+}
+
+/**
+ * What a POST or PUT may not carry (admin/resource.lua 113–119, check_forbidden_properties 55–83): a
+ * timestamp at the top, in `upstream`, or as a key of `plugins`. A PATCH may (allow_time).
+ */
+function forbidden(body: Obj): string | undefined {
+  for (const field of ['create_time', 'update_time']) {
+    if (body[field] !== undefined) return field;
+    if (isPlain(body.upstream) && body.upstream[field] !== undefined) return `upstream.${field}`;
+    if (isPlain(body.plugins) && body.plugins[field] !== undefined) return `plugins.${field}`;
+  }
+  return undefined;
 }
 
 /** What a GET shows: SSL private keys never leave APISIX. */
@@ -265,12 +294,17 @@ function shown(kind: string, value: Obj): Obj {
 function answer(kind: string, stored: Stored[], id: string | undefined, req: FakeRequest, revision: { n: number }, prefix = `/apisix/${kind}`): Response {
   const entry = (value: Obj) => ({ key: `${prefix}/${idOf(kind, value)}`, value });
   // A write's response, as APISIX sends it: secrets as ciphertext (echoed), and no modifiedIndex.
-  const written = (value: Obj) => entry(echoed(value));
+  const written = (value: Obj) => entry(echoed(kind, value));
   const read = (s: Stored) => ({ ...entry(shown(kind, s.value)), modifiedIndex: s.index, createdIndex: s.index });
   const body = (req.body ?? {}) as Obj;
+  // APISIX stamps every write (admin/utils.lua inject_conf_with_prev_conf): create_time kept, update_time now.
+  const now = () => CLOCK + revision.n;
+  if ((req.method === 'POST' || req.method === 'PUT') && forbidden(body)) {
+    return json(400, { error_msg: `the property is forbidden:  ${forbidden(body) ?? ''}` });
+  }
   if (id === undefined) {
     if (req.method === 'POST') {
-      const value = storedAs(kind, { ...body, id: String(revision.n + 1).padStart(20, '0') });
+      const value = storedAs(kind, { ...body, id: String(revision.n + 1).padStart(20, '0'), create_time: now(), update_time: now() });
       stored.push({ value, index: ++revision.n });
       return json(201, written(value));
     }
@@ -283,7 +317,8 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
     case 'GET':
       return current ? json(200, read(current)) : json(404, { message: 'Key not found' });
     case 'PUT': {
-      const value = storedAs(kind, { ...body, ...(kind === 'consumers' ? {} : { id }) });
+      const created = typeof current?.value.create_time === 'number' ? current.value.create_time : now();
+      const value = storedAs(kind, { ...body, ...(kind === 'consumers' ? {} : { id }), create_time: created, update_time: now() });
       if (current) {
         current.value = value;
         current.index = ++revision.n;
@@ -292,7 +327,7 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
     }
     case 'PATCH': {
       if (!current) return json(404, { message: 'Key not found' });
-      current.value = storedAs(kind, merge(current.value, body));
+      current.value = storedAs(kind, { ...merge(current.value, body), ...(body.update_time === undefined ? { update_time: now() } : {}) });
       current.index = ++revision.n;
       return json(200, written(current.value));
     }

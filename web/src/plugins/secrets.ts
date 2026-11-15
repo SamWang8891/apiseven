@@ -4,7 +4,8 @@
 //   at any depth;
 // - every plugin-bearing kind: each plugin's `encrypt_fields` (APISIX stores them encrypted and its
 //   GET returns them in clear), read from the schema the kind's scope uses (a consumer's and a
-//   credential's auth plugins: their consumer schema);
+//   credential's auth plugins: their consumer schema); every value of a plugin the list doesn't
+//   know (removed, or a custom one not loaded) or while the list loads: which are secret is unknown;
 // - plugin metadata: its plugin's metadata `encrypt_fields` (azure-functions' master_apikey);
 // - any `client_key` (an upstream's or an inline upstream's tls.client_key, which a GET returns as
 //   APISIX's AES ciphertext) is never shown, not even on "Show secrets".
@@ -49,14 +50,38 @@ function mask(value: unknown, masks: (key: string) => boolean): { value: unknown
   return { value: out, redacted };
 }
 
-/** Each plugin's config with its secrets masked; everything in it while the plugin list (`all`) loads. */
+/**
+ * Every value in a plugin config masked, scalars of every type (a key may be a number), for a plugin
+ * whose secret fields are not known. Still revealable.
+ */
+export function maskConfig(conf: unknown): { value: unknown; redacted: boolean } {
+  let redacted = false;
+  const walk = (v: unknown): unknown => {
+    if (Array.isArray(v)) return v.map(walk);
+    if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    if (v === null || v === undefined) return v;
+    redacted = true;
+    return MASK;
+  };
+  const value = walk(conf);
+  return { value, redacted };
+}
+
+/** A plugin metadata with every value but its id masked (its plugin's secret fields not known yet). */
+function maskMetadata(value: Obj): { value: unknown; redacted: boolean } {
+  const { id, ...rest } = value;
+  const masked = maskConfig(rest);
+  return { value: { id, ...(masked.value as Obj) }, redacted: masked.redacted };
+}
+
+/** Each plugin's config with its secrets masked; all of it for a plugin not in the list, or while the list (`all`) loads. */
 function maskPlugins(plugins: Obj, kind: Kind, all: Record<string, PluginInfo> | undefined): { value: Obj; redacted: boolean } {
   const scope = scopeOfKind[kind];
   let redacted = false;
   const value = Object.fromEntries(
     Object.entries(plugins).map(([name, conf]) => {
       const info = all?.[name];
-      const masked = all ? redactSecrets(conf, '', info && scope ? encryptOf(schemaFor(info, scope)) : []) : mask(conf, () => true);
+      const masked = info && scope ? redactSecrets(conf, '', encryptOf(schemaFor(info, scope))) : maskConfig(conf);
       redacted ||= masked.redacted;
       return [name, masked.value];
     }),
@@ -82,7 +107,7 @@ export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginI
   }
   if (kind === 'plugin_metadata' && typeof value.id === 'string') {
     const encrypt = all ? encryptOf(all[value.id]?.metadata_schema) : undefined;
-    const meta = encrypt ? redactSecrets(masked, '', encrypt) : mask(masked, (k) => k !== 'id');
+    const meta = encrypt ? redactSecrets(masked, '', encrypt) : maskMetadata(masked);
     masked = meta.value as Obj;
     secrets ||= meta.redacted;
   }

@@ -184,6 +184,11 @@
   line-height: 18px;
 }
 
+/* With a link: icon, message, link, close. */
+.ui-toast:has(.ui-toast__action) {
+  grid-template-columns: auto 1fr auto auto;
+}
+
 .ui-toast__icon {
   margin-top: 1px;
 }
@@ -214,6 +219,14 @@
 
 .ui-toast__message {
   overflow-wrap: anywhere;
+}
+
+/* A toast's one link ("Open alice"), after its message. */
+.ui-toast__action {
+  flex: none;
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 .ui-toast__close {

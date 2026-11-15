@@ -91,6 +91,8 @@ export interface PluginChip {
   from?: string;
   /** Configured where APISIX never runs it (an auth plugin in a consumer group: plugins/auth.ts). */
   notApplied?: boolean;
+  /** Stored as off, but it still signs in: a consumer's or credential's auth plugin (plugins/auth.ts). */
+  stillSignsIn?: boolean;
 }
 
 /**
@@ -99,12 +101,17 @@ export interface PluginChip {
  */
 function pluginChip(plugin: PluginChip): ReactNode {
   const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', (plugin.disabled || plugin.notApplied) && 'cell-plugin--off'];
-  const title = plugin.notApplied ? `${plugin.name}: ${t('cell.plugin.notAppliedWhy')}` : plugin.name;
+  const title = plugin.notApplied
+    ? `${plugin.name}: ${t('cell.plugin.notAppliedWhy')}`
+    : plugin.stillSignsIn
+      ? `${plugin.name}: ${t('cell.plugin.stillSignsInWhy')}`
+      : plugin.name;
   const chip = (
     <span key={plugin.name} className={cls.filter(Boolean).join(' ')} title={plugin.from ? undefined : title}>
       <span className="cell-chip__text">{plugin.name}</span>
       {plugin.disabled && <span className="cell-plugin__off">{t('cell.plugin.off')}</span>}
       {plugin.notApplied && <span className="cell-plugin__off">{t('cell.plugin.notApplied')}</span>}
+      {plugin.stillSignsIn && <span className="cell-plugin__danger">{t('cell.plugin.stillSignsIn')}</span>}
       {plugin.from && <span className="ui-sr-only"> ({plugin.from})</span>}
     </span>
   );
@@ -127,7 +134,9 @@ function pluginChip(plugin: PluginChip): ReactNode {
 
 /** One line per plugin for the `+N` tooltip, with where it comes from and whether it is off. */
 function pluginLine(plugin: PluginChip): ReactNode {
-  const notes = [plugin.disabled && t('cell.plugin.off'), plugin.notApplied && t('cell.plugin.notApplied'), plugin.from].filter(Boolean).join(', ');
+  const notes = [plugin.disabled && t('cell.plugin.off'), plugin.notApplied && t('cell.plugin.notApplied'), plugin.stillSignsIn && t('cell.plugin.stillSignsIn'), plugin.from]
+    .filter(Boolean)
+    .join(', ');
   return (
     <span key={plugin.name}>
       {plugin.name}

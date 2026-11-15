@@ -3,22 +3,23 @@
 // both over the same value, then the `_meta` options. Locked, it still opens; everything reads as text.
 // A field that holds input it has not emitted (usePending) keeps what shows it on screen: the card,
 // `_meta` and the Form/JSON view refuse to close or switch until it is fixed or cleared.
-import { BookOpen, ChevronRight, Eye, EyeOff, Trash2 } from 'lucide-react';
-import { memo, useCallback, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { BookOpen, ChevronRight, Trash2 } from 'lucide-react';
+import { memo, useCallback, useId, useMemo, useRef, useState } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj, PluginInfo } from '../api/types';
-import { deepEqual } from '../editor/draft';
 import { withinPath, type Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { ErrorLine } from '../schema-form/fields/chrome';
-import { redactSecrets } from '../schema/secrets';
 import { SchemaForm } from '../schema-form/SchemaForm';
-import { Button, CodeEditor, LockProvider, PendingScope, Switch, useHeld, useLocked, usePending, useReveal, type PendingEntry } from '../ui';
+import { Button, LockProvider, PendingScope, Switch, useHeld, useLocked, type PendingEntry } from '../ui';
 import { catalog } from './catalog';
+import { ConfigJson } from './ConfigJson';
 import { MetaForm } from './MetaForm';
+import { signsInAlways } from './auth';
 import { formSchemaOf, isDisabled, META, metaOf, setDisabled, withMeta, withoutMeta } from './meta';
 import { schemaFor, type Scope } from './scope';
 import { pluginSummary } from './summary';
+import { configErrors } from './validate';
 
 export interface PluginCardProps {
   name: string;
@@ -76,12 +77,18 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
   const encrypt = useMemo(() => encryptOf(schema), [schema]);
   const config = isObj(conf) ? conf : undefined;
   const off = isDisabled(conf);
-  // Until the plugin list says which fields are secret, there is no summary to leak one.
-  const summary = list === 'loading' ? '' : config ? pluginSummary(name, config, encrypt) : (JSON.stringify(conf) ?? '');
+  // A consumer's or credential's auth plugin signs in whatever `_meta.disable` says (plugins/auth.ts):
+  // it has no switch, and a stored "off" is shown as what it is, a key that still works.
+  const signIn = signsInAlways(scope, name, info);
+  // Until the plugin list says which fields are secret, there is no summary to leak one; a plugin
+  // this APISIX does not know shows none either (any of its values may be a secret).
+  const summary = list === 'loading' || !info ? '' : config ? pluginSummary(name, config, encrypt) : (JSON.stringify(conf) ?? '');
   const problems = issues.length;
+  // APISIX doesn't check a switched-off plugin's settings (validatePlugins); say what it would refuse.
+  const unchecked = useMemo(() => (off && info ? configErrors(conf, info, scope) : []), [off, info, conf, scope]);
 
   return (
-    <div ref={ref} role="group" aria-labelledby={nameId} className={['pl-card', open && 'pl-card--open', off && 'pl-card--off', problems > 0 && 'pl-card--error'].filter(Boolean).join(' ')}>
+    <div ref={ref} role="group" aria-labelledby={nameId} className={['pl-card', open && 'pl-card--open', off && !signIn && 'pl-card--off', problems > 0 && 'pl-card--error'].filter(Boolean).join(' ')}>
       <div className="pl-card__head">
         <button
           type="button"
@@ -109,7 +116,12 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
           {problems > 0 && (
             <span className="pl-card__problems">{problems === 1 ? t('pl.card.problems.one') : t('pl.card.problems.many', { count: problems })}</span>
           )}
-          {config && (
+          {config && signIn && (
+            <span className={off ? 'pl-card__signin pl-card__signin--on-anyway' : 'pl-card__signin'} title={t(off ? 'pl.card.signIn.offNote' : 'pl.card.signIn.note')}>
+              {off ? t('pl.card.signIn.stillSignsIn') : t('pl.card.signIn.always')}
+            </span>
+          )}
+          {config && !signIn && (
             <Switch
               aria-label={t('pl.card.enable', { name })}
               checked={!off}
@@ -129,7 +141,19 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
       {open && (
         <div id={bodyId} ref={bodyRef} className="pl-card__body">
           <PendingScope onChange={held.track}>
-            <CardBody name={name} conf={conf} info={info} list={list} schema={schema} encrypt={encrypt} issues={issues} onChange={onChange} onJsonHeld={onJsonHeld} />
+            <CardBody
+              name={name}
+              conf={conf}
+              info={info}
+              list={list}
+              schema={schema}
+              encrypt={encrypt}
+              issues={issues}
+              signIn={signIn}
+              unchecked={unchecked}
+              onChange={onChange}
+              onJsonHeld={onJsonHeld}
+            />
           </PendingScope>
         </div>
       )}
@@ -137,7 +161,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
   );
 }, sameCard);
 
-function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, onJsonHeld }: {
+function CardBody({ name, conf, info, list, schema, encrypt, issues, signIn, unchecked, onChange, onJsonHeld }: {
   name: string;
   conf: unknown;
   info: PluginInfo | undefined;
@@ -145,6 +169,10 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
   schema: Obj | undefined;
   encrypt: string[];
   issues: Issue[];
+  /** A consumer's or credential's auth plugin: no on/off, and a note on how to revoke it. */
+  signIn: boolean;
+  /** What APISIX would refuse in this switched-off plugin's settings once it is switched on. */
+  unchecked: { path: string; message: string }[];
   onChange: (conf: unknown) => void;
   /** Whether the JSON view holds text (the card's own switch waits meanwhile). */
   onJsonHeld: (held: boolean) => void;
@@ -201,6 +229,16 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
             <ErrorLine key={i} message={issue.message} />
           ))}
         </div>
+      )}
+      {signIn && (
+        <p className={isDisabled(conf) ? 'pl-note pl-note--danger' : 'pl-note pl-note--warn'} role="note">
+          {t(isDisabled(conf) ? 'pl.card.signIn.offNote' : 'pl.card.signIn.note')}
+        </p>
+      )}
+      {unchecked.length > 0 && (
+        <p className="pl-note" role="note">
+          {t('pl.card.unchecked', { first: unchecked[0]?.path ? `${unchecked[0].path}: ${unchecked[0].message}` : (unchecked[0]?.message ?? ''), count: unchecked.length })}
+        </p>
       )}
       {!hasForm && list !== 'failed' && <p className="pl-note">{list === 'loaded' ? t('pl.card.noForm', { name }) : t('pl.card.formLoading')}</p>}
       {hasForm && (
@@ -270,7 +308,7 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
               {metaWaits && !locked && <p className="pl-note">{t('pl.meta.heldByJson')}</p>}
               <PendingScope onChange={metaTrack}>
                 <LockProvider locked={locked || metaWaits}>
-                  <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} />
+                  <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} noDisable={signIn} />
                 </LockProvider>
               </PendingScope>
             </div>
@@ -278,94 +316,5 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, onChange, o
         </section>
       )}
     </>
-  );
-}
-
-const pretty = (v: unknown): string => JSON.stringify(v, null, 2) ?? '';
-
-/** Whether `text` already says `value` (so the value coming back from a JSON edit keeps what was typed). */
-function says(text: string, value: unknown): boolean {
-  try {
-    return deepEqual(JSON.parse(text), value);
-  } catch {
-    return false;
-  }
-}
-
-/** The config as JSON (`_meta` included), linted against the plugin's schema. Locked, secrets are masked behind a reveal. */
-function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHeld }: {
-  name: string;
-  conf: unknown;
-  schema: Obj | undefined;
-  encrypt: string[];
-  issues: Issue[];
-  onChange: (conf: unknown) => void;
-  onHeld: (held: boolean) => void;
-}) {
-  const locked = useLocked();
-  /** `error` (shown) and `held` (for Save) are set while the text is not emitted. */
-  const [state, setState] = useState(() => ({ text: pretty(conf), synced: conf, error: undefined as string | undefined, held: undefined as string | undefined }));
-  const [revealed, setRevealed] = useReveal();
-  // A config changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
-  let current = state;
-  if (!Object.is(conf, state.synced)) {
-    current = state.held !== undefined || says(state.text, conf) ? { ...state, synced: conf } : { text: pretty(conf), synced: conf, error: undefined, held: undefined };
-    setState(current);
-  }
-  const hidden = useMemo(() => (locked ? redactSecrets(conf, '', encrypt) : undefined), [locked, conf, encrypt]);
-  const holding = !locked && current.held !== undefined;
-  usePending(holding ? current.held : undefined);
-  useLayoutEffect(() => onHeld(holding), [onHeld, holding]);
-  useLayoutEffect(() => () => onHeld(false), [onHeld]);
-
-  function change(text: string) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      const error = t('pl.card.jsonInvalid', { error: e instanceof Error ? e.message : String(e) });
-      setState((s) => ({ ...s, text, error, held: t('ui.pending.json', { field: name }) }));
-      return;
-    }
-    if (!isObj(parsed)) {
-      setState((s) => ({ ...s, text, error: t('pl.card.notObject'), held: t('ui.pending.jsonType', { field: name, type: 'object' }) }));
-      return;
-    }
-    setState({ text, synced: parsed, error: undefined, held: undefined });
-    onChange(parsed);
-  }
-
-  // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.
-  const text = locked ? pretty(hidden?.redacted && !revealed ? hidden.value : conf) : current.text;
-  return (
-    <div className="pl-json">
-      {locked && hidden?.redacted && (
-        <div className="pl-json__bar">
-          <Button size="sm" variant="ghost" icon={revealed ? <EyeOff size={13} /> : <Eye size={13} />} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
-            {revealed ? t('pl.card.secrets.hide') : t('pl.card.secrets.show')}
-          </Button>
-        </div>
-      )}
-      <CodeEditor
-        language="json"
-        jsonSchema={schema}
-        value={text}
-        onChange={change}
-        minLines={4}
-        maxLines={24}
-        aria-label={t('pl.card.jsonLabel', { name })}
-        aria-invalid={!locked && current.held !== undefined}
-      />
-      <div aria-live="polite">{!locked && current.error !== undefined && <p className="pl-json__error mono">{current.error}</p>}</div>
-      {issues.length > 0 && (
-        <ul className="pl-json__issues">
-          {issues.map((issue, i) => (
-            <li key={i}>
-              <code className="mono">{issue.path}</code> {issue.message}
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
   );
 }

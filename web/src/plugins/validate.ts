@@ -7,7 +7,7 @@ import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import type { ValidateEnv } from '../resources/registry';
 import { fieldErrors } from '../schema/ajv';
-import { META, withoutMeta } from './meta';
+import { isDisabled, META, withoutMeta } from './meta';
 import { schemaFor, type Scope } from './scope';
 
 export interface PluginIssue {
@@ -24,9 +24,11 @@ const declaresMeta = (schema: Obj): boolean => isObj(schema.properties) && Objec
  * What is wrong with each plugin's config in `scope`, against `all` (the scope's plugin set):
  * - a plugin this APISIX has not loaded: one issue at the config's root;
  * - in a credential, a plugin that is not an auth plugin (APISIX refuses those there);
- * - otherwise the schema's complaints (schema/ajv fieldErrors: dotted paths, a missing required
- *   property at its own path). `_meta` is checked only by a schema that declares it, so a schema
- *   that forbids extra properties (a consumer schema, an older APISIX) never reports it.
+ * - otherwise the schema's complaints (configErrors), unless the plugin is switched off
+ *   (`_meta.disable: true`): APISIX accepts a switched-off plugin whose config fails its schema
+ *   (check_single_plugin_schema, apisix/plugin.lua 1033–1046, "accepting it anyway"; it still
+ *   refuses an unknown plugin, 1018–1031, and a credential's non-auth one, admin/credentials.lua
+ *   38–45). The card says what would be refused once it is switched on.
  */
 export function validatePlugins(plugins: Record<string, Obj>, all: Record<string, PluginInfo>, scope: Scope): PluginIssue[] {
   const out: PluginIssue[] = [];
@@ -40,11 +42,22 @@ export function validatePlugins(plugins: Record<string, Obj>, all: Record<string
       out.push({ plugin, path: '', message: t('pl.issue.credentialAuth') });
       continue;
     }
-    const schema = schemaFor(info, scope);
-    const value = isObj(conf) && !declaresMeta(schema) ? withoutMeta(conf) : conf;
-    for (const error of fieldErrors(schema, value) ?? []) out.push({ plugin, ...error });
+    if (isDisabled(conf)) continue;
+    for (const error of configErrors(conf, info, scope)) out.push({ plugin, ...error });
   }
   return out;
+}
+
+/**
+ * The schema's complaints about one plugin's config in `scope`, switched off or not
+ * (schema/ajv fieldErrors: dotted paths, a missing required property at its own path). `_meta` is
+ * checked only by a schema that declares it, so a schema that forbids extra properties (a consumer
+ * schema, an older APISIX) never reports it.
+ */
+export function configErrors(conf: unknown, info: PluginInfo, scope: Scope): { path: string; message: string }[] {
+  const schema = schemaFor(info, scope);
+  const value = isObj(conf) && !declaresMeta(schema) ? withoutMeta(conf) : conf;
+  return fieldErrors(schema, value) ?? [];
 }
 
 /**

@@ -24,6 +24,11 @@ export interface MetaFormProps {
   idPrefix: string;
   /** The plugin's name, which messages about held input start with ("limit-count._meta.filter"). */
   name: string;
+  /**
+   * No `disable` switch: a consumer's or credential's auth plugin signs in whatever it says
+   * (plugins/auth.ts). A stored `disable` is kept as it is and named with the other keys.
+   */
+  noDisable?: boolean;
 }
 
 const KNOWN = new Set(['disable', 'priority', 'filter', 'error_response']);
@@ -101,7 +106,7 @@ function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id, 
 const arrayOnly: Check = (v) => (Array.isArray(v) ? undefined : t('pl.meta.filterNotArray'));
 const objectOnly: Check = (v) => (isObj(v) ? undefined : t('pl.meta.errorNotObject'));
 
-export function MetaForm({ meta, onChange, info, issues, idPrefix, name }: MetaFormProps) {
+export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisable }: MetaFormProps) {
   const locked = useLocked();
   const current = meta ?? {};
   const set = (key: string, v: unknown) => {
@@ -130,7 +135,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name }: MetaF
       set('error_response', typeof errorResponse.message === 'string' ? errorResponse.message : JSON.stringify(errorResponse));
     }
   }
-  const others = Object.keys(current).filter((key) => !KNOWN.has(key));
+  const others = Object.keys(current).filter((key) => !KNOWN.has(key) || (noDisable && key === 'disable'));
   const priority = typeof current.priority === 'number' ? current.priority : undefined;
   const id = (key: string) => `${idPrefix}-meta-${key}`;
   const fieldName = (key: string) => `${name}._meta.${key}`;
@@ -138,16 +143,18 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name }: MetaF
   return (
     <div className="pl-meta">
       <div className="pl-meta__grid">
-        <Switch
-          id={id('disable')}
-          label={<FieldLabel name="disable" />}
-          checked={current.disable === true}
-          onLabel={t('pl.meta.disableOn')}
-          offLabel={t('pl.meta.disableOff')}
-          help={t('pl.meta.disableHelp')}
-          error={issueAt(issues, 'disable')}
-          onChange={(on) => set('disable', on ? true : undefined)}
-        />
+        {!noDisable && (
+          <Switch
+            id={id('disable')}
+            label={<FieldLabel name="disable" />}
+            checked={current.disable === true}
+            onLabel={t('pl.meta.disableOn')}
+            offLabel={t('pl.meta.disableOff')}
+            help={t('pl.meta.disableHelp')}
+            error={issueAt(issues, 'disable')}
+            onChange={(on) => set('disable', on ? true : undefined)}
+          />
+        )}
         <NumberInput
           id={id('priority')}
           label={<FieldLabel name="priority" />}

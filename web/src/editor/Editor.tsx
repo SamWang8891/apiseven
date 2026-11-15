@@ -2,7 +2,6 @@
 // opens LOCKED: its values read as full-contrast text and nothing changes until Edit (or `e`); Save
 // and Discard lock it again. A new object (or a copy) starts unlocked.
 import { useQueryClient } from '@tanstack/react-query';
-import { CircleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys, scopedKey, useAllPlugins, useClient, useInvalidate } from '../api/hooks';
@@ -12,16 +11,19 @@ import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
 import { t } from '../i18n';
 import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
-import { isEnabled } from '../resources/resolve';
+import { findInCtx, isEnabled } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
-import { Input, LockProvider, PendingProvider, Tabs, toast } from '../ui';
+import { LockProvider, PendingProvider, Tabs, toast } from '../ui';
 import { backOf, ownerPath } from './back';
 import { EditorDialogs } from './EditorDialogs';
 import { deepEqual, setPath, useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
+import { takenFailure, uncheckedFailure, type Failure } from './failure';
+import { FailureBanner } from './FailureBanner';
 import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
 import { JSON_TAB } from './json';
 import { JsonTab } from './JsonTab';
+import { NewIdField } from './NewIdField';
 import { saveResource } from './save';
 import { useEditorKeys } from './useEditorKeys';
 import { useActiveTab } from './useActiveTab';
@@ -42,11 +44,6 @@ export interface EditorProps {
   copyOf?: Item;
 }
 
-/** APISIX's refusal of the last save: its message, and the draft path it is about when that is certain. */
-interface Failure {
-  message: string;
-  path?: string;
-}
 
 export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const def = registry[kind];
@@ -231,6 +228,12 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       }
     } else if ('conflict' in result) {
       setConflict(result.conflict);
+    } else if ('exists' in result || 'unchecked' in result) {
+      // A create never overwrites: the id is taken, or could not be checked (saveResource).
+      const refusal = 'exists' in result ? takenFailure(kind, result.exists, parent) : uncheckedFailure(createId ?? '', result.unchecked);
+      setFailure(refusal);
+      toast.error(refusal.message, refusal.link && { label: refusal.link.label, href: `#${refusal.link.to}` });
+      if (refusal.path !== undefined) goTab(tabOfIssue({ path: refusal.path, message: '' }, tabFields, JSON_TAB));
     } else {
       const { error } = result;
       if (error.kind === 'auth') markReadOnly();
@@ -272,10 +275,10 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     [byTab, active, failureIssue, failureTab],
   );
   const content = useMemo(() => {
-    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues };
+    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues, copyOf };
     const tab = shownTabs.find((candidate) => candidate.id === active);
     return tab ? tab.render(props) : <JsonTab {...props} />;
-  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues]);
+  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, copyOf]);
   const changedHere = (fields: string[]) => fields.some((field) => !deepEqual(draft[field], baseline[field]));
   const label = (text: string, changed: boolean) => (
     <>
@@ -332,28 +335,18 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         onDelete={() => setDialog('delete')}
       />
       <div className="ed-body" ref={bodyRef}>
-        {failure && (
-          <div className="ed-banner" role="alert">
-            <CircleAlert size={16} aria-hidden="true" />
-            <div className="ed-banner__text">
-              <p className="ed-banner__title">{t('editor.rejected')}</p>
-              <p className="ed-banner__message mono">{failure.message}</p>
-            </div>
-          </div>
-        )}
+        {failure && <FailureBanner failure={failure} />}
         {isNew && !def.idFromDraft && (
-          <div className="ed-newid">
-            <Input
-              ref={idRef}
-              label={t('editor.id.label')}
-              mono
-              required={def.idMode !== 'optional'}
-              value={newId}
-              onChange={(e) => setNewId(e.target.value)}
-              help={def.idMode === 'optional' ? t('editor.id.optional') : t('editor.id.requiredHelp')}
-              error={attempted && idMissing ? t('editor.id.required') : undefined}
-            />
-          </div>
+          <NewIdField
+            kind={kind}
+            parent={parent}
+            value={newId}
+            onChange={setNewId}
+            inputRef={idRef}
+            missing={attempted && idMissing}
+            // A refused create's id while the field still holds it, else an object of a loaded list that has it (the GET decides).
+            taken={createId !== undefined && failure?.taken === createId ? createId : createId !== undefined ? findInCtx(kind, createId, ctx)?.id : undefined}
+          />
         )}
         <LockProvider locked={!editable} session={session}>
           <PendingProvider key={epoch} onChange={tabState.onPending}>

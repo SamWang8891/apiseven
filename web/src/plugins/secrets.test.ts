@@ -22,14 +22,22 @@ describe('redactObject: what a locked view of a whole object shows', () => {
     expect(redactObject({ id: 'c1', plugins: { [name]: conf } }, 'credentials', all()).value).toEqual({ id: 'c1', plugins: { [name]: shown } });
   });
 
-  it('masks secret-named keys anywhere, also outside plugins and in a plugin this APISIX does not know', () => {
-    const value = { plugins: { 'my-plugin': { client_secret: 'x', host: 'h' } }, labels: { a: 'b' } };
-    expect(redactObject(value, 'routes', all()).value).toEqual({ plugins: { 'my-plugin': { client_secret: MASK, host: 'h' } }, labels: { a: 'b' } });
+  it('masks secret-named keys anywhere, also outside plugins', () => {
+    const value = { plugins: { cors: { allow_origins: '*' } }, upstream: { nodes: [], keepalive_pool: { size: 1 } }, password: 'p', labels: { a: 'b' } };
+    expect(redactObject(value, 'routes', all()).value).toEqual({ ...value, password: MASK });
   });
 
-  it('until the plugin list has loaded, every text inside plugins is masked (which are secret is not known yet)', () => {
+  it('a plugin the loaded list does not know (removed, or custom and not loaded): every value masked, still revealable', () => {
+    const value = { plugins: { 'my-logger': { endpoint: 'https://log.example', auth_header: 'Bearer x', port: 1234, on: true } }, labels: { a: 'b' } };
+    const out = redactObject(value, 'routes', all());
+    expect(out.value).toEqual({ plugins: { 'my-logger': { endpoint: MASK, auth_header: MASK, port: MASK, on: MASK } }, labels: { a: 'b' } });
+    expect(out.revealed).toEqual(value);
+    expect(out.revealable).toBe(true);
+  });
+
+  it('until the plugin list has loaded, every value inside plugins is masked (which are secret is not known yet)', () => {
     const out = redactObject({ username: 'jo', plugins: { 'key-auth': { key: 'jo-key' }, cors: { allow_origins: '*', max_age: 5 } } }, 'consumers', undefined);
-    expect(out.value).toEqual({ username: 'jo', plugins: { 'key-auth': { key: MASK }, cors: { allow_origins: MASK, max_age: 5 } } });
+    expect(out.value).toEqual({ username: 'jo', plugins: { 'key-auth': { key: MASK }, cors: { allow_origins: MASK, max_age: MASK } } });
     expect(out.redacted).toBe(true);
   });
 

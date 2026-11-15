@@ -3,10 +3,11 @@
 // (CredentialCount), so that column cannot sort.
 import type { Item } from '../../api/types';
 import { t } from '../../i18n';
-import { LabelChips, NameDescCell, PluginChips, RefCell, TimeCell } from '../cells';
+import { LabelChips, NameDescCell, RefCell, TimeCell } from '../cells';
 import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
 import { labelPairs, nameOfValue, resolveRef } from '../resolve';
+import { ScopedPluginChips } from '../ScopedPluginChips';
 import { servicePlugins as ownPlugins } from '../services/columns';
 import { CredentialCount } from './CredentialCount';
 
@@ -48,7 +49,8 @@ export const consumerColumns: ColumnDef[] = [
       return t('column.plugins');
     },
     accessor: (item) => ownPlugins(item.value).map((p) => p.name),
-    cell: (item) => <PluginChips plugins={ownPlugins(item.value)} />,
+    // An auth plugin stored as off still signs in (plugins/auth.ts): never "off" there.
+    cell: (item) => <ScopedPluginChips value={item.value} owner="consumer" />,
     defaultVisible: true,
     width: 210,
   },

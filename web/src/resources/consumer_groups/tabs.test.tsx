@@ -1,5 +1,5 @@
 // The consumer group editor's tabs, each rendered as the frame renders it (controlled by the draft).
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import type { ComponentType } from 'react';
 import { describe, expect, it } from 'vitest';
 import type { Item, Obj } from '../../api/types';
@@ -75,7 +75,11 @@ describe('Consumers (members)', () => {
   it('while the consumers load, the table says so; with none in the group, it says that', async () => {
     tab(MembersTab, PARTNERS, { ctx: ctxOf({ loaded: { consumers: false } }) });
     const region = await screen.findByRole('region', { name: t('cg.tab.members') });
+    expect(within(region).getByRole('status', { name: t('table.loading', { plural: t('kind.consumers.plural') }) })).toBeInTheDocument();
+    expect(region.querySelectorAll('.tbl-skeleton').length).toBeGreaterThan(0);
     expect(within(region).queryByText(t('cg.members.none'))).not.toBeInTheDocument();
+    expect(within(region).queryByRole('link', { name: 'alice' })).not.toBeInTheDocument();
+    cleanup();
     tab(MembersTab, { id: 'lonely', plugins: {} }, { original: { id: 'lonely', value: { id: 'lonely' } } });
     await waitFor(() => expect(screen.getByText(t('cg.members.none'))).toBeInTheDocument());
   });

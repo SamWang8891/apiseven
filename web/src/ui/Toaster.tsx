@@ -15,7 +15,7 @@ export function Toaster() {
   const items = useSyncExternalStore(subscribeToasts, getToasts, getToasts);
   return (
     <Toast.Provider label={t('ui.toast.label')} swipeDirection="right">
-      {items.map(({ id, tone, message }) => {
+      {items.map(({ id, tone, message, action }) => {
         const Icon = ICONS[tone];
         return (
           <Toast.Root
@@ -27,6 +27,13 @@ export function Toaster() {
           >
             <Icon className="ui-toast__icon" aria-hidden="true" size={16} strokeWidth={2.25} />
             <Toast.Description className="ui-toast__message">{message}</Toast.Description>
+            {action && (
+              <Toast.Action asChild altText={action.label}>
+                <a className="ui-toast__action" href={action.href}>
+                  {action.label}
+                </a>
+              </Toast.Action>
+            )}
             <Toast.Close className="ui-toast__close" aria-label={t('ui.toast.dismiss')}>
               <X aria-hidden="true" size={14} />
             </Toast.Close>

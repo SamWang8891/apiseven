@@ -2,10 +2,17 @@
 
 export type ToastTone = 'success' | 'error' | 'info';
 
+/** A link the toast offers (Radix Toast.Action): its text, and where it goes. */
+export interface ToastAction {
+  label: string;
+  href: string;
+}
+
 export interface ToastItem {
   id: number;
   tone: ToastTone;
   message: string;
+  action?: ToastAction;
 }
 
 let items: ToastItem[] = [];
@@ -16,15 +23,15 @@ function emit(): void {
   for (const listener of listeners) listener();
 }
 
-function push(tone: ToastTone, message: string): void {
-  items = [...items, { id: ++lastId, tone, message }];
+function push(tone: ToastTone, message: string, action?: ToastAction): void {
+  items = [...items, { id: ++lastId, tone, message, ...(action ? { action } : {}) }];
   emit();
 }
 
 export const toast = {
-  success: (message: string): void => push('success', message),
-  error: (message: string): void => push('error', message),
-  info: (message: string): void => push('info', message),
+  success: (message: string, action?: ToastAction): void => push('success', message, action),
+  error: (message: string, action?: ToastAction): void => push('error', message, action),
+  info: (message: string, action?: ToastAction): void => push('info', message, action),
 };
 
 export function dismissToast(id: number): void {

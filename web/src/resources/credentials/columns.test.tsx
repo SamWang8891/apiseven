@@ -38,12 +38,20 @@ describe('credential columns', () => {
     expect('cell' in col('name')).toBe(false);
   });
 
-  it('plugin: the auth plugin by name, never its key; off marked; none says so', () => {
+  it('plugin: the auth plugin by name, never its key; none says so', () => {
     expect(col('plugin').accessor(KEY, ctxOf())).toEqual(['key-auth']);
     const el = cell('plugin', KEY);
     expect(el).toHaveTextContent('key-auth');
     expect(el.textContent).not.toContain('alice-dev-key');
-    expect(cell('plugin', OFF)).toHaveTextContent(t('cell.plugin.off'));
+    expect(el).not.toHaveTextContent(t('cell.plugin.stillSignsIn'));
     expect(cell('plugin', NONE)).toHaveTextContent(t('ui.empty'));
+  });
+
+  it('an auth plugin stored as off still signs in (consumer.lua plugin_consumer): the chip says so in danger, never "off"', () => {
+    const el = cell('plugin', OFF);
+    expect(el).toHaveTextContent(`basic-auth${t('cell.plugin.stillSignsIn')}`);
+    expect(el).not.toHaveTextContent(t('cell.plugin.off'));
+    expect(el.querySelector('.cell-plugin__danger')).not.toBeNull();
+    expect(el.querySelector('.cell-plugin')).toHaveAttribute('title', `basic-auth: ${t('cell.plugin.stillSignsInWhy')}`);
   });
 });

@@ -9,6 +9,7 @@ import { MASK } from '../schema/secrets';
 import { resetApp } from '../test/app';
 import { jsonEditor, main, openEditor, writesOf } from '../test/editor';
 import { pluginReplies } from '../test/plugins';
+import { getToasts } from '../ui/toast';
 
 afterEach(() => {
   resetApp();
@@ -38,12 +39,17 @@ describe('the JSON tab, locked', () => {
     expect(box.textContent).not.toContain(KEY);
   });
 
-  it('Copy copies what is shown: the masked text', async () => {
+  it('Copy copies what is shown: the masked text, and the toast says so; revealed, the real text', async () => {
     const { user } = await openJson();
     await user.click(main().getByRole('button', { name: t('json.copy') }));
     const copied = await navigator.clipboard.readText();
     expect(copied).toContain(MASK);
     expect(copied).not.toContain(KEY);
+    expect(getToasts().at(-1)?.message).toBe(t('json.copiedMasked'));
+    await user.click(main().getByRole('button', { name: t('pl.card.secrets.show') }));
+    await user.click(main().getByRole('button', { name: t('json.copy') }));
+    expect(await navigator.clipboard.readText()).toContain(KEY);
+    expect(getToasts().at(-1)?.message).toBe(t('json.copied'));
   });
 
   it('editing shows the real text; a save that leaves the key alone sends it unchanged, and the locked view masks it again', async () => {
@@ -88,5 +94,10 @@ describe('View JSON', () => {
     expect(document.body.innerHTML).not.toContain(KEY);
     await user.click(within(dialog).getByRole('button', { name: t('json.copy') }));
     expect(await navigator.clipboard.readText()).not.toContain(KEY);
+    expect(getToasts().at(-1)?.message).toBe(t('json.copiedMasked'));
+    await user.click(within(dialog).getByRole('button', { name: t('pl.card.secrets.show') }));
+    await user.click(within(dialog).getByRole('button', { name: t('json.copy') }));
+    expect(await navigator.clipboard.readText()).toContain(KEY);
+    expect(getToasts().at(-1)?.message).toBe(t('json.copied'));
   });
 });

@@ -2,9 +2,10 @@
 // credential's plugin is listed by name only: its config is the key. The `name` column has no cell
 // of its own, so the table renders it as the link to the credential (it needs the consumer).
 import { t } from '../../i18n';
-import { IdCell, LabelChips, PluginChips, TimeCell } from '../cells';
+import { IdCell, LabelChips, TimeCell } from '../cells';
 import type { ColumnDef } from '../registry';
 import { labelPairs, nameOfValue } from '../resolve';
+import { ScopedPluginChips } from '../ScopedPluginChips';
 import { servicePlugins as ownPlugins } from '../services/columns';
 
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
@@ -36,7 +37,8 @@ export const credentialColumns: ColumnDef[] = [
       return t('column.plugin');
     },
     accessor: (item) => ownPlugins(item.value).map((p) => p.name),
-    cell: (item) => <PluginChips plugins={ownPlugins(item.value)} />,
+    // An auth plugin stored as off still signs in (plugins/auth.ts): never "off" there.
+    cell: (item) => <ScopedPluginChips value={item.value} owner="credential" />,
     defaultVisible: true,
     width: 160,
   },

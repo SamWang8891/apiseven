@@ -6,6 +6,7 @@ import { useAllPlugins } from '../api/hooks';
 import { t } from '../i18n';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
 import { redactObject } from '../plugins/secrets';
+import { MASK } from '../schema/secrets';
 import { registry, type TabProps } from '../resources/registry';
 import { Button, CodeEditor, toast, useLocked, usePending, useReveal } from '../ui';
 import { parse, pretty, represents } from './json';
@@ -77,7 +78,8 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
     try {
       if (!navigator.clipboard) throw new Error('clipboard unavailable');
       await navigator.clipboard.writeText(shown);
-      toast.success(t('json.copied'));
+      // The masked text says so: the clipboard has the mask characters, not the secrets.
+      toast.success(shown.includes(MASK) ? t('json.copiedMasked') : t('json.copied'));
     } catch (err) {
       toast.error(t('json.copyFailed', { error: err instanceof Error ? err.message : String(err) }));
     }

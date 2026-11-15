@@ -310,6 +310,18 @@ describe('issues', () => {
     expect(await within(el).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'my-plugin' }) })).toBeInTheDocument();
   });
 
+  it('a plugin this APISIX has not loaded, locked: no summary and every value masked (which are secret is not known), revealable', async () => {
+    const { user } = renderPluginsTab({ scope: 'route', locked: true, value: { 'my-logger': { endpoint: 'https://log.example', auth_header: 'Bearer zz9', port: 4433 } } });
+    const el = await card('my-logger');
+    await waitFor(() => expect(screen.queryByText(t('pl.loading'))).not.toBeInTheDocument());
+    expect(el.querySelector('.pl-card__summary')?.textContent).toBe('');
+    await user.click(toggle(el, 'my-logger'));
+    const box = await within(el).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'my-logger' }) });
+    expect(document.body.innerHTML).not.toMatch(/Bearer zz9|log\.example|4433/);
+    await user.click(within(el).getByRole('button', { name: t('pl.card.secrets.show') }));
+    expect(box.textContent).toContain('Bearer zz9');
+  });
+
   it('the plugin list failing to load leaves the configs editable as JSON', async () => {
     const { user } = renderPluginsTab({ scope: 'route', value: { cors: {} }, admin: { replies: { plugins: () => json(503, { error_msg: 'down' }) } } });
     expect(await screen.findByText(/Couldn't load the plugin list/)).toBeInTheDocument();

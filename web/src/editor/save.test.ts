@@ -123,6 +123,44 @@ describe('saveResource, create', () => {
   });
 });
 
+describe('saveResource, create never overwrites (APISIX takes a PUT to an id that exists as a replace)', () => {
+  it.each([
+    ['consumers', 'alice', { username: 'alice', plugins: { 'key-auth': { key: 'theirs' } } }, { username: 'alice' }, undefined],
+    ['consumer_groups', 'g1', { id: 'g1', plugins: { 'limit-count': { count: 1, time_window: 1 } } }, { plugins: {} }, undefined],
+    ['routes', 'r1', { id: 'r1', uri: '/theirs' }, { uri: '/mine' }, undefined],
+    ['credentials', 'c1', { id: 'c1', plugins: { 'key-auth': { key: 'theirs' } } }, { plugins: { 'key-auth': { key: 'mine' } } }, { consumer: 'jo' }],
+  ] as const)('%s: an id that is taken is refused without a write, with what holds it', async (kind, id, stored, draft, parent) => {
+    const { client, admin, writes } = setup(kind === 'credentials' ? { credentials: { jo: [stored] } } : { objects: { [kind]: [stored] } });
+    const result = await saveResource(client, { kind, id, isNew: true, draft, parent });
+    expect(writes()).toEqual([]);
+    if (result.ok || !('exists' in result)) throw new Error('expected an existing object');
+    expect(result.exists.id).toBe(id);
+    expect(admin.stored(kind, parent?.consumer)).toEqual([stored]);
+  });
+
+  it('a free id: created (the GET answered 404 first)', async () => {
+    const { client, admin, writes } = setup({ objects: { consumers: [] } });
+    const result = await saveResource(client, { kind: 'consumers', id: 'bob', isNew: true, draft: { username: 'bob' } });
+    expect(result.ok).toBe(true);
+    expect(admin.requests.map((r) => `${r.method} ${r.url.pathname.replace(/^.*\/apisix\/admin\//, '')}`).slice(0, 2)).toEqual(['GET consumers/bob', 'PUT consumers/bob']);
+    expect(writes()).toHaveLength(1);
+  });
+
+  it('a GET that fails for another reason refuses too, saying why; nothing is written', async () => {
+    const { client, writes } = setup({ objects: { consumers: [] }, replies: { 'consumers/bob': (req) => (req.method === 'GET' ? json(503, { error_msg: 'etcd unavailable' }) : undefined) } });
+    const result = await saveResource(client, { kind: 'consumers', id: 'bob', isNew: true, draft: { username: 'bob' } });
+    expect(writes()).toEqual([]);
+    if (result.ok || !('unchecked' in result)) throw new Error('expected the check to fail');
+    expect(result.unchecked.errorMsg).toBe('etcd unavailable');
+  });
+
+  it('a POST (no id chosen) needs no check: APISIX picks a new id', async () => {
+    const { client, admin } = setup({ objects: { routes: [] } });
+    await saveResource(client, { kind: 'routes', isNew: true, draft: { uri: '/new' } });
+    expect(admin.requests[0]?.method).toBe('POST');
+  });
+});
+
 describe('saveResource, SSL', () => {
   const SSL: Obj = {
     id: 's1',
@@ -149,7 +187,7 @@ describe('saveResource, SSL', () => {
     const next = setPath(setPath(draft, ['type'], undefined), ['labels', 'team'], undefined);
     await saveResource(client, { kind: 'ssls', id: 's1', isNew: false, draft: next, original });
     expect(writes()).toEqual([{ method: 'PATCH', path: 'ssls/s1', body: { type: null, labels: { team: null } } }]);
-    expect(admin.stored('ssls')[0]).toEqual({ id: 's1', cert: 'CERT', key: 'ENCRYPTED', snis: ['a.test'], labels: { env: 'dev' }, update_time: 2 });
+    expect(admin.stored('ssls')[0]).toEqual({ id: 's1', cert: 'CERT', key: 'ENCRYPTED', snis: ['a.test'], labels: { env: 'dev' }, update_time: expect.any(Number) as number });
   });
 
   it('a draft containing key (certificate replaced) sends a full PUT', async () => {
@@ -293,7 +331,8 @@ describe('when the read after a write fails, what was sent stands in: never a va
       wrote && (init?.method ?? 'GET') === 'GET' ? Promise.resolve(json(503, { error_msg: 'etcd busy' })) : fetchImpl(input, init);
     const item = saved(await saveResource(client, { kind: 'routes', isNew: true, draft: { uri: '/new', plugins: logger } }));
     expect(item.id).toMatch(/^\d{20}$/);
-    expect(item.value).toEqual({ uri: '/new', plugins: logger, id: item.id });
+    // The response's timestamps are APISIX's own (SERVER_ONLY), as a GET would show them.
+    expect(item.value).toEqual({ uri: '/new', plugins: logger, id: item.id, create_time: expect.any(Number) as number, update_time: expect.any(Number) as number });
   });
 });
 

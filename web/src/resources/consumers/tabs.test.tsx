@@ -74,7 +74,8 @@ describe('General', () => {
     expect(editableControls(container)).toEqual([]);
     const overview = screen.getByRole('region', { name: t('cs.overview') });
     expect(overview).toHaveTextContent('key-auth, limit-count');
-    expect(overview).toHaveTextContent(t('cs.overview.fromGroup', { names: 'cors (off), limit-count' }));
+    // limit-count is the consumer's own too: its own wins (merge_consumer_route), so the group's reads "overridden here".
+    expect(overview).toHaveTextContent(t('cs.overview.fromGroup', { names: `cors (off), ${t('cs.overview.overridden', { name: 'limit-count' })}` }));
     await waitFor(() => expect(overview).toHaveTextContent(t('cs.overview.credentialCount', { count: 2 })));
     expect(overview.textContent).not.toContain('jo-key');
   });
@@ -89,6 +90,14 @@ describe('General', () => {
     tab(GeneralTab, { username: 'jo', group_id: 'partners' }, { locked: true });
     const overview = screen.getByRole('region', { name: t('cs.overview') });
     expect(overview).toHaveTextContent(`${t('pl.tab')}${t('cs.overview.fromGroup', { names: 'cors (off), limit-count' })}`);
+  });
+
+  it('at a glance, its own auth plugin stored as off still signs in (a danger badge, never "off"); a non-auth one stored as off reads "(off)"', () => {
+    tab(GeneralTab, { username: 'jo', plugins: { 'key-auth': { key: 'k', _meta: { disable: true } }, 'limit-count': { count: 1, time_window: 1, _meta: { disable: true } } } }, { locked: true });
+    const overview = screen.getByRole('region', { name: t('cs.overview') });
+    expect(within(overview).getByText(t('cs.overview.stillSignsIn'))).toHaveClass('ui-badge--danger');
+    expect(overview).toHaveTextContent(`key-auth ${t('cs.overview.stillSignsIn')}, ${t('rt.overview.pluginOff', { name: 'limit-count' })}`);
+    expect(overview).not.toHaveTextContent(t('rt.overview.pluginOff', { name: 'key-auth' }));
   });
 
   it("at a glance, a group's auth plugin reads as not applied", () => {

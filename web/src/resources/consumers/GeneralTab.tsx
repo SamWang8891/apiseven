@@ -2,37 +2,63 @@
 // its group, description and labels, then the consumer at a glance (its plugins, those it takes from
 // its group, and how many credentials it has), each line linking to its tab. Locked, this is the
 // consumer's spec sheet; it names plugins, never their configs (they hold the consumer's keys).
-import { useMemo, type ReactNode } from 'react';
+import { Fragment, useMemo, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import { useAllPlugins, useList, useSupports } from '../../api/hooks';
 import type { Obj, PluginInfo } from '../../api/types';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
+import { pathFor } from '../../router/paths';
 import { consumerGroupLoading, consumerInheritedPlugins } from '../../plugins/inherited';
-import { Field, Input, useLocked } from '../../ui';
+import { Badge, Field, Input, useLocked } from '../../ui';
+import type { PluginChip } from '../cells';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { Ctx } from '../ctx';
 import { MetaFields } from '../MetaFields';
-import { Mono, Overview, Parts } from '../Overview';
+import { Overview, Parts } from '../Overview';
 import type { TabProps } from '../registry';
+import { findInCtx } from '../resolve';
 import { ResourcePicker } from '../ResourcePicker';
-import { servicePlugins as ownPlugins } from '../services/columns';
+import { scopedPlugins } from '../scopedPlugins';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String(v) : typeof v === 'string' && v !== '' ? v : undefined);
 const named = (p: { name: string; disabled?: boolean; notApplied?: boolean }) =>
   p.notApplied ? t('cs.overview.notApplied', { name: p.name }) : p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name;
 
+/** Its own plugins by name: one stored off reads "(off)", unless it is an auth plugin, which still signs in (a danger badge). */
+function Own({ plugins }: { plugins: PluginChip[] }) {
+  return (
+    <span>
+      {plugins.map((p, i) => (
+        <Fragment key={p.name}>
+          {i > 0 && ', '}
+          <span className="mono">{named(p)}</span>
+          {p.stillSignsIn && (
+            <>
+              {' '}
+              <Badge tone="danger">{t('cs.overview.stillSignsIn')}</Badge>
+            </>
+          )}
+        </Fragment>
+      ))}
+    </span>
+  );
+}
+
 /**
- * Its own plugins, then those of its group ("loading…" while the groups load), a group's auth plugin
- * marked as not applied; "None" only when neither has any.
+ * Its own plugins, then those of its group ("loading…" while the groups load): one it sets itself
+ * reads "overridden here" (its own wins, merge_consumer_route), a group's auth plugin "sign-in
+ * skipped" (plugins/auth.ts). "None" only when neither has any.
  */
 function plugins(draft: Obj, ctx: Ctx, all: Record<string, PluginInfo> | undefined) {
-  const own = ownPlugins(draft).map(named);
-  const parts: ReactNode[] = own.length > 0 ? [<Mono key="own" values={own} />] : [];
+  const own = scopedPlugins(draft, 'consumer', all);
+  const parts: ReactNode[] = own.length > 0 ? [<Own key="own" plugins={own} />] : [];
   if (consumerGroupLoading(draft, ctx)) parts.push(t('picker.loading'));
   else {
-    const inherited = consumerInheritedPlugins(draft, ctx, all).map(named);
+    const mine = new Set(own.map((p) => p.name));
+    const inherited = consumerInheritedPlugins(draft, ctx, all).map((p) => (!p.notApplied && mine.has(p.name) ? t('cs.overview.overridden', { name: p.name }) : named(p)));
     if (inherited.length > 0) parts.push(t('cs.overview.fromGroup', { names: inherited.join(', ') }));
   }
   return parts.length > 0 ? <Parts parts={parts} /> : t('cs.overview.noPlugins');
@@ -58,20 +84,30 @@ export function GeneralTab({ draft, setDraft, issues, ctx, isNew, original, save
   const usernameError = username !== '' || saveAttempts > 0 ? issueAt(issues, 'username') : undefined;
   const stored = isNew ? undefined : (original?.id ?? (username || undefined));
   const groupId = idOf(draft.group_id);
+  // Creating over a username a loaded consumer has would replace that consumer: say so as it is
+  // typed (it doesn't block Save; the editor's check before the create does, editor/save.ts).
+  const taken = isNew && username !== '' ? findInCtx('consumers', username, ctx) : undefined;
 
   return (
     <div className="ed-stack">
       <div className="ed-grid">
         {isNew ? (
-          <Input
-            label={t('cs.general.username')}
-            required
-            mono
-            value={username}
-            help={t('cs.general.usernameHelp')}
-            error={usernameError}
-            onChange={(e) => setDraft(setPath(draft, ['username'], e.target.value))}
-          />
+          <div>
+            <Input
+              label={t('cs.general.username')}
+              required
+              mono
+              value={username}
+              help={t('cs.general.usernameHelp')}
+              error={usernameError ?? (taken ? t('editor.taken.message', { kind: t('kind.consumers.singular'), id: taken.id }) : undefined)}
+              onChange={(e) => setDraft(setPath(draft, ['username'], e.target.value))}
+            />
+            {taken && (
+              <Link className="res-taken" to={pathFor('consumers', taken.id)}>
+                {t('editor.taken.open', { kind: t('kind.consumers.singular'), id: taken.id })}
+              </Link>
+            )}
+          </div>
         ) : (
           <Field label={t('cs.general.username')} help={locked ? undefined : t('cs.general.usernameFixed')} error={issueAt(issues, 'username')}>
             <ReadOnlyValue mono>{username}</ReadOnlyValue>

@@ -221,6 +221,21 @@
   overflow-wrap: anywhere;
 }
 
+/* What to do about it: open the object that holds the id. */
+.ed-banner__link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* The object that holds a typed ID, under the ID field. */
+.ed-newid__taken {
+  display: inline-block;
+  margin-top: 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .ed-newid {
   max-width: 420px;
   margin-bottom: var(--s4);

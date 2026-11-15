@@ -18,7 +18,14 @@ export interface SaveArgs {
   force?: boolean;
 }
 
-export type SaveResult = { ok: true; item: Item } | { ok: false; conflict: Item } | { ok: false; error: ApiError };
+export type SaveResult =
+  | { ok: true; item: Item }
+  | { ok: false; conflict: Item }
+  | { ok: false; error: ApiError }
+  /** A create whose id is taken: nothing was written; `exists` is what holds the id. */
+  | { ok: false; exists: Item }
+  /** A create whose id could not be checked (the GET failed for another reason than 404): nothing was written. */
+  | { ok: false; unchecked: ApiError };
 
 const nonEmptyObj = (v: unknown): v is Obj => isObj(v) && Object.keys(v).length > 0;
 
@@ -42,6 +49,22 @@ export function mergePatch(before: Obj, after: Obj): Obj {
 function asApiError(err: unknown): ApiError {
   if (err instanceof ApiError) return err;
   return new ApiError('http', err instanceof Error ? err.message : String(err), { cause: err });
+}
+
+/**
+ * What already holds `id`, if anything: a create with a chosen id (typed, a consumer's username, a
+ * copy's) is a PUT, which APISIX takes as a replace of whatever has that id, so the editor looks
+ * first. 404 is free; any other failure is reported, as the id could not be checked. Someone could
+ * still create the same id between this GET and the PUT: the Admin API has no "create only" PUT
+ * (no If-None-Match, no PUT that fails on an existing key) to close that window.
+ */
+async function holderOf(client: AdminClient, kind: Kind, id: string, parent?: Parent): Promise<{ exists: Item } | { unchecked: ApiError } | undefined> {
+  try {
+    return { exists: await client.get(kind, id, parent) };
+  } catch (err) {
+    const error = asApiError(err);
+    return error.status === 404 ? undefined : { unchecked: error };
+  }
 }
 
 /** What only a write's response can tell about the object: its id (APISIX generates one on POST) and its timestamps. */
@@ -85,6 +108,11 @@ async function reread(client: AdminClient, kind: Kind, written: Item, sent: Obj,
 export async function saveResource(client: AdminClient, a: SaveArgs): Promise<SaveResult> {
   const body = stripTimestamps(a.draft);
   try {
+    if (a.isNew && a.id !== undefined) {
+      const taken = await holderOf(client, a.kind, a.id, a.parent);
+      if (taken && 'exists' in taken) return { ok: false, exists: taken.exists };
+      if (taken) return { ok: false, unchecked: taken.unchecked };
+    }
     if (a.isNew) {
       const created = await client.create(a.kind, body, a.id, a.parent);
       return { ok: true, item: await reread(client, a.kind, created, body, a.parent) };

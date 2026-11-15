@@ -185,14 +185,62 @@ describe('a conflict (someone changed the key meanwhile)', () => {
 });
 
 describe('a save from the Plugins tab sends every other field as loaded', () => {
-  it('key-auth switched off: name, description, labels and the unknown key as loaded, the key untouched', async () => {
+  it('the key changed in the form: name, description, labels and the unknown key as loaded', async () => {
     const { user, admin } = await openCredential('#/consumers/jo%20e/credentials/c%201?tab=plugins');
     await settled();
     await user.keyboard('e');
-    await user.click(main().getByRole('switch', { name: 'Enable key-auth' }));
+    const card = await main().findByRole('group', { name: 'key-auth' });
+    await user.click(within(card).getByRole('button', { name: 'key-auth' }));
+    const key = within(card).getByLabelText(/^key\b(?!-)/);
+    await user.clear(key);
+    await user.type(key, 'new-key');
     await save(user);
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
-    expect(writesOf(admin)[0]?.body).toEqual(loadedWith(C1, { plugins: { 'key-auth': { key: KEY, _meta: { disable: true } } } }));
+    expect(writesOf(admin)[0]?.body).toEqual(loadedWith(C1, { plugins: { 'key-auth': { key: 'new-key' } } }));
+  });
+});
+
+describe('an auth plugin of a credential signs in whatever "off" says (consumer.lua plugin_consumer)', () => {
+  it.each(['key-auth', 'basic-auth', 'jwt-auth', 'hmac-auth', 'jwe-decrypt', 'ldap-auth', 'ldap-auth-advanced', 'multi-auth', 'wolf-rbac'])(
+    '%s: no on/off switch, locked or editing (header and run options); the card says how to revoke it',
+    async (plugin) => {
+      const { user } = await openEditor('#/consumers/jo/credentials/c9?tab=plugins', {
+        objects: { consumers: CONSUMERS },
+        credentials: { jo: [{ id: 'c9', plugins: { [plugin]: {} } }] },
+        replies: pluginReplies(),
+      });
+      await main().findByRole('heading', { level: 1, name: 'c9' });
+      await settled();
+      const card = await main().findByRole('group', { name: plugin });
+      for (const step of ['locked', 'editing']) {
+        if (step === 'editing') await user.keyboard('e');
+        expect(within(card).queryByRole('switch'), step).toBeNull();
+        expect(within(card).getByText(t('pl.card.signIn.always'))).toBeInTheDocument();
+      }
+      if (within(card).getByRole('button', { name: plugin }).getAttribute('aria-expanded') !== 'true') await user.click(within(card).getByRole('button', { name: plugin }));
+      expect(within(card).getByRole('note')).toHaveTextContent(t('pl.card.signIn.note'));
+      await user.click(within(card).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
+      expect(within(card).queryByRole('switch')).toBeNull();
+    },
+  );
+
+  it('stored with _meta.disable: true, it reads "still signs in" (never "off"), says why, and a save keeps _meta as loaded', async () => {
+    const OFF: Obj = { id: 'c2', name: 'revoked?', plugins: { 'key-auth': { key: 'k2', _meta: { disable: true } } } };
+    const { user, admin } = await openEditor('#/consumers/jo/credentials/c2?tab=plugins', { objects: { consumers: CONSUMERS }, credentials: { jo: [OFF] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'revoked?' });
+    await settled();
+    const card = await main().findByRole('group', { name: 'key-auth' });
+    expect(within(card).getByText(t('pl.card.signIn.stillSignsIn'))).toHaveClass('pl-card__signin--on-anyway');
+    expect(card.textContent).not.toMatch(/\boff\b|\bOff\b/);
+    await user.click(within(card).getByRole('button', { name: 'key-auth' }));
+    expect(within(card).getByRole('note')).toHaveTextContent(t('pl.card.signIn.offNote'));
+    await user.keyboard('e');
+    await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cr.tab.general')}`) }));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('cr.general.desc') }), 'x');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toEqual({ ...OFF, desc: 'x' });
   });
 });
 
@@ -224,6 +272,19 @@ describe('one auth plugin', () => {
     await save(user);
     expect(writesOf(admin)).toEqual([]);
     await waitFor(() => expect(tab(t('pl.tab'))).toHaveAccessibleName(`${t('pl.tab')} ${t('ui.tabs.errors', { count: 1 })}`));
+  });
+});
+
+describe('Duplicate', () => {
+  it('a copy of a credential takes its name and labels, not its key', async () => {
+    const { user, admin } = await openEditor('#/consumers/jo%20e/credentials/new?from=c%201&tab=plugins', { objects: { consumers: CONSUMERS }, credentials: { 'jo e': [C1] }, replies: pluginReplies() });
+    await main().findByRole('button', { name: t('editor.create') });
+    await settled();
+    expect(document.body.innerHTML).not.toContain(KEY);
+    expect(main().getByText(t('pl.copySecrets', { names: 'key-auth' }))).toBeInTheDocument();
+    await user.type(main().getByRole('textbox', { name: /^ID/ }), 'c2');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    expect(writesOf(admin)).toEqual([]);
   });
 });
 

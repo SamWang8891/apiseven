@@ -1,6 +1,6 @@
 // The consumers list: its columns (the credentials count is fetched per row as it is shown) and
 // quick filters.
-import { cleanup, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Item } from '../../api/types';
 import { t } from '../../i18n';
@@ -11,7 +11,7 @@ import { json, type FakeAdminOptions } from '../../test/fakeAdmin';
 import { renderWithProviders } from '../../test/providers';
 import type { ColumnDef, Ctx } from '../registry';
 import { consumerColumns } from './columns';
-import { consumerFilters } from './filters';
+import { consumerFilters, NO_GROUP } from './filters';
 
 function col(id: string): ColumnDef {
   const column = consumerColumns.find((c) => c.id === id);
@@ -20,7 +20,7 @@ function col(id: string): ColumnDef {
 }
 
 const item = (username: string, value: Record<string, unknown> = {}): Item => ({ id: username, value: { username, ...value } });
-const ALICE = item('alice', { desc: 'Partner integration', group_id: 'partners', labels: { org: 'acme' }, plugins: { 'limit-count': { count: 1, time_window: 1 }, 'key-auth': { key: 'secret', _meta: { disable: true } } } });
+const ALICE = item('alice', { desc: 'Partner integration', group_id: 'partners', labels: { org: 'acme' }, plugins: { 'limit-count': { count: 1, time_window: 1, _meta: { disable: true } }, 'key-auth': { key: 'secret', _meta: { disable: true } } } });
 const BOB = item('bob', { desc: 'Internal tooling' });
 const CAROL = item('carol', { group_id: 'gone', labels: { org: 'beta' } });
 const CONSUMERS = [ALICE, BOB, CAROL];
@@ -64,19 +64,30 @@ describe('consumer columns', () => {
     expect(loading).not.toHaveTextContent(t('cell.missing.consumer_groups', { id: 'gone' }));
   });
 
-  it("plugins: the consumer's own, by name (no config, so no key), off marked", () => {
+  it("plugins: the consumer's own, by name (no config, so no key); off marked, but an auth plugin stored as off still signs in", () => {
     expect(value('plugins', ALICE)).toEqual(['key-auth', 'limit-count']);
     const { el } = cell('plugins', ALICE);
-    expect(el).toHaveTextContent(t('cell.plugin.off'));
+    const chips = [...el.querySelectorAll('.cell-plugin')].map((c) => c.textContent);
+    expect(chips).toEqual([`key-auth${t('cell.plugin.stillSignsIn')}`, `limit-count${t('cell.plugin.off')}`]);
     expect(el.textContent).not.toContain('secret');
   });
 
   it("credentials: '…' while this consumer's credentials load, then how many; fetched for this row only, not sortable", async () => {
     expect(col('credentials').sortable).toBe(false);
     const { el, admin } = cell('credentials', ALICE, CTX, { counts: {}, credentials: { alice: [{ id: 'k1' }, { id: 'k2' }] } });
-    expect(el).toHaveTextContent('…');
+    // The glyph is for the eye; a screen reader hears the words.
+    expect(el.querySelector('[aria-hidden="true"]')).toHaveTextContent('…');
+    expect(el).toHaveTextContent(t('picker.loading'));
     await waitFor(() => expect(el).toHaveTextContent('2'));
-    expect(admin.requests.map((r) => r.url.pathname.replace(/^.*\/apisix\/admin\//, ''))).toEqual(['consumers/alice/credentials']);
+    // The support probe, then this row's list.
+    expect(admin.requests.map((r) => r.url.pathname.replace(/^.*\/apisix\/admin\//, ''))).toEqual(['credentials', 'consumers/alice/credentials']);
+    // Not asked again when the window regains focus (one request per row would follow every focus).
+    act(() => {
+      window.dispatchEvent(new Event('visibilitychange'));
+      window.dispatchEvent(new Event('focus'));
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(admin.requests.filter((r) => r.url.pathname.endsWith('/consumers/alice/credentials'))).toHaveLength(1);
     // A consumer without a credentials directory: APISIX answers 404, which is none.
     const none = cell('credentials', BOB, CTX, { counts: {}, credentials: {} }).el;
     await waitFor(() => expect(none).toHaveTextContent('0'));
@@ -85,7 +96,14 @@ describe('consumer columns', () => {
   it('credentials: a list that fails to load shows a mark, not a number', async () => {
     const { el } = cell('credentials', ALICE, CTX, { counts: {}, replies: { 'consumers/alice/credentials': () => json(500, { error_msg: 'etcd down' }) } });
     await waitFor(() => expect(el.querySelector('.cell-count--error')).not.toBeNull());
-    expect(el).not.toHaveTextContent('0');
+    expect(el.querySelector('[aria-hidden="true"]')).toHaveTextContent('!');
+    expect(el).toHaveTextContent(t('shell.countFailed', { error: 'HTTP 500: etcd down' }));
+  });
+
+  it('credentials: on an APISIX without credentials (its /credentials answers 404), "—" and no request per row', async () => {
+    const { el, admin } = cell('credentials', ALICE, CTX, { counts: {}, replies: { credentials: () => json(404, { error_msg: 'Unsupported resource type' }) } });
+    await waitFor(() => expect(el).toHaveTextContent(t('ui.empty')));
+    expect(admin.requests.filter((r) => r.url.pathname.includes('/consumers/'))).toEqual([]);
   });
 
   it('updated, desc and labels sort and read as on the other lists', () => {
@@ -106,12 +124,12 @@ describe('consumer filters', () => {
 
   it('group: the groups in use by name, and "No group"', () => {
     expect(filter('group').options(CONSUMERS, CTX)).toEqual([
-      { value: '', label: t('filter.noGroup') },
+      { value: NO_GROUP, label: t('filter.noGroup') },
       { value: 'gone', label: 'gone' },
       { value: 'partners', label: 'Partners' },
     ]);
     expect(pick({ group: ['partners'] })).toEqual(['alice']);
-    expect(pick({ group: [''] })).toEqual(['bob']);
+    expect(pick({ group: [NO_GROUP] })).toEqual(['bob']);
   });
 
   it('plugin and label', () => {

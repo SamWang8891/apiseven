@@ -21,7 +21,7 @@ const tag = `apiseven-live-${Date.now().toString(36)}`;
 const undo: (() => Promise<unknown>)[] = [];
 
 function saved(result: SaveResult): Item {
-  if (!result.ok) throw new Error(`expected a save, got ${'conflict' in result ? 'a conflict' : result.error.message}`);
+  if (!result.ok) throw new Error(`expected a save, got ${'conflict' in result ? 'a conflict' : 'exists' in result ? 'an existing object' : 'unchecked' in result ? result.unchecked.message : result.error.message}`);
   return result.item;
 }
 

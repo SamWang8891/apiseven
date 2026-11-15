@@ -131,6 +131,24 @@ describe('an auth plugin in a group', () => {
   });
 });
 
+describe('a switched-off plugin with settings APISIX would refuse when on', () => {
+  it('is saved as it is (APISIX stores it): no issue, and the card says what would be refused', async () => {
+    const OFF: Obj = { id: 'quiet', name: 'quiet', plugins: { 'limit-count': { _meta: { disable: true } } } };
+    const { user, admin } = await openEditor('#/consumer_groups/quiet?tab=plugins', { objects: { consumer_groups: [OFF], consumers: [] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'quiet' });
+    const card = await main().findByRole('group', { name: 'limit-count' });
+    await user.click(within(card).getByRole('button', { name: 'limit-count' }));
+    expect(await within(card).findByRole('note')).toHaveTextContent(t('pl.card.unchecked', { first: 'count: Required' }));
+    await user.keyboard('e');
+    await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cg.tab.general')}`) }));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('cg.general.desc') }), 'd');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toEqual({ ...OFF, desc: 'd' });
+  });
+});
+
 describe('creating a consumer group', () => {
   it('asks for an ID; Create PUTs consumer_groups/<id> with an empty plugins object', async () => {
     const { user, admin } = await openEditor('#/consumer_groups/new', { objects: { consumer_groups: [], consumers: [] }, replies: pluginReplies() });

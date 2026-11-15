@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
 import { redactObject } from '../plugins/secrets';
+import { MASK } from '../schema/secrets';
 import { registry } from '../resources/registry';
 import { referencesTo } from '../resources/resolve';
 import { pathFor } from '../router/paths';
@@ -30,7 +31,8 @@ export function ViewJsonDialog({ open, onClose, title, kind, value }: { open: bo
     try {
       if (!navigator.clipboard) throw new Error('clipboard unavailable');
       await navigator.clipboard.writeText(text);
-      toast.success(t('json.copied'));
+      // The masked text says so: the clipboard has the mask characters, not the secrets.
+      toast.success(text.includes(MASK) ? t('json.copiedMasked') : t('json.copied'));
     } catch (err) {
       toast.error(t('json.copyFailed', { error: err instanceof Error ? err.message : String(err) }));
     }

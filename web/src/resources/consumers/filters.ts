@@ -7,10 +7,16 @@ import { groupName } from './columns';
 
 const collator = new Intl.Collator(undefined, { numeric: true });
 
-/** The consumer's group id as the filter keys it ('' for none). */
+/**
+ * The "No group" option's value. Not '' (an empty value is lost in the URL: table/filter.ts
+ * readSelection), and no group id can be it: id_schema allows no spaces or parentheses.
+ */
+export const NO_GROUP = '(no group)';
+
+/** The consumer's group id as the filter keys it (NO_GROUP for none). */
 const groupOf = (value: Record<string, unknown>): string => {
   const g = value.group_id;
-  return typeof g === 'number' ? String(g) : typeof g === 'string' ? g : '';
+  return typeof g === 'number' ? String(g) : typeof g === 'string' && g !== '' ? g : NO_GROUP;
 };
 
 export const consumerFilters: FilterDef[] = [
@@ -21,9 +27,9 @@ export const consumerFilters: FilterDef[] = [
     },
     options: (items, ctx) => {
       const ids = new Map<string, string>();
-      for (const item of items) ids.set(groupOf(item.value), groupOf(item.value) === '' ? t('filter.noGroup') : (groupName(item, ctx) ?? ''));
+      for (const item of items) ids.set(groupOf(item.value), groupOf(item.value) === NO_GROUP ? t('filter.noGroup') : (groupName(item, ctx) ?? ''));
       // "No group" first, then the groups by name.
-      return [...ids].sort(([a, x], [b, y]) => (a === '' ? -1 : b === '' ? 1 : collator.compare(x, y))).map(([value, label]) => ({ value, label }));
+      return [...ids].sort(([a, x], [b, y]) => (a === NO_GROUP ? -1 : b === NO_GROUP ? 1 : collator.compare(x, y))).map(([value, label]) => ({ value, label }));
     },
     matches: (item, selected) => selected.includes(groupOf(item.value)),
   },

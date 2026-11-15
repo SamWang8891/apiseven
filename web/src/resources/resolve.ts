@@ -97,6 +97,12 @@ export interface RefTarget {
   item?: Item;
 }
 
+/** The object of `kind` with this id in the Ctx, once its list has loaded; undefined for a kind the Ctx doesn't hold. */
+export function findInCtx(kind: Kind, id: string, ctx: Ctx): Item | undefined {
+  const list = (CTX_LISTS as Partial<Record<Kind, keyof Ctx & keyof Ctx['loaded']>>)[kind];
+  return list && ctx.loaded[list] ? find(ctx[list], id) : undefined;
+}
+
 /** What a reference field (`service_id`, `plugin_config_id`, `upstream_id`, …) points at; undefined when unset. */
 export function resolveRef(kind: CtxKind, value: unknown, ctx: Ctx): RefTarget | undefined {
   const id = idOf(value);

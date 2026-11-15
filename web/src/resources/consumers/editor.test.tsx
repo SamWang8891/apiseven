@@ -187,6 +187,52 @@ describe("a save from each tab sends every field the tab does not own exactly as
   });
 });
 
+describe("a consumer's own auth plugins sign in whatever \"off\" says; its other plugins switch off", () => {
+  it.each(['key-auth', 'basic-auth', 'jwt-auth', 'hmac-auth', 'jwe-decrypt', 'ldap-auth', 'ldap-auth-advanced', 'multi-auth', 'wolf-rbac'])(
+    '%s: no on/off switch (header and run options), locked or editing',
+    async (plugin) => {
+      const { user } = await openEditor('#/consumers/sam?tab=plugins', { objects: { consumers: [{ username: 'sam', plugins: { [plugin]: {}, 'limit-count': { count: 1, time_window: 1 } } }] }, replies: pluginReplies() });
+      await main().findByRole('heading', { level: 1, name: 'sam' });
+      await settled();
+      const card = await main().findByRole('group', { name: plugin });
+      for (const step of ['locked', 'editing']) {
+        if (step === 'editing') await user.keyboard('e');
+        expect(within(card).queryByRole('switch'), step).toBeNull();
+        // limit-count, which "off" does switch off here, keeps its switch (a switch is text while locked).
+        if (step === 'editing') expect(main().getByRole('switch', { name: 'Enable limit-count' })).toBeInTheDocument();
+      }
+      await user.click(within(card).getByRole('button', { name: plugin }));
+      await user.click(within(card).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
+      expect(within(card).queryByRole('switch')).toBeNull();
+    },
+  );
+});
+
+describe('Duplicate', () => {
+  it("a copy of a consumer takes everything but its key; Create is refused until a new key is typed, then sends that", async () => {
+    const { user, admin } = await openEditor('#/consumers/new?from=jo&tab=plugins', { objects: { consumers: [JO], consumer_groups: GROUPS }, credentials: CREDENTIALS, replies: pluginReplies() });
+    await main().findByRole('button', { name: t('editor.create') });
+    await settled();
+    expect(document.body.innerHTML).not.toContain(KEY);
+    expect(main().getByText(t('pl.copySecrets', { names: 'key-auth' }))).toBeInTheDocument();
+    await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cs.tab.general')}`) }));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo2');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    expect(writesOf(admin)).toEqual([]);
+    await waitFor(() => expect(main().getByRole('tab', { name: /^Plugins/ })).toHaveAccessibleName(`${t('pl.tab')} ${t('ui.tabs.errors', { count: 1 })}`));
+
+    await user.click(main().getByRole('tab', { name: /^Plugins/ }));
+    await settled();
+    const card = await main().findByRole('group', { name: 'key-auth' });
+    await user.type(within(card).getByLabelText(/^key\b(?!-)/), 'jo2-key');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    const body = writesOf(admin)[0]?.body as Obj;
+    expect(body).toMatchObject({ username: 'jo2', desc: 'Jo', group_id: 'partners', plugins: { 'key-auth': { key: 'jo2-key' }, 'limit-count': { count: 5, time_window: 60, x_plugin: 'kept' } } });
+  });
+});
+
 describe("the consumer's own key-auth key", () => {
   it('is masked locked and while editing until revealed; the reveal ends with Save', async () => {
     const { user, admin } = await openConsumer('#/consumers/jo?tab=plugins');

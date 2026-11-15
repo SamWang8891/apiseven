@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest';
 import { ctxOf, itemOf } from '../test/ctx';
 import { pluginFixture } from '../test/pluginFixture';
-import { isAuthPlugin } from './auth';
+import { AUTH_SECRETS, isAuthPlugin, signsInAlways, withoutSignInSecrets } from './auth';
 import { consumerInheritedPlugins } from './inherited';
 import { AUTH_PLUGINS } from './subsystems';
 
@@ -30,5 +30,35 @@ describe("a consumer's inherited plugins", () => {
       { name: 'key-auth', from: 'consumer_group', disabled: false, notApplied: true },
       { name: 'limit-count', from: 'consumer_group', disabled: false },
     ]);
+  });
+});
+
+describe('sign-in plugins of consumers and credentials', () => {
+  it('signsInAlways: an auth plugin of a consumer or a credential; not a non-auth one, nor an auth plugin elsewhere', () => {
+    const { http } = pluginFixture();
+    expect(signsInAlways('credential', 'key-auth', http['key-auth'])).toBe(true);
+    expect(signsInAlways('consumer', 'basic-auth', undefined)).toBe(true);
+    expect(signsInAlways('consumer', 'limit-count', http['limit-count'])).toBe(false);
+    expect(signsInAlways('route', 'key-auth', http['key-auth'])).toBe(false);
+    expect(signsInAlways('consumer_group', 'key-auth', http['key-auth'])).toBe(false);
+  });
+
+  it("AUTH_SECRETS is each auth plugin's consumer schema encrypt_fields in the fixture", () => {
+    const { http } = pluginFixture();
+    const fromFixture = Object.fromEntries(
+      Object.entries(http)
+        .filter(([, info]) => info.type === 'auth' && Array.isArray(info.consumer_schema?.encrypt_fields) && (info.consumer_schema.encrypt_fields as unknown[]).length > 0)
+        .map(([name, info]) => [name, info.consumer_schema?.encrypt_fields]),
+    );
+    expect(AUTH_SECRETS).toEqual(fromFixture);
+  });
+
+  it('withoutSignInSecrets: a copy keeps everything but the auth plugins\' secrets', () => {
+    const plugins = { 'key-auth': { key: 'k' }, 'jwt-auth': { key: 'id', secret: 's', algorithm: 'HS256' }, 'limit-count': { count: 1, time_window: 1, redis_password: 'r' } };
+    expect(withoutSignInSecrets(plugins, pluginFixture().http)).toEqual({
+      plugins: { 'key-auth': {}, 'jwt-auth': { key: 'id', algorithm: 'HS256' }, 'limit-count': { count: 1, time_window: 1, redis_password: 'r' } },
+      cleared: ['jwt-auth', 'key-auth'],
+    });
+    expect(withoutSignInSecrets({ 'basic-auth': { username: 'u', password: 'p' } }).plugins).toEqual({ 'basic-auth': { username: 'u' } });
   });
 });

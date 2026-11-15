@@ -32,6 +32,13 @@
   color: var(--warn);
 }
 
+.pl-note--danger {
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
 .pl-alert {
   display: flex;
   flex-direction: column;
@@ -190,6 +197,23 @@
   flex: none;
   align-items: center;
   gap: var(--s2);
+}
+
+/* In place of the on/off switch of a consumer's or credential's auth plugin: it always signs in. */
+.pl-card__signin {
+  color: var(--text-2);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* Stored "off", but it still signs in: a danger pill, never "off". */
+.pl-card__signin--on-anyway {
+  padding: 0 6px;
+  border-radius: 9px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-weight: 600;
+  line-height: 18px;
 }
 
 .pl-card__problems {

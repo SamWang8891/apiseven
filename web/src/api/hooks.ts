@@ -31,11 +31,13 @@ export function scopedKey(connId: string, key: readonly unknown[]): unknown[] {
   return [connId, ...key];
 }
 
-export function useList(kind: Kind, parent?: Parent): UseQueryResult<Item[], ApiError> {
+/** `enabled: false` asks nothing (and shows what the cache has); `refetchOnWindowFocus: false` for many small lists (a count per row). */
+export function useList(kind: Kind, parent?: Parent, opts: { enabled?: boolean; refetchOnWindowFocus?: boolean } = {}): UseQueryResult<Item[], ApiError> {
   const client = useClient();
   return useQuery<Item[], ApiError>({
     queryKey: scopedKey(client.conn.id, queryKeys.list(kind, parent)),
     queryFn: () => client.list(kind, parent),
+    ...opts,
   });
 }
 
@@ -57,6 +59,20 @@ export function useAllPlugins(subsystem?: 'stream'): UseQueryResult<Record<strin
     // The client caches the result for its lifetime, so refetching would return the same data.
     staleTime: Infinity,
   });
+}
+
+/**
+ * The plugin list when some page has already fetched it (an editor), else undefined: never a
+ * request of its own (the list is large), so a list page's cells can prefer it when it is there.
+ */
+export function usePluginsIfLoaded(subsystem?: 'stream'): Record<string, PluginInfo> | undefined {
+  const client = useClient();
+  return useQuery<Record<string, PluginInfo>, ApiError>({
+    queryKey: scopedKey(client.conn.id, ['plugins', 'all', subsystem ?? 'http']),
+    queryFn: () => client.allPlugins(subsystem),
+    enabled: false,
+    staleTime: Infinity,
+  }).data;
 }
 
 /** A resource's JSON schema from this APISIX (`upstream`, `route`, …); see AdminClient.resourceSchema. */

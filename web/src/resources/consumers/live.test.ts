@@ -26,10 +26,13 @@ const api = new AdminClient({
 const gateway = env.APISIX_GATEWAY_URL ?? 'http://127.0.0.1:9080';
 const tag = `apiseven-live-${Date.now().toString(36)}`;
 const undo: (() => Promise<unknown>)[] = [];
-const check = { isNew: true, ctx: ctxOf({ loaded: { consumerGroups: false } }) };
+/** What the editor checks with: the live plugin list, so the plugin configs are checked too. */
+async function checkEnv() {
+  return { isNew: true, ctx: ctxOf({ loaded: { consumerGroups: false } }), plugins: await api.allPlugins() };
+}
 
 function saved(result: SaveResult): Item {
-  if (!result.ok) throw new Error(`expected a save, got ${'conflict' in result ? 'a conflict' : result.error.message}`);
+  if (!result.ok) throw new Error(`expected a save, got ${'conflict' in result ? 'a conflict' : 'exists' in result ? 'an existing object' : 'unchecked' in result ? result.unchecked.message : result.error.message}`);
   return result.item;
 }
 
@@ -65,6 +68,7 @@ describe.skipIf(env.APISIX_LIVE !== '1')('consumers and credentials against a li
   it('a key-auth credential lets its consumer in; a save that changes only its description keeps the key working', async () => {
     const username = `${tag}-a`;
     const consumer: Obj = { username, desc: 'live' };
+    const check = await checkEnv();
     expect(consumerIssues(consumer, check)).toEqual([]);
     saved(await saveResource(api, { kind: 'consumers', id: username, isNew: true, draft: consumer }));
     undo.push(() => api.remove('consumers', username));
@@ -101,6 +105,23 @@ describe.skipIf(env.APISIX_LIVE !== '1')('consumers and credentials against a li
     expect(after.value.plugins).toEqual({ 'key-auth': { key } });
     expect(await statusOf(url, { apikey: key }, 200)).toBe(200);
     expect(await statusOf(url, {}, 401)).toBe(401);
+  });
+
+  it('a key-auth credential stored with _meta.disable: true still signs in (APISIX ignores "off" for a consumer\'s keys)', async () => {
+    const username = `${tag}-d`;
+    saved(await saveResource(api, { kind: 'consumers', id: username, isNew: true, draft: { username } }));
+    undo.push(() => api.remove('consumers', username));
+    const parent = { consumer: username };
+    const key = `${tag}-off-key`;
+    const credential: Obj = { plugins: { 'key-auth': { key, _meta: { disable: true } } } };
+    expect(credentialIssues(credential, await checkEnv())).toEqual([]);
+    saved(await saveResource(api, { kind: 'credentials', id: 'off', isNew: true, draft: credential, parent }));
+    undo.push(() => api.remove('credentials', 'off', parent));
+
+    const url = await guardedRoute(`${tag}-off`, { 'key-auth': {} });
+    // If a later APISIX honours "off" here, this fails: the "still signs in" marker must then go.
+    expect(await statusOf(url, { apikey: key }, 200)).toBe(200);
+    expect(await statusOf(url, { apikey: 'wrong' }, 401)).toBe(401);
   });
 
   it('a basic-auth credential: its password survives a save that changes only its description', async () => {
