@@ -1,10 +1,12 @@
 // The route's conditions (`vars`, lua-resty-expr): one row per condition (variable, not, operator,
 // value), all AND-ed, for a flat list; a JSON editor for anything else (AND/OR groups, shapes the
-// rows can't show), whose value is emitted only once it is edited. What a row shows but can't emit
-// (a value without a variable, text that is not a number) is held from Save (usePending), and rows
-// keep ids of their own, so held text stays on its row when another one goes.
+// rows can't show), whose value is emitted only once it is edited. A stored empty object is an empty
+// list to APISIX (an empty Lua table): rows, kept as stored until the conditions are edited. What a
+// row shows but can't emit (a value without a variable, text that is not a number) is held from Save
+// (usePending), and rows keep ids of their own, so held text stays on its row when another one goes.
 import { ArrowDown, ArrowUp, Braces, List, Plus, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type FC } from 'react';
+import { isLuaArray } from '../../api/lua';
 import { deepEqual } from '../../editor/draft';
 import { t } from '../../i18n';
 import { Button, Checkbox, CodeEditor, Field, PendingScope, Select, TagInput, useEditingState, useHeld, useLocked, usePending } from '../../ui';
@@ -44,8 +46,9 @@ function parse(text: string): Parsed {
   } catch {
     return { ok: false, message: t('rt.vars.held.json') };
   }
-  if (!Array.isArray(value)) return { ok: false, message: t('rt.vars.held.jsonList') };
-  return { ok: true, value: value.length > 0 ? value : undefined };
+  // An empty object is an empty Lua table, which APISIX takes as an empty list (isLuaArray).
+  if (!isLuaArray(value)) return { ok: false, message: t('rt.vars.held.jsonList') };
+  return { ok: true, value: Array.isArray(value) && value.length > 0 ? value : undefined };
 }
 
 export const VarsBuilder: FC<VarsBuilderProps> = ({ value, onChange, error }) => {

@@ -320,6 +320,19 @@ describe('what the Matching tab shows is what gets saved', () => {
     expect(writesOf(admin)[0]?.body).not.toHaveProperty('host');
   });
 
+  // Final wave E3: a stored `vars: {}` (an empty list to APISIX) holds nothing and is sent as stored.
+  it('a stored `vars: {}` blocks neither Save nor a tab switch, and is sent as stored', async () => {
+    const { user, admin } = await openRoute({ ...SHOP, vars: {} }, '#/routes/shop?tab=matching');
+    await settled();
+    await user.keyboard('e');
+    await user.click(tab(t('rt.tab.general')));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    await user.type(await main().findByRole('textbox', { name: t('rt.general.name') }), '-2');
+    saveKeys();
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ name: 'shop-2', vars: {} });
+  });
+
   it('a URI typed without Enter is saved; one without a leading / blocks Save, naming URIs', async () => {
     const { user, admin } = await openRoute(SHOP, '#/routes/shop?tab=matching');
     await settled();

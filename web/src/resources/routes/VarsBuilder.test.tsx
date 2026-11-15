@@ -263,6 +263,38 @@ describe('VarsBuilder JSON', () => {
     expect(h.value()).toBeUndefined();
   });
 
+  // Final wave E3: APISIX takes `vars: {}` as an empty list (an empty Lua table, schema_def.lua `vars = {type = "array"}`).
+  it('a stored empty object is an empty condition list: rows, nothing held, kept as stored until the conditions are edited', async () => {
+    const stored = {};
+    const h = renderVars(stored);
+    expect(screen.getByRole('button', { name: t('rt.vars.add') })).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: t('rt.vars.json') })).not.toBeInTheDocument();
+    expect(h.held()).toEqual([]);
+    // As JSON, it is no held input either, and back to rows is offered.
+    await h.user.click(screen.getByRole('button', { name: t('rt.vars.asJson') }));
+    expect(await screen.findByRole('textbox', { name: t('rt.vars.json') })).toBeInTheDocument();
+    expect(h.held()).toEqual([]);
+    await h.user.click(screen.getByRole('button', { name: t('rt.vars.asRows') }));
+    expect(h.changes).not.toHaveBeenCalled();
+    expect(h.value()).toBe(stored);
+
+    await addRow(h.user);
+    await h.user.type(variable(1), 'arg_a');
+    await h.user.type(valueBox(1), 'x');
+    expect(h.value()).toEqual([['arg_a', '==', 'x']]);
+  });
+
+  it('typed as JSON, an empty object is an empty list too: nothing held, vars removed', async () => {
+    const h = renderVars([['a', '==', '1']]);
+    await h.user.click(screen.getByRole('button', { name: t('rt.vars.asJson') }));
+    const editor = await screen.findByRole('textbox', { name: t('rt.vars.json') });
+    await h.user.click(editor);
+    await h.user.keyboard('{Control>}a{/Control}');
+    await h.user.paste('{}');
+    expect(h.held()).toEqual([]);
+    expect(h.value()).toBeUndefined();
+  });
+
   it('refuses to switch to JSON while a row holds input', async () => {
     const h = renderVars([['a', '>', 1]]);
     await h.user.clear(valueBox(1));
@@ -289,6 +321,11 @@ describe('VarsBuilder locked', () => {
 
   it('no conditions read as such', () => {
     renderVars(undefined, { locked: true });
+    expect(screen.getByText(t('rt.vars.none'))).toBeInTheDocument();
+  });
+
+  it('a stored empty object reads as no conditions', () => {
+    renderVars({}, { locked: true });
     expect(screen.getByText(t('rt.vars.none'))).toBeInTheDocument();
   });
 

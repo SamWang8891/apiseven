@@ -30,12 +30,14 @@ describe('which conditions the rows can show', () => {
     expect(conditionOf(raw)).toBeUndefined();
   });
 
-  it('a value is representable when it is nothing or a flat list of conditions', () => {
+  it('a value is representable when it is nothing, an empty table or a flat list of conditions', () => {
     expect(representable(undefined)).toBe(true);
     expect(representable([])).toBe(true);
     expect(representable([['a', '==', '1']])).toBe(true);
     expect(representable([['a', '==', '1'], ['OR', ['a', '==', '1'], ['b', '==', '2']]])).toBe(false);
-    expect(representable({})).toBe(false);
+    // Final wave E3: an empty object is an empty Lua table, an empty list to APISIX.
+    expect(representable({})).toBe(true);
+    expect(representable({ a: 1 })).toBe(false);
   });
 
   it('rows made from a value give it back unchanged, an uppercase operator and a string ipmatch included', () => {

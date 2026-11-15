@@ -2,6 +2,7 @@
 // it), all of which must hold for the route to match. The rows editor handles the common case, a
 // flat list of `[variable, operator, value]` or `[variable, "!", operator, value]`; anything else
 // (AND/OR groups, the two-element shorthand, values of an unexpected type) stays JSON.
+import { isLuaArray } from '../../api/lua';
 import { deepEqual } from '../../editor/draft';
 import { t } from '../../i18n';
 
@@ -51,9 +52,12 @@ export function conditionOf(raw: unknown): Condition | undefined {
   return isScalar(value) ? { variable, not: raw.length === 4, op: lower, value } : undefined;
 }
 
-/** Whether the rows can show `value`: nothing, or a flat list of conditions. */
+/**
+ * Whether the rows can show `value`: nothing, an empty object (an empty Lua table, which APISIX takes
+ * as an empty list: isLuaArray), or a flat list of conditions.
+ */
 export function representable(value: unknown): boolean {
-  return value === undefined || (Array.isArray(value) && value.every((c) => conditionOf(c) !== undefined));
+  return value === undefined || (!Array.isArray(value) && isLuaArray(value)) || (Array.isArray(value) && value.every((c) => conditionOf(c) !== undefined));
 }
 
 /**
