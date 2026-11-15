@@ -100,6 +100,9 @@ describe('pending input', () => {
     await user.click(within(dialog).getByRole('button', { name: t('editor.pending.stay') }));
     expect(tab(/^Hold/)).toHaveAttribute('aria-selected', 'true');
     expect(main().getByRole('textbox', { name: 'held' })).toHaveValue('x');
+    // Task 16b item 140: focus comes back to the tab strip, on the tab that stayed (the clicked one would switch on focus).
+    await waitFor(() => expect(tab(/^Hold/)).toHaveFocus());
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
 
     await user.click(tab(/^General/));
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.pending.discard') }));

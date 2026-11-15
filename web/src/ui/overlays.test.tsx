@@ -50,6 +50,52 @@ describe('ConfirmDialog', () => {
     await user.click(confirm);
     expect(onConfirm).not.toHaveBeenCalled();
   });
+
+  // Task 16b item 140: a ConfirmDialog has no trigger of its own; focus goes back to what had it when it opened.
+  function Opener({ removeOpener = false }: { removeOpener?: boolean }) {
+    const [open, setOpen] = useState(false);
+    const [gone, setGone] = useState(false);
+    return (
+      <main tabIndex={-1} aria-label="page">
+        <input aria-label="before" />
+        {!gone && <button onClick={() => setOpen(true)}>Delete…</button>}
+        <ConfirmDialog
+          open={open}
+          title="Delete it?"
+          confirmLabel="Delete"
+          onConfirm={() => {
+            if (removeOpener) setGone(true);
+            setOpen(false);
+          }}
+          onCancel={() => setOpen(false)}
+        />
+      </main>
+    );
+  }
+
+  it('returns focus to the element that opened it, on Cancel, Escape and a confirm that keeps the page', async () => {
+    const user = userEvent.setup();
+    render(<Opener />);
+    const opener = screen.getByRole('button', { name: 'Delete…' });
+    await user.click(opener);
+    await user.click(await screen.findByRole('button', { name: t('ui.cancel') }));
+    expect(opener).toHaveFocus();
+    await user.click(opener);
+    await screen.findByRole('alertdialog');
+    await user.keyboard('{Escape}');
+    expect(opener).toHaveFocus();
+    await user.click(opener);
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(opener).toHaveFocus();
+  });
+
+  it('when that element is gone, focus goes to main, not body', async () => {
+    const user = userEvent.setup();
+    render(<Opener removeOpener />);
+    await user.click(screen.getByRole('button', { name: 'Delete…' }));
+    await user.click(await screen.findByRole('button', { name: 'Delete' }));
+    expect(screen.getByRole('main', { name: 'page' })).toHaveFocus();
+  });
 });
 
 describe('Tabs', () => {
