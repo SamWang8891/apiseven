@@ -257,11 +257,11 @@ with a message naming the variable.
 |---|---|
 | `APISIX_ADMIN_URL` | Required. The Admin API, for example `http://apisix:9180` (`http` or `https`; a trailing `/apisix/admin` is accepted and dropped). |
 | `APISIX_ADMIN_KEY` | Optional. If set, the server sends this key with every request (replacing any key the browser sends) and the browser asks for none. If unset, the browser asks for a key and the server passes it through. |
-| `APISIX_ADMIN_KEY_FILE` | Optional. A file holding the key; wins over `APISIX_ADMIN_KEY`. Surrounding white space is trimmed; an empty or unreadable file is an error. |
+| `APISIX_ADMIN_KEY_FILE` | Optional. The absolute path of a file holding the key, such as `/run/secrets/apisix_admin_key`; wins over `APISIX_ADMIN_KEY`. Surrounding white space is trimmed; a relative path, or an empty or unreadable file, is an error. |
 | `LISTEN` | The address to listen on. Default `:8080`. |
 | `BASIC_AUTH_USER` | Optional. With a password, HTTP Basic auth in front of everything but `/healthz`. |
 | `BASIC_AUTH_PASSWORD` | The Basic auth password. Setting only one of user and password is an error. |
-| `BASIC_AUTH_PASSWORD_FILE` | A file holding the password; wins over `BASIC_AUTH_PASSWORD`. Trimmed like the key file. |
+| `BASIC_AUTH_PASSWORD_FILE` | The absolute path of a file holding the password; wins over `BASIC_AUTH_PASSWORD`. Trimmed and checked like the key file. |
 | `ALLOWED_HOSTS` | Optional. Comma-separated host names (no scheme, no port) apiseven may be opened under, besides IP addresses and `localhost`. `*` turns the check off. Not needed with Basic auth. |
 | `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY` | Ignored on purpose: apiseven always connects to `APISIX_ADMIN_URL` directly, never through a forward proxy (Docker can set these in every container). |
 | `SSL_CERT_FILE` | Optional. A CA certificate (PEM) to trust for an `https://` Admin API; see [An `https://` Admin API](#an-https-admin-api). |

@@ -104,19 +104,21 @@ func parseListen(raw string) (string, error) {
 	return raw, nil
 }
 
-// secret reads NAME_FILE (which wins; its contents trimmed) or NAME (trimmed). Empty means unset,
-// except for a file: a file that is named but empty or unreadable is an error. A value that cannot
-// travel in an HTTP header is an error too; no error message repeats the value.
+// secret reads NAME_FILE (which wins; an absolute path, the file's contents trimmed) or NAME
+// (trimmed). Empty means unset, except for a file: a file that is named but empty or unreadable is
+// an error. A value that cannot travel in an HTTP header is an error too; no error message repeats
+// the value.
 func secret(getenv func(string) string, name string) (string, error) {
 	value := strings.TrimSpace(getenv(name))
 	source := name
 	if file := getenv(name + "_FILE"); file != "" {
 		source = name + "_FILE"
-		data, err := os.ReadFile(file)
-		if err != nil && errors.Is(err, fs.ErrNotExist) && !strings.ContainsRune(file, '/') {
-			// No slash and no such file: likely the value itself pasted in. Do not repeat it.
-			return "", fmt.Errorf("%s: no such file; it takes the path to a file that holds the value, such as /run/secrets/%s", source, strings.ToLower(name))
+		if !strings.HasPrefix(file, "/") {
+			// Not an absolute path: possibly the value itself pasted in (a base64 key has slashes too),
+			// so it is not repeated.
+			return "", fmt.Errorf("%s: it takes the absolute path to a file that holds the value, such as /run/secrets/%s", source, strings.ToLower(name))
 		}
+		data, err := os.ReadFile(file)
 		if err != nil {
 			// Only the path and the reason: a *PathError's text is "open <path>: <reason>".
 			var pathErr *fs.PathError
