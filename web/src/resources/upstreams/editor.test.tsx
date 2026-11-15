@@ -6,6 +6,7 @@ import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
 import { schemaErrors } from '../../schema/ajv';
 import { resetApp } from '../../test/app';
+import { newPathFor } from '../../router/paths';
 import { main, openEditor, writesOf } from '../../test/editor';
 import { editableControls } from '../../test/schemaForm';
 import { upstreamSchema } from '../../test/upstreamSchema';
@@ -381,6 +382,20 @@ describe('fields holding input that is not in the draft', () => {
     await user.keyboard('{Control>}s{/Control}');
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body?.nodes).toEqual({ 'a.example': 1, 42: 1 });
+  });
+});
+
+describe('a new upstream: required values wait, but never on a path the draft cannot resolve (Task 16b, item 154; fix round 1, R1)', () => {
+  it('a Duplicate of an upstream with map-form nodes: clearing node 1’s weight says "Enter a weight." at once', async () => {
+    const MAP: Obj = { id: 'm1', name: 'map-pool', type: 'roundrobin', nodes: { 'a.example:80': 1, 'b.example:80': 1 } };
+    const { user, admin } = await openEditor(`#${newPathFor('upstreams')}?from=m1&tab=nodes`, { objects: { upstreams: [MAP] } });
+    const weight = await main().findByRole('spinbutton', { name: t('up.nodes.weightN', { n: 1 }) });
+    expect(tab(t('up.section.nodes'))).toHaveAccessibleName(t('up.section.nodes'));
+    await user.clear(weight);
+    await user.tab();
+    await waitFor(() => expect(tab(t('up.section.nodes'))).toHaveAccessibleName(`${t('up.section.nodes')} ${t('ui.tabs.errors', { count: 1 })}`));
+    expect(main().getByText(t('up.issue.weightMissing'))).toBeInTheDocument();
+    expect(writesOf(admin)).toEqual([]);
   });
 });
 

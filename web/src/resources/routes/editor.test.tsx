@@ -6,6 +6,7 @@ import type { Obj } from '../../api/types';
 import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
 import { resetApp } from '../../test/app';
+import { newPathFor } from '../../router/paths';
 import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
@@ -168,6 +169,56 @@ describe('a new route opens without red (Task 16b, item 154)', () => {
     expect(main().getByText(t('rt.issue.noUri'))).toBeInTheDocument();
     // The Upstream tab's problem still waits for a Save.
     expect(tab(t('rt.tab.upstream'))).toHaveAccessibleName(t('rt.tab.upstream'));
+  });
+});
+
+describe('a new route: a plugin card added is not all in red (Task 16b, item 154; fix round 1, R1)', () => {
+  const plugins = () => tab(t('pl.tab'));
+  const count = () => main().getByRole('textbox', { name: 'count (required)' });
+
+  async function addLimitCount(user: Awaited<ReturnType<typeof openEditor>>['user']) {
+    await user.click(await main().findByRole('button', { name: t('pl.add') }));
+    const picker = await screen.findByRole('dialog', { name: t('pl.picker.title') });
+    await user.type(within(picker).getByRole('combobox', { name: t('pl.picker.search') }), 'limit-count');
+    await user.click(within(picker).getByRole('option', { name: /^limit-count\b/ }));
+    await main().findByRole('textbox', { name: 'count (required)' });
+  }
+
+  it('its required fields wait for a refused Save: no error, no badge; then all of them', async () => {
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?tab=plugins`, { objects: objects([]), replies: pluginReplies() });
+    await settled();
+    await addLimitCount(user);
+    expect(count()).not.toHaveAccessibleDescription(expect.stringContaining(t('schema.required')) as string);
+    expect(plugins()).toHaveAccessibleName(t('pl.tab'));
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(plugins()).toHaveAccessibleName(`${t('pl.tab')} ${t('ui.tabs.errors', { count: 2 })}`));
+    expect(count()).toHaveAccessibleDescription(expect.stringContaining(t('schema.required')) as string);
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('a value typed into a required field and cleared again shows its error at once; the other waits', async () => {
+    const { user } = await openEditor(`#${newPathFor('routes')}?tab=plugins`, { objects: objects([]), replies: pluginReplies() });
+    await settled();
+    await addLimitCount(user);
+    await user.type(count(), '5');
+    await user.clear(count());
+    await waitFor(() => expect(count()).toHaveAccessibleDescription(expect.stringContaining(t('schema.required')) as string));
+    expect(plugins()).toHaveAccessibleName(`${t('pl.tab')} ${t('ui.tabs.errors', { count: 1 })}`);
+    expect(main().getByRole('textbox', { name: 'time_window (required)' })).not.toHaveAccessibleDescription(expect.stringContaining(t('schema.required')) as string);
+  });
+
+  it('the JSON tab: a plugin pasted in without its required settings waits; a value of the wrong type shows at once', async () => {
+    const { user } = await openEditor(`#${newPathFor('routes')}?tab=json`, { objects: objects([]), replies: pluginReplies() });
+    const box = await jsonEditor(t('kind.routes.singular'));
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(JSON.stringify({ uri: '/a', status: 1, plugins: { 'limit-count': {} } }));
+    await waitFor(() => expect(box).toHaveTextContent('limit-count'));
+    for (const label of TAB_LABELS()) expect(tab(label)).toHaveAccessibleName(label);
+    expect(main().queryByRole('region', { name: t('editor.issues') })).toBeNull();
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(JSON.stringify({ uri: '/a', status: 1, plugins: { 'limit-count': { count: -1 } } }));
+    await waitFor(() => expect(plugins()).toHaveAccessibleName(`${t('pl.tab')} ${t('ui.tabs.errors', { count: 1 })}`));
   });
 });
 

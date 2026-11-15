@@ -3,53 +3,57 @@
 // shown on a field the user has not touched and is not counted on a tab badge: a new page does not
 // open in red. The first refused Save (button or Cmd/Ctrl-S) shows all of them, as before; a problem
 // about a value the user entered shows at once. Save stays enabled (a refused Save is how the user
-// learns what is missing), and it is refused for every problem, shown or not.
-// - "Only says a value is missing": the draft holds nothing at the problem's path (no key, "", [] or
-//   {}), or the problem says so itself (Issue.missing: one about the object as a whole).
-// - "Touched": the user changed the draft at that path, below it, or above it (a whole object pasted
-//   in the JSON tab); a problem about the object as a whole is touched by nothing but a refused Save.
+// learns what is missing), and it is refused for every problem, shown or not. As ruled in fix round
+// 1 (R1):
+// - "Only says a value is missing": the draft holds nothing at the problem's path (no value, null,
+//   "", [] or {}), or the problem says so itself (Issue.missing: one about the object as a whole). A
+//   problem whose path does not resolve in the draft (a map's rows named by place, a key that holds a
+//   ".") is shown: fail open.
+// - "Touched": the draft's value at the field's own path, or below it, has differed from the start
+//   at some time in this session; nothing and nothing count as the same. A change above it (a plugin
+//   card or a row added, an object pasted in the JSON tab) touches only what it put a value in. A
+//   problem about the object as a whole is touched by nothing but a refused Save.
 // One rule for every kind, in the frame (Editor.tsx); the kinds' checks are unchanged.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
-import { deepEqual } from './draft';
+import { deepEqual, getPath, isEmptyValue } from './draft';
 import type { Issue } from './issues';
 
-/** The dotted paths where `after` differs from `before`: the deepest that differ, a key or row present on one side only as a whole. */
+/** Nothing there: no value, null, "", [] or {}. */
+const nothing = (v: unknown): boolean => v === null || isEmptyValue(v);
+const same = (a: unknown, b: unknown): boolean => deepEqual(a, b) || (nothing(a) && nothing(b));
+const container = (v: unknown): v is Obj | unknown[] => isObj(v) || Array.isArray(v);
+const keysOf = (v: unknown): string[] => (Array.isArray(v) ? v.map((_, i) => String(i)) : isObj(v) ? Object.keys(v) : []);
+const childOf = (v: unknown, key: string): unknown => (Array.isArray(v) ? v[Number(key)] : isObj(v) ? v[key] : undefined);
+
+/**
+ * The dotted paths whose value differs from `before` to `after` (nothing and nothing the same): a
+ * path that holds an object or a list on either side, and every path below it that differs, so what
+ * a new row or plugin card brings in is recorded only where it holds a value.
+ */
 export function changedPaths(before: unknown, after: unknown, prefix = ''): string[] {
-  if (deepEqual(before, after)) return [];
-  const at = (key: string | number) => (prefix === '' ? String(key) : `${prefix}.${String(key)}`);
-  if (isObj(before) && isObj(after)) {
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
-    return [...keys].flatMap((key) => (Object.hasOwn(before, key) && Object.hasOwn(after, key) ? changedPaths(before[key], after[key], at(key)) : [at(key)]));
-  }
-  if (Array.isArray(before) && Array.isArray(after)) {
-    return Array.from({ length: Math.max(before.length, after.length) }, (_, i) => (i < before.length && i < after.length ? changedPaths(before[i], after[i], at(i)) : [at(i)])).flat();
-  }
-  return [prefix];
+  if (same(before, after)) return [];
+  if (!container(before) && !container(after)) return [prefix];
+  const at = (key: string) => (prefix === '' ? key : `${prefix}.${key}`);
+  const keys = new Set([...keysOf(before), ...keysOf(after)]);
+  const below = [...keys].flatMap((key) => changedPaths(childOf(before, key), childOf(after, key), at(key)));
+  // Two containers that differ only in what counts as nothing (an empty key) did not change.
+  return below.length > 0 || !(container(before) && container(after)) ? [prefix, ...below] : [];
 }
 
-/** The draft's value at a dotted path (array rows by number). */
-function valueAt(draft: Obj, path: string): unknown {
-  let at: unknown = draft;
-  for (const key of path.split('.')) {
-    if (Array.isArray(at)) at = at[Number(key)];
-    else if (isObj(at)) at = at[key];
-    else return undefined;
-  }
-  return at;
+/** Whether `issue` only says that a required value is missing (and its path resolves in the draft). */
+export function onlyMissing(issue: Issue, draft: Obj): boolean {
+  if (issue.missing === true) return true;
+  if (issue.path === '') return false;
+  const parts = issue.path.split('.');
+  return container(getPath(draft, parts.slice(0, -1))) && nothing(getPath(draft, parts));
 }
 
-const empty = (value: unknown): boolean =>
-  value === undefined || value === '' || (Array.isArray(value) && value.length === 0) || (isObj(value) && Object.keys(value).length === 0);
-
-/** Whether `issue` only says that a required value is missing. */
-export const onlyMissing = (issue: Issue, draft: Obj): boolean => issue.missing === true || (issue.path !== '' && empty(valueAt(draft, issue.path)));
-
-/** Whether the user changed the draft at `path`, below it or above it; never for the object as a whole. */
+/** Whether the user changed the draft at `path` or below it; never for the object as a whole. */
 export function touchedAt(path: string, touched: ReadonlySet<string>): boolean {
   if (path === '') return false;
-  for (const q of touched) if (q === path || q.startsWith(`${path}.`) || path.startsWith(`${q}.`)) return true;
+  for (const q of touched) if (q === path || q.startsWith(`${path}.`)) return true;
   return false;
 }
 
