@@ -120,6 +120,27 @@ describe('the upstream editor', () => {
     expect(await toggle(t('up.hc.unhealthy'))).toHaveAttribute('aria-expanded', 'false');
   });
 
+  // Task 16b item 160: a refused Save opens a section the user closed while a problem sits inside it.
+  it('a closed section with a problem inside opens on a refused Save, on its tab and after a tab switch', async () => {
+    const BAD = { ...POOL, checks: { active: { unhealthy: { timeouts: 300 } } } };
+    const { user, admin } = await openEditor('#/upstreams/web-pool?tab=health', { objects: { upstreams: [BAD] } });
+    await main().findByRole('heading', { level: 1, name: 'web-pool' });
+    await user.keyboard('e');
+    const unhealthy = async () => main().findByRole('button', { name: new RegExp(`^${t('up.hc.unhealthy')}`) });
+    expect(await unhealthy()).toHaveAttribute('aria-expanded', 'true');
+    await user.click(await unhealthy());
+    expect(await unhealthy()).toHaveAttribute('aria-expanded', 'false');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    expect(await unhealthy()).toHaveAttribute('aria-expanded', 'true');
+    // Closed again, then away: the refused Save brings the user back to it, open.
+    await user.click(await unhealthy());
+    await user.click(tab(t('up.section.nodes')));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(tab(t('up.section.health'))).toHaveAttribute('aria-selected', 'true'));
+    expect(await unhealthy()).toHaveAttribute('aria-expanded', 'true');
+    expect(writesOf(admin)).toEqual([]);
+  });
+
   it('an upstream without nodes saves, as APISIX stores it; the Nodes tab says requests fail until one is added (Ruling 1)', async () => {
     const { user, admin } = await openEditor('#/upstreams/new?tab=nodes', { objects: { upstreams: [] } });
     expect(await main().findByText(t('up.nodes.emptyNote'))).toBeInTheDocument();

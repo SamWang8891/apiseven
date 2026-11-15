@@ -39,6 +39,7 @@ import { useLeaveGuard } from './useLeaveGuard';
 import { useMounted } from './useMounted';
 import { tabStrip } from './tabStrip';
 import { useSaveRequest } from './useSaveRequest';
+import { SaveRefusalsContext } from './saveRefusals';
 import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { useShownTabs } from './useShownTabs';
 
@@ -333,6 +334,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     return tab ? tab.render(props) : <JsonTab {...props} />;
   }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, objectId]);
   const tabs = tabStrip({ shown: shownTabs, tabFields, draft, baseline, dirty, active, content, byTab, failureTab, pending });
+  const refusals = useMemo(() => ({ session, attempts: saveAttempts }), [session, saveAttempts]);
 
   const status = useHeaderStatus({ def, draft, name, held: active === JSON_TAB ? pending[0] : undefined, body: bodyRef, edit });
 
@@ -385,9 +387,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         <LockProvider locked={!editable} session={session} busy={saving}>
           {/* The tabs' view state, kept for the page: a tab switch or Discard remounts them. */}
           <ViewMemory>
-            <PendingProvider key={epoch} onChange={tabState.onPending}>
-              <Tabs tabs={tabs} active={active} onChange={tabState.chooseTab} />
-            </PendingProvider>
+            <SaveRefusalsContext value={refusals}>
+              <PendingProvider key={epoch} onChange={tabState.onPending}>
+                <Tabs tabs={tabs} active={active} onChange={tabState.chooseTab} />
+              </PendingProvider>
+            </SaveRefusalsContext>
           </ViewMemory>
         </LockProvider>
       </div>

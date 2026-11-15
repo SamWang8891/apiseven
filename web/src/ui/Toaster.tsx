@@ -19,11 +19,13 @@ const DURATION: Record<ToastTone, number> = { success: 4000, info: 5000, error: 
  * Only what shows counts down: a toast is mounted (and its time starts) when it becomes visible, and
  * one that is not visible is not mounted, so its time does not run. That is the case for:
  * - toasts beyond the newest MAX_VISIBLE: they wait, collapsed, behind a "+N more" row that shows
- *   them all (and that a swipe or Escape clears);
+ *   them all (as do a swipe of it and Escape on it: what waits has not been seen, so nothing clears it);
  * - while a dialog is open, every toast but the newest, which sits centred in the band under the
  *   dialog (overlay.css keeps a dialog clear of the bottom 12% of the window), so none covers its
  *   buttons. The others come back, with their full time, when it closes.
- * The stack keeps the order the toasts were raised in, whatever order they were mounted in.
+ * The stack keeps the order the toasts were raised in, whatever order they were mounted in. Escape
+ * dismisses a toast only while focus is in it, never one pressed elsewhere (a field, the code
+ * editor's completion), which Radix would otherwise take as a dismissal of the newest.
  */
 export function Toaster() {
   const items = useSyncExternalStore(subscribeToasts, getToasts, getToasts);
@@ -36,7 +38,7 @@ export function Toaster() {
   const order = new Map(items.map((item, i) => [item.id, i]));
   return (
     <Toast.Provider label={t('ui.toast.label')} swipeDirection="right">
-      {waiting.length > 0 && <MoreRow count={waiting.length} onShow={() => setExpanded(true)} onClear={() => waiting.forEach((item) => dismissToast(item.id))} />}
+      {waiting.length > 0 && <MoreRow count={waiting.length} errors={waiting.filter((item) => item.tone === 'error').length} onShow={() => setExpanded(true)} />}
       {visible.map((item) => (
         <OneToast key={item.id} item={item} order={order.get(item.id) ?? 0} />
       ))}
@@ -55,6 +57,7 @@ function OneToast({ item, order }: { item: ToastItem; order: number }) {
       type={tone === 'error' ? 'foreground' : 'background'}
       duration={DURATION[tone]}
       onOpenChange={(open) => !open && dismissToast(id)}
+      onEscapeKeyDown={(e) => !inToast(e.target) && e.preventDefault()}
     >
       <Icon className="ui-toast__icon" aria-hidden="true" size={16} strokeWidth={2.25} />
       <Toast.Description className="ui-toast__message">
@@ -82,13 +85,43 @@ function OneToast({ item, order }: { item: ToastItem; order: number }) {
   );
 }
 
-/** "2 more notifications · Show": the older toasts waiting behind the visible ones. It never times out. */
-function MoreRow({ count, onShow, onClear }: { count: number; onShow: () => void; onClear: () => void }) {
+/** Whether a key event's target is in a toast (Escape there is meant for it). */
+const inToast = (target: EventTarget | null): boolean => target instanceof Element && target.closest('.ui-toast') !== null;
+
+/** `more` and, when errors wait among them, how many. */
+const withErrors = (more: string, errors: number): string =>
+  errors === 0 ? more : errors === 1 ? t('ui.toast.moreError', { more }) : t('ui.toast.moreErrors', { more, errors });
+
+/**
+ * "2 more notifications, 1 error · Show": the older toasts waiting behind the visible ones. It never
+ * times out and is never dismissed (nothing behind it was seen): Escape on it and a swipe show them.
+ * A change of what waits is announced.
+ */
+function MoreRow({ count, errors, onShow }: { count: number; errors: number; onShow: () => void }) {
   return (
-    <Toast.Root className="ui-toast ui-toast--more" style={{ order: -1 }} type="background" duration={Infinity} open onOpenChange={(open) => !open && onClear()}>
-      <Toast.Description className="ui-toast__message">{count === 1 ? t('ui.toast.moreOne') : t('ui.toast.more', { count })}</Toast.Description>
-      {/* Not a Toast.Action: that would close the row (and clear what waits) instead of showing it. */}
-      <button type="button" className="ui-toast__show" onClick={onShow}>
+    <Toast.Root
+      className="ui-toast ui-toast--more"
+      style={{ order: -1 }}
+      type="background"
+      duration={Infinity}
+      open
+      onOpenChange={() => {}}
+      onEscapeKeyDown={(e) => {
+        e.preventDefault();
+        if (inToast(e.target)) onShow();
+      }}
+      onSwipeStart={(e) => e.preventDefault()}
+      onSwipeMove={(e) => e.preventDefault()}
+      onSwipeEnd={(e) => {
+        e.preventDefault();
+        onShow();
+      }}
+    >
+      <Toast.Description className="ui-toast__message" aria-live="polite" aria-atomic="true">
+        {withErrors(count === 1 ? t('ui.toast.moreOne') : t('ui.toast.more', { count }), errors)}
+      </Toast.Description>
+      {/* Not a Toast.Action: that would close the row instead of showing what waits. */}
+      <button type="button" className="ui-toast__show" aria-label={t('ui.toast.showMore', { more: withErrors(t('ui.toast.moreShort', { count }), errors) })} onClick={onShow}>
         <ChevronUp aria-hidden="true" size={14} />
         {t('ui.toast.show')}
       </button>

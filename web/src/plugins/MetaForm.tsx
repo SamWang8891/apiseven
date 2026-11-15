@@ -19,8 +19,8 @@ export interface MetaFormProps {
   /** The plugin (its default priority). */
   info?: PluginInfo;
   /**
-   * Where APISIX never sends error_response: then it is not offered, and a stored one shows with a
-   * line saying so. APISIX sends it in place of the body of any plugin that rejects an HTTP request
+   * Where APISIX never sends error_response: then it is not offered, and a stored one shows with
+   * that reason as its help. APISIX sends it in place of the body of any plugin that rejects an HTTP request
    * (plugin.lua run_plugin, `code >= 400`, the `is_http` branch, 1486–1506), so it is used everywhere
    * except in the stream subsystem (`stream`: the session is closed, ngx_exit) and for a consumer's or
    * credential's sign-in plugin (`signIn`: its config there is the credential; it runs on the route).
@@ -126,6 +126,8 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisab
 
   const errorResponse = current.error_response;
   const offerError = errorResponseIgnored === undefined || errorResponse !== undefined;
+  // What the field is for, in its scope: where APISIX ignores it, why (never what it would send).
+  const errorHelp = errorResponseIgnored === undefined ? t('pl.meta.errorHelp') : t(`pl.meta.errorIgnored.${errorResponseIgnored}`);
   // How error_response is written: follows the stored value, else the user's pick.
   const [pick, setPick] = useState<'text' | 'json'>(isObj(errorResponse) ? 'json' : 'text');
   const kind = isObj(errorResponse) ? 'json' : typeof errorResponse === 'string' ? 'text' : pick;
@@ -200,7 +202,6 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisab
               onChange={(v) => switchKind(v === 'json' ? 'json' : 'text')}
             />
           )}
-          {errorResponseIgnored !== undefined && <p className="pl-note">{t(`pl.meta.errorIgnored.${errorResponseIgnored}`)}</p>}
           <PendingScope onChange={errorHeld.track}>
             {kind === 'json' ? (
               <JsonValue
@@ -210,7 +211,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisab
                 onChange={(v) => set('error_response', v)}
                 label="error_response"
                 ariaLabel={t('pl.meta.errorJsonLabel')}
-                help={t('pl.meta.errorHelp')}
+                help={errorHelp}
                 error={issueAt(issues, 'error_response')}
                 check={objectOnly}
               />
@@ -220,7 +221,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisab
                 label={<FieldLabel name="error_response" />}
                 rows={2}
                 value={typeof errorResponse === 'string' ? errorResponse : ''}
-                help={t('pl.meta.errorHelp')}
+                help={errorHelp}
                 error={issueAt(issues, 'error_response')}
                 onChange={(v) => set('error_response', v === '' ? undefined : v)}
               />

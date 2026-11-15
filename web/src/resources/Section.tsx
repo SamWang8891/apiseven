@@ -3,9 +3,11 @@
 // beside the title, and the section opens when one appears inside it. The body is not mounted while
 // collapsed, so it holds nothing that matters: the values live in the draft, and a section whose
 // field holds input it has not emitted (usePending) does not collapse (useHeld). Opened or closed by
-// the user, it stays so for the editor page (ui/ViewMemory: a tab switch remounts it), by its title.
+// the user, it stays so for the editor page (ui/ViewMemory: a tab switch remounts it), by its title,
+// until a Save is refused while a problem sits inside it: then it opens, as a card with one does.
 import { ChevronRight } from 'lucide-react';
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { use, useId, useRef, useState, type ReactNode } from 'react';
+import { refusedSince, SaveRefusalsContext } from '../editor/saveRefusals';
 import { t } from '../i18n';
 import { Badge, PendingScope, useHeld, useViewState } from '../ui';
 import './resources.css';
@@ -22,7 +24,13 @@ export interface SectionProps {
 
 export function Section({ title, summary, issues = 0, defaultOpen = false, children }: SectionProps) {
   const id = useId();
-  const [open, setOpen] = useViewState(typeof title === 'string' ? `section:${title}` : undefined, defaultOpen || issues > 0);
+  const refusals = use(SaveRefusalsContext);
+  /** Open or not, and as of which refused Save that was decided. */
+  const [state, setState] = useViewState(typeof title === 'string' ? `section:${title}` : undefined, () => ({ open: defaultOpen || issues > 0, at: refusals }));
+  const { open } = state;
+  const setOpen = (next: boolean | ((was: boolean) => boolean)) => setState((s) => ({ open: typeof next === 'function' ? next(s.open) : next, at: refusals }));
+  // A Save refused since then, with a problem inside, opens it (also when this tab mounts after one).
+  if (!open && issues > 0 && refusedSince(refusals, state.at)) setState({ open: true, at: refusals });
   const [seen, setSeen] = useState(issues);
   const held = useHeld();
   const bodyRef = useRef<HTMLDivElement>(null);

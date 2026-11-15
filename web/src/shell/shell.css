@@ -182,6 +182,7 @@
   gap: var(--s2);
 }
 
+/* The crumbs never paint past their box (over the header's tools), however narrow it gets. */
 .shell-crumbs {
   display: flex;
   align-items: baseline;
@@ -189,12 +190,15 @@
   min-width: 0;
   margin: 0;
   padding: 0;
+  overflow: hidden;
   font-weight: 600;
   list-style: none;
   white-space: nowrap;
 }
 
-/* A kind's name keeps its width; an id gives way (the longest the most), its whole text in a title. */
+/* An id gives way first (the longest the most), its whole text in a title; it keeps room for its
+   ellipsis. A kind's name gives way last, once the ids are down to that, with its title too. The
+   factors are large rather than small: below a sum of 1 a flex line gives way only in part. */
 .shell-crumbs__item {
   flex: 0 1 auto;
   min-width: 0;
@@ -202,13 +206,18 @@
   text-overflow: ellipsis;
 }
 
+.shell-crumbs__item--id {
+  flex-shrink: 100;
+  min-width: 3ch;
+}
+
 .shell-crumbs__item:not(.shell-crumbs__item--id) {
-  flex-shrink: 0;
+  flex-shrink: 1;
 }
 
 /* The page's own id (the last crumb) gives way after the ids before it. */
 .shell-crumbs__item--id:last-child {
-  flex-shrink: 0.2;
+  flex-shrink: 20;
 }
 
 .shell-crumbs__item a {

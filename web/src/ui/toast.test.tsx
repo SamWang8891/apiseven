@@ -63,7 +63,7 @@ describe('toasts', () => {
     expect(getToasts()).toHaveLength(5);
     expect(shown()).toEqual(['Notice 3', 'Notice 4', 'Notice 5']);
     expect(moreRow()).toHaveTextContent(t('ui.toast.more', { count: 2 }));
-    fireEvent.click(within(moreRow() as HTMLElement).getByRole('button', { name: t('ui.toast.show') }));
+    fireEvent.click(within(moreRow() as HTMLElement).getByRole('button', { name: t('ui.toast.showMore', { more: t('ui.toast.moreShort', { count: 2 }) }) }));
     expect(shown()).toEqual(['Notice 1', 'Notice 2', 'Notice 3', 'Notice 4', 'Notice 5']);
     expect(moreRow()).toBeNull();
   });
@@ -120,6 +120,83 @@ describe('toasts', () => {
       vi.advanceTimersByTime(1000);
     });
     expect(shown()).toEqual([]);
+  });
+
+  // Task 16b item 157: what waits behind "+N more" has not been seen: the row is never dismissed, and says what waits.
+  it('"+N more" says how many errors wait, on the row and in its button\'s name, and says it again when the count changes', () => {
+    render(<Toaster />);
+    act(() => {
+      toast.error('APISIX refused: etcd down');
+      for (const n of [1, 2, 3]) toast.info(`Notice ${n}`);
+    });
+    const row = moreRow() as HTMLElement;
+    expect(row).toHaveTextContent(t('ui.toast.moreError', { more: t('ui.toast.moreOne') }));
+    expect(within(row).getByRole('button', { name: t('ui.toast.showMore', { more: t('ui.toast.moreError', { more: t('ui.toast.moreShort', { count: 1 }) }) }) })).toHaveTextContent(t('ui.toast.show'));
+    const message = row.querySelector('.ui-toast__message') as HTMLElement;
+    expect(message).toHaveAttribute('aria-live', 'polite');
+    act(() => toast.info('Notice 4'));
+    expect(moreRow()).toHaveTextContent(t('ui.toast.moreError', { more: t('ui.toast.more', { count: 2 }) }));
+    act(() => {
+      for (const item of getToasts()) dismissToast(item.id);
+    });
+    act(() => {
+      toast.error('Refused once');
+      toast.error('Refused twice');
+      for (const n of [1, 2, 3]) toast.info(`Notice ${n}`);
+    });
+    expect(moreRow()).toHaveTextContent(t('ui.toast.moreErrors', { more: t('ui.toast.more', { count: 2 }), errors: 2 }));
+  });
+
+  it('Escape on the "+N more" row, or a swipe of it, shows what waits; nothing is dismissed', () => {
+    render(<Toaster />);
+    act(() => {
+      toast.error('APISIX refused: etcd down');
+      for (const n of [1, 2, 3]) toast.info(`Notice ${n}`);
+    });
+    const row = moreRow() as HTMLElement;
+    row.focus();
+    fireEvent.keyDown(row, { key: 'Escape' });
+    expect(getToasts()).toHaveLength(4);
+    expect(shown()).toEqual(['APISIX refused: etcd down', 'Notice 1', 'Notice 2', 'Notice 3']);
+
+    act(() => toast.info('Notice 4'));
+    act(() => {
+      for (const item of getToasts().slice(0, 2)) dismissToast(item.id);
+    });
+    act(() => {
+      for (const n of [5, 6, 7]) toast.info(`Notice ${n}`);
+    });
+    const again = moreRow() as HTMLElement;
+    Object.assign(again, { setPointerCapture: () => {}, hasPointerCapture: () => true, releasePointerCapture: () => {} });
+    fireEvent.pointerDown(again, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(again, { clientX: 30, clientY: 0 });
+    fireEvent.pointerMove(again, { clientX: 120, clientY: 0 });
+    fireEvent.pointerUp(again, { clientX: 120, clientY: 0 });
+    expect(getToasts()).toHaveLength(6);
+    expect(shown()).toEqual(['Notice 2', 'Notice 3', 'Notice 4', 'Notice 5', 'Notice 6', 'Notice 7']);
+  });
+
+  // Task 16b item 166: Escape typed elsewhere (a field, the code editor's completion) is not a dismissal.
+  it('Escape pressed outside the toasts dismisses none; Escape on a toast dismisses that one', () => {
+    render(
+      <>
+        <input aria-label="search" />
+        <Toaster />
+      </>,
+    );
+    act(() => {
+      toast.error('APISIX refused: etcd down');
+      toast.info('Copied');
+    });
+    const field = screen.getByRole('textbox', { name: 'search' });
+    field.focus();
+    fireEvent.keyDown(field, { key: 'Escape' });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(getToasts().map((item) => item.message)).toEqual(['APISIX refused: etcd down', 'Copied']);
+    const copied = [...document.querySelectorAll<HTMLElement>('.ui-toast')].find((el) => el.textContent?.includes('Copied')) as HTMLElement;
+    copied.focus();
+    fireEvent.keyDown(copied, { key: 'Escape' });
+    expect(getToasts().map((item) => item.message)).toEqual(['APISIX refused: etcd down']);
   });
 
   it('a page-bound refusal goes when the user moves to another page; every other toast stays, errors included', () => {

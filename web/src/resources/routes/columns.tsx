@@ -23,8 +23,6 @@ function oneOrMany(value: Obj, many: string, one: string): string[] {
   return typeof value[one] === 'string' && value[one] !== '' ? [value[one]] : [];
 }
 
-/** The methods a route matches; `ANY` when it sets none. */
-
 const LOGICAL = new Set(['AND', 'OR', '!AND', '!OR']);
 
 /** Conditions in a `vars` expression: leaves, counting through nested AND / OR (lua-resty-expr). */

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
+import { healthySummary, passiveHealthySummary, passiveUnhealthySummary, probeSummary, unhealthySummary } from './hcSummary';
 import { balancingSummary, connectionSummary, healthSummary, nodesSummary, tlsSummary } from './summary';
 
 describe('section summaries', () => {
@@ -37,5 +38,38 @@ describe('section summaries', () => {
     expect(tlsSummary({})).toBe(t('up.sum.tlsNone'));
     expect(tlsSummary({ tls: { client_cert: 'C', client_key: 'K', verify: true } })).toBe('inline client certificate, verify');
     expect(tlsSummary({ tls: { client_cert_id: 'c1', verify: false, ca_certs: ['A'] } })).toBe("client certificate c1, don't verify, 1 CA certificate");
+  });
+});
+
+// Task 16b item 159: a closed section's summary names only what its open fields show for the protocol.
+describe('health-check section summaries follow the protocol', () => {
+  const HTTP_ALL = {
+    http_method: 'POST',
+    http_path: '/h',
+    https_verify_certificate: false,
+    http_req_body: 'x',
+    req_headers: ['A: b'],
+    healthy: { interval: 2, http_statuses: [200] },
+    unhealthy: { http_failures: 3, tcp_failures: 4, http_statuses: [500] },
+  };
+
+  it('tcp: no method, path, body, headers, statuses, HTTP failures or certificate check', () => {
+    const tcp = { type: 'tcp', ...HTTP_ALL };
+    expect(probeSummary(tcp)).toBe('tcp');
+    expect(healthySummary(tcp)).toBe(t('up.hc.sum.every', { n: 2 }));
+    expect(unhealthySummary(tcp)).toBe(t('up.hc.sum.tcpFailures', { n: 4 }));
+    expect(passiveHealthySummary(tcp)).toBe(t('up.hc.sum.defaults'));
+    expect(passiveUnhealthySummary(tcp)).toBe(t('up.hc.sum.tcpFailures', { n: 4 }));
+  });
+
+  it('http (or none set): the HTTP parts, without the certificate check, which only https reads', () => {
+    for (const type of ['http', undefined]) {
+      const probe = probeSummary({ type, ...HTTP_ALL });
+      expect(probe).toContain('POST');
+      expect(probe).toContain(t('up.hc.sum.body'));
+      expect(probe).not.toContain(t('up.hc.sum.noVerify'));
+      expect(unhealthySummary({ type, ...HTTP_ALL })).toContain(t('up.hc.sum.httpFailures', { n: 3 }));
+    }
+    expect(probeSummary({ type: 'https', ...HTTP_ALL })).toContain(t('up.hc.sum.noVerify'));
   });
 });

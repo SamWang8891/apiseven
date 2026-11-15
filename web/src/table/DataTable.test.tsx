@@ -1,7 +1,7 @@
 import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item, Kind } from '../api/types';
 import { t } from '../i18n';
 import { registry, type ColumnDef, type Ctx } from '../resources/registry';
@@ -381,6 +381,48 @@ describe('search and filters', () => {
     await user.keyboard('{Escape}');
     expect(search).toHaveValue('');
     expect(names()).toHaveLength(4);
+  });
+
+  // Task 16b item 163: the active chip is brought into view as the list opens, not after the user has used the row.
+  it('the row follows its active chip while the list opens, and stops once the user uses the row', async () => {
+    const resized: ((entries: unknown[]) => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: (entries: unknown[]) => void) {
+          resized.push(callback);
+        }
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    );
+    const LANE: FilterDef = { ...TEAM, id: 'lane', label: 'Lane' };
+    const { user } = renderTable({ items, filters: [TEAM, LANE] }, '/routes?f.lane=web');
+    const row = document.querySelector<HTMLElement>('.tbl-toolbar__filters') as HTMLElement;
+    let scrollLeft = 0;
+    let width = 200;
+    Object.defineProperty(row, 'scrollLeft', { configurable: true, get: () => scrollLeft, set: (v: number) => (scrollLeft = v) });
+    Object.defineProperty(row, 'clientWidth', { configurable: true, get: () => width });
+    row.getBoundingClientRect = () => new DOMRect(0, 0, width, 30);
+    const active = row.querySelector<HTMLElement>('.tbl-chip--on') as HTMLElement;
+    active.getBoundingClientRect = () => new DOMRect(300 - scrollLeft, 0, 60, 30);
+    const resize = (to: number) =>
+      act(() => {
+        width = to;
+        for (const callback of resized) callback([]);
+      });
+    // The list loads and the count narrows the row: the active chip is brought (back) into view.
+    resize(180);
+    expect(scrollLeft).toBeGreaterThan(0);
+    // The user takes the row over (a chip, a scroll): a later change of width leaves it where it is.
+    scrollLeft = 0;
+    await user.click(screen.getByRole('button', { name: t('table.filter.label', { label: 'Team' }) }));
+    await user.keyboard('{Escape}');
+    const kept = scrollLeft;
+    resize(160);
+    expect(scrollLeft).toBe(kept);
+    vi.unstubAllGlobals();
   });
 
   // Task 16b item 40: a view the URL carries is followed through Back and Forward.

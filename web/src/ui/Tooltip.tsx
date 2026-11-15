@@ -11,11 +11,13 @@ export interface TooltipProps {
 
 /**
  * Shares the hover delay between tooltips: once one is open, moving to the next shows it at once.
- * Mount one near the root (the Shell does); every Tooltip needs one above it.
+ * Mount one near the root (the Shell does); every Tooltip needs one above it. Tooltips take no
+ * pointer (overlay.css), so none is hovered into: one closes as the pointer leaves its control,
+ * never lingering over a neighbour with its label (disableHoverableContent).
  */
 export function TooltipProvider({ children }: { children: ReactNode }) {
   return (
-    <RadixTooltip.Provider delayDuration={350} skipDelayDuration={200}>
+    <RadixTooltip.Provider delayDuration={350} skipDelayDuration={200} disableHoverableContent>
       <TooltipsProvided.Provider value>{children}</TooltipsProvided.Provider>
     </RadixTooltip.Provider>
   );

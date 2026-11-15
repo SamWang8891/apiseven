@@ -122,7 +122,8 @@ function reveal(row: HTMLElement, chip: HTMLElement): void {
  * sideways: a chip that takes focus scrolls fully into view (scroll padding clears the fade), a
  * button at each end that hides chips scrolls to them (for the pointer: the keyboard reaches every
  * chip with Tab), the end fades while more follow, and a chip with an active filter is scrolled into
- * view when the list opens. Chips are watched too, so a count pill appearing is taken into account.
+ * view when the list opens (until the user uses the row). Chips are watched too, so a count pill
+ * appearing is taken into account.
  */
 function Filters({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -135,7 +136,15 @@ function Filters({ children }: { children: ReactNode }) {
       setEdges((now) => (now.before === next.before && now.after === next.after ? now : next));
     };
     // An active filter's chip is in view from the start, and stays so while the row changes size (the
-    // "3 of 73" count appearing beside it narrows it once the list is in).
+    // "3 of 73" count appearing beside it narrows it once the list is in), until the user takes the row
+    // over (a chip, a scroll, a key): then a change of width never moves the chip they are using.
+    let following = true;
+    const box = el.parentElement ?? el;
+    const takeOver = () => {
+      following = false;
+    };
+    const USER = ['pointerdown', 'wheel', 'touchstart', 'keydown'] as const;
+    for (const type of USER) box.addEventListener(type, takeOver, { passive: true });
     const showActive = () => {
       const on = el.querySelector<HTMLElement>('.tbl-chip--on');
       if (on) reveal(el, on);
@@ -144,6 +153,7 @@ function Filters({ children }: { children: ReactNode }) {
     check();
     // A chip that takes focus shows whole (the browser leaves a half-shown one where it is).
     const onFocus = (e: FocusEvent) => {
+      takeOver();
       const chip = e.target instanceof HTMLElement ? e.target.closest<HTMLElement>('.tbl-toolbar__filters > *') : null;
       if (chip) reveal(el, chip);
     };
@@ -154,7 +164,7 @@ function Filters({ children }: { children: ReactNode }) {
         ? new ResizeObserver(() => {
             if (el.clientWidth !== width) {
               width = el.clientWidth;
-              showActive();
+              if (following) showActive();
             }
             check();
           })
@@ -172,6 +182,7 @@ function Filters({ children }: { children: ReactNode }) {
       added?.disconnect();
       el.removeEventListener('scroll', check);
       el.removeEventListener('focusin', onFocus);
+      for (const type of USER) box.removeEventListener(type, takeOver);
     };
   }, []);
   // A view's width at a time, less the faded ends: what was half-shown at one end shows whole at the other.

@@ -40,6 +40,20 @@ describe('shell, palette and connect CSS', () => {
     }
   });
 
+  // Task 16b item 161: in a narrow header the crumbs give way inside their box, never over the tools.
+  it('breadcrumbs stay in their box: the list clips, kinds give way last, an id keeps room for its ellipsis', () => {
+    const shell = files.find((f) => f.name === 'shell/shell.css')?.css ?? '';
+    const body = (selector: string) => rules(shell).find(([sel]) => sel === selector)?.[1] ?? '';
+    expect(body('.shell-crumbs')).toMatch(/overflow:\s*hidden/);
+    const shrink = (selector: string) => Number(/flex-shrink:\s*([\d.]+)/.exec(body(selector))?.[1]);
+    const [kind, id, lastId] = [shrink('.shell-crumbs__item:not(.shell-crumbs__item--id)'), shrink('.shell-crumbs__item--id'), shrink('.shell-crumbs__item--id:last-child')];
+    // At least 1: a line whose flexible items' factors add up to less gives way only in part (CSS flexbox 9.7).
+    expect(kind).toBeGreaterThanOrEqual(1);
+    expect(kind).toBeLessThan(lastId);
+    expect(lastId).toBeLessThan(id);
+    expect(body('.shell-crumbs__item--id')).toMatch(/min-width:\s*\d+(\.\d+)?ch/);
+  });
+
   it('never fades anything with opacity or filters', () => {
     for (const { name, css } of files) {
       for (const [sel, body] of rules(css)) {

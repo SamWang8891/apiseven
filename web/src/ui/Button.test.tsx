@@ -24,6 +24,25 @@ describe('icon-only Button', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('Edit route');
   });
 
+  // Task 16b item 158: tooltips are click-through, so nothing is meant to be hovered into; one that waited for
+  // the pointer to reach it stayed up over the neighbouring control with the wrong label.
+  it('its tooltip closes as soon as the pointer leaves the control', async () => {
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <Button icon={icon} aria-label="Actions for api-v2" />
+        <Button icon={icon} aria-label="Actions for api-v1" />
+      </TooltipProvider>,
+    );
+    const two = screen.getByRole('button', { name: 'Actions for api-v2' });
+    await user.hover(two);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Actions for api-v2');
+    fireEvent.pointerLeave(two, { pointerType: 'mouse' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    await user.hover(screen.getByRole('button', { name: 'Actions for api-v1' }));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Actions for api-v1');
+  });
+
   it('a title, when given, is what the tooltip says (and not also a native title)', async () => {
     const user = userEvent.setup();
     render(

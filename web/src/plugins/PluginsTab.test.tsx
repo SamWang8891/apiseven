@@ -310,16 +310,22 @@ describe('_meta', () => {
   it('a stored error_response always shows; where APISIX ignores it a line says so (fix round 1, R4.4)', async () => {
     const http = await openMeta('route', { 'limit-count': { count: 1, time_window: 1, _meta: { error_response: 'Slow down' } } });
     expect(within(http.el).getByRole('textbox', { name: 'error_response' })).toHaveValue('Slow down');
+    expect(within(http.el).getByRole('textbox', { name: 'error_response' })).toHaveAccessibleDescription(t('pl.meta.errorHelp'));
     expect(within(http.el).queryByText(t('pl.meta.errorIgnored.stream'))).not.toBeInTheDocument();
     expect(within(http.el).queryByText(t('pl.meta.errorIgnored.signIn'))).not.toBeInTheDocument();
     http.unmount();
     const stream = await openMeta('stream_route', { 'limit-conn': { conn: 1, burst: 0, default_conn_delay: 0.1, key: 'remote_addr', _meta: { error_response: 'closed' } } });
     expect(within(stream.el).getByRole('textbox', { name: 'error_response' })).toHaveValue('closed');
     expect(within(stream.el).getByText(t('pl.meta.errorIgnored.stream'))).toBeInTheDocument();
+    // Task 16b item 165: the field's help follows the scope: it never says the body is sent where it is ignored.
+    expect(within(stream.el).getByRole('textbox', { name: 'error_response' })).toHaveAccessibleDescription(t('pl.meta.errorIgnored.stream'));
+    expect(within(stream.el).queryByText(t('pl.meta.errorHelp'))).not.toBeInTheDocument();
     stream.unmount();
     const signIn = await openMeta('consumer', { 'key-auth': { key: 'k', _meta: { error_response: 'who are you' } } });
     expect(within(signIn.el).getByRole('textbox', { name: 'error_response' })).toHaveValue('who are you');
     expect(within(signIn.el).getByText(t('pl.meta.errorIgnored.signIn'))).toBeInTheDocument();
+    expect(within(signIn.el).getByRole('textbox', { name: 'error_response' })).toHaveAccessibleDescription(t('pl.meta.errorIgnored.signIn'));
+    expect(within(signIn.el).queryByText(t('pl.meta.errorHelp'))).not.toBeInTheDocument();
   });
 
   it('pre_function and unknown keys are kept and named', async () => {

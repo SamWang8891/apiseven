@@ -565,6 +565,10 @@ export const en: Record<string, string> = {
   'ui.toast.moreOne': '1 more notification',
   'ui.toast.more': '{count} more notifications',
   'ui.toast.show': 'Show',
+  'ui.toast.moreShort': '{count} more',
+  'ui.toast.moreError': '{more}, 1 error',
+  'ui.toast.moreErrors': '{more}, {errors} errors',
+  'ui.toast.showMore': 'Show {more}',
   'ui.code.loading': 'Loading editor…',
 
   // Schema form (web/src/schema-form): forms generated from JSON Schema
