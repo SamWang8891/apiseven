@@ -425,11 +425,18 @@ make e2e                                    # builds the single file and the ima
 ```
 
 `make e2e` builds what it tests (`make single`, and `make docker` for the image `$(IMAGE)`,
-`apiseven:local` unless you pass `IMAGE=…`) and requires proxy mode to run. `cd web && npm run e2e`
+`apiseven:local` unless you pass `IMAGE=…`) and requires both to run. `cd web && npm run e2e`
 (or `npm run e2e:ui`) runs the suite alone: then the image and `web/dist-single/apiseven.html` are
 whatever was built last, and the proxy-mode and single-file specs are skipped, with the reason printed,
 when either is missing. The suite builds and serves the app itself (`vite preview`); it does not reuse
 a server already on the port unless `E2E_REUSE_SERVER=1`.
+
+What a run leaves behind holds the keys it ran with. `web/test-results/` keeps a trace of each failed
+test, with the `X-API-KEY` header of every request and the arguments of the scripts that store the
+connection. `web/playwright-report/`, the HTML report written on every run, shows what each step typed,
+the key entered on the Connect page included. Both are git-ignored. When `E2E_ADMIN_KEY` or
+`E2E_VIEWER_KEY` is a real key, do not share them, and delete them afterwards
+(`rm -rf web/test-results web/playwright-report`).
 
 It resets the APISIX it points at to the seed data (`node dev/seed.mjs --reset`) before it starts,
 and checks at the end that it holds exactly the seed again, every object as seeded. The proxy-mode
@@ -448,6 +455,7 @@ variables point it elsewhere:
 | `E2E_IMAGE` | `apiseven:local` (`make docker IMAGE=…` builds under another tag) |
 | `E2E_REUSE_SERVER` | unset: build and serve the app; `1`: use whatever already answers on the preview port |
 | `E2E_REQUIRE_PROXY` | unset: skip proxy mode without Docker or the image; `1` (as `make e2e` sets): fail |
+| `E2E_REQUIRE_SINGLE` | unset: skip the single-file spec without the built file; `1` (as `make e2e` sets): fail |
 
 The routes the suite creates proxy to the dev stack's etcd (`etcd:2379`, which answers `/version`),
 so it needs no other upstream and no internet access.

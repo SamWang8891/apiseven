@@ -20,9 +20,14 @@
 //   E2E_REUSE_SERVER=1    reuse a server already on the preview port (default: build and start the
 //                         suite's own, and fail if the port is taken)
 //   E2E_REQUIRE_PROXY=1   a missing Docker or image fails proxy mode instead of skipping it (make e2e)
+//   E2E_REQUIRE_SINGLE=1  a missing single file fails its spec instead of skipping it (make e2e)
 // proxy-mode.spec.ts needs Docker and that image; single-file.spec.ts needs `npm run build:single`.
 // Each skips with the reason (printed) when what it needs is missing. Chromium must be installed:
 // `npx playwright install chromium`.
+//
+// What a run leaves holds the keys it ran with: test-results/ (a failed test's trace: every request's
+// X-API-KEY, the init scripts' arguments) and playwright-report/ (written on every run; its steps show
+// what was typed). Both are git-ignored; with a real key, do not share them and delete them afterwards.
 import { defineConfig } from '@playwright/test';
 import { env } from './e2e/env';
 

@@ -1,5 +1,6 @@
 // The single-file export (web/dist-single/apiseven.html, `npm run build:single` or `make single`),
-// opened straight from disk. Skipped, with the reason, when the file has not been built.
+// opened straight from disk. When the file has not been built the spec is skipped and the reason is
+// printed; with E2E_REQUIRE_SINGLE=1 (which `make e2e` sets, after building it) that is a failure.
 import { existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Page } from '@playwright/test';
@@ -8,6 +9,9 @@ import { env, expect, t, test } from './fixtures';
 
 const FILE = fileURLToPath(new URL('../dist-single/apiseven.html', import.meta.url));
 const URL_ = pathToFileURL(FILE).href;
+const missing = existsSync(FILE) ? undefined : `${FILE} is missing: build it with \`npm run build:single\` (or \`make single\`)`;
+const required = process.env.E2E_REQUIRE_SINGLE === '1';
+if (missing) console.warn(`single-file.spec.ts: ${required ? 'cannot run' : 'skipped'}: ${missing}`);
 
 /** Connects from the Connect page with the Admin API address and the admin key. */
 async function connect(page: Page): Promise<void> {
@@ -18,7 +22,10 @@ async function connect(page: Page): Promise<void> {
 }
 
 test.describe('the single file, opened from disk', () => {
-  test.skip(!existsSync(FILE), `${FILE} is missing: build it with \`npm run build:single\` (or \`make single\`)`);
+  test.skip(missing !== undefined && !required, missing ?? '');
+  test.beforeAll(() => {
+    if (missing) throw new Error(`the single file cannot run: ${missing}`);
+  });
   test.use({
     connectAs: 'none',
     // Under file:// the app's probe for server mode (./config.json) cannot be fetched; it goes on in
