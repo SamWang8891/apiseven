@@ -38,6 +38,7 @@
   display: flex;
   flex: none;
   align-items: center;
+  gap: var(--s2);
   height: 48px;
   padding: 0 var(--s4);
   border-bottom: 1px solid var(--border);
@@ -46,6 +47,11 @@
   font-weight: 700;
   letter-spacing: -0.01em;
   text-decoration: none;
+}
+
+/* The logo: 22px, its size fixed by the img's width/height so nothing shifts while it loads. */
+.shell-brand__logo {
+  flex: none;
 }
 
 .shell-brand:focus-visible {

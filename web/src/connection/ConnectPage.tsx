@@ -5,6 +5,7 @@ import { Navigate, useLocation, useNavigate } from 'react-router';
 import { AdminClient } from '../api/client';
 import type { ApiError } from '../api/errors';
 import type { Connection } from '../api/types';
+import logo from '../assets/logo.png';
 import { t } from '../i18n';
 import { Badge, Button, Checkbox, ConfirmDialog, Input } from '../ui';
 import { needsKey, useConnections, type SavedConnection } from './store';
@@ -45,7 +46,7 @@ function ConnectScreen({ reason, reasonConnId }: { reason?: string; reasonConnId
     <div className="connect">
       <div className="connect-column">
         <div className="connect-top">
-          <span className="connect-brand">{t('app.name')}</span>
+          <Brand />
           {backTo && (
             <Button variant="ghost" size="sm" icon={<ArrowLeft size={14} />} onClick={() => void navigate('/routes')}>
               {t('connect.back', { name: backTo.name })}
@@ -63,6 +64,16 @@ function ConnectScreen({ reason, reasonConnId }: { reason?: string; reasonConnId
         {!serverManaged && <p className="connect-note">{t('connect.note')}</p>}
       </div>
     </div>
+  );
+}
+
+/** The app's name with the logo before it; the logo is decoration, the name is the text. */
+function Brand() {
+  return (
+    <span className="connect-brand">
+      <img className="connect-brand__logo" src={logo} width={44} height={44} alt="" />
+      {t('app.name')}
+    </span>
   );
 }
 
@@ -305,7 +316,7 @@ function ServerKeyRejected({ reason }: { reason: string }) {
     <div className="connect">
       <div className="connect-column">
         <div className="connect-top">
-          <span className="connect-brand">{t('app.name')}</span>
+          <Brand />
         </div>
         <h1>{t('connect.serverKeyRejected.title')}</h1>
         <p className="connect-intro">{t('connect.serverKeyRejected.body')}</p>

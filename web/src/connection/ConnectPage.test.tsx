@@ -28,7 +28,30 @@ function adminRequests<T extends { url: URL }>(requests: T[]): T[] {
   return requests.filter((r) => r.url.pathname.includes('/apisix/admin/'));
 }
 
+/** The logo sits before the app name, at 44 px, as decoration: the name beside it is the text. */
+function expectLogoBesideName() {
+  const name = screen.getByText(t('app.name'));
+  const logo = name.querySelector(':scope > img');
+  expect(logo).toHaveAttribute('alt', '');
+  expect(logo).toHaveAttribute('src', expect.stringMatching(/logo.*\.png$/));
+  expect(logo).toHaveAttribute('width', '44');
+  expect(logo).toHaveAttribute('height', '44');
+  expect(logo?.nextSibling?.textContent).toBe(t('app.name'));
+  expect(within(name).queryByRole('img')).toBeNull();
+}
+
 describe('Connect page', () => {
+  it('shows the logo beside the app name', async () => {
+    await openConnect();
+    expectLogoBesideName();
+  });
+
+  it('shows it too when the server-side key was rejected', async () => {
+    renderApp({ hash: '#/routes', config: { adminBase: '/apisix/admin', keyRequired: false }, key: 'server-side-key' });
+    await screen.findByRole('heading', { level: 1, name: t('connect.serverKeyRejected.title') });
+    expectLogoBesideName();
+  });
+
   it('is where an empty browser starts', async () => {
     renderApp();
     expect(await screen.findByRole('heading', { level: 1, name: t('connect.title') })).toBeInTheDocument();

@@ -58,6 +58,19 @@ describe('Sidebar', () => {
     expect(nav().queryByText(t('kind.credentials.plural'))).toBeNull();
   });
 
+  it('shows the logo, as decoration, before the app name in the brand link', () => {
+    renderSidebar({});
+    const brand = screen.getByRole('link', { name: t('shell.home') });
+    const logo = brand.querySelector(':scope > img');
+    expect(logo).toHaveAttribute('alt', '');
+    expect(logo).toHaveAttribute('src', expect.stringMatching(/logo.*\.png$/));
+    expect(logo).toHaveAttribute('width', '22');
+    expect(logo).toHaveAttribute('height', '22');
+    expect(logo?.nextSibling?.textContent).toBe(t('app.name'));
+    expect(within(brand).getByText(t('app.name'))).toBeInTheDocument();
+    expect(within(brand).queryByRole('img')).toBeNull();
+  });
+
   it('shows … while a count loads', () => {
     renderSidebar({});
     expect(nav().getByRole('link', { name: `${t('kind.routes.plural')} …` })).toBeInTheDocument();

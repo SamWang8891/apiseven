@@ -2,6 +2,7 @@ import { useId } from 'react';
 import { Link, NavLink } from 'react-router';
 import { useList, useSupports } from '../api/hooks';
 import type { Kind } from '../api/types';
+import logo from '../assets/logo.png';
 import { t } from '../i18n';
 import { pathFor } from '../router/paths';
 import { Tooltip } from '../ui';
@@ -18,6 +19,7 @@ export function Sidebar() {
   return (
     <aside className="shell-sidebar">
       <Link to={pathFor('routes')} className="shell-brand" aria-label={t('shell.home')}>
+        <img className="shell-brand__logo" src={logo} width={22} height={22} alt="" />
         {t('app.name')}
       </Link>
       <nav className="shell-nav" aria-label={t('shell.nav')}>

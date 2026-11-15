@@ -21,10 +21,19 @@
   margin-bottom: var(--s5);
 }
 
+/* The name at 20px balances the 44px logo beside it. */
 .connect-brand {
-  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  font-size: 20px;
   font-weight: 700;
   letter-spacing: -0.01em;
+}
+
+/* The logo: 44px, its size fixed by the img's width/height so nothing shifts while it loads. */
+.connect-brand__logo {
+  flex: none;
 }
 
 .connect-intro {
