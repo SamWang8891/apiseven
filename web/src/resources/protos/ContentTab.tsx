@@ -90,7 +90,7 @@ export function ContentTab({ draft, setDraft, issues, id }: TabProps) {
           take(file);
         }}
       />
-      <Button size="sm" variant="ghost" icon={<Upload size={13} />} aria-label={t('pr.content.uploadLabel')} onClick={() => fileRef.current?.click()}>
+      <Button size="sm" variant="ghost" icon={<Upload size={13} />} aria-label={t(binary ? 'pr.content.replaceLabel' : 'pr.content.uploadLabel')} onClick={() => fileRef.current?.click()}>
         {binary ? t('pr.content.replace') : t('pr.content.upload')}
       </Button>
     </>

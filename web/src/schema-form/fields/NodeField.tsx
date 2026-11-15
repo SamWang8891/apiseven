@@ -1,5 +1,6 @@
 import { memo } from 'react';
 import { isWide } from '../analyze';
+import { BelowRows } from '../context';
 import { fits } from '../model';
 import { BooleanField } from './BooleanField';
 import { EnumField } from './EnumField';
@@ -31,9 +32,17 @@ function FieldFor(props: FieldProps) {
     case 'array-scalar':
       return <TagsField {...props} node={node} />;
     case 'array-object':
-      return <ListField {...props} node={node} />;
+      return (
+        <BelowRows value>
+          <ListField {...props} node={node} />
+        </BelowRows>
+      );
     case 'map':
-      return <MapField {...props} node={node} />;
+      return (
+        <BelowRows value>
+          <MapField {...props} node={node} />
+        </BelowRows>
+      );
     case 'variant':
       return <VariantField {...props} node={node} />;
     case 'json':

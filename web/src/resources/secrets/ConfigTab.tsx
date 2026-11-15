@@ -2,6 +2,7 @@
 // that manager's schema (schemas.ts) bound to the draft without its id, the credentials masked until
 // revealed (SECRET_FIELDS; the kit hides them again on every lock change), and how plugins refer to it.
 import { Copy } from 'lucide-react';
+import { useMemo } from 'react';
 import { t } from '../../i18n';
 import { SchemaForm } from '../../schema-form/SchemaForm';
 import { SchemaGapsNote } from '../../schema-form/SchemaGapsNote';
@@ -51,6 +52,8 @@ function Reference({ manager, name }: { manager: Manager; name: string }) {
 }
 
 export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabProps) {
+  // One object per stored value: the form shares it with every field (item 132: not one per render).
+  const baseline = useMemo(() => original && withoutId(original.value), [original]);
   const manager = managerOf(id);
   const { manager: named, name } = splitSecretId(id);
   if (!manager) return <p className="res-callout">{named === '' ? t('sc.config.choose') : t('sc.config.unknown', { manager: named })}</p>;
@@ -70,7 +73,7 @@ export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabP
         errors={issues}
         idPrefix={`secret-${manager}`}
         name={manager}
-        baseline={original && withoutId(original.value)}
+        baseline={baseline}
       />
       <Reference manager={manager} name={name} />
     </div>

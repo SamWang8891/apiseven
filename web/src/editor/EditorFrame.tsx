@@ -2,7 +2,8 @@
 // not-found and failed states), a new one starts from the kind's blank or a copy, and Editor.tsx
 // does the rest. Tabs come from the registry, plus the frame's own JSON tab (id JSON_TAB in json.ts).
 import { Info } from 'lucide-react';
-import { useState, type FC } from 'react';
+import { useCallback, useState, type FC } from 'react';
+import type { ApiError } from '../api/errors';
 import { useAllPlugins, useItem } from '../api/hooks';
 import type { Item, Kind, Obj, Parent } from '../api/types';
 import { t } from '../i18n';
@@ -44,6 +45,9 @@ function NewEditor({ kind, parent, duplicateFrom, initial }: { kind: Kind; paren
   return <Editor kind={kind} parent={parent} start={start} copyOf={duplicateFrom} />;
 }
 
+/** The read says the object is not stored. */
+const absent = (error: ApiError | null): boolean => error?.status === 404;
+
 /**
  * Loads the object, then edits it; the loading, not-found and failed states in between. For a kind
  * whose pages exist whether or not anything is stored (ResourceDef.createWhenMissing), nothing stored
@@ -51,17 +55,44 @@ function NewEditor({ kind, parent, duplicateFrom, initial }: { kind: Kind; paren
  * (a refetch on window focus, a reconnect, an invalidation: one in flight even resets a query without
  * data to "pending"): only its own Create, or the user asking for what is stored, ends it. Nothing
  * the network does unmounts an editor that holds a draft: a stored object's query keeps its data
- * through a failed or 404 refetch, so its editor stays too.
+ * through a failed or 404 refetch, so its editor stays too. A refetch that finds the object deleted
+ * (Task 16b, item 127) is told to the editor (`removed`): a draft being edited stays, with a notice;
+ * a locked page (or one that locks later) gives way to Not found, or for a create-when-missing kind
+ * to the create form.
  */
 function StoredEditor({ kind, id, parent }: { kind: Kind; id: string; parent?: Parent }) {
   const query = useItem(kind, id, parent);
   const [creating, setCreating] = useState(false);
-  if (!creating && registry[kind].createWhenMissing && query.error?.status === 404 && !query.data) setCreating(true);
-  if (creating) return <MissingEditor kind={kind} id={id} parent={parent} found={query.data} onStored={() => setCreating(false)} />;
-  if (query.data) return <Editor key="stored" kind={kind} id={id} parent={parent} item={query.data} />;
+  // The locked editor gave way to what the page is now that the object is gone.
+  const [left, setLeft] = useState(false);
+  // The query keeps the deleted object's data; its 404 is newer (a success clears the error).
+  const removed = query.data !== undefined && absent(query.error);
+  const onRemoved = useCallback(() => {
+    if (registry[kind].createWhenMissing) setCreating(true);
+    else setLeft(true);
+  }, [kind]);
+  if (!creating && registry[kind].createWhenMissing && absent(query.error) && !query.data) setCreating(true);
+  if (creating) return <MissingEditor kind={kind} id={id} parent={parent} found={removed ? undefined : query.data} onStored={() => setCreating(false)} />;
+  if (query.data && !(left && removed)) {
+    const notice = removed && <RemovedNotice kind={kind} name={registry[kind].nameOf(query.data)} />;
+    return <Editor key="stored" kind={kind} id={id} parent={parent} item={query.data} notice={notice || undefined} removed={removed} onRemoved={onRemoved} />;
+  }
   if (query.error?.status === 404) return <NotFoundState kind={kind} id={id} parent={parent} />;
   if (query.error) return <LoadErrorState kind={kind} id={id} error={query.error} retrying={query.isFetching} onRetry={() => void query.refetch()} />;
   return <EditorSkeleton kind={kind} id={id} />;
+}
+
+/** Above the tabs of a draft whose object was deleted elsewhere (item 127): the draft stays, Save can't store it there. */
+function RemovedNotice({ kind, name }: { kind: Kind; name: string }) {
+  return (
+    <section className="ed-copynote" role="note" aria-label={t('editor.removed.title')}>
+      <Info size={16} aria-hidden="true" />
+      <div className="ed-copynote__text">
+        <p className="ed-copynote__title">{t('editor.removed.title')}</p>
+        <p>{t('editor.removed.body', { kind: registry[kind].singular, name })}</p>
+      </div>
+    </section>
+  );
 }
 
 /**

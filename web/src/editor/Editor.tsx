@@ -59,9 +59,13 @@ export interface EditorProps {
   notice?: ReactNode;
   /** A new object under the page's own id is stored (created, or shown on request): the page shows it. */
   onStored?: (item: Item) => void;
+  /** A read found the stored object deleted (by another client): a draft being edited stays (the caller's `notice` says so). */
+  removed?: boolean;
+  /** Called while `removed` once the page is locked and not saving: the page gives way (Not found, or the create form). */
+  onRemoved?: () => void;
 }
 
-export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored }: EditorProps) {
+export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored, removed = false, onRemoved }: EditorProps) {
   const def = registry[kind];
   const isNew = item === undefined;
   /** A new object's id, when the page fixes it (a plugin's metadata page, nothing stored yet). */
@@ -194,6 +198,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     focusNext.current = 'field';
     setLocked(false);
   }
+
+  // The object was deleted elsewhere: a locked page has nothing to show (a draft being edited stays until it locks).
+  useEffect(() => {
+    if (removed && locked && !saving) onRemoved?.();
+  }, [removed, locked, saving, onRemoved]);
 
   useEffect(() => {
     const target = focusNext.current;

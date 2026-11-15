@@ -2,6 +2,7 @@
 // list: GET /plugins?all=true), bound to the draft without its id. A plugin the list doesn't have, or
 // one that declares no metadata schema, is edited on the JSON tab; so is every entry while the list
 // can't load. Secret fields (the schema's encrypt_fields) are masked by the form.
+import { useMemo } from 'react';
 import { useAllPlugins } from '../../api/hooks';
 import { t } from '../../i18n';
 import { SchemaForm } from '../../schema-form/SchemaForm';
@@ -12,6 +13,8 @@ import '../resources.css';
 
 export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabProps) {
   const plugins = useAllPlugins();
+  // One object per stored value: the form shares it with every field (item 132: not one per render).
+  const baseline = useMemo(() => original && withoutId(original.value), [original]);
   if (id === undefined || id === '') return <p className="res-callout">{t('pm.config.choose')}</p>;
   if (plugins.isError) return <p className="res-callout">{t('pm.config.failed', { error: plugins.error.message })}</p>;
   if (!plugins.data) return <p className="res-note">{t('pm.config.loading')}</p>;
@@ -30,7 +33,7 @@ export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabP
         errors={issues}
         idPrefix={`meta-${id}`}
         name={id}
-        baseline={original && withoutId(original.value)}
+        baseline={baseline}
       />
     </div>
   );

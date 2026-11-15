@@ -8,8 +8,13 @@ import { t } from '../../i18n';
 /** maxLength of `content` (schema_def.lua 1013), in characters. */
 export const CONTENT_MAX = 1024 * 1024;
 
-/** The most bytes a file can have and still fit: four bytes per character at worst. Larger files are refused before they are read. */
-const FILE_MAX = 4 * CONTENT_MAX;
+/**
+ * The most request body the Admin API reads (apisix/admin/init.lua 50, MAX_REQ_BODY, read at 225):
+ * a bigger one is refused ("request size … is greater than the maximum size … allowed"). Source is
+ * sent as its text and a descriptor set as base64 (larger), so a file bigger than this can never fit
+ * and is refused before it is read; source is checked again as the JSON it is sent as.
+ */
+export const REQUEST_MAX = 1024 * 1024 * 1.5;
 
 const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
 
@@ -64,6 +69,9 @@ export function characters(text: string): number {
 /** The content's size in bytes as stored (UTF-8). */
 export const contentBytes = (content: string): number => new TextEncoder().encode(content).length;
 
+/** The content's size in the request body: a JSON string (escapes counted), in UTF-8. The other fields are left out: they are small. */
+const sentBytes = (content: string): number => contentBytes(JSON.stringify(content));
+
 /** A size for people: 512 B, 1.5 KB, 2.3 MB. */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -89,10 +97,11 @@ const COMPILED = /\.(pb|desc|protoset|bin)$/i;
  * A file as content, or why it can't be (never with any of its content). The size is checked before
  * anything is read. UTF-8 text without control characters is proto source, taken as it is, unless
  * the name says compiled (.pb, .desc, .protoset, .bin); anything else must be a compiled descriptor
- * set (its first byte 0x0A), taken as base64. Either must fit the schema's 1,048,576 characters.
+ * set (its first byte 0x0A), taken as base64. Either must fit the schema's 1,048,576 characters, and
+ * the request the Admin API's 1.5 MiB (REQUEST_MAX).
  */
 export async function readProtoFile(file: File): Promise<ProtoFile> {
-  if (file.size > FILE_MAX) return { problem: t('pr.file.tooBig', { size: formatBytes(file.size) }) };
+  if (file.size > REQUEST_MAX) return { problem: t('pr.file.tooBig', { size: formatBytes(file.size) }) };
   let bytes: Uint8Array;
   try {
     bytes = new Uint8Array(await file.arrayBuffer());
@@ -106,7 +115,9 @@ export async function readProtoFile(file: File): Promise<ProtoFile> {
     text = undefined;
   }
   if (text !== undefined && text !== '' && readsAsSource(text) && !COMPILED.test(file.name)) {
-    return characters(text) > CONTENT_MAX ? { problem: t('pr.file.tooLong') } : { content: text, binary: false };
+    if (characters(text) > CONTENT_MAX) return { problem: t('pr.file.tooLong') };
+    const sent = sentBytes(text);
+    return sent > REQUEST_MAX ? { problem: t('pr.file.tooBigSent', { size: formatBytes(sent) }) } : { content: text, binary: false };
   }
   if (bytes[0] !== 0x0a) return { problem: t('pr.file.notDescriptor') };
   if (4 * Math.ceil(bytes.length / 3) > CONTENT_MAX) return { problem: t('pr.file.tooLong') };

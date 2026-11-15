@@ -10,6 +10,7 @@ import { ConnectionsProvider, createConnectionStore } from './connection/store';
 import { t } from './i18n';
 import { createAppRouter } from './router';
 import { AppErrorBoundary } from './shell/ErrorPage';
+import { useFileDropGuard } from './shell/fileDrops';
 import { useTheme } from './shell/theme';
 
 /** Shown while ./config.json decides between static and server-managed mode, so Connect never flashes. */
@@ -51,6 +52,7 @@ function Root({ server }: { server?: ServerConfig }) {
 export default function App() {
   const [server, setServer] = useState<{ config?: ServerConfig }>();
   useTheme();
+  useFileDropGuard();
 
   useEffect(() => {
     let live = true;

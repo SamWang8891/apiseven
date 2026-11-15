@@ -1,7 +1,7 @@
 // A proto's content as APISIX reads it: source first, else a base64 descriptor set (content.ts).
 import { describe, expect, it, vi } from 'vitest';
 import { t } from '../../i18n';
-import { CONTENT_MAX, decodedSize, formatBytes, fromBase64, isDescriptorSet, readProtoFile, toBase64 } from './content';
+import { CONTENT_MAX, decodedSize, formatBytes, fromBase64, isDescriptorSet, readProtoFile, REQUEST_MAX, toBase64 } from './content';
 
 const enc = (text: string) => new TextEncoder().encode(text);
 const DESCRIPTOR = new Uint8Array([0x0a, 0x0f, 0x0a, 0x07, ...enc('a.proto'), 0x12, 0x04, ...enc('demo')]);
@@ -40,16 +40,32 @@ describe('readProtoFile', () => {
 
   it('refuses anything else, and what is too big before reading it; never with the file’s content', async () => {
     expect(await readProtoFile(new File([new Uint8Array([0x00, 0xff, 0x41])], 'x.bin'))).toEqual({ problem: t('pr.file.notDescriptor') });
+    // The Admin API reads at most 1.5 MiB of request body (apisix/admin/init.lua 50, 225): a bigger
+    // file never fits, as it is sent as its text (or as base64, larger still) (Task 16b, item 117).
+    expect(REQUEST_MAX).toBe(1024 * 1024 * 1.5);
     const huge = new File(['x'], 'huge.proto');
-    Object.defineProperty(huge, 'size', { value: 4 * CONTENT_MAX + 1 });
+    Object.defineProperty(huge, 'size', { value: REQUEST_MAX + 1 });
     const read = vi.spyOn(huge, 'arrayBuffer');
-    expect(await readProtoFile(huge)).toEqual({ problem: t('pr.file.tooBig', { size: formatBytes(4 * CONTENT_MAX + 1) }) });
+    expect(await readProtoFile(huge)).toEqual({ problem: t('pr.file.tooBig', { size: formatBytes(REQUEST_MAX + 1) }) });
     expect(read).not.toHaveBeenCalled();
+    expect(t('pr.file.tooBig', { size: '2.0 MB' })).toContain('1.5 MB');
     expect(await readProtoFile(new File(['a'.repeat(CONTENT_MAX + 1)], 'long.proto'))).toEqual({ problem: t('pr.file.tooLong') });
     // A descriptor set whose base64 would pass the limit.
     const big = new Uint8Array(Math.floor((CONTENT_MAX * 3) / 4) + 3);
     big[0] = 0x0a;
     big[1] = 0x12;
     expect(await readProtoFile(new File([big], 'big.pb'))).toEqual({ problem: t('pr.file.tooLong') });
+  });
+
+  it('refuses source within the character limit whose request would pass the Admin API’s 1.5 MiB (Task 16b, item 117)', async () => {
+    // 560,000 characters, 1,560,004 bytes: within both limits as a file; as JSON every quote is escaped, 1.55 MiB.
+    const wide = `// ${'界'.repeat(500_000)}\n${'"'.repeat(60_000)}`;
+    const file = new File([wide], 'wide.proto');
+    expect(file.size).toBeLessThan(REQUEST_MAX);
+    const sent = new TextEncoder().encode(JSON.stringify(wide)).length;
+    expect(await readProtoFile(file)).toEqual({ problem: t('pr.file.tooBigSent', { size: formatBytes(sent) }) });
+    // Under the cap it is taken as it is, line ends and quotes counted as JSON sends them.
+    const fits = `// ${'界'.repeat(400_000)} "q"\n`;
+    expect(await readProtoFile(new File([fits], 'fits.proto'))).toEqual({ content: fits, binary: false });
   });
 });

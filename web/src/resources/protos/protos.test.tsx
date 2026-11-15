@@ -66,6 +66,19 @@ describe('the Content tab', () => {
     expect(decodedSize(toBase64(DESCRIPTOR))).toBe(DESCRIPTOR.length);
   });
 
+  it('the upload button’s accessible name starts with its visible text, as Upload file and as Replace file (Task 16b, item 120)', async () => {
+    const { user } = await open('#/protos/new?tab=content', []);
+    await settled();
+    const upload = main().getByRole('button', { name: t('pr.content.uploadLabel') });
+    expect(upload).toHaveTextContent(t('pr.content.upload'));
+    expect(t('pr.content.uploadLabel').startsWith(t('pr.content.upload'))).toBe(true);
+    await user.upload(fileInput(), new File([DESCRIPTOR], 'set.pb'));
+    await main().findByText(t('pr.content.binary'));
+    const replace = main().getByRole('button', { name: t('pr.content.replaceLabel') });
+    expect(replace).toHaveTextContent(t('pr.content.replace'));
+    expect(t('pr.content.replaceLabel').startsWith(t('pr.content.replace'))).toBe(true);
+  });
+
   it('a refused file changes nothing and says why, without its content', async () => {
     const { user } = await open('#/protos/hello?tab=content');
     await main().findByRole('heading', { level: 1, name: 'hello' });
@@ -159,7 +172,7 @@ describe('the Content tab', () => {
     const panel = await settled();
     expect(await within(panel).findByText(t('pr.content.binary'))).toBeInTheDocument();
     expect(editableControls(panel)).toEqual([]);
-    expect(within(panel).queryByRole('button', { name: t('pr.content.replace') })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole('button', { name: t('pr.content.replaceLabel') })).not.toBeInTheDocument();
   });
 });
 

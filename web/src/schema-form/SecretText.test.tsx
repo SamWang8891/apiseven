@@ -214,3 +214,47 @@ describe('a multi-line secret field: the box', () => {
     expect(current.private_key).toBe(OTHER);
   });
 });
+
+describe('a multi-line secret inside a list or a map (Task 16b, item 129)', () => {
+  // A row's stored counterpart can't be found by its place (rows move) or by splitting the path on
+  // "." (a map key may hold one): such a field has no stored value, so it offers no Keep (fail safe).
+  const LIST = { type: 'object', properties: { pairs: { type: 'array', items: { type: 'object', properties: { private_key: { type: 'string' } } } } } };
+  const MAP = { type: 'object', properties: { keys: { type: 'object', additionalProperties: { type: 'object', properties: { private_key: { type: 'string' } } } } } };
+
+  function renderForm(schema: Obj, baseline: Obj, initial: Obj) {
+    let current = initial;
+    function Harness() {
+      const [value, setValue] = useState<Obj>(initial);
+      return (
+        <SchemaForm
+          schema={schema}
+          value={value}
+          baseline={baseline}
+          onChange={(next) => {
+            current = next as Obj;
+            setValue(next as Obj);
+          }}
+        />
+      );
+    }
+    render(<Harness />);
+    return { user: userEvent.setup(), value: () => current };
+  }
+
+  it('after an earlier row was removed, the row left is not compared with the removed row’s stored key', () => {
+    // Stored [A, B]; row A removed: the row that holds B sits where A was.
+    renderForm(LIST, { pairs: [{ private_key: STORED }, { private_key: OTHER }] }, { pairs: [{ private_key: OTHER }] });
+    expect(screen.queryByRole('button', { name: t('sf.secret.keep') })).toBeNull();
+    expect(screen.queryByText(STORED)).toBeNull();
+  });
+
+  it('a map row whose key holds a "." has no stored value either', () => {
+    renderForm(MAP, { keys: { 'a.b': { private_key: STORED } } }, { keys: { 'a.b': { private_key: OTHER } } });
+    expect(screen.queryByRole('button', { name: t('sf.secret.keep') })).toBeNull();
+  });
+
+  it('outside a list or a map, the stored value is still found', () => {
+    renderForm(SCHEMA, { private_key: STORED }, { private_key: OTHER });
+    expect(screen.getByRole('button', { name: t('sf.secret.keep') })).toBeInTheDocument();
+  });
+});

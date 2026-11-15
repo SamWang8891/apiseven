@@ -20,9 +20,18 @@ export interface FormContextValue {
 
 export const FormContext = createContext<FormContextValue>({ prefix: 'sf', encrypt: [], errors: new Map() });
 
-/** The stored value at the field's dotted `path` (array indices as numbers), from the form's baseline. */
+/**
+ * True below a list's or a map's rows (NodeField). A row's stored counterpart can't be found by its
+ * place, as rows are removed and moved, nor by splitting its path on ".", as a map key may hold one:
+ * a field there has no stored value at all (Task 16b, item 129: fail safe, so no "Keep the stored
+ * value" that would write another row's secret).
+ */
+export const BelowRows = createContext(false);
+
+/** The stored value at the field's dotted `path`, from the form's baseline; none below a list's or a map's rows (BelowRows). */
 export function useStoredAt(path: string): unknown {
   const { baseline } = use(FormContext);
+  if (use(BelowRows)) return undefined;
   if (path === '') return baseline;
   let at: unknown = baseline;
   for (const key of path.split('.')) {

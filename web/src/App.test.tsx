@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { createEvent, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
 import { t } from './i18n';
@@ -42,6 +42,18 @@ describe('App', () => {
     await waitFor(() => expect(sidebar.getByRole('link', { name: `${t('kind.routes.plural')} 10` })).toBeInTheDocument());
     expect(admin.requests.filter((r) => r.url.pathname.includes('/apisix/admin/')).every((r) => r.key === DEV_CONN.key)).toBe(true);
     expect(await screen.findByText('APISIX 3.20.0')).toBeInTheDocument();
+  });
+
+  it('a file dropped where nothing takes it is refused, not left to the browser to open (Task 16b, item 128)', async () => {
+    saveConnections([DEV_CONN], DEV_CONN.id);
+    renderApp({ hash: '#/routes' });
+    const link = (await nav()).getByRole('link', { name: new RegExp(`^${t('kind.routes.plural')}`) });
+    const over = createEvent.dragOver(link, { dataTransfer: { types: ['Files'], dropEffect: 'copy' } });
+    fireEvent(link, over);
+    expect(over.defaultPrevented).toBe(true);
+    const drop = createEvent.drop(document.body, { dataTransfer: { types: ['Files'], files: [] } });
+    fireEvent(document.body, drop);
+    expect(drop.defaultPrevented).toBe(true);
   });
 });
 

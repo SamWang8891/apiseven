@@ -455,6 +455,46 @@ describe('a background refresh', () => {
     expect(await screen.findByText('/elsewhere')).toBeInTheDocument();
   });
 
+  /** Deletes route r1 behind the editor's back (another client), then refetches as a background refresh does. */
+  async function deletedElsewhere(admin: Awaited<ReturnType<typeof renderRoute>>['admin'], queryClient: Awaited<ReturnType<typeof renderRoute>>['queryClient']) {
+    await admin.fetch('http://apisix.test:9180/apisix/admin/routes/r1', { method: 'DELETE', headers: { 'X-API-KEY': 'k' } });
+    await queryClient.invalidateQueries();
+  }
+
+  it('that finds the object deleted turns a locked page into Not found (Task 16b, item 127)', async () => {
+    const { admin, queryClient } = await renderRoute();
+    await deletedElsewhere(admin, queryClient);
+    expect(await screen.findByRole('heading', { level: 1, name: t('editor.notFound.title', { kind: 'Route', id: 'r1' }) })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('editor.edit') })).toBeNull();
+  });
+
+  it('that finds the object deleted keeps a draft being edited, and says the object is gone; Discard then shows Not found', async () => {
+    const { user, admin, queryClient } = await renderRoute();
+    await user.keyboard('e');
+    await user.type(await screen.findByRole('textbox', { name: 'URI' }), '/mine');
+    await deletedElsewhere(admin, queryClient);
+    const notice = await screen.findByRole('note', { name: t('editor.removed.title') });
+    expect(notice).toHaveTextContent(t('editor.removed.body', { kind: 'Route', name: 'web' }));
+    expect(screen.getByRole('textbox', { name: 'URI' })).toHaveValue('/a/mine');
+    await user.click(screen.getByRole('button', { name: t('editor.discard') }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.leave.confirm') }));
+    expect(await screen.findByRole('heading', { level: 1, name: t('editor.notFound.title', { kind: 'Route', id: 'r1' }) })).toBeInTheDocument();
+  });
+
+  it('that finds a plugin metadata entry deleted turns its locked page into the create form, not "stored meanwhile"', async () => {
+    const { admin, queryClient } = renderWithProviders(<EditorPage kind="plugin_metadata" id="azure-functions" />, {
+      path: '/plugin_metadata/azure-functions',
+      counts: {},
+      objects: { plugin_metadata: [{ id: 'azure-functions', master_apikey: 'k1' }] },
+    });
+    expect(await screen.findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    await admin.fetch('http://apisix.test:9180/apisix/admin/plugin_metadata/azure-functions', { method: 'DELETE', headers: { 'X-API-KEY': 'k' } });
+    await queryClient.invalidateQueries();
+    expect(await screen.findByRole('button', { name: t('editor.create') })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('editor.edit') })).toBeNull();
+    expect(screen.queryByRole('note', { name: t('editor.foundMeanwhile.title') })).toBeNull();
+  });
+
   it('never replaces a draft being edited (the save reports the conflict instead)', async () => {
     const { user, admin, queryClient } = await renderRoute();
     await user.keyboard('e');

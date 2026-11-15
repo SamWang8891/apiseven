@@ -53,7 +53,10 @@ export function MetadataListPage({ kind }: { kind: Kind }) {
       <div className="shell-page__head">
         <div className="list-title">
           <h1 tabIndex={-1}>{def.plural}</h1>
-          {rows && <span className="list-title__count">{rows.length}</span>}
+          {rows && list.data && (
+            // The stored entries, as the sidebar counts them, out of the rows (Task 16b, item 121).
+            <span className="list-title__count">{plugins.data ? t('pm.count', { configured: list.data.length, total: rows.length }) : t('pm.countStored', { configured: list.data.length })}</span>
+          )}
         </div>
         <NewLink kind={kind} />
       </div>

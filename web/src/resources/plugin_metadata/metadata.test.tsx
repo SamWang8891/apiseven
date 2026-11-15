@@ -84,6 +84,23 @@ describe('the plugin metadata list', () => {
     expect(within(await rowOf('http-logger')).queryByText(t('pm.state.unknown'))).not.toBeInTheDocument();
   });
 
+  it('the title counts the stored entries, as the sidebar does, out of the rows listed (Task 16b, item 121)', async () => {
+    await openList([AZURE, LOGGER, CUSTOM, KEYAUTH]);
+    await rowOf('kafka-logger');
+    const rows = WITH_METADATA.length + 2;
+    const heading = main().getByRole('heading', { level: 1, name: t('kind.plugin_metadata.plural') });
+    expect(heading.parentElement).toHaveTextContent(t('pm.count', { configured: 4, total: rows }));
+    const nav = screen.getByRole('link', { name: new RegExp(`^${t('kind.plugin_metadata.plural')}`) });
+    expect(nav.querySelector('.shell-nav__count')).toHaveTextContent('4');
+  });
+
+  it('with the plugin list down, the title counts the stored entries alone', async () => {
+    await openList([AZURE, CUSTOM], { replies: { plugins: () => json(500, { error_msg: 'boom' }) } });
+    await rowOf('my-custom');
+    const heading = main().getByRole('heading', { level: 1, name: t('kind.plugin_metadata.plural') });
+    expect(heading.parentElement).toHaveTextContent(t('pm.countStored', { configured: 2 }));
+  });
+
   it('says nothing definite while the plugin list loads: no Configured / Not set, the table loading', async () => {
     let release!: () => void;
     const held = new Promise<undefined>((resolve) => (release = () => resolve(undefined)));
