@@ -8,6 +8,7 @@ import { AdminClient } from './client';
 import { ApiError } from './errors';
 import { ClientProvider, queryKeys, scopedKey, useList } from './hooks';
 import { resetReadOnlyKeys, useReadOnlyKey, useWrite } from './write';
+import { t } from '../i18n';
 
 afterEach(resetReadOnlyKeys);
 
@@ -102,6 +103,45 @@ describe('useWrite', () => {
     // Another connection is not affected.
     const other = setup({}, { ...CONN, id: 'c2' });
     expect(other.result.current.readOnly).toBe(false);
+  });
+});
+
+// Final wave C1 and G3: the one rule of the write path. Once the key is known read-only, a write is
+// refused at once: its action never runs, so nothing reaches APISIX, whoever asks (the editor's save,
+// a confirm pressed again, a bulk run).
+describe('useWrite once the key is read-only', () => {
+  it('runs nothing: the refusal comes back at once (auth, not sent), toasted unless silent; another connection still writes', async () => {
+    const { admin, result } = setup({ replies: { 'routes/r1': () => json(401, { error_msg: 'invalid method for role viewer' }) } });
+    await act(async () => {
+      await result.current.write((c) => c.remove('routes', 'r1'), { silent: true });
+    });
+    expect(result.current.readOnly).toBe(true);
+    const sent = admin.requests.length;
+    let ran = false;
+    let outcome: Awaited<ReturnType<ReturnType<typeof useWrite>>> | undefined;
+    await act(async () => {
+      outcome = await result.current.write((c) => {
+        ran = true;
+        return c.remove('routes', 'r1');
+      });
+    });
+    expect(ran).toBe(false);
+    expect(admin.requests.length).toBe(sent);
+    expect(outcome?.ok === false && outcome.error.kind).toBe('auth');
+    expect(outcome?.ok === false && outcome.error.message).toBe(t('readOnly.refused'));
+    expect(getToasts().at(-1)).toMatchObject({ tone: 'error', message: t('readOnly.refused') });
+    const before = toastsRaised();
+    await act(async () => {
+      await result.current.write((c) => c.remove('routes', 'r1'), { silent: true });
+    });
+    expect(toastsRaised()).toBe(before);
+    expect(admin.requests.length).toBe(sent);
+
+    const other = setup({}, { ...CONN, id: 'c2' });
+    await act(async () => {
+      await other.result.current.write((c) => c.patch('routes', 'r9', { status: 0 }), { silent: true });
+    });
+    expect(other.admin.requests.filter((r) => r.method === 'PATCH')).toHaveLength(1);
   });
 });
 

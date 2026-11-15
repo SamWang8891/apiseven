@@ -365,6 +365,7 @@ export const en: Record<string, string> = {
   'editor.editing': 'Editing',
   'editor.edit': 'Edit',
   'editor.readOnlyKey': "This admin key is read-only, so this can't be edited.",
+  'editor.readOnlySave': "This admin key is read-only, so this can't be saved. The draft stays here: copy it from the JSON tab.",
   'editor.save': 'Save',
   'editor.create': 'Create',
   'editor.saving': 'Saving',
@@ -482,6 +483,8 @@ export const en: Record<string, string> = {
   'unreachable.title': 'Can’t reach the Admin API at',
   'unreachable.body': '{error}. What this page shows may be out of date.',
   'readOnly.banner': "This admin key is read-only: changes can't be saved. Connect with a key that may write to change anything.",
+  'readOnly.refused': 'Not sent: this admin key is read-only.',
+  'readOnly.unavailable': "This admin key is read-only, so this can't be sent to APISIX.",
 
   // Errors that replace a page
   'error.title': 'Something went wrong',

@@ -30,6 +30,7 @@ export interface EditorHeaderProps {
    * the status does nothing for this object (ResourceDef.statusIgnored), which then has no switch.
    */
   status?: { enabled: boolean; ignored?: string; name: string; onChange: (enabled: boolean) => void };
+  /** The key turned out read-only: Edit is unavailable, and while editing Save and Save anyway send nothing (api/write.ts), so they say so. */
   readOnly: boolean;
   saving: boolean;
   /** Save is impossible (the JSON tab holds text that doesn't parse). */
@@ -175,8 +176,22 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
             <Button disabled={p.saving} onClick={p.onDiscard}>
               {t('editor.discard')}
             </Button>
+            {/*
+              A key found read-only: nothing is sent (api/write.ts), so Save and Save anyway are
+              unavailable where they are (aria-disabled keeps the focus of whoever just pressed one), with
+              the reason; the draft stays to be copied out.
+            */}
+            {p.readOnly && (
+              <span id="ed-readonly-why" hidden>
+                {t('editor.readOnlySave')}
+              </span>
+            )}
             {p.onSaveAnyway && (
-              <Button disabled={p.saving} onClick={p.onSaveAnyway} aria-describedby="ed-anyway-why">
+              <Button
+                aria-disabled={p.saving || p.readOnly || undefined}
+                onClick={p.onSaveAnyway}
+                aria-describedby={p.readOnly ? 'ed-readonly-why' : 'ed-anyway-why'}
+              >
                 {t('editor.anyway.action')}
               </Button>
             )}
@@ -184,6 +199,8 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
               variant="primary"
               loading={p.saving}
               disabled={p.saveBlocked}
+              aria-disabled={p.readOnly || undefined}
+              aria-describedby={p.readOnly ? 'ed-readonly-why' : undefined}
               aria-keyshortcuts="Meta+S Control+S"
               onClick={p.onSave}
             >

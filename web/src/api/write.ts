@@ -1,5 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useSyncExternalStore } from 'react';
+import { t } from '../i18n';
 import { toast } from '../ui/toast';
 import type { AdminClient } from './client';
 import { ApiError } from './errors';
@@ -34,6 +35,15 @@ export function useReadOnlyKey(): boolean {
   return useSyncExternalStore(subscribe, () => readOnly.has(connId));
 }
 
+/**
+ * Why a write on the active connection would not be sent: its key turned out read-only, and useWrite
+ * refuses every write at once from then on. Undefined while it may write. What a control that would
+ * write says while it is unavailable (aria-disabled, so a keyboard user on it keeps their place).
+ */
+export function useWriteRefusal(): string | undefined {
+  return useReadOnlyKey() ? t('readOnly.unavailable') : undefined;
+}
+
 /** Marks the active connection read-only; the Shell then shows its banner. */
 export function useMarkReadOnly(): () => void {
   const connId = useClient().conn.id;
@@ -64,10 +74,12 @@ function asApiError(err: unknown): ApiError {
 }
 
 /**
- * Every write in the app goes through this. It runs `action` with the active client and never
- * throws. On success it reloads the `invalidate` lists (waiting for them), then toasts `success`.
- * On failure it toasts APISIX's message (unless `silent`); an auth failure (a viewer key writing)
- * marks the connection read-only and stays on the page.
+ * Every write in the app goes through this (the editor's save included). It runs `action` with the
+ * active client and never throws. On success it reloads the `invalidate` lists (waiting for them),
+ * then toasts `success`. On failure it toasts APISIX's message (unless `silent`); an auth failure (a
+ * viewer key writing) marks the connection read-only and stays on the page. The one rule of the write
+ * path: once the connection is known read-only, `action` is not run at all, so nothing is sent
+ * (another GET and PUT, a second DELETE): the refusal comes back at once, an `auth` error saying so.
  */
 export function useWrite(): <T>(action: (client: AdminClient) => Promise<T>, opts?: WriteOptions) => Promise<WriteResult<T>> {
   const client = useClient();
@@ -75,6 +87,11 @@ export function useWrite(): <T>(action: (client: AdminClient) => Promise<T>, opt
   const queryClient = useQueryClient();
   return useCallback(
     async <T>(action: (client: AdminClient) => Promise<T>, opts: WriteOptions = {}): Promise<WriteResult<T>> => {
+      if (readOnly.has(client.conn.id)) {
+        const error = new ApiError('auth', t('readOnly.refused'));
+        if (!opts.silent) toast.error(error.message);
+        return { ok: false, error };
+      }
       let value: T;
       try {
         value = await action(client);

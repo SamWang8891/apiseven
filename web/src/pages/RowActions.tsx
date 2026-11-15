@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { useAllPlugins } from '../api/hooks';
 import type { Item, Kind, Obj, Parent } from '../api/types';
-import { useWrite } from '../api/write';
+import { useWrite, useWriteRefusal } from '../api/write';
 import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
@@ -137,6 +137,7 @@ export interface DeleteResourceDialogProps {
  */
 export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, onDeleted }: DeleteResourceDialogProps) {
   const write = useWrite();
+  const refusal = useWriteRefusal();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const def = registry[kind];
@@ -172,6 +173,7 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
       open={open}
       danger
       busy={busy}
+      unavailable={refusal}
       title={title}
       confirmLabel={def.resets ? t('action.reset') : t('delete.confirm', { kind: def.singular })}
       onConfirm={() => void confirm()}

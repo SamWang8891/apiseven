@@ -95,3 +95,53 @@ describe('icon-only Button', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent('More actions');
   });
 });
+
+// Final wave C1 / G3 (and the rule from the last reviews): a button that is busy or unavailable stays
+// focusable, as Chromium moves focus off a `disabled` one to body; a press does nothing.
+describe('a busy or unavailable Button', () => {
+  it('busy: aria-disabled and aria-busy, not disabled; a click or Enter does nothing, and a submit button submits nothing', async () => {
+    const user = userEvent.setup();
+    let clicks = 0;
+    let submits = 0;
+    render(
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          submits += 1;
+        }}
+      >
+        <input aria-label="name" />
+        <Button type="submit" loading onClick={() => (clicks += 1)}>
+          Connect
+        </Button>
+      </form>,
+    );
+    const button = screen.getByRole('button', { name: 'Connect' });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    await user.click(button);
+    expect(button).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('textbox', { name: 'name' }));
+    await user.keyboard('{Enter}');
+    expect(clicks).toBe(0);
+    expect(submits).toBe(0);
+  });
+
+  it('unavailable (aria-disabled): looks disabled, keeps focus, and a press does nothing', async () => {
+    const user = userEvent.setup();
+    let clicks = 0;
+    render(
+      <Button aria-disabled onClick={() => (clicks += 1)}>
+        Save
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Save' });
+    await user.click(button);
+    await user.keyboard('{Enter}{ }');
+    expect(button).toHaveFocus();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(clicks).toBe(0);
+  });
+});

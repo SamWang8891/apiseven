@@ -77,6 +77,17 @@
   background: var(--bg-sunken);
 }
 
+/* Why a ConfirmDialog's action can't be taken now (ConfirmDialog `unavailable`). */
+.ui-dialog__why {
+  margin: var(--s3) 0 0;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.ui-dialog__why:first-child {
+  margin-top: 0;
+}
+
 /* ConfirmDialog is a short question: no rule under its title. */
 [role='alertdialog'].ui-dialog .ui-dialog__header {
   min-height: 0;

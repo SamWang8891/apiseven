@@ -52,7 +52,7 @@
   color: var(--accent-text);
 }
 
-.ui-btn--primary:hover:not(:disabled) {
+.ui-btn--primary:hover:not(:disabled, [aria-disabled='true']) {
   border-color: color-mix(in srgb, var(--accent) 85%, var(--text));
   background: color-mix(in srgb, var(--accent) 85%, var(--text));
 }
@@ -63,7 +63,7 @@
   color: var(--text);
 }
 
-.ui-btn--secondary:hover:not(:disabled) {
+.ui-btn--secondary:hover:not(:disabled, [aria-disabled='true']) {
   border-color: var(--text-2);
   background: var(--bg-sunken);
 }
@@ -73,7 +73,7 @@
   color: var(--text);
 }
 
-.ui-btn--ghost:hover:not(:disabled) {
+.ui-btn--ghost:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--bg-sunken);
 }
 
@@ -83,20 +83,25 @@
   color: var(--on-danger);
 }
 
-.ui-btn--danger:hover:not(:disabled) {
+.ui-btn--danger:hover:not(:disabled, [aria-disabled='true']) {
   border-color: color-mix(in srgb, var(--danger) 85%, var(--text));
   background: color-mix(in srgb, var(--danger) 85%, var(--text));
 }
 
-/* Disabled is its own look (sunken, secondary text), never a faded copy of the enabled one. */
-.ui-btn:disabled:not([aria-busy='true']) {
+/*
+ * Disabled is its own look (sunken, secondary text), never a faded copy of the enabled one. Unavailable
+ * (aria-disabled: it keeps focus, Button.tsx) looks the same; busy keeps its colours.
+ */
+.ui-btn:disabled:not([aria-busy='true']),
+.ui-btn[aria-disabled='true']:not([aria-busy='true']) {
   border-color: var(--border);
   background: var(--bg-sunken);
   color: var(--text-2);
   cursor: not-allowed;
 }
 
-.ui-btn--ghost:disabled:not([aria-busy='true']) {
+.ui-btn--ghost:disabled:not([aria-busy='true']),
+.ui-btn--ghost[aria-disabled='true']:not([aria-busy='true']) {
   border-color: transparent;
   background: transparent;
 }

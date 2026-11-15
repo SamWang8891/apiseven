@@ -8,7 +8,7 @@ import { queryKeys, scopedKey, useAllPlugins, useClient, useInvalidate } from '.
 import { stripTimestamps } from '../api/sanitize';
 import type { Item, Kind, Obj, Parent } from '../api/types';
 import type { ApiError } from '../api/errors';
-import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
+import { useMarkReadOnly, useReadOnlyKey, useWrite } from '../api/write';
 import type { ConnectState } from '../connection/ConnectPage';
 import { t } from '../i18n';
 import { scopeOfKind } from '../plugins/scope';
@@ -85,6 +85,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const navigate = useNavigate();
   const readOnly = useReadOnlyKey();
   const markReadOnly = useMarkReadOnly();
+  const write = useWrite();
 
   const [original, setOriginal] = useState(item);
   const { draft, setDraft, dirty, reset, baseline } = useDraft(item ? valueOf(item) : (start?.baseline ?? {}), item ? undefined : start?.draft);
@@ -223,7 +224,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   // Save anyway's grounds: only the kind's own checks (which can be stricter than APISIX) refuse the
   // draft: nothing held, no problem with the id. useSaveAnyway remembers a refusal on them.
   const onlyLocal = pending.length === 0 && frameIssues.length === 0 && !idMissing && !idRefused;
-  const anywayGrounds = onlyLocal && checked.length > 0 && !readOnly;
+  // With a key found read-only nothing is sent (useWrite), so nothing is newly offered or advertised;
+  // an offer made before stays where the user may be on it, unavailable like Save (EditorHeader).
+  const anywayGrounds = onlyLocal && checked.length > 0;
+  const anywayOffer = anywayGrounds && !readOnly;
 
   // Save from the button, Cmd/Ctrl-S, Save anyway or the conflict dialog: after the focused field is left.
   const requestSave = useSaveRequest(bodyRef, save, !saving && !locked);
@@ -244,8 +248,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       // a refusal on Save anyway's grounds names that way out.
       const named = pending[0]?.message ?? idRefused;
       // About this page's form: it ends with the page (ui/toast.ts pageBound).
-      toast.error(named ? t('editor.fixHeld', { fix, message: named }) : anywayGrounds ? t('editor.fixAnyway', { fix }) : fix, { pageBound: true });
-      saveAnyway.refused(anywayGrounds);
+      toast.error(named ? t('editor.fixHeld', { fix, message: named }) : anywayOffer ? t('editor.fixAnyway', { fix }) : fix, { pageBound: true });
+      saveAnyway.refused(anywayOffer);
       // Input this tab holds comes first: stay here, on the field that holds it (the one the toast names).
       const holding = pending.length > 0 ? heldField(pending[0], bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])')) : undefined;
       const first = pending.length > 0 ? active : tabIds.find((tab) => byTabAll.has(tab));
@@ -264,9 +268,17 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     setSaving(true);
     stopEdits();
     setFailure(undefined);
-    const result = await saveResource(client, { kind, id: isNew ? createId : id, isNew, draft, original, parent, force });
+    // Through the write path, which sends nothing once the key is known read-only (api/write.ts);
+    // saveResource never throws, so that refusal is the only failure the wrapper reports.
+    const sent = await write((c) => saveResource(c, { kind, id: isNew ? createId : id, isNew, draft, original, parent, force }), { silent: true });
     inFlight.current = false;
     setSaving(false);
+    if (!sent.ok) {
+      // Not sent: the draft stays, to be copied out (the JSON tab), and the banner says why.
+      setFailure({ title: t('editor.notSent'), message: sent.error.message });
+      return;
+    }
+    const result = sent.value;
 
     if (result.ok) {
       const saved = result.item;
@@ -397,7 +409,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       />
       <div className="ed-body" ref={bodyRef}>
         {failure && <FailureBanner failure={failure} onShow={showStored} />}
-        {saveAnyway.offered && <SaveAnywayNotice count={checked.length} />}
+        {saveAnyway.offered && !readOnly && <SaveAnywayNotice count={checked.length} />}
         {notice}
         {isNew && start?.copy && <CopyNotice notes={start.copy} />}
         {isNew && !def.idFromDraft && fixedId === undefined && (
