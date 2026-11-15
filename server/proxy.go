@@ -88,6 +88,9 @@ func sameOrigin(origin, host string) bool {
 func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 	target := cfg.AdminURL
 	transport := http.DefaultTransport.(*http.Transport).Clone()
+	// Never through HTTP_PROXY / HTTPS_PROXY: Docker can put them in every container, and the server's
+	// key would then go to a forward proxy nobody chose for it (in clear text to an http:// Admin API).
+	transport.Proxy = nil
 	transport.DialContext = (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext
 	transport.ResponseHeaderTimeout = 60 * time.Second
 	return &httputil.ReverseProxy{

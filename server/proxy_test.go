@@ -3,11 +3,16 @@ package main
 import (
 	"encoding/json"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/http/httputil"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -380,5 +385,53 @@ func TestOriginRefusalNamesBothSides(t *testing.T) {
 	_ = json.Unmarshal(w.Body.Bytes(), &body)
 	if !strings.Contains(body["error_msg"], "http://evil.example") || !strings.Contains(body["error_msg"], pageHost) {
 		t.Errorf("error_msg %q does not name the Origin and the Host", body["error_msg"])
+	}
+}
+
+func TestProxyTransportHasNoEnvironmentProxy(t *testing.T) {
+	rp, ok := newProxy(testConfig(t, adminURL, nil), slog.New(slog.DiscardHandler)).(*httputil.ReverseProxy)
+	if !ok {
+		t.Fatal("newProxy is not a *httputil.ReverseProxy")
+	}
+	if tr, ok := rp.Transport.(*http.Transport); !ok || tr.Proxy != nil {
+		t.Errorf("the Admin API transport has a Proxy function: requests could go to HTTP_PROXY")
+	}
+}
+
+// TestProxyIgnoresHTTPProxy sets HTTP_PROXY in a child process (Go reads it once per process) and
+// sends a request for an Admin API on a name that does not resolve. Through the environment's proxy
+// it would reach the fake forward proxy and succeed; straight, it fails to look the name up.
+func TestProxyIgnoresHTTPProxy(t *testing.T) {
+	if os.Getenv("APISEVEN_PROXY_ENV_CHILD") == "1" {
+		proxyEnvChild(t)
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestProxyIgnoresHTTPProxy$", "-test.count=1", "-test.v")
+	cmd.Env = append(os.Environ(), "APISEVEN_PROXY_ENV_CHILD=1")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("child process: %v\n%s", err, out)
+	}
+}
+
+func proxyEnvChild(t *testing.T) {
+	var reached atomic.Int32
+	forward := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reached.Add(1)
+		_, _ = io.WriteString(w, `{"total":0,"list":[]}`)
+	}))
+	defer forward.Close()
+	for _, name := range []string{"HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"} {
+		t.Setenv(name, forward.URL)
+	}
+	t.Setenv("NO_PROXY", "")
+	t.Setenv("no_proxy", "")
+	h, _ := server(t, testConfig(t, "http://apisix.invalid:9180", map[string]string{"APISIX_ADMIN_KEY": serverKey}))
+	w := serve(h, appRequest("GET", "/apisix/admin/routes", nil))
+	if n := reached.Load(); n != 0 {
+		t.Fatalf("%d request(s) with the server key went to HTTP_PROXY", n)
+	}
+	assertErrorMsg(t, w, 502, "apiseven: cannot reach the APISIX Admin API at apisix.invalid:9180: ")
+	if !strings.Contains(w.Body.String(), "apisix.invalid") {
+		t.Errorf("502 body %s does not show the direct lookup of the Admin API's name", w.Body)
 	}
 }
