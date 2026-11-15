@@ -1,7 +1,8 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Pencil } from 'lucide-react';
-import { describe, expect, it } from 'vitest';
+import { useState } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { Button } from './Button';
 import { TooltipProvider } from './Tooltip';
 
@@ -143,5 +144,126 @@ describe('a busy or unavailable Button', () => {
     expect(button).toHaveFocus();
     expect(button).toHaveAttribute('aria-disabled', 'true');
     expect(clicks).toBe(0);
+  });
+});
+
+// Task 18, fix round 3: a loading Button keeps keyboard focus through its action and after; every
+// activation is ignored meanwhile (click, Enter, Space, a form's implicit submission).
+describe('Button, loading', () => {
+  it('is busy and aria-disabled, not disabled: a click, Enter and Space all do nothing', async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    render(
+      <Button loading onClick={onClick}>
+        Save
+      </Button>,
+    );
+    const button = screen.getByRole('button', { name: 'Save' });
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    // Not disabled: a focused control that becomes disabled loses focus in a browser (jsdom does not show that).
+    expect(button).not.toBeDisabled();
+    await user.click(button);
+    button.focus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+    expect(onClick).not.toHaveBeenCalled();
+    expect(button).toHaveFocus();
+  });
+
+  it('a form’s submit button that is loading: neither a click nor Enter in a field submits the form again', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <input aria-label="Key" />
+        <Button type="submit" loading>
+          Connect
+        </Button>
+      </form>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+    await user.type(screen.getByRole('textbox', { name: 'Key' }), 'k{Enter}');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('pressed from the keyboard, it keeps focus while it works and after; then it takes a press again', async () => {
+    const user = userEvent.setup();
+    let finish: () => void = () => {};
+    const work = vi.fn(() => new Promise<void>((resolve) => (finish = resolve)));
+    function Harness() {
+      const [busy, setBusy] = useState(false);
+      return (
+        <Button
+          loading={busy}
+          onClick={() => {
+            setBusy(true);
+            void work().finally(() => setBusy(false));
+          }}
+        >
+          Save
+        </Button>
+      );
+    }
+    render(<Harness />);
+    const button = screen.getByRole('button', { name: 'Save' });
+    button.focus();
+    await user.keyboard('{Enter}');
+    expect(button).toHaveAttribute('aria-busy', 'true');
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveFocus();
+    await user.keyboard('{Enter}');
+    await user.keyboard(' ');
+    expect(work).toHaveBeenCalledTimes(1);
+    finish();
+    await vi.waitFor(() => expect(button).not.toHaveAttribute('aria-busy'));
+    expect(button).not.toHaveAttribute('aria-disabled');
+    expect(button).toHaveFocus();
+    await user.keyboard('{Enter}');
+    expect(work).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps its accessible name and description while loading', () => {
+    const { rerender } = render(
+      <>
+        <p id="why">Sends the draft to APISIX</p>
+        <Button aria-describedby="why">Save</Button>
+      </>,
+    );
+    const idle = screen.getByRole('button');
+    expect(idle).toHaveAccessibleName('Save');
+    expect(idle).toHaveAccessibleDescription('Sends the draft to APISIX');
+    rerender(
+      <>
+        <p id="why">Sends the draft to APISIX</p>
+        <Button aria-describedby="why" loading>
+          Save
+        </Button>
+      </>,
+    );
+    const busy = screen.getByRole('button');
+    expect(busy).toHaveAccessibleName('Save');
+    expect(busy).toHaveAccessibleDescription('Sends the draft to APISIX');
+  });
+
+  it('an icon-only button keeps its label as its name while loading', () => {
+    render(<Button aria-label="Refresh" loading icon={<span />} />);
+    expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute('aria-busy', 'true');
+  });
+});
+
+describe('Button, disabled', () => {
+  it('disabled for another reason stays disabled, loading or not, and is not marked aria-disabled', () => {
+    const { rerender } = render(<Button disabled>Save</Button>);
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).not.toHaveAttribute('aria-disabled');
+    rerender(
+      <Button disabled loading>
+        Save
+      </Button>,
+    );
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('aria-busy', 'true');
   });
 });

@@ -45,8 +45,16 @@ export function Button({ variant = 'secondary', size = 'md', icon, loading, chil
       disabled={disabled}
       aria-disabled={inert || undefined}
       aria-busy={loading || undefined}
-      // A press does nothing, and a submit button submits nothing (implicit submission clicks it too).
-      onClick={inert ? (e) => e.preventDefault() : onClick}
+      // A press does nothing, a submit button submits nothing (implicit submission clicks it too), and
+      // nothing around it hears the click, as with `disabled`.
+      onClick={
+        inert
+          ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          : onClick
+      }
     >
       {shownIcon && (
         <span className="ui-btn__icon" aria-hidden="true">

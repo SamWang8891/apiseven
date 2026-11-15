@@ -96,6 +96,14 @@ describe('ui CSS', () => {
     for (const [sel] of hovers) expect(sel).toContain(":not([aria-busy='true'])");
   });
 
+  it('a loading button is aria-disabled, so its hover leaves it out (by aria-disabled, which busy carries), and busy shows progress', () => {
+    const button = rules(files.find((f) => f.name === 'button.css')?.css ?? '');
+    const hovers = button.filter(([sel]) => sel.includes('.ui-btn') && sel.includes(':hover'));
+    expect(hovers.length).toBeGreaterThan(0);
+    for (const [sel] of hovers) expect(sel).toMatch(/:not\([^)]*\[aria-(disabled|busy)='true'\]/);
+    expect(button.find(([sel]) => sel === ".ui-btn[aria-busy='true']")?.[1] ?? '').toMatch(/cursor:\s*progress/);
+  });
+
   it('a field inside a box that rings itself draws no second ring', () => {
     const all = files.flatMap((f) => rules(f.css));
     for (const field of ['.ui-tags__input', '.ui-input__bare', '.ui-select__trigger']) {
