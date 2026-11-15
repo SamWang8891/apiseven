@@ -227,7 +227,7 @@ export interface ResourceDef {
   resets?: boolean;
   /**
    * The list's search reads each object as the locked views show it (redactObject), so it never
-   * finds one by a secret it holds.
+   * finds one by a secret it holds. On for every kind (define).
    */
   masksSearch?: boolean;
 }
@@ -277,6 +277,8 @@ function define(kind: Kind, spec: Spec): ResourceDef {
     columns: baseColumns(),
     tabs: [],
     blank: () => ({}),
+    // A secret any kind can hold (a plugin's, a secret-named key, a client key) never finds it (16b item 72).
+    masksSearch: true,
     ...spec,
   };
 }

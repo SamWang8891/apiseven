@@ -238,6 +238,31 @@ describe('rows of odd shapes', () => {
   });
 });
 
+// Task 16b item 72: a list's search reads each object as its locked view shows it, so no secret finds it.
+describe('search never finds an object by a secret it holds', () => {
+  const search = async (user: ReturnType<typeof userEvent.setup>, kindPlural: string, text: string) => {
+    const box = main().getByRole('searchbox', { name: t('table.search.label', { plural: kindPlural }) });
+    await user.clear(box);
+    await user.type(box, text);
+  };
+
+  it.each([
+    ['consumers', { username: 'jo', desc: 'Jo', plugins: { 'key-auth': { key: 'jo-stored-key' } } }, 'jo-stored-key', 'Jo'],
+    ['routes', { id: 'r9', name: 'login', uri: '/login', plugins: { 'basic-auth': {}, 'limit-count': { count: 1, time_window: 1, redis_password: 'redis-stored-pass' } } }, 'redis-stored-pass', 'login'],
+    ['upstreams', { id: 'u9', name: 'mtls', nodes: [], tls: { client_cert: 'CERT', client_key: 'AES-stored-ciphertext' } }, 'AES-stored', 'mtls'],
+    ['services', { id: 's9', name: 'svc', password: 'svc-stored-pass' }, 'svc-stored-pass', 'svc'],
+  ] as const)('%s', async (kind, value, secret, visible) => {
+    const { user } = await open(`#/${kind}`, { objects: { [kind]: [value] } });
+    const plural = t(`kind.${kind}.plural`);
+    const name = 'username' in value ? value.username : value.name;
+    expect(await main().findByRole('link', { name })).toBeInTheDocument();
+    await search(user, plural, secret);
+    await waitFor(() => expect(main().queryByRole('link', { name })).not.toBeInTheDocument());
+    await search(user, plural, visible);
+    expect(await main().findByRole('link', { name })).toBeInTheDocument();
+  });
+});
+
 describe('read-only key', () => {
   it('a rejected write shows the error, marks the key read-only with a banner, and stays on the page', async () => {
     const { user } = await open('#/routes', {

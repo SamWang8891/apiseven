@@ -116,7 +116,8 @@ describe('registry', () => {
     expect(KINDS.filter((kind) => registry[kind].createWhenMissing)).toEqual(['plugin_metadata']);
     expect(KINDS.filter((kind) => registry[kind].noDuplicate)).toEqual(['plugin_metadata']);
     expect(KINDS.filter((kind) => registry[kind].resets)).toEqual(['plugin_metadata']);
-    expect(KINDS.filter((kind) => registry[kind].masksSearch).sort()).toEqual(['global_rules', 'plugin_configs', 'plugin_metadata', 'secrets']);
+    // Every kind's list search reads the masked view (16b item 72).
+    expect(KINDS.filter((kind) => !registry[kind].masksSearch)).toEqual([]);
     expect(registry.secrets.idProblem?.('vault/a')).toBeUndefined();
     expect(registry.secrets.idProblem?.('vault/a/b')).toBe(t('sc.id.slash', { id: 'a/b' }));
     expect(registry.plugin_metadata.idProblem?.('http-logger')).toBeUndefined();
