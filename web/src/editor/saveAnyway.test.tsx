@@ -310,7 +310,7 @@ describe('Save anyway', () => {
 
   it('a Save anyway the frame itself refuses (Create over a taken id) leaves no "nothing else stops the save" behind; the session’s yes stays (Task 16b, item 151)', async () => {
     undo.push(overrideDef('routes', { tabs: [GENERAL_TAB], validate: strict }));
-    const { user, admin } = await openEditor('#/routes/new?upstream_id=u1', {
+    const { user, admin } = await openEditor('#/routes/~new?upstream_id=u1', {
       objects: { routes: [{ ...ROUTE, id: 'taken' }], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] },
     });
     await user.type(await main().findByRole('textbox', { name: 'ID' }), 'taken');

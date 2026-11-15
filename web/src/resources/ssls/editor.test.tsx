@@ -590,7 +590,7 @@ describe('O2: a reference is taken only when it is the whole text', () => {
 describe('a file read that finishes while a save is in flight (Task 16b, item 147; fix round 1, R3.2)', () => {
   it('changes neither the draft nor the request nor what the page shows afterwards', async () => {
     let answer: (r: Response) => void = () => {};
-    const { user, admin } = await openEditor('#/ssls/new', {
+    const { user, admin } = await openEditor('#/ssls/~new', {
       objects: { ssls: [], routes: [], services: [] },
       replies: { ssls: (req) => (req.method === 'POST' ? new Promise<Response>((done) => (answer = done)) : undefined) },
     });
@@ -618,7 +618,7 @@ describe('a file read that finishes while a save is in flight (Task 16b, item 14
 describe('a file dropped while a save is in flight (fix round 2, R1.1)', () => {
   it('is taken by nothing: the locked box declares no drop zone, and the box, the draft and the request agree, also after a late refusal', async () => {
     let answer: (r: Response) => void = () => {};
-    const { user, admin } = await openEditor('#/ssls/new', {
+    const { user, admin } = await openEditor('#/ssls/~new', {
       objects: { ssls: [], routes: [], services: [] },
       replies: { ssls: (req) => (req.method === 'POST' ? new Promise<Response>((done) => (answer = done)) : undefined) },
     });
@@ -648,7 +648,7 @@ describe('a file dropped while a save is in flight (fix round 2, R1.1)', () => {
 describe('a split offer made by a file ends with that file’s reason (fix round 2, R1.2)', () => {
   it('a combined file dropped on the key box, then a save refused late: the key box\'s input went while locked, and the offer with its reason', async () => {
     let answer: (r: Response) => void = () => {};
-    const { user, admin } = await openEditor('#/ssls/new', {
+    const { user, admin } = await openEditor('#/ssls/~new', {
       objects: { ssls: [], routes: [], services: [] },
       replies: { ssls: (req) => (req.method === 'POST' ? new Promise<Response>((done) => (answer = done)) : undefined) },
     });
@@ -675,7 +675,7 @@ describe('a new SSL opens without red (Task 16b, item 154)', () => {
   const badge = (label: string, count: number) => `${label} ${t('ui.tabs.errors', { count })}`;
 
   it('"A certificate is required" and "A private key is required" wait for a refused Create, or for the field to be touched', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor('#/ssls/~new', { objects: { ssls: [], routes: [], services: [] } });
     await settled();
     for (const label of TAB_LABELS()) expect(tab(label)).toHaveAccessibleName(label);
     expect(main().queryByText(t('ssl.issue.certRequired'))).toBeNull();
@@ -696,7 +696,7 @@ describe('a new SSL opens without red (Task 16b, item 154)', () => {
   });
 
   it('on the JSON tab: no badge for what is only missing; a value entered there is judged at once', async () => {
-    const { user, admin } = await openEditor('#/ssls/new?tab=json', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor('#/ssls/~new?tab=json', { objects: { ssls: [], routes: [], services: [] } });
     const box = await jsonEditor(t('kind.ssls.singular'));
     for (const label of TAB_LABELS()) expect(tab(label)).toHaveAccessibleName(label);
     await user.click(box);
@@ -713,7 +713,7 @@ describe('a new SSL opens without red (Task 16b, item 154)', () => {
 
 describe('a reference with white space around it (Task 16b, item 104)', () => {
   it('is taken trimmed in every box: Create sends the references without the white space', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor('#/ssls/~new', { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     const box = main().getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.click(box);

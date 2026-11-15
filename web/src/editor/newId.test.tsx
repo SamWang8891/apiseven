@@ -61,8 +61,8 @@ describe('segmentProblem and newIdState', () => {
 
 describe('an empty id typed into the JSON of a new object (Task 16b, item 142)', () => {
   it.each([
-    ['a global rule', '#/global_rules/new', { id: '', plugins: {} }],
-    ['a route', '#/routes/new?upstream_id=u1', { id: '', uri: '/a', upstream_id: 'u1' }],
+    ['a global rule', '#/global_rules/~new', { id: '', plugins: {} }],
+    ['a route', '#/routes/~new?upstream_id=u1', { id: '', uri: '/a', upstream_id: 'u1' }],
   ] as const)('%s: no request at all, and the ID is named', async (_, hash, body) => {
     const { user, admin } = await openEditor(`${hash}${hash.includes('?') ? '&' : '?'}tab=json`, {
       objects: { global_rules: [], routes: [], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] },

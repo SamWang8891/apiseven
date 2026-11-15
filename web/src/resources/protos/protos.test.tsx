@@ -67,7 +67,7 @@ describe('the Content tab', () => {
   });
 
   it('the upload button’s accessible name starts with its visible text, as Upload file and as Replace file (Task 16b, item 120)', async () => {
-    const { user } = await open('#/protos/new?tab=content', []);
+    const { user } = await open('#/protos/~new?tab=content', []);
     await settled();
     const upload = main().getByRole('button', { name: t('pr.content.uploadLabel') });
     expect(upload).toHaveTextContent(t('pr.content.upload'));

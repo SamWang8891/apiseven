@@ -78,8 +78,10 @@ export function usePalette(main: RefObject<HTMLElement | null>) {
 
   // A palette navigation the leave guard held: its question (a modal, in a portal on body) opens, and
   // when it closes with the page unchanged (Stay), focus goes back where it was before the palette,
-  // or to `main` when that is gone. The dialog has no trigger to return focus to, so it is left on
-  // `body` (or `main`); nothing else is moved. Ends with the navigation, or with that answer.
+  // or to `main` when that is gone. The question opened with nothing focused (the palette had gone),
+  // so the kit's ConfirmDialog returns focus to `main` when it closes, and keeps focus this put
+  // elsewhere first; so this acts only while focus is on `body` or `main`, and moves nothing else.
+  // Ends with the navigation, or with that answer.
   const sawQuestion = useRef(false);
   useEffect(() => {
     if (open || after.current !== 'page') return;

@@ -144,7 +144,7 @@ describe('the route editor', () => {
 
 describe('a new route opens without red (Task 16b, item 154)', () => {
   it('"Choose where requests go" waits for a refused Create: no badge, no message; then both, on the Upstream tab', async () => {
-    const { user, admin } = await openEditor('#/routes/new', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor('#/routes/~new', { objects: objects([]), replies: pluginReplies() });
     await settled();
     for (const label of TAB_LABELS()) expect(tab(label)).toHaveAccessibleName(label);
     // Typing elsewhere touches only that field.
@@ -161,7 +161,7 @@ describe('a new route opens without red (Task 16b, item 154)', () => {
   });
 
   it('a required value the user emptied shows at once: the URI cleared', async () => {
-    const { user } = await openEditor('#/routes/new?tab=matching', { objects: objects([]), replies: pluginReplies() });
+    const { user } = await openEditor('#/routes/~new?tab=matching', { objects: objects([]), replies: pluginReplies() });
     await settled();
     expect(tab(t('rt.tab.matching'))).toHaveAccessibleName(t('rt.tab.matching'));
     await user.click(main().getByRole('button', { name: t('ui.tags.remove', { tag: '/*' }) }));

@@ -557,13 +557,15 @@ describe('every exported resolver, on odd shapes', () => {
     routes: items, streamRoutes: items, services: items, upstreams: items, ssls: items, pluginConfigs: items,
     consumerGroups: items, consumers: items, globalRules: items,
   });
+  // The same lists with the services read failed (routeHostsUnknown, Task 16b-2 item 162).
+  const servicesFailed = { ...ctx, failed: { ...ctx.failed, services: true } };
   const HOSTS = ['', '*', '.', '..', '*.', '[', '::', 'a..b', 'Ä.test', '*.*.test', '10.0.0.1.', 'x'.repeat(300)];
 
   it('lists every exported function once, so a new one is added here', () => {
     expect(Object.keys(resolve).filter((name) => typeof (resolve as Record<string, unknown>)[name] === 'function').sort()).toEqual([
       'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referencesTo', 'resolveRef',
-      'routeHosts', 'routeHostsLoading', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter', 'streamEffectivePlugins',
-      'upstreamSummary',
+      'routeHosts', 'routeHostsLoading', 'routeHostsUnknown', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter',
+      'streamEffectivePlugins', 'upstreamSummary',
     ]);
   });
 
@@ -576,6 +578,8 @@ describe('every exported resolver, on odd shapes', () => {
         resolve.labelPairs(v.labels);
         resolve.routeHosts(v, ctx);
         resolve.routeHostsLoading(v, ctx);
+        resolve.routeHostsUnknown(v, ctx);
+        resolve.routeHostsUnknown(v, servicesFailed);
         resolve.ownUpstream(v, ctx);
         resolve.ownUpstream(v, ctx, true);
         resolve.upstreamSummary(v, ctx);

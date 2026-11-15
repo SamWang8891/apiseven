@@ -98,7 +98,7 @@ describe('a new secret', () => {
   });
 
   it('choosing a manager does not ask for the ID in red before anything was typed; Create does, and so does an ID typed and taken out again (Task 16b, items 126, 154)', async () => {
-    const { user, admin } = await open('#/secrets/new', []);
+    const { user, admin } = await open('#/secrets/~new', []);
     await pickManager(user, t('sc.manager.vault'));
     await settled();
     expect(main().queryByText(t('sc.id.empty'))).toBeNull();
@@ -114,7 +114,7 @@ describe('a new secret', () => {
   });
 
   it('an ID typed and taken out again says what is missing at once', async () => {
-    const { user } = await open('#/secrets/new', []);
+    const { user } = await open('#/secrets/~new', []);
     await pickManager(user, t('sc.manager.vault'));
     await user.type(idBox(), 'x');
     await user.clear(idBox());
