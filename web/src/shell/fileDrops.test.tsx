@@ -1,7 +1,8 @@
 // A file dropped where nothing takes files must not reach the browser's default handling, which opens
-// the file and leaves the app (Task 16b, item 128). Places that take files keep working, judged by
-// where the drag is (fix round 1, F1): an editing host (a code editor, which never cancels
-// `dragover`), a declared drop zone, a file input. A drag of text is left alone.
+// the file and leaves the app (Task 16b, item 128). Judged by where the drag is (fix round 1, F1, as
+// ruled): only a declared drop zone and a file input take files; a code editor outside a drop zone
+// takes none (Task 15 findings r1, F4), so a file over it is refused like anywhere else. A drag that
+// carries no files is never touched.
 import { createEvent, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FILE_DROP_ZONE, guardFileDrops } from './fileDrops';
@@ -44,7 +45,7 @@ describe('the window-level guard for dropped files', () => {
     expect(drag('dragOver', screen.getByText('a drop zone'), ['Files'])).toEqual({ prevented: true, dropEffect: 'copy' });
   });
 
-  it('leaves an editing host alone though nothing cancelled the drag (a code editor takes the file on drop), and a file input (fix round 1, F1)', () => {
+  it('refuses a file over a code editor outside a drop zone (an editing host); a text drag over it is untouched; a file input is left alone (fix round 1, F1)', () => {
     undo = guardFileDrops(window);
     render(
       <>
@@ -54,9 +55,29 @@ describe('the window-level guard for dropped files', () => {
         <input type="file" aria-label="file" />
       </>,
     );
-    expect(drag('dragOver', screen.getByText('an editor line'), ['Files'])).toEqual({ prevented: false, dropEffect: 'copy' });
-    expect(drag('drop', screen.getByText('an editor line'), ['Files']).prevented).toBe(false);
+    expect(drag('dragOver', screen.getByText('an editor line'), ['Files'])).toEqual({ prevented: true, dropEffect: 'none' });
+    expect(drag('drop', screen.getByText('an editor line'), ['Files']).prevented).toBe(true);
+    expect(drag('dragOver', screen.getByText('an editor line'), ['text/plain'])).toEqual({ prevented: false, dropEffect: 'copy' });
+    expect(drag('drop', screen.getByText('an editor line'), ['text/plain']).prevented).toBe(false);
     expect(drag('dragOver', screen.getByLabelText('file'), ['Files'])).toEqual({ prevented: false, dropEffect: 'copy' });
+  });
+
+  it('leaves a code editor inside a declared drop zone to the zone (the proto field)', () => {
+    undo = guardFileDrops(window);
+    render(
+      <div
+        {...FILE_DROP_ZONE}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'copy';
+        }}
+      >
+        <div contentEditable suppressContentEditableWarning>
+          <p>proto source</p>
+        </div>
+      </div>,
+    );
+    expect(drag('dragOver', screen.getByText('proto source'), ['Files'])).toEqual({ prevented: true, dropEffect: 'copy' });
   });
 
   it('refuses a file over an element that only cancelled the drag without declaring itself a drop zone', () => {

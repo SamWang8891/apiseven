@@ -57,7 +57,7 @@ describe('App', () => {
     expect(drop.defaultPrevented).toBe(true);
   });
 
-  it('the window leaves a file dragged over the JSON tab’s editor to the editor, which refuses it itself (Task 15 F4): locked or editing, nothing changes and the page stays (fix round 1, F1)', async () => {
+  it('a file dragged over the JSON tab’s editor is refused like anywhere outside a drop zone, locked or editing: nothing changes and the page stays (fix round 1, F1)', async () => {
     saveConnections([DEV_CONN], DEV_CONN.id);
     const user = userEvent.setup();
     const { admin } = renderApp({ hash: '#/routes/r1?tab=json', counts: {}, objects: { routes: [{ id: 'r1', name: 'shop', uri: '/a', upstream_id: 'u1' }] } });
@@ -72,12 +72,16 @@ describe('App', () => {
       fireEvent(editor, drop);
       return { overPrevented: over.defaultPrevented, effect: (over as unknown as { dataTransfer: { dropEffect: string } }).dataTransfer.dropEffect, dropPrevented: drop.defaultPrevented };
     };
-    // The window does not refuse the drag over the editor; the editor's own handler refuses the file on drop.
-    expect(dragAndDrop()).toEqual({ overPrevented: false, effect: 'copy', dropPrevented: true });
+    // Code editors take no files (Task 15 F4): the pointer says nothing will happen, and nothing does.
+    expect(dragAndDrop()).toEqual({ overPrevented: true, effect: 'none', dropPrevented: true });
     expect(editor.textContent).not.toContain('dropped');
     await user.keyboard('e');
-    expect(dragAndDrop()).toEqual({ overPrevented: false, effect: 'copy', dropPrevented: true });
+    expect(dragAndDrop()).toEqual({ overPrevented: true, effect: 'none', dropPrevented: true });
     expect(editor.textContent).not.toContain('dropped');
+    // Text dragged over it is the editor's, untouched by the guard.
+    const text = createEvent.dragOver(editor, { dataTransfer: { types: ['text/plain'], dropEffect: 'copy' } });
+    fireEvent(editor, text);
+    expect(text.defaultPrevented).toBe(false);
     expect(admin.requests.filter((r) => r.method !== 'GET')).toEqual([]);
   });
 
