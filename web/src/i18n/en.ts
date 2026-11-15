@@ -304,6 +304,7 @@ export const en: Record<string, string> = {
   'table.status.enabled': 'Enabled',
   'table.status.disabled': 'Disabled',
   'table.status.toggle': '{name} enabled',
+  'table.status.saving': 'Saving the new status…',
   'table.status.ignored': 'Status not used',
   'table.more': '+{count} more',
   'table.empty.title': 'No {plural} yet',

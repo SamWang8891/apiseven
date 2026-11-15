@@ -79,6 +79,19 @@ describe('ui CSS', () => {
   // Known item 16: base.css's global :focus-visible outline loads after the kit's CSS, so a field that
   // sits in a box which rings itself (:focus-within) must say "no outline" for :focus-visible too, or
   // it draws a second ring inside the box's.
+  it("a busy switch keeps its state's colours: the disabled look leaves aria-busy out, and busy shows progress", () => {
+    const toggle = rules(files.find((f) => f.name === 'toggle.css')?.css ?? '');
+    const disabledLooks = toggle.filter(([sel]) => sel.includes('.ui-switch:disabled'));
+    expect(disabledLooks.length).toBeGreaterThan(0);
+    for (const [sel] of disabledLooks) {
+      for (const one of sel.split(',').map((s) => s.trim()).filter((s) => s.startsWith('.ui-switch:disabled'))) {
+        expect(one, sel).toContain(":not([aria-busy='true'])");
+      }
+    }
+    const busy = toggle.find(([sel]) => sel === ".ui-switch[aria-busy='true']")?.[1] ?? '';
+    expect(busy).toMatch(/cursor:\s*progress/);
+  });
+
   it('a field inside a box that rings itself draws no second ring', () => {
     const all = files.flatMap((f) => rules(f.css));
     for (const field of ['.ui-tags__input', '.ui-input__bare', '.ui-select__trigger']) {

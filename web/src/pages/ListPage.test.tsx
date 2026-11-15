@@ -190,6 +190,44 @@ describe('status', () => {
     expect(await screen.findByText('etcd down')).toBeInTheDocument();
   });
 
+  it('while its write is out the switch is disabled and busy, says it is saving, and a click changes nothing; it is enabled again once the write settles', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { user, admin } = await open('#/routes', {
+      replies: { 'routes/r1': (req) => (req.method === 'PATCH' ? gate.then(() => undefined) : undefined) },
+    });
+    await user.click(await toggle('alpha'));
+    const busy = await toggle('alpha');
+    expect(busy).not.toBeChecked();
+    expect(busy).toBeDisabled();
+    expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAccessibleDescription(t('table.status.saving'));
+    // The value stays readable while it saves.
+    expect(within(await rowOf('alpha')).getByText(t('table.status.disabled'))).toBeInTheDocument();
+    await user.click(busy);
+    expect(requestsTo(admin, 'PATCH')).toEqual([{ path: 'routes/r1', body: { status: 0 } }]);
+    release();
+    await waitFor(async () => expect(await toggle('alpha')).toBeEnabled());
+    expect(await toggle('alpha')).not.toHaveAttribute('aria-busy');
+    expect(await toggle('alpha')).not.toBeChecked();
+    await user.click(await toggle('alpha'));
+    await waitFor(() => expect(requestsTo(admin, 'PATCH').at(-1)).toEqual({ path: 'routes/r1', body: { status: 1 } }));
+  });
+
+  it('after a refused write the switch is enabled again, back at the stored state', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { user } = await open('#/routes', {
+      replies: { 'routes/r1': (req) => (req.method === 'PATCH' ? gate.then(() => json(500, { error_msg: 'etcd down' })) : undefined) },
+    });
+    await user.click(await toggle('alpha'));
+    expect(await toggle('alpha')).toBeDisabled();
+    release();
+    await waitFor(async () => expect(await toggle('alpha')).toBeEnabled());
+    expect(await toggle('alpha')).toBeChecked();
+    expect(await toggle('alpha')).not.toHaveAttribute('aria-busy');
+  });
+
   it('bulk Disable on three selected routes sends three PATCHes with {status: 0}', async () => {
     const { user, admin } = await open('#/routes');
     await main().findByRole('link', { name: 'gamma' });
