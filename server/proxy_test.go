@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -571,5 +572,36 @@ func TestProxyLogsThroughSlog(t *testing.T) {
 		if strings.Contains(out, secret) {
 			t.Errorf("the log holds %q:\n%s", secret, out)
 		}
+	}
+}
+
+// failingBody gives some bytes, then fails as a client's body does when it outlasts the read
+// timeout or sends a malformed chunk.
+type failingBody struct{ sent bool }
+
+func (b *failingBody) Read(p []byte) (int, error) {
+	if !b.sent {
+		b.sent = true
+		return copy(p, `{"uri":"/`), nil
+	}
+	return 0, errors.New("read tcp 127.0.0.1:8080->127.0.0.1:50000: i/o timeout")
+}
+
+// A failure to read the request from the client is not "cannot reach APISIX": 400, marked request.
+func TestProxyRequestBodyThatCannotBeReadIsABadRequest(t *testing.T) {
+	up := newUpstream(t)
+	h, logs := server(t, testConfig(t, up.URL, map[string]string{"APISIX_ADMIN_KEY": serverKey}))
+	for range 5 {
+		r := appRequest("PUT", "/apisix/admin/routes/r1", &failingBody{})
+		r.ContentLength = -1
+		w := serve(h, r)
+		assertErrorMsg(t, w, 400, "apiseven: could not read the request body: ")
+		assertRefusal(t, "unreadable body", w, "request")
+		if strings.Contains(w.Body.String(), "reach the APISIX Admin API") {
+			t.Errorf("an unreadable request is reported as an unreachable APISIX: %s", w.Body)
+		}
+	}
+	if strings.Contains(logs.String(), "cannot reach the APISIX Admin API") {
+		t.Errorf("logged as an unreachable APISIX:\n%s", logs)
 	}
 }

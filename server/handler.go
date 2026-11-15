@@ -242,8 +242,9 @@ func notFound(w http.ResponseWriter, jsonBody bool) {
 }
 
 // refusalHeader marks every answer the server makes itself (never a proxied one: the proxy drops
-// it from APISIX's answers), with one word for why: host, auth, header, origin, path, method, size
-// or upstream. The app tells apiseven's refusals from APISIX's by it, not by the message text.
+// it from APISIX's answers), with one word for why: host, auth, header, origin, path, method, size,
+// request (the request body could not be read) or upstream. The app tells apiseven's refusals from
+// APISIX's by it, not by the message text.
 const refusalHeader = "X-Apiseven-Refusal"
 
 // refuse writes an error the server itself decided: JSON {"error_msg": …} on the Admin API path,

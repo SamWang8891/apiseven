@@ -15,7 +15,7 @@ export type ApiErrorKind = 'auth' | 'network' | 'http' | 'parse' | 'refused' | '
 
 /** An answer apiseven's server made itself (X-Apiseven-Refusal): its reason word and its sentence. */
 export interface Refusal {
-  /** host, auth, header, origin, path, method, size or upstream (server/handler.go refusalHeader). */
+  /** host, auth, header, origin, path, method, size, request or upstream (server/handler.go refusalHeader). */
   reason: string;
   message: string;
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -48,9 +49,25 @@ func (h *handler) serveAdmin(w http.ResponseWriter, r *http.Request) {
 		refuse(w, true, http.StatusRequestEntityTooLarge, "size", tooLarge)
 		return
 	}
-	// A body sent without a length is cut off at the limit; ErrorHandler answers 413 then.
-	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
+	// A body sent without a length is cut off at the limit; ErrorHandler answers 413 then. inboundBody
+	// notes any failure to read it, so ErrorHandler tells the client's side from APISIX's.
+	r.Body = &inboundBody{ReadCloser: http.MaxBytesReader(w, r.Body, maxBodyBytes)}
 	h.proxy.ServeHTTP(w, r)
+}
+
+// inboundBody is the request body as the proxy reads it, remembering the first read error: an upload
+// that outlasts the read timeout, a malformed chunk, or more than maxBodyBytes.
+type inboundBody struct {
+	io.ReadCloser
+	err error
+}
+
+func (b *inboundBody) Read(p []byte) (int, error) {
+	n, err := b.ReadCloser.Read(p)
+	if err != nil && err != io.EOF && b.err == nil {
+		b.err = err
+	}
+	return n, err
 }
 
 func hasDotSegment(p string) bool {
@@ -136,9 +153,15 @@ func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			var tooBig *http.MaxBytesError
-			if errors.As(err, &tooBig) {
-				refuse(w, true, http.StatusRequestEntityTooLarge, "size", tooLarge)
+			if body, ok := r.Body.(*inboundBody); ok && body.err != nil {
+				// The request could not be read from the client: not APISIX's doing.
+				var tooBig *http.MaxBytesError
+				if errors.As(body.err, &tooBig) {
+					refuse(w, true, http.StatusRequestEntityTooLarge, "size", tooLarge)
+					return
+				}
+				logger.Info("cannot read the request body", "path", r.URL.Path, "error", body.err.Error())
+				refuse(w, true, http.StatusBadRequest, "request", "apiseven: could not read the request body: "+body.err.Error())
 				return
 			}
 			// Transport errors name the address, never the request's URL; unwrap one that would.
