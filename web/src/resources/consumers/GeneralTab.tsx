@@ -24,10 +24,20 @@ import { scopedPlugins } from '../scopedPlugins';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String(v) : typeof v === 'string' && v !== '' ? v : undefined);
-const named = (p: { name: string; disabled?: boolean; notApplied?: boolean }) =>
-  p.notApplied ? t('cs.overview.notApplied', { name: p.name }) : p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name;
+const named = (p: PluginChip) =>
+  p.notApplied
+    ? t('cs.overview.notApplied', { name: p.name })
+    : p.offIgnored
+      ? t('cs.overview.offIgnored', { name: p.name })
+      : p.disabled
+        ? t(p.unclassified ? 'cs.overview.markedOff' : 'rt.overview.pluginOff', { name: p.name })
+        : p.name;
 
-/** Its own plugins by name: one stored off reads "(off)", unless it is an auth plugin, which still signs in (a danger badge). */
+/**
+ * Its own plugins by name: one stored off reads "(off)", unless it is an auth plugin, whose off APISIX
+ * ignores: with the field it matches by it still signs in (a danger badge), without it it signs nobody
+ * in ("(off)"), and with that field unknown it reads "off ignored" (scopedPlugins).
+ */
 function Own({ plugins }: { plugins: PluginChip[] }) {
   return (
     <span>

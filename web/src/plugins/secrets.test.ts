@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MASK } from '../schema/secrets';
 import { pluginFixture } from '../test/pluginFixture';
-import { MASK_CHANGED, redactObject, redactPair } from './secrets';
+import { copiedWithout, MASK_CHANGED, redactObject, redactPair } from './secrets';
 
 const all = () => pluginFixture().http;
 
@@ -115,5 +115,18 @@ describe('redactPair: the two sides of a conflict', () => {
     const pair = redactPair(a, b, 'upstreams', all());
     expect(pair.revealed[1]).toEqual({ tls: { client_cert: 'C', client_key: MASK_CHANGED } });
     expect(pair.revealable).toBe(false);
+  });
+});
+
+describe('copiedWithout: what a copy of the shown JSON lacks, for its toast', () => {
+  const logger = { 'http-logger': { uri: 'http://log.test', auth_header: 'Bearer s3' } };
+  it('masked secrets that Show secrets would add; once revealed, only a never-shown key; nothing when nothing is masked', () => {
+    const route = redactObject({ uri: '/', plugins: logger, upstream: { tls: { client_cert: 'C', client_key: 'AES-x' } } }, 'routes', all());
+    expect(copiedWithout(route, false)).toBe('masked');
+    expect(copiedWithout(route, true)).toBe('neverShown');
+    const upstream = redactObject({ nodes: [], tls: { client_cert: 'C', client_key: 'AES-x' } }, 'upstreams', all());
+    expect(copiedWithout(upstream, false)).toBe('neverShown');
+    expect(copiedWithout(redactObject({ plugins: logger }, 'routes', all()), true)).toBeUndefined();
+    expect(copiedWithout(redactObject({ uri: '/' }, 'routes', all()), false)).toBeUndefined();
   });
 });

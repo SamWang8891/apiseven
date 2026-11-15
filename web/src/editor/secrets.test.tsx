@@ -70,6 +70,20 @@ describe('the JSON tab, locked', () => {
   });
 });
 
+describe("an upstream's client_key (never shown) and Copy", () => {
+  it('no Show secrets (nothing to reveal); Copy says the private key is not included, not to reveal it', async () => {
+    const UP = { id: 'u1', name: 'tls-pool', nodes: [{ host: 'a', port: 443, weight: 1 }], scheme: 'https', tls: { client_cert: 'CERT', client_key: 'AES-ciphertext' } };
+    const { user } = await openEditor('#/upstreams/u1?tab=json', { objects: { upstreams: [UP] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'tls-pool' });
+    const box = await jsonEditor(t('kind.upstreams.singular'));
+    await waitFor(() => expect(box.textContent).toContain(MASK));
+    expect(document.body.innerHTML).not.toContain('AES-ciphertext');
+    expect(main().queryByRole('button', { name: t('pl.card.secrets.show') })).toBeNull();
+    await user.click(main().getByRole('button', { name: t('json.copy') }));
+    expect(getToasts().at(-1)?.message).toBe(t('json.copiedNoKey'));
+  });
+});
+
 describe('View JSON', () => {
   it("in the editor's menu: masked, with a toggle", async () => {
     const { user } = await openEditor('#/consumers/jo', { objects, replies: pluginReplies() });

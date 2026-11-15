@@ -101,6 +101,29 @@ describe('a switched-off plugin (_meta.disable: true): APISIX does not check its
     expect(validatePlugins({ nope: { ...off } }, http, 'route')).toEqual([{ plugin: 'nope', path: '', message: t('pl.issue.unknown') }]);
     expect(validatePlugins({ 'limit-count': { ...off } }, http, 'credential')).toEqual([{ plugin: 'limit-count', path: '', message: t('pl.issue.credentialAuth') }]);
   });
+
+  it('a config that is not an object is refused (plugin.lua 1011–1015): it cannot be marked off', () => {
+    expect(validatePlugins({ 'limit-count': 'x' as unknown as Record<string, unknown> }, http, 'route').map((i) => i.path)).toEqual(['']);
+  });
+
+  it('APISIX still compiles _meta.filter and loads _meta.pre_function (plugin.lua 1048–1064): one that is not a list, or not text, is refused', () => {
+    const bad = { _meta: { disable: true, filter: 'arg_x == 1', pre_function: 42 } };
+    const issues = [
+      { plugin: 'limit-count', path: '_meta.filter', message: t('pl.issue.filterOff') },
+      { plugin: 'limit-count', path: '_meta.pre_function', message: t('pl.issue.preFunctionOff') },
+    ];
+    expect(validatePlugins({ 'limit-count': bad }, http, 'route')).toEqual(issues);
+    expect(validatePlugins({ 'limit-count': bad }, http, 'consumer_group')).toEqual(issues);
+    expect(validatePlugins({ 'key-auth': bad }, http, 'credential')).toEqual(issues.map((i) => ({ ...i, plugin: 'key-auth' })));
+    // A list (or an object: a Lua table either way) and text pass here; APISIX compiles them on save.
+    expect(validatePlugins({ 'limit-count': { _meta: { disable: true, filter: [['arg_x', '==', '1']], pre_function: 'return function() end' } } }, http, 'route')).toEqual([]);
+    // false means none (Lua's `if filter then`).
+    expect(validatePlugins({ 'limit-count': { _meta: { disable: true, filter: false } } }, http, 'route')).toEqual([]);
+  });
+
+  it("a stream route's switched-off plugin: not even those (stream_check_schema, plugin.lua 1335–1371)", () => {
+    expect(validatePlugins({ 'limit-conn': { _meta: { disable: true, filter: 'x', pre_function: 1 } } }, stream, 'stream_route')).toEqual([]);
+  });
 });
 
 describe('pluginIssues', () => {

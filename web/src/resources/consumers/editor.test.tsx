@@ -9,8 +9,9 @@ import type { Obj } from '../../api/types';
 import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
 import { resetApp } from '../../test/app';
-import { main, openEditor, writesOf } from '../../test/editor';
+import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import { json, type FakeAdminOptions } from '../../test/fakeAdmin';
+import { pluginFixture } from '../../test/pluginFixture';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 import { getToasts } from '../../ui/toast';
@@ -214,7 +215,7 @@ describe('Duplicate', () => {
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     expect(document.body.innerHTML).not.toContain(KEY);
-    expect(main().getByText(t('pl.copySecrets', { names: 'key-auth' }))).toBeInTheDocument();
+    expect(main().getByText(t('pl.copy.removed', { list: t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }) }))).toBeInTheDocument();
     await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cs.tab.general')}`) }));
     await settled();
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo2');
@@ -230,6 +231,51 @@ describe('Duplicate', () => {
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     const body = writesOf(admin)[0]?.body as Obj;
     expect(body).toMatchObject({ username: 'jo2', desc: 'Jo', group_id: 'partners', plugins: { 'key-auth': { key: 'jo2-key' }, 'limit-count': { count: 5, time_window: 60, x_plugin: 'kept' } } });
+  });
+});
+
+describe('Duplicate on a cold cache (the plugin list not loaded yet when the copy opens)', () => {
+  const SOURCE: Obj = { username: 'src', plugins: { 'my-auth': { key: 'SEKRET-1' }, 'key-auth': { key: 'K-9' }, 'limit-count': { count: 1, time_window: 1 } } };
+  const myAuth = { schema: { type: 'object' }, type: 'auth', consumer_schema: { type: 'object' } };
+
+  it('waits for the list: a custom auth plugin whose secret fields are unknown is left out whole; no secret is in the draft or the page', async () => {
+    let release: () => void = () => {};
+    const held = new Promise<void>((r) => (release = r));
+    const replies = {
+      plugins: async () => {
+        await held;
+        return json(200, { ...pluginFixture().http, 'my-auth': myAuth });
+      },
+    };
+    const { user, admin } = await openEditor('#/consumers/new?from=src&tab=json', { objects: { consumers: [SOURCE] }, replies });
+    // The source has been read and the list asked for, and while the list loads there is no copy at
+    // all: no editor (no Create), nothing of the source on the page.
+    await waitFor(() => expect(admin.requests.map((r) => r.url.pathname)).toEqual(expect.arrayContaining([expect.stringMatching(/consumers\/src$/), expect.stringMatching(/plugins$/)]) as string[]));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(main().queryByRole('button', { name: t('editor.create') })).toBeNull();
+    expect(document.body.innerHTML).not.toContain('SEKRET-1');
+    release();
+    await main().findByRole('button', { name: t('editor.create') });
+    const box = await jsonEditor(t('kind.consumers.singular'));
+    await waitFor(() => expect(box.textContent).toContain('"my-auth": {}'));
+    expect(document.body.innerHTML).not.toMatch(/SEKRET-1|K-9/);
+    expect(box.textContent).toContain('"limit-count"');
+    await user.click(main().getByRole('tab', { name: /^Plugins/ }));
+    const note = t('pl.copy.removed', { list: [t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }), t('pl.copy.noSecretFields', { plugin: 'my-auth' })].join('; ') });
+    expect(await main().findByText(note)).toBeInTheDocument();
+  });
+
+  it('the plugin list fails to load: fail closed (the built-in key-auth loses its key, a plugin not built in all of its settings) and the note says why', async () => {
+    const replies = { plugins: () => json(503, { error_msg: 'down' }) };
+    const { user } = await openEditor('#/consumers/new?from=src&tab=json', { objects: { consumers: [SOURCE] }, replies });
+    await main().findByRole('button', { name: t('editor.create') });
+    const box = await jsonEditor(t('kind.consumers.singular'));
+    await waitFor(() => expect(box.textContent).toContain('"my-auth": {}'));
+    expect(document.body.innerHTML).not.toMatch(/SEKRET-1|K-9/);
+    expect(box.textContent).toContain('"time_window": 1');
+    await user.click(main().getByRole('tab', { name: /^Plugins/ }));
+    const note = t('pl.copy.removed', { list: [t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }), t('pl.copy.unloaded', { plugin: 'my-auth' })].join('; ') });
+    expect(await main().findByText(note)).toBeInTheDocument();
   });
 });
 

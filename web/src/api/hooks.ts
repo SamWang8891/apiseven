@@ -105,13 +105,24 @@ export function useInvalidate(): (kind: Kind, parent?: Parent) => Promise<void> 
  * stream mode off). Undefined while it is being checked, and when the check itself failed.
  */
 export function useSupports(kind: Kind): boolean | undefined {
+  return useSupportsQuery(kind).data;
+}
+
+function useSupportsQuery(kind: Kind): UseQueryResult<boolean, ApiError> {
   const client = useClient();
   return useQuery<boolean, ApiError>({
     queryKey: scopedKey(client.conn.id, ['supports', kind]),
     queryFn: () => client.supports(kind),
     // Endpoints only change with an APISIX upgrade.
     staleTime: Infinity,
-  }).data;
+  });
+}
+
+/** useSupports, telling a check still running ('checking') from one that failed ('failed': not known, and not loading). */
+export function useSupportsStatus(kind: Kind): 'yes' | 'no' | 'checking' | 'failed' {
+  const query = useSupportsQuery(kind);
+  if (query.data !== undefined) return query.data ? 'yes' : 'no';
+  return query.isError ? 'failed' : 'checking';
 }
 
 /** useSupports for each of `kinds` (the same queries, so answers are shared): kind → its answer. */

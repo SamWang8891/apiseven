@@ -9,6 +9,7 @@ import { stripTimestamps } from '../api/sanitize';
 import type { Item, Kind, Obj, Parent } from '../api/types';
 import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
 import { t } from '../i18n';
+import type { RemovedSecret } from '../plugins/auth';
 import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { findInCtx, isEnabled } from '../resources/resolve';
@@ -40,7 +41,7 @@ export interface EditorProps {
   parent?: Parent;
   /** The stored object as the query has it now (it may refresh in the background); undefined when creating. */
   item?: Item;
-  start?: { baseline: Obj; draft: Obj };
+  start?: { baseline: Obj; draft: Obj; removed?: RemovedSecret[] };
   copyOf?: Item;
 }
 
@@ -48,6 +49,7 @@ export interface EditorProps {
 export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const def = registry[kind];
   const isNew = item === undefined;
+  const copyRemoved = start?.removed;
   const client = useClient();
   const ctx = useCtx();
   const plugins = useAllPlugins().data;
@@ -139,7 +141,11 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const tabFields = useMemo(() => shownTabs.map((tab) => ({ id: tab.id, fields: tab.fields })), [shownTabs]);
   const tabIds = [...shownTabs.map((tab) => tab.id), JSON_TAB];
   const byTab = useMemo(() => issuesByTab(issues, tabFields, JSON_TAB), [issues, tabFields]);
-  const failureIssue = useMemo<Issue | undefined>(() => (failure?.path !== undefined ? { path: failure.path, message: failure.message } : undefined), [failure]);
+  // A taken id is an issue only while the draft still holds that id (a consumer's username is a field).
+  const failureIssue = useMemo<Issue | undefined>(
+    () => (failure?.path !== undefined && (failure.taken === undefined || failure.taken === createId) ? { path: failure.path, message: failure.message } : undefined),
+    [failure, createId],
+  );
   const failureTab = failureIssue && tabOfIssue(failureIssue, tabFields, JSON_TAB);
 
   // --- Tabs --------------------------------------------------------------------------------------
@@ -275,10 +281,10 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     [byTab, active, failureIssue, failureTab],
   );
   const content = useMemo(() => {
-    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues, copyOf };
+    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues, copyRemoved };
     const tab = shownTabs.find((candidate) => candidate.id === active);
     return tab ? tab.render(props) : <JsonTab {...props} />;
-  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, copyOf]);
+  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, copyRemoved]);
   const changedHere = (fields: string[]) => fields.some((field) => !deepEqual(draft[field], baseline[field]));
   const label = (text: string, changed: boolean) => (
     <>

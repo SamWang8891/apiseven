@@ -100,6 +100,13 @@ describe('General', () => {
     expect(overview).not.toHaveTextContent(t('rt.overview.pluginOff', { name: 'key-auth' }));
   });
 
+  it('at a glance, an auth plugin stored as off says only what is true: without its key it signs nobody in ("(off)"); multi-auth (no match field) "off ignored"', () => {
+    tab(GeneralTab, { username: 'jo', plugins: { 'key-auth': { _meta: { disable: true } }, 'multi-auth': { _meta: { disable: true } } } }, { locked: true });
+    const overview = screen.getByRole('region', { name: t('cs.overview') });
+    expect(overview).toHaveTextContent(`${t('rt.overview.pluginOff', { name: 'key-auth' })}, ${t('cs.overview.offIgnored', { name: 'multi-auth' })}`);
+    expect(overview).not.toHaveTextContent(t('cs.overview.stillSignsIn'));
+  });
+
   it("at a glance, a group's auth plugin reads as not applied", () => {
     const ctx = ctxOf({ consumerGroups: [itemOf('auth-group', { plugins: { 'key-auth': {}, 'limit-count': { count: 1, time_window: 1 } } })] });
     tab(GeneralTab, { username: 'jo', group_id: 'auth-group' }, { locked: true, ctx });

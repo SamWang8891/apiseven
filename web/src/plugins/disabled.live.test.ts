@@ -3,8 +3,9 @@
 // otherwise:   APISIX_LIVE=1 npx vitest run src/plugins/disabled.live.test.ts
 // A switched-off plugin whose config fails its schema is stored ("accepting it anyway",
 // apisix/plugin.lua 1033–1046); switched on, the same config is refused. validatePlugins must agree,
-// or the editor would block what APISIX stores. It writes one route and one consumer group named
-// after `tag` and removes them.
+// or the editor would block what APISIX stores; and what APISIX still refuses of a switched-off
+// plugin (its `_meta.filter` and `_meta.pre_function`, 1048–1064) validatePlugins must refuse too.
+// It writes routes, a consumer group and a consumer named after `tag` and removes them.
 import { afterAll, describe, expect, it } from 'vitest';
 import { AdminClient } from '../api/client';
 import { ApiError } from '../api/errors';
@@ -49,5 +50,25 @@ describe.skipIf(env.APISIX_LIVE !== '1')('a switched-off plugin with a config th
     expect(await put(kind, `${tag}-off`, body(off))).toBe(200);
     expect(validatePlugins(on, all, scope).length).toBeGreaterThan(0);
     expect(await put(kind, `${tag}-on`, body(on))).toBe(400);
+  });
+
+  it.each([
+    ['routes', 'route', (plugins: Obj) => ({ uri: `/${tag}-meta`, plugins, upstream: { nodes: [{ host: 'etcd', port: 2379, weight: 1 }] } })],
+    ['consumers', 'consumer', (plugins: Obj) => ({ username: `${tag.replace(/-/g, '_')}_meta`, plugins })],
+  ] as const)('%s: off, a _meta.filter that is not a list or a _meta.pre_function that is not text is still refused (plugin.lua 1048–1064); validatePlugins agrees', async (kind, scope, body) => {
+    const all = await api.allPlugins();
+    const plugin = scope === 'consumer' ? 'key-auth' : 'limit-count';
+    for (const meta of [{ filter: 'arg_x == 1' }, { pre_function: 42 }]) {
+      const bad = { [plugin]: { _meta: { disable: true, ...meta } } };
+      expect(validatePlugins(bad, all, scope).length, JSON.stringify(meta)).toBeGreaterThan(0);
+      const id = kind === 'consumers' ? body(bad).username : `${tag}-meta`;
+      // Refused: a 400 for the pre_function (it fails to load as Lua), a 500 for the filter (expr.new
+      // raises on a string rather than returning an error).
+      expect(await put(kind, id, body(bad)), JSON.stringify(meta)).toBeGreaterThanOrEqual(400);
+    }
+    // Off and incomplete otherwise (key-auth without its key): stored, and validatePlugins agrees.
+    const ok = { [plugin]: { _meta: { disable: true, filter: [['arg_x', '==', '1']] } } };
+    expect(validatePlugins(ok, all, scope)).toEqual([]);
+    expect(await put(kind, kind === 'consumers' ? body(ok).username : `${tag}-meta`, body(ok))).toBe(200);
   });
 });

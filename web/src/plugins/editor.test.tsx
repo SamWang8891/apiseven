@@ -86,6 +86,50 @@ describe('a switched-off plugin with settings APISIX would refuse when on (plugi
   });
 });
 
+describe('the switched-off rule in the other scopes', () => {
+  /** Waits for the tab's lazy body. */
+  async function settled() {
+    const panel = await main().findByRole('tabpanel');
+    await waitFor(() => expect(panel.querySelector('.ed-lazy__loading, [aria-busy="true"]')).toBeNull());
+  }
+
+  it("a consumer (its auth plugin checked against the consumer schema): key-auth marked off without its key is no issue, and a change elsewhere saves it as it is", async () => {
+    const JO: Obj = { username: 'jo', plugins: { 'key-auth': { _meta: { disable: true } } } };
+    const { user, admin } = await openEditor('#/consumers/jo?tab=plugins', { objects: { consumers: [JO] }, credentials: {}, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'jo' });
+    await settled();
+    const card = await main().findByRole('group', { name: 'key-auth' });
+    await user.click(within(card).getByRole('button', { name: 'key-auth' }));
+    expect(await within(card).findByText(t('pl.card.uncheckedSignIn', { first: 'key: Required' }))).toBeInTheDocument();
+    expect(tab(/^Plugins/)).toHaveAccessibleName('Plugins');
+    await user.keyboard('e');
+    await user.click(tab(/^General/));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('cs.general.desc') }), 'x');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ desc: 'x', plugins: { 'key-auth': { _meta: { disable: true } } } });
+  });
+
+  it('a stream route (the stream plugin set): limit-conn marked off without its settings is no issue, and saves as it is', async () => {
+    const SR: Obj = { id: 'sr1', name: 'mqtt', plugins: { 'limit-conn': { _meta: { disable: true } } }, upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 1883, weight: 1 }] } };
+    const { user, admin } = await openEditor('#/stream_routes/sr1?tab=plugins', { objects: { stream_routes: [SR] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'mqtt' });
+    await settled();
+    const card = await main().findByRole('group', { name: 'limit-conn' });
+    await user.click(within(card).getByRole('button', { name: 'limit-conn' }));
+    expect(await within(card).findByRole('note')).toHaveTextContent(t('pl.card.unchecked', { first: 'conn: Required' }));
+    expect(tab(/^Plugins/)).toHaveAccessibleName('Plugins');
+    await user.keyboard('e');
+    await user.click(tab(/^General/));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('sr.general.desc') }), 'x');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ desc: 'x', plugins: { 'limit-conn': { _meta: { disable: true } } } });
+  });
+});
+
 describe('every plugin-bearing kind has the Plugins tab', () => {
   it.each([
     // Services, stream routes and consumers open on General (Tasks 12, 13): land on Plugins through the URL.

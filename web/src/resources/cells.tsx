@@ -91,27 +91,43 @@ export interface PluginChip {
   from?: string;
   /** Configured where APISIX never runs it (an auth plugin in a consumer group: plugins/auth.ts). */
   notApplied?: boolean;
-  /** Stored as off, but it still signs in: a consumer's or credential's auth plugin (plugins/auth.ts). */
+  /** Stored as off, but it still signs in: a consumer's or credential's auth plugin with the field it matches by (plugins/auth.ts). */
   stillSignsIn?: boolean;
+  /** Stored as off, which APISIX ignores for a consumer's or credential's auth plugin, and what it matches by is not known. */
+  offIgnored?: boolean;
+  /** Whether it is an auth plugin is not known (not built in, the plugin list not loaded): "off" is only what is stored. */
+  unclassified?: boolean;
 }
 
 /**
  * One plugin chip. A name wider than the column ends in an ellipsis; the full name is in the chip's
  * title, or, for an inherited plugin, in its tooltip above where it comes from.
  */
+const why = (plugin: PluginChip): string | undefined =>
+  plugin.notApplied
+    ? t('cell.plugin.notAppliedWhy')
+    : plugin.stillSignsIn
+      ? t('cell.plugin.stillSignsInWhy')
+      : plugin.offIgnored
+        ? t('cell.plugin.offIgnoredWhy')
+        : plugin.unclassified
+          ? t('cell.plugin.unclassifiedWhy')
+          : undefined;
+
+/** What an "off" stored for the plugin is shown as: "off", or only "marked off" while its meaning is unknown. */
+const offLabel = (plugin: PluginChip): string => t(plugin.unclassified ? 'cell.plugin.markedOff' : 'cell.plugin.off');
+
 function pluginChip(plugin: PluginChip): ReactNode {
   const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', (plugin.disabled || plugin.notApplied) && 'cell-plugin--off'];
-  const title = plugin.notApplied
-    ? `${plugin.name}: ${t('cell.plugin.notAppliedWhy')}`
-    : plugin.stillSignsIn
-      ? `${plugin.name}: ${t('cell.plugin.stillSignsInWhy')}`
-      : plugin.name;
+  const reason = why(plugin);
+  const title = reason ? `${plugin.name}: ${reason}` : plugin.name;
   const chip = (
     <span key={plugin.name} className={cls.filter(Boolean).join(' ')} title={plugin.from ? undefined : title}>
       <span className="cell-chip__text">{plugin.name}</span>
-      {plugin.disabled && <span className="cell-plugin__off">{t('cell.plugin.off')}</span>}
+      {plugin.disabled && <span className="cell-plugin__off">{offLabel(plugin)}</span>}
       {plugin.notApplied && <span className="cell-plugin__off">{t('cell.plugin.notApplied')}</span>}
       {plugin.stillSignsIn && <span className="cell-plugin__danger">{t('cell.plugin.stillSignsIn')}</span>}
+      {plugin.offIgnored && <span className="cell-plugin__off">{t('cell.plugin.offIgnored')}</span>}
       {plugin.from && <span className="ui-sr-only"> ({plugin.from})</span>}
     </span>
   );
@@ -134,7 +150,13 @@ function pluginChip(plugin: PluginChip): ReactNode {
 
 /** One line per plugin for the `+N` tooltip, with where it comes from and whether it is off. */
 function pluginLine(plugin: PluginChip): ReactNode {
-  const notes = [plugin.disabled && t('cell.plugin.off'), plugin.notApplied && t('cell.plugin.notApplied'), plugin.stillSignsIn && t('cell.plugin.stillSignsIn'), plugin.from]
+  const notes = [
+    plugin.disabled && offLabel(plugin),
+    plugin.notApplied && t('cell.plugin.notApplied'),
+    plugin.stillSignsIn && t('cell.plugin.stillSignsIn'),
+    plugin.offIgnored && t('cell.plugin.offIgnored'),
+    plugin.from,
+  ]
     .filter(Boolean)
     .join(', ');
   return (

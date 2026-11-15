@@ -114,6 +114,17 @@ export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginI
   return secrets || never.redacted ? { value: masked, revealed, redacted: true, revealable: secrets } : { value, revealed: value, redacted: false, revealable: false };
 }
 
+/**
+ * What a copy of the shown text left out, for its toast: 'masked' when Show secrets would change what
+ * is copied, 'neverShown' when only never-shown keys (client_key) are masked, else undefined.
+ */
+export function copiedWithout(hidden: Redacted | undefined, revealed: boolean): 'masked' | 'neverShown' | undefined {
+  if (!hidden?.redacted) return undefined;
+  if (hidden.revealable && !revealed) return 'masked';
+  // Revealed, or nothing to reveal: the copy is `revealed`, which masks only the never-shown keys.
+  return JSON.stringify(hidden.revealed).includes(MASK) ? 'neverShown' : undefined;
+}
+
 /** What a masked secret reads as in a diff when the two sides hold different values. */
 export const MASK_CHANGED = `${MASK} (changed)`;
 

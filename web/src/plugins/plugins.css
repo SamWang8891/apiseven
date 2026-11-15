@@ -392,6 +392,11 @@
   margin-top: var(--s2);
 }
 
+/* A note above the run options (held by the JSON view; no effect on sign-in) keeps the form's gap. */
+.pl-metabox__body > .pl-note {
+  margin-bottom: var(--s3);
+}
+
 .pl-meta {
   display: flex;
   flex-direction: column;

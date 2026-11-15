@@ -7,8 +7,7 @@ import { useWrite } from '../api/write';
 import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
-import { redactObject } from '../plugins/secrets';
-import { MASK } from '../schema/secrets';
+import { copiedWithout, redactObject } from '../plugins/secrets';
 import { registry } from '../resources/registry';
 import { referencesTo } from '../resources/resolve';
 import { pathFor } from '../router/paths';
@@ -32,7 +31,9 @@ export function ViewJsonDialog({ open, onClose, title, kind, value }: { open: bo
       if (!navigator.clipboard) throw new Error('clipboard unavailable');
       await navigator.clipboard.writeText(text);
       // The masked text says so: the clipboard has the mask characters, not the secrets.
-      toast.success(text.includes(MASK) ? t('json.copiedMasked') : t('json.copied'));
+      // The toast says what the clipboard lacks: secrets Show secrets would add, or a never-shown key.
+      const without = copiedWithout(hidden, revealed);
+      toast.success(without === 'masked' ? t('json.copiedMasked') : without === 'neverShown' ? t('json.copiedNoKey') : t('json.copied'));
     } catch (err) {
       toast.error(t('json.copyFailed', { error: err instanceof Error ? err.message : String(err) }));
     }

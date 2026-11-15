@@ -12,6 +12,8 @@ import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import type { FakeAdminOptions } from '../../test/fakeAdmin';
 import { MASK_CHANGED } from '../../plugins/secrets';
 import { pluginReplies } from '../../test/plugins';
+import { pluginFixture } from '../../test/pluginFixture';
+import { SIGN_IN_FIELD, signInOf } from '../../plugins/auth';
 import { editableControls } from '../../test/schemaForm';
 
 beforeAll(async () => {
@@ -218,11 +220,55 @@ describe('an auth plugin of a credential signs in whatever "off" says (consumer.
         expect(within(card).getByText(t('pl.card.signIn.always'))).toBeInTheDocument();
       }
       if (within(card).getByRole('button', { name: plugin }).getAttribute('aria-expanded') !== 'true') await user.click(within(card).getByRole('button', { name: plugin }));
-      expect(within(card).getByRole('note')).toHaveTextContent(t('pl.card.signIn.note'));
+      // The note names the field this plugin matches requests by and what to change; multi-auth has neither.
+      const field = SIGN_IN_FIELD[plugin];
+      const facts = signInOf(plugin, {}, pluginFixture().http[plugin]);
+      const note = field ? t('pl.card.signIn.note', { field, change: facts.change.join(' or ') }) : t('pl.card.signIn.noteNeutral');
+      expect(within(card).getAllByRole('note')[0]).toHaveTextContent(note);
       await user.click(within(card).getByRole('button', { name: new RegExp(`^${t('pl.meta.title')}`) }));
       expect(within(card).queryByRole('switch')).toBeNull();
+      // Run options are shown, editable, and say they change nothing about sign-in here.
+      expect(within(card).getByText(t('pl.meta.signIn', { name: plugin }))).toBeInTheDocument();
+      const priority = card.querySelector('input[id$="-meta-priority"]');
+      expect(priority).not.toBeNull();
+      expect(priority).not.toHaveAttribute('readonly');
+      expect(priority).not.toBeDisabled();
     },
   );
+
+  it('the notes name the right field: key-auth "key", basic-auth matched by username and revoked by its password, ldap-auth by user_dn', () => {
+    const { http } = pluginFixture();
+    expect(t('pl.card.signIn.note', { field: 'key', change: signInOf('key-auth', {}, http['key-auth']).change.join(' or ') })).toContain('its key');
+    expect(signInOf('basic-auth', {}, http['basic-auth'])).toMatchObject({ field: 'username', change: ['password'] });
+    expect(signInOf('ldap-auth', {}, http['ldap-auth'])).toMatchObject({ field: 'user_dn', change: ['user_dn'] });
+  });
+
+  it('stored off without the field it matches by, it signs nobody in (create_consume_cache skips it): never "still signs in"; the unchecked note fits a card with no switch', async () => {
+    const BARE: Obj = { id: 'c3', plugins: { 'key-auth': { _meta: { disable: true } } } };
+    const { user } = await openEditor('#/consumers/jo/credentials/c3?tab=plugins', { objects: { consumers: CONSUMERS }, credentials: { jo: [BARE] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'c3' });
+    await settled();
+    const card = await main().findByRole('group', { name: 'key-auth' });
+    expect(within(card).getByText(t('pl.card.signIn.signsNobodyIn'))).toBeInTheDocument();
+    expect(within(card).queryByText(t('pl.card.signIn.stillSignsIn'))).toBeNull();
+    await user.click(within(card).getByRole('button', { name: 'key-auth' }));
+    const notes = within(card).getAllByRole('note').map((n) => n.textContent);
+    expect(notes).toContain(t('pl.card.signIn.incompleteNote', { field: 'key' }));
+    expect(notes).toContain(t('pl.card.uncheckedSignIn', { first: 'key: Required' }));
+    expect(card.textContent).not.toContain(t('pl.card.unchecked', { first: 'key: Required' }));
+  });
+
+  it('multi-auth stored off: "off ignored", and nothing said about whom it signs in', async () => {
+    const MULTI: Obj = { id: 'c4', plugins: { 'multi-auth': { auth_plugins: [], _meta: { disable: true } } } };
+    const { user } = await openEditor('#/consumers/jo/credentials/c4?tab=plugins', { objects: { consumers: CONSUMERS }, credentials: { jo: [MULTI] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'c4' });
+    await settled();
+    const card = await main().findByRole('group', { name: 'multi-auth' });
+    expect(within(card).getByText(t('pl.card.signIn.offIgnored'))).toBeInTheDocument();
+    await user.click(within(card).getByRole('button', { name: 'multi-auth' }));
+    expect(within(card).getAllByRole('note')[0]).toHaveTextContent(t('pl.card.signIn.offIgnoredNote'));
+    expect(card.textContent).not.toContain(t('pl.card.signIn.stillSignsIn'));
+  });
 
   it('stored with _meta.disable: true, it reads "still signs in" (never "off"), says why, and a save keeps _meta as loaded', async () => {
     const OFF: Obj = { id: 'c2', name: 'revoked?', plugins: { 'key-auth': { key: 'k2', _meta: { disable: true } } } };
@@ -233,7 +279,7 @@ describe('an auth plugin of a credential signs in whatever "off" says (consumer.
     expect(within(card).getByText(t('pl.card.signIn.stillSignsIn'))).toHaveClass('pl-card__signin--on-anyway');
     expect(card.textContent).not.toMatch(/\boff\b|\bOff\b/);
     await user.click(within(card).getByRole('button', { name: 'key-auth' }));
-    expect(within(card).getByRole('note')).toHaveTextContent(t('pl.card.signIn.offNote'));
+    expect(within(card).getByRole('note')).toHaveTextContent(t('pl.card.signIn.offNote', { field: 'key', change: 'key' }));
     await user.keyboard('e');
     await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cr.tab.general')}`) }));
     await settled();
@@ -281,7 +327,7 @@ describe('Duplicate', () => {
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     expect(document.body.innerHTML).not.toContain(KEY);
-    expect(main().getByText(t('pl.copySecrets', { names: 'key-auth' }))).toBeInTheDocument();
+    expect(main().getByText(t('pl.copy.removed', { list: t('pl.copy.fields', { plugin: 'key-auth', fields: 'key' }) }))).toBeInTheDocument();
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'c2');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     expect(writesOf(admin)).toEqual([]);

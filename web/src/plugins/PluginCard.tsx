@@ -15,7 +15,7 @@ import { Button, LockProvider, PendingScope, Switch, useHeld, useLocked, type Pe
 import { catalog } from './catalog';
 import { ConfigJson } from './ConfigJson';
 import { MetaForm } from './MetaForm';
-import { signsInAlways } from './auth';
+import { signInOf, signsInAlways, type SignIn } from './auth';
 import { formSchemaOf, isDisabled, META, metaOf, setDisabled, withMeta, withoutMeta } from './meta';
 import { schemaFor, type Scope } from './scope';
 import { pluginSummary } from './summary';
@@ -59,6 +59,22 @@ const sameCard = (a: PluginCardProps, b: PluginCardProps): boolean =>
   Object.keys(a).length === Object.keys(b).length &&
   JSON.stringify(a.issues) === JSON.stringify(b.issues);
 
+/** A sign-in card's badge for each state (signInOf): "Still signs in" is the danger one. */
+const SIGN_IN_BADGE: Record<SignIn['state'], { label: string; className: string }> = {
+  on: { label: 'pl.card.signIn.always', className: 'pl-card__signin' },
+  stillSignsIn: { label: 'pl.card.signIn.stillSignsIn', className: 'pl-card__signin pl-card__signin--on-anyway' },
+  signsNobodyIn: { label: 'pl.card.signIn.signsNobodyIn', className: 'pl-card__signin' },
+  offIgnored: { label: 'pl.card.signIn.offIgnored', className: 'pl-card__signin' },
+};
+
+/** What a sign-in card says it does: by the field it matches requests by and what revokes it, or neutrally when that is not known. */
+function signInNote({ state, field, change }: SignIn): string {
+  const revoke = change.join(' or ');
+  if (state === 'signsNobodyIn') return t('pl.card.signIn.incompleteNote', { field: field ?? '' });
+  if (field === undefined) return t(state === 'on' ? 'pl.card.signIn.noteNeutral' : 'pl.card.signIn.offIgnoredNote');
+  return t(state === 'on' ? 'pl.card.signIn.note' : 'pl.card.signIn.offNote', { field, change: revoke });
+}
+
 export const PluginCard = memo(function PluginCard({ name, conf, info, list, scope, issues, open, onToggle, onChange: emit, onRemove, cardRef }: PluginCardProps) {
   const locked = useLocked();
   const onChange = useCallback((next: unknown) => emit(name, next), [emit, name]);
@@ -77,9 +93,11 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
   const encrypt = useMemo(() => encryptOf(schema), [schema]);
   const config = isObj(conf) ? conf : undefined;
   const off = isDisabled(conf);
-  // A consumer's or credential's auth plugin signs in whatever `_meta.disable` says (plugins/auth.ts):
-  // it has no switch, and a stored "off" is shown as what it is, a key that still works.
-  const signIn = signsInAlways(scope, name, info);
+  // A consumer's or credential's auth plugin: APISIX ignores its `_meta.disable` (plugins/auth.ts), so
+  // it has no switch, and a stored "off" is shown as what it is: a key that still works with the
+  // field it matches by, an entry that signs nobody in without it, or only "off ignored" when that
+  // field is not known.
+  const signIn = useMemo(() => (signsInAlways(scope, name, info) ? signInOf(name, conf, info) : undefined), [scope, name, info, conf]);
   // Until the plugin list says which fields are secret, there is no summary to leak one; a plugin
   // this APISIX does not know shows none either (any of its values may be a secret).
   const summary = list === 'loading' || !info ? '' : config ? pluginSummary(name, config, encrypt) : (JSON.stringify(conf) ?? '');
@@ -117,8 +135,8 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
             <span className="pl-card__problems">{problems === 1 ? t('pl.card.problems.one') : t('pl.card.problems.many', { count: problems })}</span>
           )}
           {config && signIn && (
-            <span className={off ? 'pl-card__signin pl-card__signin--on-anyway' : 'pl-card__signin'} title={t(off ? 'pl.card.signIn.offNote' : 'pl.card.signIn.note')}>
-              {off ? t('pl.card.signIn.stillSignsIn') : t('pl.card.signIn.always')}
+            <span className={SIGN_IN_BADGE[signIn.state].className} title={signInNote(signIn)}>
+              {t(SIGN_IN_BADGE[signIn.state].label)}
             </span>
           )}
           {config && !signIn && (
@@ -169,8 +187,8 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, signIn, unc
   schema: Obj | undefined;
   encrypt: string[];
   issues: Issue[];
-  /** A consumer's or credential's auth plugin: no on/off, and a note on how to revoke it. */
-  signIn: boolean;
+  /** A consumer's or credential's auth plugin: no on/off, and a note on what it signs in and how to revoke it. */
+  signIn: SignIn | undefined;
   /** What APISIX would refuse in this switched-off plugin's settings once it is switched on. */
   unchecked: { path: string; message: string }[];
   onChange: (conf: unknown) => void;
@@ -231,13 +249,17 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, signIn, unc
         </div>
       )}
       {signIn && (
-        <p className={isDisabled(conf) ? 'pl-note pl-note--danger' : 'pl-note pl-note--warn'} role="note">
-          {t(isDisabled(conf) ? 'pl.card.signIn.offNote' : 'pl.card.signIn.note')}
+        <p className={signIn.state === 'stillSignsIn' ? 'pl-note pl-note--danger' : 'pl-note pl-note--warn'} role="note">
+          {signInNote(signIn)}
         </p>
       )}
       {unchecked.length > 0 && (
         <p className="pl-note" role="note">
-          {t('pl.card.unchecked', { first: unchecked[0]?.path ? `${unchecked[0].path}: ${unchecked[0].message}` : (unchecked[0]?.message ?? ''), count: unchecked.length })}
+          {/* A sign-in card has no switch: say "marked off", not "switched off". */}
+          {t(signIn ? 'pl.card.uncheckedSignIn' : 'pl.card.unchecked', {
+            first: unchecked[0]?.path ? `${unchecked[0].path}: ${unchecked[0].message}` : (unchecked[0]?.message ?? ''),
+            count: unchecked.length,
+          })}
         </p>
       )}
       {!hasForm && list !== 'failed' && <p className="pl-note">{list === 'loaded' ? t('pl.card.noForm', { name }) : t('pl.card.formLoading')}</p>}
@@ -306,9 +328,16 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, signIn, unc
           {metaOpen && (
             <div id={`${ids}-meta`} ref={metaRef} className="pl-metabox__body">
               {metaWaits && !locked && <p className="pl-note">{t('pl.meta.heldByJson')}</p>}
+              {/* APISIX never runs a consumer's or credential's auth plugin (plugin.lua 612–614): its
+                  options are kept as they are, and the route's own plugin decides. */}
+              {signIn && (
+                <p className="pl-note" role="note">
+                  {t('pl.meta.signIn', { name })}
+                </p>
+              )}
               <PendingScope onChange={metaTrack}>
                 <LockProvider locked={locked || metaWaits}>
-                  <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} noDisable={signIn} />
+                  <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} noDisable={signIn !== undefined} />
                 </LockProvider>
               </PendingScope>
             </div>

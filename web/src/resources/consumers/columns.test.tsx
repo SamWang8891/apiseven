@@ -100,6 +100,12 @@ describe('consumer columns', () => {
     expect(el).toHaveTextContent(t('shell.countFailed', { error: 'HTTP 500: etcd down' }));
   });
 
+  it('credentials: when the support check itself fails, the count is asked anyway: never an endless "…"', async () => {
+    const { el } = cell('credentials', ALICE, CTX, { counts: {}, credentials: { alice: [{ id: 'k1' }] }, replies: { credentials: () => json(500, { error_msg: 'etcd down' }) } });
+    await waitFor(() => expect(el).toHaveTextContent('1'));
+    expect(el).not.toHaveTextContent(t('picker.loading'));
+  });
+
   it('credentials: on an APISIX without credentials (its /credentials answers 404), "—" and no request per row', async () => {
     const { el, admin } = cell('credentials', ALICE, CTX, { counts: {}, replies: { credentials: () => json(404, { error_msg: 'Unsupported resource type' }) } });
     await waitFor(() => expect(el).toHaveTextContent(t('ui.empty')));

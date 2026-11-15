@@ -1,4 +1,5 @@
 import type { Kind, Obj } from '../api/types';
+import { atEncryptPath } from '../schema/secrets';
 import { pluginFixture } from './pluginFixture';
 
 /** The epoch seconds the fake's timestamps count from (one tick per write). */
@@ -221,18 +222,12 @@ function encryptFieldsOf(kind: string, name: string): string[] {
 
 const enc = (v: string): string => `$ENC$v1$${btoa(encodeURIComponent(v))}`;
 
-/** `conf` with the strings at `path` (dotted) encrypted, as process_encrypt_field does. */
-function encryptAt(conf: unknown, path: string[]): unknown {
-  const [head, ...rest] = path;
-  if (head === undefined) return conf;
-  if (Array.isArray(conf)) return conf.map((item) => encryptAt(item, path));
-  if (!isPlain(conf) || conf[head] === undefined) return conf;
-  const v = conf[head];
-  if (rest.length > 0) return { ...conf, [head]: encryptAt(v, rest) };
-  if (typeof v === 'string') return { ...conf, [head]: enc(v) };
-  if (Array.isArray(v)) return { ...conf, [head]: (v as unknown[]).map((x) => (typeof x === 'string' ? enc(x) : x)) };
-  if (isPlain(v)) return { ...conf, [head]: Object.fromEntries(Object.entries(v).map(([k, x]) => [k, typeof x === 'string' ? enc(x) : x])) };
-  return conf;
+/** What process_encrypt_field encrypts at the end of a path: a string, each string of a list, each string of a map. */
+function encryptLeaf(v: unknown): unknown {
+  if (typeof v === 'string') return enc(v);
+  if (Array.isArray(v)) return (v as unknown[]).map((x) => (typeof x === 'string' ? enc(x) : x));
+  if (isPlain(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, typeof x === 'string' ? enc(x) : x]));
+  return v;
 }
 
 /** The stand-in for APISIX's AES ciphertext of a PEM key: no longer PEM, so a later write passes it through. */
@@ -260,7 +255,7 @@ function storedAs(kind: string, value: Obj): Obj {
 function echoed(kind: string, value: Obj): Obj {
   if (!isPlain(value.plugins)) return value;
   const plugins = Object.fromEntries(
-    Object.entries(value.plugins).map(([name, conf]) => [name, encryptFieldsOf(kind, name).reduce<unknown>((out, field) => encryptAt(out, field.split('.')), conf)]),
+    Object.entries(value.plugins).map(([name, conf]) => [name, encryptFieldsOf(kind, name).reduce<unknown>((out, field) => atEncryptPath(out, field.split('.'), encryptLeaf), conf)]),
   );
   return { ...value, plugins };
 }

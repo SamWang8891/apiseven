@@ -7,7 +7,7 @@ import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import type { ValidateEnv } from '../resources/registry';
 import { fieldErrors } from '../schema/ajv';
-import { isDisabled, META, withoutMeta } from './meta';
+import { isDisabled, META, metaOf, withoutMeta } from './meta';
 import { schemaFor, type Scope } from './scope';
 
 export interface PluginIssue {
@@ -24,11 +24,17 @@ const declaresMeta = (schema: Obj): boolean => isObj(schema.properties) && Objec
  * What is wrong with each plugin's config in `scope`, against `all` (the scope's plugin set):
  * - a plugin this APISIX has not loaded: one issue at the config's root;
  * - in a credential, a plugin that is not an auth plugin (APISIX refuses those there);
+ * - a config that is not an object: one issue at its root;
  * - otherwise the schema's complaints (configErrors), unless the plugin is switched off
  *   (`_meta.disable: true`): APISIX accepts a switched-off plugin whose config fails its schema
- *   (check_single_plugin_schema, apisix/plugin.lua 1033–1046, "accepting it anyway"; it still
- *   refuses an unknown plugin, 1018–1031, and a credential's non-auth one, admin/credentials.lua
- *   38–45). The card says what would be refused once it is switched on.
+ *   (check_single_plugin_schema, apisix/plugin.lua 1033–1046, "accepting it anyway"). The card
+ *   says what would be refused once it is switched on.
+ * What APISIX still refuses of a switched-off plugin is kept: the three above (a config that is not
+ * a table, plugin.lua 1011–1015; an unknown plugin, 1017–1028; a credential's non-auth one,
+ * admin/credentials.lua 38–45) and, outside a stream route, a `_meta.filter` that is not a list
+ * (expr.new compiles it, 1048–1054) and a `_meta.pre_function` that is not text (it is loaded as
+ * Lua, 1056–1064). A stream route's plugins are checked by stream_check_schema (1335–1371), which
+ * does neither.
  */
 export function validatePlugins(plugins: Record<string, Obj>, all: Record<string, PluginInfo>, scope: Scope): PluginIssue[] {
   const out: PluginIssue[] = [];
@@ -42,9 +48,33 @@ export function validatePlugins(plugins: Record<string, Obj>, all: Record<string
       out.push({ plugin, path: '', message: t('pl.issue.credentialAuth') });
       continue;
     }
-    if (isDisabled(conf)) continue;
+    if (!isObj(conf)) {
+      out.push({ plugin, path: '', message: t('pl.issue.notObject') });
+      continue;
+    }
+    if (isDisabled(conf)) {
+      if (scope !== 'stream_route') for (const error of offMetaErrors(conf)) out.push({ plugin, ...error });
+      continue;
+    }
     for (const error of configErrors(conf, info, scope)) out.push({ plugin, ...error });
   }
+  return out;
+}
+
+/** Set, as Lua's `if x then` sees it: anything but absent or false (a JSON null arrives as cjson.null, which is set). */
+const isSet = (value: unknown): boolean => value !== undefined && value !== false;
+
+/**
+ * What APISIX refuses in a switched-off plugin's `_meta` (plugin.lua 1048–1064): a filter that
+ * expr.new can't take (not a table: a JSON list, or an object), a pre_function that isn't text.
+ * Whether a list's conditions compile, or the text is valid Lua, is APISIX's to say on save.
+ */
+function offMetaErrors(conf: Obj): { path: string; message: string }[] {
+  const meta = metaOf(conf);
+  if (!meta) return [];
+  const out: { path: string; message: string }[] = [];
+  if (isSet(meta.filter) && (typeof meta.filter !== 'object' || meta.filter === null)) out.push({ path: `${META}.filter`, message: t('pl.issue.filterOff') });
+  if (isSet(meta.pre_function) && typeof meta.pre_function !== 'string') out.push({ path: `${META}.pre_function`, message: t('pl.issue.preFunctionOff') });
   return out;
 }
 

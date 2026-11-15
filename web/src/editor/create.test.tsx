@@ -115,6 +115,20 @@ describe.each(CASES)('$kind', (c) => {
     await waitFor(() => expect(c.field()).toHaveAccessibleDescription(message));
   });
 
+  it('after a refusal, another id typed: the field and the tab no longer say it is taken', async () => {
+    const { user } = await openEditor(c.hash, OPTS);
+    await main().findByRole('button', { name: t('editor.create') });
+    await settled();
+    await c.typeId(user, c.taken);
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    const message = t('editor.taken.message', { kind: c.singular, id: c.taken });
+    await waitFor(() => expect(c.field()).toHaveAccessibleDescription(message));
+    await user.clear(c.field());
+    await c.typeId(user, c.free);
+    await waitFor(() => expect(c.field()).not.toHaveAccessibleDescription(expect.stringContaining(message) as string));
+    expect(main().getByRole('tab', { name: /^General/ })).toHaveAccessibleName('General');
+  });
+
   it('a free id: created', async () => {
     const { user, admin } = await openEditor(c.hash, OPTS);
     await main().findByRole('button', { name: t('editor.create') });
