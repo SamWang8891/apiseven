@@ -219,6 +219,24 @@ describe('status', () => {
     ]);
     expect(await screen.findByText(t('readOnly.banner'))).toBeInTheDocument();
   });
+
+  // Fix round 1, R3.1: an item that failed for another reason before the key was refused is named too.
+  it('stopped by a refused key after an item failed for another reason: both are said', async () => {
+    const { user } = await open('#/routes', {
+      replies: {
+        'routes/r1': (req) => (req.method === 'PATCH' ? json(400, { error_msg: 'in use' }) : undefined),
+        'routes/r2': (req) => (req.method === 'PATCH' ? json(401, { error_msg: 'invalid method for role viewer' }) : undefined),
+      },
+    });
+    await main().findByRole('link', { name: 'gamma' });
+    await user.click(main().getByRole('checkbox', { name: t('table.selectAll', { count: 3 }) }));
+    await user.click(main().getByRole('button', { name: t('action.disable') }));
+    expect(
+      await screen.findByText(
+        t('bulk.stoppedAfterFailures', { action: t('action.disable'), done: 0, total: 3, failed: 1, names: 'alpha', reason: 'in use', error: 'invalid method for role viewer' }),
+      ),
+    ).toBeInTheDocument();
+  });
 });
 
 // Fix round 1, R1: a confirm opened from a row's menu gives focus back to that row, or to the table when the row went.

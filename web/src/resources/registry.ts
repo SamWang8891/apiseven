@@ -195,7 +195,7 @@ export interface ResourceDef {
   /** That field's path (a consumer's `username`): where the frame says an id is taken. */
   idField?: string;
   /**
-   * Search params the create page copies into a new object (`#/routes/new?service_id=s1` starts
+   * Search params the create page copies into a new object (`#/routes/~new?service_id=s1` starts
    * with `service_id: 's1'`); any other param is ignored.
    */
   prefill?: string[];

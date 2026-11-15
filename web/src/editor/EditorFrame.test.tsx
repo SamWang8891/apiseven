@@ -114,6 +114,20 @@ describe('lock', () => {
     expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
   });
 
+  // Fix round 1, R3.7: two presses refused in one tick are one refusal.
+  it('Cmd/Ctrl+S twice in the same tick with a problem left: one refusal, one toast', async () => {
+    undo.push(overrideDef('routes', { validate: (d) => (d.uri === '/bad' ? [{ path: 'uri', message: 'URIs start with /, not /bad' }] : []) }));
+    const { user, admin } = await openRoute();
+    await unlockAndSetUri(user, '/bad');
+    act(() => {
+      fireEvent.keyDown(window, { key: 's', metaKey: true });
+      fireEvent.keyDown(window, { key: 's', metaKey: true });
+    });
+    const refusals = getToasts().filter((item) => item.message === t('editor.fixAnyway', { fix: t('editor.fixOne') }));
+    expect(refusals.map((item) => item.count)).toEqual([1]);
+    expect(writesOf(admin)).toEqual([]);
+  });
+
   // Task 16b item 12: the second press comes before React has rendered the first one's "saving".
   it('Cmd/Ctrl+S twice in the same tick starts one save', async () => {
     const { user, admin } = await openRoute();
@@ -234,12 +248,15 @@ describe('save', () => {
       },
     });
     await unlockAndSetUri(user, '/b');
+    const before = window.history.length;
     await user.click(button(t('editor.save')));
     const dialog = await screen.findByRole('alertdialog', { name: t('editor.leave.title') });
     expect(writesOf(admin)).toEqual([]);
     expect(screen.queryByText(t('readOnly.banner'))).not.toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: t('editor.leave.confirm') }));
     await waitFor(() => expect(window.location.hash).toBe('#/connect'));
+    // Fix round 1, R3.5: Connect replaces the editor's entry, as the query path's redirect does (item 4).
+    expect(window.history.length).toBe(before);
     const banner = await screen.findByRole('alert');
     expect(banner).toHaveTextContent('failed to check token: wrong apikey');
     expect(screen.queryByText(t('readOnly.banner'))).not.toBeInTheDocument();

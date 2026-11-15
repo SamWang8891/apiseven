@@ -75,7 +75,23 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
     await Promise.all([invalidate(kind, parent), ...(kind === 'consumers' ? [invalidate('credentials')] : [])]);
     if (stopped) {
       const { error, done } = stopped;
-      toast.error(t('bulk.stopped', { action: label, done, total: items.length, error: error.errorMsg ?? error.message }));
+      // Items that failed for another reason before the key was refused are named, as bulk.someFailed names them.
+      const earlier = failed.slice(0, -1);
+      const firstEarlier = earlier[0];
+      const why = error.errorMsg ?? error.message;
+      toast.error(
+        firstEarlier
+          ? t('bulk.stoppedAfterFailures', {
+              action: label,
+              done,
+              total: items.length,
+              failed: earlier.length,
+              names: earlier.map((f) => def.nameOf(f.item)).join(', '),
+              reason: firstEarlier.error.errorMsg ?? firstEarlier.error.message,
+              error: why,
+            })
+          : t('bulk.stopped', { action: label, done, total: items.length, error: why }),
+      );
       return;
     }
     const first = failed[0];

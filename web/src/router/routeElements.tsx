@@ -5,6 +5,7 @@ import { useItem } from '../api/hooks';
 import { idSegments, isSegment } from '../api/segments';
 import type { Kind, Parent } from '../api/types';
 import { t } from '../i18n';
+import { EditorSkeleton } from '../editor/states';
 import { EditorPage } from '../pages/EditorPage';
 import { ListPage } from '../pages/ListPage';
 import { registry } from '../resources/registry';
@@ -42,14 +43,17 @@ export function ListRoute() {
 /**
  * The create page's old address (…/new, paths.ts OLD_NEW_SEGMENT): the object whose id is "new" when
  * APISIX has one, else the create page at its address now, with the same search (?from=, prefills).
- * A secret's id has two parts, so "new" is none: the create page at once.
+ * Decided by an answer, not a cached one being asked again: while the read runs, the editor's skeleton.
+ * Any failure (not found, no answer, a refusal) means the create page the address was made for. A
+ * secret's id has two parts, so "new" is none: the create page at once.
  */
 function OldNewRoute({ kind, parent }: { kind: Kind; parent?: Parent }) {
   const { search } = useLocation();
   const addressable = idSegments(kind, OLD_NEW_SEGMENT) !== undefined;
   const query = useItem(kind, addressable ? OLD_NEW_SEGMENT : undefined, parent);
-  if (!addressable || (query.error?.status === 404 && !query.data)) return <Navigate to={{ pathname: newPathFor(kind, parent), search }} replace />;
-  return <EditorPage kind={kind} id={OLD_NEW_SEGMENT} parent={parent} />;
+  if (query.data) return <EditorPage kind={kind} id={OLD_NEW_SEGMENT} parent={parent} />;
+  if (!addressable || (query.error && !query.isFetching)) return <Navigate to={{ pathname: newPathFor(kind, parent), search }} replace />;
+  return <EditorSkeleton kind={kind} />;
 }
 
 export function EditorRoute({ creating }: { creating?: boolean }) {

@@ -347,6 +347,7 @@ export const en: Record<string, string> = {
   'bulk.done': '{action}: {done} done',
   'bulk.someFailed': '{action}: {done} done, {failed} failed ({names}). {error}',
   'bulk.stopped': '{action}: {done} of {total} done, then stopped: the admin key was refused. {error}',
+  'bulk.stoppedAfterFailures': '{action}: {done} of {total} done, {failed} failed ({names}: {reason}), then stopped: the admin key was refused. {error}',
 
   // Editor frame (web/src/editor, web/src/pages/EditorPage.tsx)
   'editor.back': 'Back to {plural}',

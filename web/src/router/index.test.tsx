@@ -85,6 +85,22 @@ describe('editor routes', () => {
     });
   }
 
+  // Fix round 1, R3.2: an old create-page address whose read fails for another reason is still the create page.
+  for (const [what, reply] of [
+    ['no answer', () => 'network' as const],
+    ['a 500', () => json(500, { error_msg: 'etcd down' })],
+    ['stream mode disabled', () => json(400, { error_msg: 'stream mode is disabled, can not add stream routes' })],
+  ] as const) {
+    it(`#/stream_routes/new with ${what} for the object "new" opens the create page`, async () => {
+      saveConnections([DEV_CONN], DEV_CONN.id);
+      renderApp({ hash: '#/stream_routes/new', replies: { 'stream_routes/new': reply } });
+      const main = await mainRegion();
+      // A read with no answer is asked twice more first (api/queryClient.ts), a second or so apart.
+      expect(await main.findByRole('heading', { level: 1, name: t('page.new', { kind: t('kind.stream_routes.singular') }) }, { timeout: 6000 })).toBeInTheDocument();
+      expect(window.location.hash).toBe('#/stream_routes/~new');
+    }, 15_000);
+  }
+
   it('mounts the list page at #/<kind>', async () => {
     saveConnections([DEV_CONN], DEV_CONN.id);
     renderApp({ hash: '#/upstreams', counts: { upstreams: 2 } });

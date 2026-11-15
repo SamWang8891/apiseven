@@ -63,7 +63,7 @@ export interface DataTableProps {
   onRetry?: () => void;
   /** Replaces the default "No <plural> yet" state. */
   emptyState?: ReactNode;
-  /** Replaces the New button's target and text (e.g. "New route in this service" → `#/routes/new?service_id=…`). */
+  /** Replaces the New button's target and text (e.g. "New route in this service" → `#/routes/~new?service_id=…`). */
   newLink?: { to: string; label: string };
   /** No New button in the toolbar: a list page puts it beside its title. */
   noNewButton?: boolean;

@@ -11,7 +11,11 @@ import { DataTable, type BulkAction, type DataTableProps } from './DataTable';
 import type { FilterDef } from './filter';
 import { tableStorageKey } from './tableState';
 
-afterEach(() => localStorage.clear());
+afterEach(() => {
+  localStorage.clear();
+  // A test that stubs a global (ResizeObserver) gets it back even when it fails.
+  vi.unstubAllGlobals();
+});
 
 const COLUMNS: ColumnDef[] = [
   { id: 'name', header: 'Name', accessor: (item) => item.value.name, defaultVisible: true },
@@ -422,7 +426,6 @@ describe('search and filters', () => {
     const kept = scrollLeft;
     resize(160);
     expect(scrollLeft).toBe(kept);
-    vi.unstubAllGlobals();
   });
 
   // Task 16b item 40: a view the URL carries is followed through Back and Forward.

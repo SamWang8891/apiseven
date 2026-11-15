@@ -2,7 +2,7 @@
 // (a target mode before anything is typed), and, for the page's tabs, what is open and which view is
 // shown. A tab switch, a collapse or a Form/JSON toggle unmounts the parts that hold it. The editor
 // frame keeps one memory for the page's life (nothing is persisted); without one, it is plain state.
-import { createContext, use, useCallback, useState, type Dispatch, type FC, type ReactNode, type SetStateAction } from 'react';
+import { createContext, use, useCallback, useLayoutEffect, useState, type Dispatch, type FC, type ReactNode, type SetStateAction } from 'react';
 
 const ViewMemoryContext = createContext<Map<string, unknown> | null>(null);
 
@@ -22,16 +22,17 @@ export const ViewMemory: FC<{ children: ReactNode }> = ({ children }) => {
 export function useViewState<T>(key: string | undefined, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
   const page = use(ViewMemoryContext);
   const memory = key === undefined ? null : page;
-  const [state, setState] = useState<T>(() => (key !== undefined && memory?.has(key) ? (memory.get(key) as T) : typeof initial === 'function' ? (initial as () => T)() : initial));
-  const set = useCallback<Dispatch<SetStateAction<T>>>(
-    (next) =>
-      setState((prev) => {
-        const value = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
-        // Idempotent, so a second call of this updater (StrictMode) changes nothing.
-        if (key !== undefined) memory?.set(key, value);
-        return value;
-      }),
-    [memory, key],
+  /** The value, and whether it was set (only a set value is remembered). */
+  const [cell, setCell] = useState<{ value: T; set: boolean }>(() =>
+    key !== undefined && memory?.has(key) ? { value: memory.get(key) as T, set: true } : { value: typeof initial === 'function' ? (initial as () => T)() : initial, set: false },
   );
-  return [state, set];
+  // Remembered from the commit: a render React throws away never reaches the memory.
+  useLayoutEffect(() => {
+    if (cell.set && key !== undefined) memory?.set(key, cell.value);
+  }, [cell, key, memory]);
+  const set = useCallback<Dispatch<SetStateAction<T>>>(
+    (next) => setCell((prev) => ({ value: typeof next === 'function' ? (next as (p: T) => T)(prev.value) : next, set: true })),
+    [],
+  );
+  return [cell.value, set];
 }

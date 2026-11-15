@@ -114,6 +114,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const mounted = useMounted();
   /** Set at once by a save that writes: a second request in the same tick (Cmd/Ctrl-S twice) sees it before `saving` renders. */
   const inFlight = useRef(false);
+  /** Set by a refused save until the task ends: two presses in one task are one refusal (one count, one toast). */
+  const refusedNow = useRef(false);
 
   // The draft changes only while editing and not saving (what is typed during a save would be
   // replaced by the saved object). The tab area is locked meanwhile as well; this is the backstop.
@@ -214,6 +216,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   async function save(force = false, left?: HTMLElement, anyway = false) {
     if (saving || locked || inFlight.current) return;
     if (problems > 0 && !(anyway && onlyLocal)) {
+      if (refusedNow.current) return;
+      refusedNow.current = true;
+      setTimeout(() => {
+        refusedNow.current = false;
+      });
       setSaveAttempts((n) => n + 1);
       const fix = problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems });
       // Input a field holds comes first: the toast names it, as its own error may not ("Not valid JSON");

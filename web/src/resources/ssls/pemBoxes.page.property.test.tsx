@@ -315,6 +315,8 @@ describe('every PEM box follows one rule through the real editor frame (property
               continue;
             }
             cov.add('save');
+            // A user's key presses are separate tasks; two refusals in one task are one (Editor, fix round 1 R3.7).
+            await new Promise((resolve) => setTimeout(resolve, 0));
             const toastsBefore = getToasts().at(-1)?.id ?? 0;
             const writes = writesOf(admin).length;
             const how = r.int(3);
