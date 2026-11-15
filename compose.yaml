@@ -43,7 +43,8 @@ services:
 
       # LISTEN: ":8080"
     # The image runs as UID 65532: each secret file must be readable by it (chmod 0444, or chown
-    # 65532 and keep 0400); a 0600 file of your own stops apiseven with "cannot read … as UID 65532".
+    # 65532 and keep 0400). On Linux, a 0600 file of your own stops apiseven with "cannot read …
+    # as UID 65532" (Docker on macOS maps the file's owner, so there it is readable).
     # secrets:
     #   - apisix_admin_key
     #   - apiseven_password

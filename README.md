@@ -181,8 +181,9 @@ Put Basic auth (or your own authentication) in front of it. Without Basic auth t
 `WARNING` at start. With Basic auth on, the browser shows the tab icon only after you sign in.
 
 The image runs as UID 65532, so the two files must be readable by that user: `chmod 0444` them,
-or `chown 65532` them and keep `0400`. A `0600` file of your own is unreadable through the mount,
-and apiseven stops with "cannot read … as UID 65532".
+or `chown 65532` them and keep `0400`. On Linux, a `0600` file of your own is unreadable through
+the mount, and apiseven stops with "cannot read … as UID 65532" (Docker on macOS maps the file's
+owner, so there such a file is readable).
 
 ### Joining APISIX's network
 
@@ -281,14 +282,17 @@ The server answers:
   ```sh
   # key on the server
   curl -H 'X-Apiseven-Request: 1' http://127.0.0.1:8080/apisix/admin/routes
-  # key in the browser mode: send the key too; with Basic auth add -u admin:<password>
+  # key in the browser mode: send the key too
   curl -H 'X-Apiseven-Request: 1' -H 'X-API-KEY: <admin key>' http://127.0.0.1:8080/apisix/admin/routes
   ```
 
+  With Basic auth on, add `-u <user>:<password>` to either command; without it the server answers
+  `401` (`apiseven: sign-in required`).
+
   Answers the server makes itself (a refused request, or `502` when APISIX cannot be reached)
   carry `X-Apiseven-Refusal` with a one-word reason (`header`, `origin`, `host`, `auth`, `path`,
-  `method`, `size`, `upstream`) and a JSON `error_msg`; APISIX's own answers pass through without
-  it.
+  `method`, `size`, `request` when the request body could not be read, `upstream`) and a JSON
+  `error_msg`; APISIX's own answers pass through without it.
 - `/healthz`: `ok`, without authentication. `apiseven -healthcheck` requests it from the server at
   `LISTEN` and exits 0 when healthy; the image and `compose.yaml` use it as the health check.
 
