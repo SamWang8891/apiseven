@@ -2,8 +2,8 @@
 // from here; labels come from the app's own strings through `t()`, so a spec reads like the UI.
 import { test as base, expect, type BrowserContext, type Locator, type Page, type Request } from '@playwright/test';
 import { t } from '../src/i18n';
-import { Admin, type Json } from './admin';
-import { env } from './env';
+import { Admin, eventually, gateway, type Json } from './admin';
+import { ECHO, env } from './env';
 
 export { expect, t };
 export { Admin, eventually, gateway, servedCertificate, withoutTimes, type Json } from './admin';
@@ -138,13 +138,40 @@ export async function unlock(page: Page): Promise<void> {
   await settled(page);
 }
 
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** A tab by its label; a tab's name may go on with its problem badge ("Upstream 1 to fix"). */
+export function tabNamed(page: Page, label: string): Locator {
+  return page.getByRole('main').getByRole('tab', { name: new RegExp(`^${escape(label)}( |$)`) });
+}
+
 /** Selects an editor tab by its label and waits for its body. */
 export async function openTab(page: Page, label: string): Promise<Locator> {
-  const main = page.getByRole('main');
-  await main.getByRole('tab', { name: label, exact: true }).click();
-  await expect(main.getByRole('tab', { name: label, exact: true })).toHaveAttribute('aria-selected', 'true');
+  const tab = tabNamed(page, label);
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
   await settled(page);
-  return main.getByRole('tabpanel', { name: label });
+  return page.getByRole('main').getByRole('tabpanel', { name: new RegExp(`^${escape(label)}( |$)`) });
+}
+
+/** The upstream the suite proxies to, inline (see ECHO). */
+export function echoUpstream(): Json {
+  return { type: 'roundrobin', nodes: [{ host: ECHO.host, port: ECHO.port, weight: 1 }] };
+}
+
+/** A route to ECHO for one host name. */
+export function echoRoute(name: string, host: string, extra: Json = {}): Json {
+  return { name, host, uri: ECHO.path, upstream: echoUpstream(), ...extra };
+}
+
+/** Waits until the gateway answers a request for `host` with `status` (APISIX applies changes within moments). */
+export async function gatewayAnswers(host: string, status: number, opts: { path?: string; headers?: Record<string, string> } = {}) {
+  const reply = await eventually(
+    () => gateway(opts.path ?? ECHO.path, { host, headers: opts.headers }),
+    (r) => r.status === status,
+  );
+  expect(reply.status, `the gateway's answer for ${host}${opts.path ?? ECHO.path}`).toBe(status);
+  return reply;
 }
 
 // ---- Requests the app sends -------------------------------------------------------------------
