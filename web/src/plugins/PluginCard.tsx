@@ -235,6 +235,9 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
   const config = isObj(conf) ? conf : undefined;
   const meta = metaOf(conf);
   const hasForm = schema !== undefined;
+  // Without a form (the plugin list still loading) the card edits in JSON. Text held there makes JSON
+  // the chosen view, so the form arriving does not swap it out and drop the text.
+  if (!hasForm && jsonHeld && view !== 'json') setView('json');
   const shown = hasForm ? view : 'json';
 
   const rootIssues = issues.filter((issue) => issue.path === '');

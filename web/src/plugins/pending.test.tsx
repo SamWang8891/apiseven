@@ -4,7 +4,7 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
-import { renderPluginsTab } from '../test/plugins';
+import { pluginReplies, renderPluginsTab } from '../test/plugins';
 import { getToasts } from '../ui/toast';
 
 const LIMIT = { 'limit-count': { count: 2, time_window: 60 } };
@@ -23,6 +23,39 @@ async function replaceCode(user: ReturnType<typeof renderPluginsTab>['user'], bo
 }
 
 const lastToast = () => getToasts().at(-1)?.message;
+
+// Task 16b item 54: a card opened before the plugin list loaded edits in JSON; the list arriving must not drop held text.
+describe('a card opened while the plugin list loads', () => {
+  it('JSON text held then stays in the JSON view when the form becomes available; parsed text can go to Form', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const harness = renderPluginsTab({
+      scope: 'route',
+      value: LIMIT,
+      admin: {
+        replies: {
+          plugins: async (req) => {
+            await gate;
+            return pluginReplies().plugins?.(req) as Response;
+          },
+        },
+      },
+    });
+    const el = await screen.findByRole('group', { name: 'limit-count' });
+    await harness.user.click(within(el).getByRole('button', { name: 'limit-count' }));
+    expect(within(el).getByText(t('pl.card.formLoading'))).toBeInTheDocument();
+    const box = await within(el).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) });
+    await replaceCode(harness.user, box, '{"count": 2,');
+    expect(harness.held()).toEqual([t('ui.pending.json', { field: 'limit-count' })]);
+    release();
+    expect(await within(el).findByRole('button', { name: t('pl.card.json') })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(el).getByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) })).toHaveTextContent('{"count": 2,');
+    expect(harness.held()).toEqual([t('ui.pending.json', { field: 'limit-count' })]);
+    await replaceCode(harness.user, within(el).getByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) }), '{"count": 3, "time_window": 60}');
+    await harness.user.click(within(el).getByRole('button', { name: t('pl.card.form') }));
+    expect(within(el).getByRole('button', { name: t('pl.card.form') })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
 
 describe("a card's JSON view", () => {
   async function brokenJson() {

@@ -89,7 +89,10 @@ describe('schema-form fields hold what they do not emit', () => {
     expect(form.held()).toEqual([]);
     const key2 = group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n: 2 }) });
     await form.user.type(key2, 'a');
-    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'a' }) })]);
+    // Task 16b item 51: Save is refused and nothing is kept, so the refusal does not say "only the first is kept".
+    expect(form.held()).toEqual([t('ui.pending.duplicateKey', { field: 'limits', key: 'a' })]);
+    expect(form.held().join()).not.toContain(t('sf.map.duplicate', { key: 'a' }));
+    expect(key2).toHaveAccessibleDescription(t('sf.map.duplicate', { key: 'a' }));
     await form.user.type(key2, 'b');
     expect(form.held()).toEqual([t('ui.pending.noValue', { field: 'limits', key: 'ab' })]);
     expect(key2).toHaveAccessibleDescription(t('sf.map.noValue'));
@@ -264,7 +267,7 @@ describe('a kept map row is a new row', () => {
     await page.user.click(screen.getByRole('button', { name: 'Elsewhere' }));
     expect(group('limits').getAllByRole('textbox').map((el) => (el as HTMLInputElement).value)).toEqual(['a', '']);
     await page.user.type(group('limits').getByRole('textbox', { name: t('sf.map.keyOf', { n: 2 }) }), 'a');
-    expect(page.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'a' }) })]);
+    expect(page.held()).toEqual([t('ui.pending.duplicateKey', { field: 'limits', key: 'a' })]);
     expect(page.value()).toEqual({ limits: { a: 5 } });
   });
 });
@@ -279,7 +282,7 @@ describe('a held rename keeps the stored entry in the map (R8)', () => {
     expect(form.held()).toEqual([t('ui.pending.noKey', { field: 'limits', n: 1 })]);
     await form.user.type(key('limits', 1), 'b');
     expect(form.value()).toEqual({ limits: { a: 1, b: 2 }, keyed: { x: 1, y: 2 } });
-    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'b' }) })]);
+    expect(form.held()).toEqual([t('ui.pending.duplicateKey', { field: 'limits', key: 'b' })]);
     // A value cleared meanwhile: still the last good entry.
     // Row 1 shows "b" now too: its value field is the first of the two named after b.
     await form.user.clear(group('limits').getAllByRole('spinbutton', { name: t('sf.map.valueOf', { key: 'b' }) })[0] as HTMLElement);
@@ -311,7 +314,7 @@ describe('map rows always send what they show (fix round 2)', () => {
     const form = renderSchemaForm(SCHEMA, { limits: { a: 1, b: 2 } });
     await form.user.clear(key(2));
     await form.user.type(key(2), 'a');
-    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'a' }) })]);
+    expect(form.held()).toEqual([t('ui.pending.duplicateKey', { field: 'limits', key: 'a' })]);
     await form.user.clear(key(1));
     await form.user.type(key(1), 'c');
     await form.user.click(document.body);
@@ -357,7 +360,7 @@ describe('map rows equal their value after an outside change too (fix round 3)',
       row2.onBlur?.();
     });
     expect(key(2)).toHaveValue('a');
-    expect(form.held()).toEqual([t('ui.pending.problem', { field: 'limits', problem: t('sf.map.duplicate', { key: 'a' }) })]);
+    expect(form.held()).toEqual([t('ui.pending.duplicateKey', { field: 'limits', key: 'a' })]);
     const [key1, key2again] = [reactProps(key(1)), reactProps(key(2))];
     act(() => {
       key1.onChange?.(changeTo(''));

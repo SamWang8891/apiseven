@@ -67,6 +67,8 @@ function heldRows(rows: Row[], refused: (string | undefined)[], rules: EntryRule
     if (refusal === CARRIED) return [t('ui.pending.kept', { field, n: i + 1 })];
     if (refusal === '') return [t('ui.pending.noKey', { field, n: i + 1 })];
     if (refusal === NO_VALUE) return [t('ui.pending.noValue', { field, key: row.key })];
+    // Not the row's own line ("only the first is kept"): while it holds, Save is refused and nothing is kept.
+    if (refusal === rules.duplicate(row.key)) return [t('ui.pending.duplicateKey', { field, key: row.key })];
     return [t('ui.pending.problem', { field, problem: refusal ?? '' })];
   });
   return messages.length > 0 ? messages.join('; ') : undefined;
