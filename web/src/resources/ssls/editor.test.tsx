@@ -615,6 +615,36 @@ describe('a file read that finishes while a save is in flight (Task 16b, item 14
   });
 });
 
+describe('a file dropped while a save is in flight (fix round 2, R1.1)', () => {
+  it('is taken by nothing: the locked box declares no drop zone, and the box, the draft and the request agree, also after a late refusal', async () => {
+    let answer: (r: Response) => void = () => {};
+    const { user, admin } = await openEditor('#/ssls/new', {
+      objects: { ssls: [], routes: [], services: [] },
+      replies: { ssls: (req) => (req.method === 'POST' ? new Promise<Response>((done) => (answer = done)) : undefined) },
+    });
+    await newSsl(user);
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    // The certificate box, locked while the request is out: no drop zone, and a file dropped on it changes nothing.
+    const box = screen.getByRole('main').querySelector('.ssl-pem') as HTMLElement;
+    expect(box).not.toHaveAttribute('data-file-drop');
+    const shownBefore = box.textContent;
+    fireEvent.drop(box, { dataTransfer: { files: [new File([RSA_LEAF], 'leaf.crt', { type: 'text/plain' })], getData: () => '' } });
+    await act(async () => {
+      await new Promise((done) => setTimeout(done, 20));
+    });
+    expect(box.textContent).toBe(shownBefore);
+    act(() => answer(json(400, { error_msg: 'refused late by the test' })));
+    expect(await main().findAllByText('refused late by the test')).not.toHaveLength(0);
+    expect(writesOf(admin)[0]?.body?.cert).toBe(SEED_CERT);
+    expect(main().getByRole('textbox', { name: t('ssl.pem.cert') })).toHaveValue(SEED_CERT);
+    expect(main().getByRole('textbox', { name: t('ssl.pem.cert') }).closest('.ssl-pem')).toHaveAttribute('data-file-drop');
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(2));
+    expect(writesOf(admin)[1]?.body?.cert).toBe(SEED_CERT);
+  });
+});
+
 describe('a new SSL opens without red (Task 16b, item 154)', () => {
   const certTab = () => tab(t('ssl.tab.certificate'));
   const badge = (label: string, count: number) => `${label} ${t('ui.tabs.errors', { count })}`;

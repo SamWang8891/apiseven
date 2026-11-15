@@ -104,7 +104,8 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
   );
 
   const read = (file: File | undefined) => {
-    if (!file) return;
+    // A locked box takes no file (fix round 2, R1.1): nothing is read while a save is in flight.
+    if (!file || locked) return;
     const mine = ++gestures.current;
     const at = changesNow.current;
     const fresh = () => gestures.current === mine && changesNow.current === at;
@@ -142,18 +143,23 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
   // Both the file's reason and the text's problem show, the file's first (rule 5).
   const shown = [fileProblem, problem ?? error].filter((m): m is string => m !== undefined && m !== '');
 
+  // While editing, a drop zone of its own: the window's guard for dropped files leaves it alone
+  // (shell/fileDrops.ts). Locked for any reason, a save in flight included, it takes no file and
+  // declares no zone, so the guard refuses a file dropped on it (fix round 2, R1.1).
+  const zone = locked
+    ? {}
+    : {
+        ...FILE_DROP_ZONE,
+        onDragOver: (e: DragEvent) => {
+          e.preventDefault();
+          setOver(true);
+        },
+        onDragLeave: () => setOver(false),
+        onDrop: drop,
+      };
+
   return (
-    <div
-      className={over ? 'ssl-pem ssl-pem--over' : 'ssl-pem'}
-      // A drop zone of its own: the window's guard for dropped files leaves it alone (shell/fileDrops.ts).
-      {...FILE_DROP_ZONE}
-      onDragOver={(e) => {
-        e.preventDefault();
-        setOver(true);
-      }}
-      onDragLeave={() => setOver(false)}
-      onDrop={drop}
-    >
+    <div className={over && !locked ? 'ssl-pem ssl-pem--over' : 'ssl-pem'} {...zone}>
       <Textarea
         ref={inputRef}
         label={label}
