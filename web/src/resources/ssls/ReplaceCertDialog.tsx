@@ -86,7 +86,7 @@ export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCe
   // Whether the key belongs to the certificate: a warning at most, never a reason to turn Apply off.
   const verdict = useKeyVerdict(cert, key);
   // The two boxes split a combined PEM between them; Enter key has no certificate box to give a part to.
-  const link = usePairLink(key !== undefined);
+  const link = usePairLink({ cert: cert !== undefined, key: key !== undefined });
   const pair = mode === 'key' ? undefined : link;
   return (
     <Dialog

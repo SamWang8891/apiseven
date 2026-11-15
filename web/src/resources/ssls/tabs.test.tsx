@@ -340,11 +340,15 @@ describe('S1: a key counts as taken only when it is whole (BEGIN and END lines, 
   it('rule 6: a whole key with anything else after it (a certificate, a second key) is not taken', async () => {
     const { user, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
     const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
-    for (const text of [SEED_KEY + SEED_CERT, SEED_KEY + SEED_KEY]) {
+    // With a certificate the text offers the split, and the message points at it (fix round 1, R7).
+    for (const [text, problem] of [
+      [SEED_KEY + SEED_CERT, t('ssl.split.held')],
+      [SEED_KEY + SEED_KEY, t('ssl.pem.notOneKey')],
+    ] as const) {
       await user.clear(key);
       await fill(user, key, text);
       expect(value()).not.toHaveProperty('key');
-      expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.key'), problem: t('ssl.pem.notOneKey') })]);
+      expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.key'), problem })]);
     }
   });
 
@@ -363,7 +367,7 @@ describe('S3: a refused file leaves the box and the draft as they were', () => {
   it('new SSL: a combined file on a box that holds a certificate', async () => {
     const { user, container, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
     await upload(user, container, 0, new File([COMBINED], 'both.pem'));
-    expect(await screen.findByText(t('ssl.pem.fileHasKey'))).toBeInTheDocument();
+    expect(await screen.findByText(t('ssl.split.file'))).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: t('ssl.pem.cert') })).toHaveValue(SEED_CERT);
     expect(value()).toEqual({ status: 1, cert: SEED_CERT });
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
@@ -400,7 +404,7 @@ describe('S3: a refused file leaves the box and the draft as they were', () => {
     const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.type(cert, 'abc');
     await upload(user, container, 0, new File([COMBINED], 'both.pem'));
-    await waitFor(() => expect(said(cert)).toBe(`${t('ssl.pem.fileHasKey')} ${t('ssl.pem.noCertLabel')}`));
+    await waitFor(() => expect(said(cert)).toBe(`${t('ssl.split.file')} ${t('ssl.pem.noCertLabel')}`));
     expect(cert).toHaveValue('abc');
     const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
     await user.click(key);
@@ -427,7 +431,7 @@ describe('S3: a refused file leaves the box and the draft as they were', () => {
     await user.tab();
     expect(box).toHaveValue(SEED_CERT + `${t('ssl.pem.marker')}\n`);
     expect(value()).toEqual({ status: 1, cert: SEED_CERT });
-    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.pem.markerCert') })]);
+    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.split.held') })]);
     expect(screen.getByText(t('ssl.box.keptCert'))).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
   });
@@ -547,13 +551,14 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
     const box = within(dialog).getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.click(box);
     await user.paste(COMBINED);
-    expect(within(dialog).getByText(t('ssl.pem.hasKey'))).toBeInTheDocument();
+    expect(within(dialog).getByText(t('ssl.split.held'))).toBeInTheDocument();
     expect(within(dialog).getByText(t('ssl.box.keptNone'))).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: t('ssl.replace.apply') })).toBeDisabled();
     await user.click(within(dialog).getByRole('textbox', { name: t('ssl.pem.key') }));
     await user.paste(SEED_KEY);
     expect(box).toHaveValue(SEED_CERT + `${t('ssl.pem.marker')}\n`);
-    expect(within(dialog).getByText(t('ssl.pem.markerCert'))).toBeInTheDocument();
+    // Left, it still offers the split, and still says so (R7).
+    expect(within(dialog).getByText(t('ssl.split.held'))).toBeInTheDocument();
     expect(within(dialog).getByRole('button', { name: t('ssl.replace.apply') })).toBeDisabled();
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
   });
@@ -564,8 +569,8 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
     box.focus();
     fireEvent.drop(box.closest('.ssl-pem') as HTMLElement, { dataTransfer: { files: [], getData: () => COMBINED } });
     expect(box).toHaveValue(COMBINED);
-    expect(said(box)).toBe(t('ssl.pem.hasKey'));
-    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.pem.hasKey') })]);
+    expect(said(box)).toBe(t('ssl.split.held'));
+    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.split.held') })]);
     expect(value()).toEqual({ status: 1, cert: SEED_CERT });
     await user.tab();
     expect(box).toHaveValue(SEED_CERT + `${t('ssl.pem.marker')}\n`);
@@ -578,7 +583,7 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
     const { user, container, value } = renderSsl(CertificateTab, { status: 1 }, { isNew: true });
     await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[0] as HTMLInputElement, new File([COMBINED], 'both.pem'));
     const box = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
-    await waitFor(() => expect(said(box)?.startsWith(t('ssl.pem.fileHasKey'))).toBe(true));
+    await waitFor(() => expect(said(box)?.startsWith(t('ssl.split.file'))).toBe(true));
     expect(box).toHaveValue('');
     expect(value()).toEqual({ status: 1 });
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
@@ -589,20 +594,21 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
     const box = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.click(box);
     await user.paste(COMBINED);
-    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.pem.hasKey') })]);
+    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.split.held') })]);
     expect(value()).toEqual({ status: 1 });
     await user.tab();
     expect(box).toHaveValue(SEED_CERT + `${t('ssl.pem.marker')}\n`);
-    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.pem.markerCert') })]);
+    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.cert'), problem: t('ssl.split.held') })]);
     expect(value()).toEqual({ status: 1 });
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
   });
 
   it('an encrypted key, or other refused key material, in the key box: held, and leaving makes it a marker, never cleared', async () => {
     const ENCRYPTED = `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${'E'.repeat(80)}\n-----END ENCRYPTED PRIVATE KEY-----\n`;
-    for (const [text, problem] of [
-      [ENCRYPTED, t('ssl.pem.encrypted')],
-      [SEED_KEY + SEED_CERT, t('ssl.pem.notOneKey')],
+    // Key material with a certificate offers the split: its message points at it, before and after leaving (R7).
+    for (const [text, problem, left] of [
+      [ENCRYPTED, t('ssl.pem.encrypted'), t('ssl.pem.markerKey')],
+      [SEED_KEY + SEED_CERT, t('ssl.split.held'), t('ssl.split.held')],
     ] as const) {
       const { user, value, held, unmount } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT, key: EC_PAIR.key }, { isNew: true });
       await user.click(screen.getByRole('button', { name: t('ssl.key.replaceKey') }));
@@ -612,7 +618,7 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
       expect(screen.getByText(t('ssl.key.stays'))).toBeInTheDocument();
       await user.tab();
       expect(key).toHaveValue(text.replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/, t('ssl.pem.marker')));
-      expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.key'), problem: t('ssl.pem.markerKey') })]);
+      expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.key'), problem: left })]);
       expect(value()).toEqual({ status: 1, cert: SEED_CERT, key: EC_PAIR.key });
       expect(document.body.innerHTML).not.toContain(KEY_TEXT);
       unmount();

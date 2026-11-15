@@ -62,7 +62,7 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
   const client = typeOf(draft) === 'client';
   const keyError = issueAt(issues, 'key');
   const write = useNewPair(draft, setDraft);
-  const pair = usePairLink(draft.key !== undefined);
+  const pair = usePairLink({ cert: draft.cert !== undefined, key: draft.key !== undefined });
   // Whether the pair's key (a new SSL's, or one entered with Replace) belongs to its certificate:
   // a warning at most, never a reason to refuse Create or Save.
   const verdict = useKeyVerdict(str(draft.cert), str(draft.key));

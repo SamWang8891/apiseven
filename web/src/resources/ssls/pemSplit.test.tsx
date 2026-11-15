@@ -114,7 +114,7 @@ describe('the split, in a new SSL', () => {
     expect(await screen.findByRole('button', { name: t('ssl.split.toKeyBox') })).toBeInTheDocument();
     expect(certBox).toHaveValue('');
     expect(value()).toEqual({ status: 1 });
-    expect(certBox).toHaveAccessibleDescription(expect.stringContaining(t('ssl.pem.fileHasKey')) as string);
+    expect(certBox).toHaveAccessibleDescription(expect.stringContaining(t('ssl.split.file')) as string);
     noKeyInPage();
     await user.click(screen.getByRole('button', { name: t('ssl.split.toKeyBox') }));
     expect(certBox).toHaveValue(RSA_PAIR.cert + RSA_CA);
@@ -132,7 +132,7 @@ describe('the split, in a new SSL', () => {
     await user.tab();
     noKeyInPage();
     expect(value()).toEqual({ status: 1, cert: SEED_CERT, key: SEED_KEY });
-    await user.click(screen.getByRole('button', { name: t('ssl.split.toCertBoxReplace') }));
+    await user.click(screen.getByRole('button', { name: t('ssl.split.toCertBoxReplacing', { what: t('ssl.split.what.both') }) }));
     expect(value()).toEqual({ status: 1, cert: EC_PAIR.cert, key: EC_PAIR.key });
     expect(screen.getByRole('textbox', { name: t('ssl.pem.cert') })).toHaveValue(EC_PAIR.cert);
     expect(screen.getByText(t('ssl.key.entered'))).toBeInTheDocument();
@@ -141,7 +141,37 @@ describe('the split, in a new SSL', () => {
   it('the certificate box says the key it gives replaces an entered one', async () => {
     const { user } = renderNew({ status: 1, key: SEED_KEY });
     await paste(user, document.body, t('ssl.pem.cert'), SEED_CERT + EC_PAIR.key);
-    expect(screen.getByRole('button', { name: t('ssl.split.toKeyBoxReplace') })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t('ssl.split.toKeyBoxReplacing', { what: t('ssl.split.what.key') }) })).toBeInTheDocument();
+  });
+
+  it('while the split is offered, the messages point at it, not at doing it by hand: the key box after Tab, a refused combined file (fix round 1, R7)', async () => {
+    const { user } = renderNew({ status: 1, cert: SEED_CERT });
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    await user.click(key);
+    await user.paste(EC_PAIR.key + EC_PAIR.cert);
+    await user.tab();
+    expect(key).not.toHaveFocus();
+    expect(key).toHaveAccessibleDescription(t('ssl.split.held'));
+    expect(key).not.toHaveAccessibleDescription(expect.stringContaining(t('ssl.pem.markerKey')) as string);
+    expect(screen.getByRole('button', { name: t('ssl.split.toCertBoxReplacing', { what: t('ssl.split.what.cert') }) })).toBeInTheDocument();
+
+    const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    fireEvent.drop(cert, { dataTransfer: { files: [new File([P12], 'export.pem', { type: 'text/plain' })], getData: () => '' } });
+    await waitFor(() => expect(cert).toHaveAccessibleDescription(expect.stringContaining(t('ssl.split.file')) as string));
+    expect(cert).not.toHaveAccessibleDescription(expect.stringContaining(t('ssl.pem.fileHasKey')) as string);
+  });
+
+  it('the action says what it replaces: a certificate in the certificate box, even unfinished text, and a key (fix round 1, R8)', async () => {
+    const { user, value } = renderNew();
+    await user.type(screen.getByRole('textbox', { name: t('ssl.pem.cert') }), '-----BEGIN CERTIFICATE-----');
+    await paste(user, document.body, t('ssl.pem.key'), EC_PAIR.key + EC_PAIR.cert);
+    await user.click(screen.getByRole('button', { name: t('ssl.split.toCertBoxReplacing', { what: t('ssl.split.what.cert') }) }));
+    expect(value()).toEqual({ status: 1, cert: EC_PAIR.cert, key: EC_PAIR.key });
+    // The certificate box's own action, over a certificate taken and with a key entered.
+    const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    fireEvent.drop(cert, { dataTransfer: { files: [new File([P12], 'export.pem', { type: 'text/plain' })], getData: () => '' } });
+    await user.click(await screen.findByRole('button', { name: t('ssl.split.toKeyBoxReplacing', { what: t('ssl.split.what.both') }) }));
+    expect(value()).toEqual({ status: 1, cert: RSA_PAIR.cert + RSA_CA, key: RSA_PAIR.key });
   });
 
   it('the offer goes when the text changes, and nothing is offered for what cannot be split', async () => {

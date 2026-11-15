@@ -99,8 +99,8 @@ export interface Model {
   pair: boolean;
   /** In a pair, the other box's value (a key for a certificate box, a certificate for a key box). */
   other: string | undefined;
-  /** The split this box offers now, if any. */
-  offer: Split | undefined;
+  /** The split this box offers now, if any, and what offered it: the box's text, or a file it refused. */
+  offer: (Split & { from: 'text' | 'file' }) | undefined;
   /** A key box closed over a key whose lines before its BEGIN line were left out says so. */
   leftOut: boolean;
 }
@@ -138,7 +138,8 @@ function close(m: Model): void {
 export function arrive(m: Model, next: string, focused: boolean): void {
   const isTaken = takes(m.kind, next);
   // A pair's box offers to split what arrives when it holds a certificate and its key (B23).
-  m.offer = m.pair ? splitOf(next) : undefined;
+  const parts = m.pair ? splitOf(next) : undefined;
+  m.offer = parts && { ...parts, from: 'text' };
   if (m.kind === 'key') {
     if (m.stood === null) m.stood = m.value;
     // A whole key is taken (from its BEGIN line) and the box closes at once; a reference stays shown, as it may still be typed.
@@ -160,7 +161,8 @@ export function arrive(m: Model, next: string, focused: boolean): void {
 
 /** A file the box refused: the box and the value as they were; the split offer follows what the file held (B23). */
 export function refusedFile(m: Model, text: string): void {
-  m.offer = m.pair ? splitOf(text) : undefined;
+  const parts = m.pair ? splitOf(text) : undefined;
+  m.offer = parts && { ...parts, from: 'file' };
 }
 
 /** The split action, pressed in this box (B23): its part arrives here, the other part in the other box. */
@@ -177,10 +179,20 @@ export function split(m: Model): void {
   m.offer = undefined;
 }
 
-/** The split action's name in this box: it says when the key it gives replaces one (B23). */
-export const splitLabel = (m: Model): string =>
-  m.kind === 'cert' ? t(m.other !== undefined ? 'ssl.split.toKeyBoxReplace' : 'ssl.split.toKeyBox') : t(standing(m) !== undefined ? 'ssl.split.toCertBoxReplace' : 'ssl.split.toCertBox');
-const SPLIT_LABELS = ['ssl.split.toKeyBox', 'ssl.split.toKeyBoxReplace', 'ssl.split.toCertBox', 'ssl.split.toCertBoxReplace'];
+/**
+ * The split action's name in this box: it says what it replaces (fix round 1, R8). The certificate
+ * box's replaces its certificate (the field has a value) and the key entered; the key box's replaces
+ * the key that stands and what the certificate box holds (the tests fill that box with a value only).
+ */
+export function splitLabel(m: Model): string {
+  const cert = m.kind === 'cert' ? m.value !== undefined : m.other !== undefined;
+  const key = m.kind === 'cert' ? m.other !== undefined : standing(m) !== undefined;
+  const what = cert && key ? 'both' : cert ? 'cert' : key ? 'key' : undefined;
+  const action = m.kind === 'cert' ? 'ssl.split.toKeyBox' : 'ssl.split.toCertBox';
+  return what ? t(`${action}Replacing`, { what: t(`ssl.split.what.${what}`) }) : t(action);
+}
+/** Every name a split action can have, to check that none but the model's is on the page. */
+const SPLIT_LABELS = ['ssl.split.toKeyBox', 'ssl.split.toCertBox'].flatMap((action) => [t(action), ...['cert', 'key', 'both'].map((what) => t(`${action}Replacing`, { what: t(`ssl.split.what.${what}`) }))]);
 
 /** The box loses focus: key blocks in text not taken become markers; nothing opens or closes (rule 9). */
 export function leave(m: Model): void {
@@ -479,7 +491,13 @@ export class BoxRun {
     this.checkBox(where);
     // B23: the split is offered exactly when the model says, under its name, and nowhere else.
     const offered = this.m.offer ? splitLabel(this.m) : undefined;
-    for (const key of SPLIT_LABELS) expect(this.button(t(key)) !== null, `${where}: the split action ${key}`).toBe(offered === t(key));
+    for (const label of SPLIT_LABELS) expect(this.button(label) !== null, `${where}: the split action "${label}"`).toBe(offered === label);
+    // R7: while the box's own text offers it, the box's message points at the action, and only then.
+    const box = this.box();
+    if (box) {
+      const says = (box.closest('.ui-field')?.querySelector('.ui-field__error')?.textContent ?? '').includes(t('ssl.split.held'));
+      expect(says, `${where}: the box's message points at the split`).toBe(this.m.offer?.from === 'text');
+    }
   }
 
   private checkBox(where: string): void {

@@ -421,7 +421,7 @@ describe('N1: text a box did not take is held through Save, never swapped for th
     await user.keyboard('{Control>}a{/Control}');
     await user.paste(COMBINED);
     await user.click(main().getByRole('button', { name: t('editor.create') }));
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.pem.markerCert'))));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.split.held'))));
     expect(writesOf(admin)).toEqual([]);
     // Left by the click: the key block is a marker now, and the text is still held.
     expect(box).toHaveValue(RSA_LEAF + `${t('ssl.pem.marker')}\n`);
@@ -446,15 +446,16 @@ describe('N1: text a box did not take is held through Save, never swapped for th
   });
 
   it.each([
-    ['an encrypted key', `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${'E'.repeat(80)}\n-----END ENCRYPTED PRIVATE KEY-----\n`],
-    ['a key with a certificate', SEED_KEY + SEED_CERT],
-  ])('the key box: Replace key, %s pasted, then Create: refused, no request, the toast names the field', async (_, text) => {
+    ['an encrypted key', `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${'E'.repeat(80)}\n-----END ENCRYPTED PRIVATE KEY-----\n`, 'ssl.pem.markerKey'],
+    // It offers the split, so its message points at that (fix round 1, R7).
+    ['a key with a certificate', SEED_KEY + SEED_CERT, 'ssl.split.held'],
+  ])('the key box: Replace key, %s pasted, then Create: refused, no request, the toast names the field', async (_, text, problem) => {
     const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
     await user.paste(text);
     await user.click(main().getByRole('button', { name: t('editor.create') }));
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.key'), t('ssl.pem.markerKey'))));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.key'), t(problem))));
     expect(writesOf(admin)).toEqual([]);
   });
 });
@@ -480,7 +481,7 @@ describe('O1: text dropped on a box that does not have focus is masked at once a
     expect(box).toHaveValue(marked(RSA_LEAF));
     expect(box).toHaveAttribute('aria-invalid', 'true');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.pem.markerCert'))));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.split.held'))));
     expect(writesOf(admin)).toEqual([]);
   });
 
@@ -501,7 +502,7 @@ describe('O1: text dropped on a box that does not have focus is masked at once a
     expect(box).toHaveAttribute('aria-invalid', 'true');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     // Held, and the key is still missing: two problems, the held one named first.
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.key'), t('ssl.pem.markerKey'), 2)));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.key'), t('ssl.split.held'), 2)));
     expect(writesOf(admin)).toEqual([]);
   });
 
@@ -531,7 +532,7 @@ describe('O1: text dropped on a box that does not have focus is masked at once a
     expect(document.body.innerHTML).not.toMatch(WHOLE_KEY);
     expect(box).toHaveValue(marked(RSA_LEAF));
     saveKeys();
-    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.pem.markerCert'))));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.split.held'))));
     expect(writesOf(admin)).toEqual([]);
   });
 });
