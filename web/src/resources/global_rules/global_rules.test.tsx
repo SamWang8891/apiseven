@@ -122,6 +122,14 @@ describe('a new global rule', () => {
   });
 });
 
+describe('a copy of a global rule', () => {
+  it('says before Create which plugins APISIX will refuse while the original holds them', async () => {
+    await open('#/global_rules/new?from=default');
+    const notice = await main().findByRole('note', { name: t('editor.copyNotice.title') });
+    expect(notice).toHaveTextContent(t('editor.copyNotice.globalRule', { from: 'default', list: 'request-id' }));
+  });
+});
+
 describe('the global rules list', () => {
   it('id (a link), plugins with a switched-off one marked off, and when it changed; no credential in the page or found by search', async () => {
     const OFF: Obj = { id: 'quiet', plugins: { cors: { _meta: { disable: true } } } };

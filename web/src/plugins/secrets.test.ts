@@ -111,6 +111,15 @@ describe('redactObject, per kind', () => {
     expect(redactObject({ id: 'http-logger', log_format: { host: '$host' } }, 'plugin_metadata', all()).value).toEqual({ id: 'http-logger', log_format: { host: '$host' } });
   });
 
+  it('plugin metadata (and a secret) without an id in the body: the id the caller knows decides; none at all masks every value', () => {
+    const meta = { master_apikey: 'key-1', master_clientid: 'cid' };
+    expect(redactObject(meta, 'plugin_metadata', all(), 'azure-functions').value).toEqual({ master_apikey: MASK, master_clientid: 'cid' });
+    expect(redactObject(meta, 'plugin_metadata', all()).value).toEqual({ master_apikey: MASK, master_clientid: MASK });
+    expect(redactObject({ uri: 'u', token: 't' }, 'secrets', all(), 'vault/v1').value).toEqual({ uri: 'u', token: MASK });
+    // The body's own id wins when it has one.
+    expect(redactObject({ id: 'azure-functions', ...meta }, 'plugin_metadata', all(), 'http-logger').value).toEqual({ id: 'azure-functions', master_apikey: MASK, master_clientid: 'cid' });
+  });
+
   it("an SSL's private keys (a new one in the draft) are never shown, not even on reveal; its certificates and CA are not secrets", () => {
     const ssl = { snis: ['a.test'], cert: 'CERT-PEM', key: 'KEY-PEM', certs: ['C1', 'C2'], keys: ['K1', null], client: { ca: 'CA-PEM' } };
     const out = redactObject(ssl, 'ssls', undefined);

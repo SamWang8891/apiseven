@@ -71,7 +71,7 @@ function draftOf(kind: Kind, text: string, notes: KeyNotes): Obj | undefined {
  * Save. The text and its notes are editing state: they start over when the editing session ends.
  * `issues` (those no form tab owns) are listed under it.
  */
-export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
+export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
   const locked = useLocked();
   const hostRef = useRef<HTMLDivElement>(null);
   const maxLines = useFitLines(hostRef);
@@ -89,7 +89,7 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
 
   const scope = scopeOfKind[kind];
   const plugins = useAllPlugins(scope && subsystemOf(scope)).data;
-  const hidden = useMemo(() => (locked ? redactObject(draft, kind, plugins) : undefined), [locked, draft, kind, plugins]);
+  const hidden = useMemo(() => (locked ? redactObject(draft, kind, plugins, id) : undefined), [locked, draft, kind, plugins, id]);
   const [revealed, setRevealed] = useReveal();
   // What the editor shows, and what Copy copies.
   const shown = hidden?.redacted ? pretty(revealed ? hidden.revealed : hidden.value) : current.text;

@@ -90,7 +90,7 @@ export function DataTable(props: DataTableProps) {
   // A kind that holds secrets is searched as its locked views show it (masked), with the plugin list
   // when a page has loaded it (without it, every plugin value is masked: nothing is found by one).
   const plugins = usePluginsIfLoaded();
-  const read = useMemo<SearchValue | undefined>(() => (def.masksSearch ? (item) => redactObject(item.value, kind, plugins).value : undefined), [def, kind, plugins]);
+  const read = useMemo<SearchValue | undefined>(() => (def.masksSearch ? (item) => redactObject(item.value, kind, plugins, item.id).value : undefined), [def, kind, plugins]);
   const filtered = useMemo(() => applyFilters(items, view.query, filters, view.selection, ctx, read), [items, view, filters, ctx, read]);
   const sorted = useMemo(() => sortItems(filtered, state.sort, allColumns, ctx), [filtered, state.sort, allColumns, ctx]);
 

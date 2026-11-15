@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
@@ -298,5 +298,20 @@ describe('group by host', () => {
     await user.click(screen.getByRole('link', { name: /^Upstreams/ }));
     expect(await main().findByRole('heading', { level: 1, name: t('kind.upstreams.plural') })).toBeInTheDocument();
     expect(main().queryByRole('switch', { name: t('group.byHost') })).not.toBeInTheDocument();
+  });
+});
+
+describe('a deleted object', () => {
+  it('reopened (Back, a bookmark) shows "not found", not what was cached of it', async () => {
+    const { user } = await open('#/routes/r1');
+    await main().findByRole('heading', { level: 1, name: 'alpha' });
+    await user.click(main().getByRole('link', { name: t('editor.back', { plural: t('kind.routes.plural') }) }));
+    await rowAction(user, 'alpha', t('action.delete'));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('delete.confirm', { kind: t('kind.routes.singular') }) }));
+    await waitFor(() => expect(main().queryByRole('link', { name: 'alpha' })).not.toBeInTheDocument());
+    act(() => {
+      window.location.hash = '#/routes/r1';
+    });
+    expect(await main().findByRole('heading', { level: 1, name: t('editor.notFound.title', { kind: t('kind.routes.singular'), id: 'r1' }) })).toBeInTheDocument();
   });
 });

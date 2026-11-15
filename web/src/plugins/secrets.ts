@@ -128,9 +128,12 @@ function maskPlugins(plugins: Obj, kind: Kind, all: Record<string, PluginInfo> |
 /**
  * `value` with its secrets masked (see the head comment). `all` is the plugin list of the kind's
  * scope (the stream set for a stream route); while it is undefined (loading), which plugin fields are
- * secret is not known, so every text inside `plugins` is masked.
+ * secret is not known, so every text inside `plugins` is masked. `id` is the object's id as the
+ * caller knows it (the page's, the row's): what a plugin metadata entry or a secret manager entry is
+ * told by when its body has no `id` of its own; with neither, every value is masked.
  */
-export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginInfo> | undefined): Redacted {
+export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginInfo> | undefined, id?: string): Redacted {
+  const ownId = typeof value.id === 'string' ? value.id : id;
   const clientKeys = mask(value, (k) => NEVER_SHOWN.has(k));
   const never = kind === 'ssls' ? maskSslKeys(clientKeys.value as Obj) : { value: clientKeys.value as Obj, redacted: false };
   never.redacted ||= clientKeys.redacted;
@@ -143,14 +146,14 @@ export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginI
     if (plugins.redacted) masked = { ...masked, plugins: plugins.value };
     secrets ||= plugins.redacted;
   }
-  if (kind === 'plugin_metadata' && typeof value.id === 'string') {
-    const schema = all?.[value.id]?.metadata_schema;
+  if (kind === 'plugin_metadata') {
+    const schema = ownId === undefined ? undefined : all?.[ownId]?.metadata_schema;
     const meta = schema ? redactSecrets(masked, '', encryptOf(schema)) : maskMetadata(masked);
     masked = meta.value as Obj;
     secrets ||= meta.redacted;
   }
   if (kind === 'secrets') {
-    const manager = typeof value.id === 'string' ? managerOf(value.id) : undefined;
+    const manager = managerOf(ownId);
     const own = manager ? redactSecrets(masked, '', SECRET_FIELDS[manager]) : maskMetadata(masked);
     masked = own.value as Obj;
     secrets ||= own.redacted;
@@ -182,9 +185,10 @@ export function redactPair(
   theirs: Obj,
   kind: Kind,
   all: Record<string, PluginInfo> | undefined,
+  id?: string,
 ): { masked: [Obj, Obj]; revealed: [Obj, Obj]; redacted: boolean; revealable: boolean } {
-  const l = redactObject(loaded, kind, all);
-  const r = redactObject(theirs, kind, all);
+  const l = redactObject(loaded, kind, all, id);
+  const r = redactObject(theirs, kind, all, id);
   const marked = (shown: unknown, real: unknown, other: unknown): unknown => {
     if (shown === MASK && typeof real === 'string') return real === other ? MASK : MASK_CHANGED;
     if (Array.isArray(shown) && Array.isArray(real)) return shown.map((s, i) => marked(s, real[i], Array.isArray(other) ? other[i] : undefined));

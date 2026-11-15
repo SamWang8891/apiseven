@@ -1,10 +1,13 @@
 // The page every resource is viewed and edited in: a stored object is loaded (with its loading,
 // not-found and failed states), a new one starts from the kind's blank or a copy, and Editor.tsx
 // does the rest. Tabs come from the registry, plus the frame's own JSON tab (id JSON_TAB in json.ts).
+import { Info } from 'lucide-react';
 import { useState, type FC } from 'react';
 import { useAllPlugins, useItem } from '../api/hooks';
 import type { Item, Kind, Obj, Parent } from '../api/types';
+import { t } from '../i18n';
 import { registry } from '../resources/registry';
+import { Button } from '../ui';
 import { Editor } from './Editor';
 import { startOf, type EditorStart } from './start';
 import { EditorSkeleton, LoadErrorState, NotFoundState } from './states';
@@ -44,19 +47,43 @@ function NewEditor({ kind, parent, duplicateFrom, initial }: { kind: Kind; paren
 /**
  * Loads the object, then edits it; the loading, not-found and failed states in between. For a kind
  * whose pages exist whether or not anything is stored (ResourceDef.createWhenMissing), nothing stored
- * opens a new object under that id; once it is created (the query then has it), the stored one.
+ * opens a new object under that id, and the page stays that create form whatever a later read says
+ * (a refetch on window focus, a reconnect, an invalidation: one in flight even resets a query without
+ * data to "pending"): only its own Create, or the user asking for what is stored, ends it. Nothing
+ * the network does unmounts an editor that holds a draft: a stored object's query keeps its data
+ * through a failed or 404 refetch, so its editor stays too.
  */
 function StoredEditor({ kind, id, parent }: { kind: Kind; id: string; parent?: Parent }) {
   const query = useItem(kind, id, parent);
+  const [creating, setCreating] = useState(false);
+  if (!creating && registry[kind].createWhenMissing && query.error?.status === 404 && !query.data) setCreating(true);
+  if (creating) return <MissingEditor kind={kind} id={id} parent={parent} found={query.data} onStored={() => setCreating(false)} />;
   if (query.data) return <Editor key="stored" kind={kind} id={id} parent={parent} item={query.data} />;
-  if (query.error?.status === 404 && registry[kind].createWhenMissing) return <MissingEditor kind={kind} id={id} parent={parent} />;
   if (query.error?.status === 404) return <NotFoundState kind={kind} id={id} parent={parent} />;
   if (query.error) return <LoadErrorState kind={kind} id={id} error={query.error} retrying={query.isFetching} onRetry={() => void query.refetch()} />;
   return <EditorSkeleton kind={kind} />;
 }
 
-/** A new object under the page's id, from the kind's blank; built once. */
-function MissingEditor({ kind, id, parent }: { kind: Kind; id: string; parent?: Parent }) {
+/**
+ * A new object under the page's id, from the kind's blank; built once. When a read finds the object
+ * stored meanwhile (`found`), the form stays and a note says so, with what is stored on request
+ * (Create would be refused anyway: editor/save.ts never overwrites).
+ */
+function MissingEditor({ kind, id, parent, found, onStored }: { kind: Kind; id: string; parent?: Parent; found?: Item; onStored: () => void }) {
   const [start] = useState(() => startOf(kind, undefined, undefined, null));
-  return <Editor key="missing" kind={kind} id={id} parent={parent} start={start} />;
+  const notice = found && (
+    <section className="ed-copynote" role="note" aria-label={t('editor.foundMeanwhile.title')}>
+      <Info size={16} aria-hidden="true" />
+      <div className="ed-copynote__text">
+        <p className="ed-copynote__title">{t('editor.foundMeanwhile.title')}</p>
+        <p>{t('editor.foundMeanwhile.body', { kind: registry[kind].singular, id })}</p>
+        <p>
+          <Button size="sm" onClick={onStored}>
+            {t('editor.taken.show')}
+          </Button>
+        </p>
+      </div>
+    </section>
+  );
+  return <Editor key="missing" kind={kind} id={id} parent={parent} start={start} notice={notice || undefined} onStored={onStored} />;
 }

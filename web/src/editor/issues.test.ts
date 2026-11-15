@@ -117,6 +117,10 @@ describe('pathOfError: the draft path an APISIX save error is about', () => {
     it(`${path} ← ${message.slice(0, 60)}`, () => expect(pathOfError(message)).toBe(path));
   }
 
+  it('a proto APISIX cannot compile goes to its content (admin/proto.lua 33–36)', () => {
+    expect(pathOfError('invalid content: [string "filename for loaded"]:1: syntax error')).toBe('content');
+  });
+
   it("a plugin another global rule holds goes to the plugin (admin/global_rules.lua 72–76)", () => {
     expect(pathOfError("plugin 'request-id' already exists in global rule with id 'default'")).toBe('plugins.request-id');
   });

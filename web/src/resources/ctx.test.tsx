@@ -37,6 +37,7 @@ const COUNTS = {
   plugin_configs: 1,
   consumer_groups: 1,
   consumers: 2,
+  global_rules: 1,
 };
 
 function sizes(ctx: Ctx): Record<string, number> {
@@ -45,14 +46,14 @@ function sizes(ctx: Ctx): Record<string, number> {
 }
 
 const NOTHING_LOADED = {
-  routes: false, streamRoutes: false, services: false, upstreams: false, ssls: false, pluginConfigs: false, consumerGroups: false, consumers: false,
+  routes: false, streamRoutes: false, services: false, upstreams: false, ssls: false, pluginConfigs: false, consumerGroups: false, consumers: false, globalRules: false,
 };
 
 describe('useCtx', () => {
   it('has empty lists while loading', () => {
     const { result } = setup({ counts: COUNTS });
     expect(sizes(result.current)).toEqual({
-      routes: 0, streamRoutes: 0, services: 0, upstreams: 0, ssls: 0, pluginConfigs: 0, consumerGroups: 0, consumers: 0,
+      routes: 0, streamRoutes: 0, services: 0, upstreams: 0, ssls: 0, pluginConfigs: 0, consumerGroups: 0, consumers: 0, globalRules: 0,
     });
     expect(result.current.loaded).toEqual(NOTHING_LOADED);
   });
@@ -64,13 +65,14 @@ describe('useCtx', () => {
     expect(result.current.loaded.ssls).toBe(true);
   });
 
-  it('reads the eight lists into their fields', async () => {
+  it('reads the nine lists into their fields (global rules: what uses a proto)', async () => {
     const { result } = setup({ counts: COUNTS });
     await waitFor(() =>
       expect(sizes(result.current)).toEqual({
-        routes: 3, streamRoutes: 1, services: 2, upstreams: 2, ssls: 1, pluginConfigs: 1, consumerGroups: 1, consumers: 2,
+        routes: 3, streamRoutes: 1, services: 2, upstreams: 2, ssls: 1, pluginConfigs: 1, consumerGroups: 1, consumers: 2, globalRules: 1,
       }),
     );
+    expect(result.current.globalRules[0]?.id).toBe('global_rules-1');
     expect(result.current.streamRoutes[0]?.id).toBe('stream_routes-1');
     expect(result.current.pluginConfigs[0]?.id).toBe('plugin_configs-1');
     expect(result.current.consumerGroups[0]?.id).toBe('consumer_groups-1');

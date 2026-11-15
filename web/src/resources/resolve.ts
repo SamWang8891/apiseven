@@ -402,13 +402,14 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
     }
     case 'protos': {
       // APISIX's delete check looks at routes and services (admin/proto.lua 61–101); the others use it
-      // too, through grpc-transcode wherever it is configured.
+      // too, through grpc-transcode wherever it is configured (protoDeleteBlockers).
       const uses = (v: Obj): boolean => is(dig(v, 'plugins', 'grpc-transcode', 'proto_id'));
       collect('routes', ctx.routes, uses);
       collect('services', ctx.services, uses);
       collect('plugin_configs', ctx.pluginConfigs, uses);
       collect('consumers', ctx.consumers, uses);
       collect('consumer_groups', ctx.consumerGroups, uses);
+      collect('global_rules', ctx.globalRules, uses);
       break;
     }
     default:

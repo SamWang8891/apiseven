@@ -3,7 +3,7 @@
 // the plugin list failed can drop a plugin whole, which must not go unseen. For a copy of an SSL: the
 // keys it lacks and the SNIs it still shares with the original (one certificate is presented per SNI).
 // For a copy of a secret manager entry: the credentials it kept (masked), which point it at the same
-// account.
+// account. For a copy of a global rule: the plugins APISIX will refuse while the original holds them.
 import { Copy } from 'lucide-react';
 import type { RemovedSecret } from '../plugins/auth';
 import { t } from '../i18n';
@@ -20,8 +20,19 @@ export interface CopyNotes {
    * the original's certificate texts was left out.
    */
   ssl?: { extraKeys: number; snis: string[]; keyInCert: boolean };
-  /** A copy of a secret manager entry: the credentials it kept from `from` (they are masked, not left out). */
-  credentials?: { from: string; fields: string[] };
+  /**
+   * A copy of a secret manager entry: the credentials it kept from `from` (masked, not left out); its
+   * manager, and whether APISIX has it (else which settings are credentials is not known).
+   */
+  credentials?: { from: string; fields: string[]; manager: string; known: boolean };
+  /** A copy of a global rule: the plugins the original still holds, which APISIX refuses in a second rule. */
+  globalRule?: { from: string; plugins: string[] };
+}
+
+/** What the copy of a secret manager entry kept. */
+function credentialsNote({ from, fields, manager, known }: NonNullable<CopyNotes['credentials']>): string {
+  if (!known) return t('editor.copyNotice.unknownManager', { from, manager });
+  return fields.length > 0 ? t('editor.copyNotice.credentials', { from, fields: fields.join(', ') }) : t('editor.copyNotice.credentialsElsewhere', { from });
 }
 
 /** The secret fields left out, plugin by plugin ("basic-auth password, jwe-decrypt key and secret"). */
@@ -33,8 +44,8 @@ const whole = (removed: RemovedSecret[]): string[] => removed.flatMap((r) => ('w
 
 /** Nothing when the copy left nothing out and shares no lookup field. */
 export function CopyNotice({ notes }: { notes: CopyNotes }) {
-  const { ssl, credentials } = notes;
-  if (notes.removed.length === 0 && notes.shared.length === 0 && !ssl && !credentials) return null;
+  const { ssl, credentials, globalRule } = notes;
+  if (notes.removed.length === 0 && notes.shared.length === 0 && !ssl && !credentials && !globalRule) return null;
   const fields = secrets(notes.removed);
   const plugins = whole(notes.removed);
   return (
@@ -48,13 +59,8 @@ export function CopyNotice({ notes }: { notes: CopyNotes }) {
         {ssl && <p>{ssl.extraKeys > 0 ? t('editor.copyNotice.sslKeys', { count: ssl.extraKeys }) : t('editor.copyNotice.sslKey')}</p>}
         {ssl && ssl.snis.length > 0 && <p>{t('editor.copyNotice.sslSnis', { list: ssl.snis.join(', ') })}</p>}
         {ssl?.keyInCert && <p>{t('editor.copyNotice.sslKeyInCert')}</p>}
-        {credentials && (
-          <p>
-            {credentials.fields.length > 0
-              ? t('editor.copyNotice.credentials', { from: credentials.from, fields: credentials.fields.join(', ') })
-              : t('editor.copyNotice.noCredentials', { from: credentials.from })}
-          </p>
-        )}
+        {credentials && <p>{credentialsNote(credentials)}</p>}
+        {globalRule && <p>{t('editor.copyNotice.globalRule', { from: globalRule.from, list: globalRule.plugins.join(', ') })}</p>}
       </div>
     </section>
   );

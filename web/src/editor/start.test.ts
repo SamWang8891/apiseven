@@ -37,16 +37,32 @@ describe('startOf: a copy of a secret manager entry', () => {
     const start = startOf('secrets', itemOf('vault/v1', { uri: 'http://v', prefix: 'p', token: 'hvs', create_time: 1, update_time: 2 }), undefined, null);
     expect(start.draft).toEqual({ uri: 'http://v', prefix: 'p', token: 'hvs' });
     expect(start.newId).toBe('vault/');
-    expect(start.copy).toEqual({ removed: [], shared: [], credentials: { from: 'vault/v1', fields: ['token'] } });
+    expect(start.copy).toEqual({ removed: [], shared: [], credentials: { from: 'vault/v1', fields: ['token'], manager: 'vault', known: true } });
     const aws = startOf('secrets', itemOf('aws/a1', { access_key_id: 'A', secret_access_key: 'S' }), undefined, null);
-    expect(aws.copy?.credentials).toEqual({ from: 'aws/a1', fields: ['access_key_id', 'secret_access_key'] });
+    expect(aws.copy?.credentials).toEqual({ from: 'aws/a1', fields: ['access_key_id', 'secret_access_key'], manager: 'aws', known: true });
     const gcp = startOf('secrets', itemOf('gcp/g1', { auth_config: { private_key: 'K' } }), undefined, null);
     expect(gcp.copy?.credentials?.fields).toEqual(['auth_config.private_key']);
   });
 
-  it('an entry of a manager APISIX lacks: no manager to start on, nothing named as copied', () => {
+  it('an entry of a manager APISIX lacks: no manager to start on; the note says which are credentials is not known', () => {
     const start = startOf('secrets', itemOf('nope/x', { a: 1 }), undefined, null);
     expect(start.newId).toBe('');
-    expect(start.copy?.credentials).toEqual({ from: 'nope/x', fields: [] });
+    expect(start.copy?.credentials).toEqual({ from: 'nope/x', fields: [], manager: 'nope', known: false });
+  });
+
+  it('a GCP entry with an auth_file: no credential stored in it to name', () => {
+    expect(startOf('secrets', itemOf('gcp/g', { auth_file: '/f.json' }), undefined, null).copy?.credentials).toEqual({ from: 'gcp/g', fields: [], manager: 'gcp', known: true });
+  });
+});
+
+describe('startOf: a copy of a global rule', () => {
+  it("names the plugins APISIX will refuse while the original holds them (one global rule per plugin)", () => {
+    const start = startOf('global_rules', itemOf('default', { plugins: { 'request-id': {}, cors: {} } }), undefined, null);
+    expect(start.draft).toEqual({ plugins: { 'request-id': {}, cors: {} } });
+    expect(start.copy).toEqual({ removed: [], shared: [], globalRule: { from: 'default', plugins: ['cors', 'request-id'] } });
+  });
+
+  it('a rule without plugins has nothing to say', () => {
+    expect(startOf('global_rules', itemOf('empty', { plugins: {} }), undefined, null).copy).toBeUndefined();
   });
 });

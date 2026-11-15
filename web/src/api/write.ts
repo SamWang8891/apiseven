@@ -1,8 +1,9 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useSyncExternalStore } from 'react';
 import { toast } from '../ui/toast';
 import type { AdminClient } from './client';
 import { ApiError } from './errors';
-import { useClient, useInvalidate } from './hooks';
+import { queryKeys, scopedKey, useClient, useInvalidate } from './hooks';
 import type { Kind, Parent } from './types';
 
 // Connections whose key turned out read-only (a write came back 401/403), by connection id. Kept in
@@ -42,6 +43,12 @@ export function useMarkReadOnly(): () => void {
 export interface WriteOptions {
   /** Lists (and items) to reload after a success: a kind, or one consumer's credentials. */
   invalidate?: { kind: Kind; parent?: Parent }[];
+  /**
+   * Objects the write deleted: their cached item is dropped (before the reloads), so a page that opens
+   * one again asks APISIX and says "not found" (or, for plugin metadata, opens the create form) rather
+   * than showing what was cached of it.
+   */
+  forget?: { kind: Kind; id: string; parent?: Parent }[];
   /** Toasted after a success. */
   success?: string;
   /** No error toast; the caller shows the error itself. */
@@ -64,6 +71,7 @@ function asApiError(err: unknown): ApiError {
 export function useWrite(): <T>(action: (client: AdminClient) => Promise<T>, opts?: WriteOptions) => Promise<WriteResult<T>> {
   const client = useClient();
   const invalidate = useInvalidate();
+  const queryClient = useQueryClient();
   return useCallback(
     async <T>(action: (client: AdminClient) => Promise<T>, opts: WriteOptions = {}): Promise<WriteResult<T>> => {
       let value: T;
@@ -75,10 +83,11 @@ export function useWrite(): <T>(action: (client: AdminClient) => Promise<T>, opt
         if (!opts.silent) toast.error(error.errorMsg ?? error.message);
         return { ok: false, error };
       }
+      for (const { kind, id, parent } of opts.forget ?? []) queryClient.removeQueries({ queryKey: scopedKey(client.conn.id, queryKeys.item(kind, id, parent)), exact: true });
       await Promise.all((opts.invalidate ?? []).map(({ kind, parent }) => invalidate(kind, parent)));
       if (opts.success) toast.success(opts.success);
       return { ok: true, value };
     },
-    [client, invalidate],
+    [client, invalidate, queryClient],
   );
 }

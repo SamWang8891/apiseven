@@ -1,6 +1,7 @@
 // A new plugin metadata entry's id, above the tabs (ResourceDef.NewId): the plugin it is for, picked
 // from the plugins with metadata settings that have none stored yet. While either list loads, the
-// picker says so; when the plugin list can't load, the name is typed. Switching from one plugin to
+// picker says so; when the plugin list can't load, the name is typed; when the stored entries can't
+// load, every plugin with metadata settings is offered, and the page says why. Switching from one plugin to
 // another clears the settings entered for the first (they are another plugin's), after asking when
 // there are any. Create still checks that nothing was stored meanwhile (editor/save.ts holderOf).
 import { useState } from 'react';
@@ -42,7 +43,7 @@ export function NewMetadataId({ value, onChange, draft, setDraft, error, inputRe
     );
   }
 
-  const loading = !plugins.data || !stored.data;
+  const loading = !plugins.data || (!stored.data && !stored.isError);
   const taken = new Set((stored.data ?? []).map((item) => item.id));
   const names = Object.entries(plugins.data ?? {})
     .filter(([name, info]) => info.metadata_schema !== undefined && (!taken.has(name) || name === value))
@@ -60,7 +61,7 @@ export function NewMetadataId({ value, onChange, draft, setDraft, error, inputRe
         onChange={choose}
         placeholder={loading ? t('pm.newId.loading') : t('pm.newId.placeholder')}
         options={names.map((name) => ({ value: name, label: name }))}
-        help={!loading && names.length === 0 ? t('pm.newId.none') : t('pm.newId.help')}
+        help={stored.isError ? t('pm.newId.storedFailed', { error: stored.error.message }) : !loading && names.length === 0 ? t('pm.newId.none') : t('pm.newId.help')}
         error={error}
       />
       {asking !== undefined && (

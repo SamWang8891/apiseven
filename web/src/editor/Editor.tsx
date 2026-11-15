@@ -2,7 +2,7 @@
 // opens LOCKED: its values read as full-contrast text and nothing changes until Edit (or `e`); Save
 // and Discard lock it again. A new object (or a copy) starts unlocked.
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys, scopedKey, useAllPlugins, useClient, useInvalidate } from '../api/hooks';
 import { stripTimestamps } from '../api/sanitize';
@@ -31,6 +31,7 @@ import type { EditorStart } from './start';
 import { useEditorKeys } from './useEditorKeys';
 import { useActiveTab } from './useActiveTab';
 import { useLeaveGuard } from './useLeaveGuard';
+import { useMounted } from './useMounted';
 import { useSaveRequest } from './useSaveRequest';
 import { useShownTabs } from './useShownTabs';
 
@@ -46,9 +47,13 @@ export interface EditorProps {
   item?: Item;
   start?: EditorStart;
   copyOf?: Item;
+  /** Above the tabs (a create-when-missing page whose object was stored meanwhile). */
+  notice?: ReactNode;
+  /** A new object under the page's own id is stored (created, or shown on request): the page shows it. */
+  onStored?: (item: Item) => void;
 }
 
-export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
+export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored }: EditorProps) {
   const def = registry[kind];
   const isNew = item === undefined;
   /** A new object's id, when the page fixes it (a plugin's metadata page, nothing stored yet). */
@@ -97,13 +102,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   /** Where focus goes after the next lock change made by the user. */
   const focusNext = useRef<'edit' | 'field' | undefined>(undefined);
   /** False once the page is gone: a create answered after that must not navigate back to it. */
-  const mounted = useRef(true);
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  const mounted = useMounted();
 
   // The draft changes only while editing and not saving (what is typed during a save would be
   // replaced by the saved object). The tab area is locked meanwhile as well; this is the backstop.
@@ -231,6 +230,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         toast.success(t('editor.created', { name: savedName }));
         if (mounted.current) {
           guard.leaveFreely();
+          onStored?.(saved);
           void navigate(pathFor(kind, saved.id, parent), { replace: true });
         }
       } else {
@@ -268,6 +268,12 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     }
     if (unsaved) setDialog('discard');
     else lock(true);
+  }
+
+  /** What holds a refused create's id on this very page (Failure.holder), shown on request. */
+  function showStored(holder: Item) {
+    queryClient.setQueryData(scopedKey(client.conn.id, queryKeys.item(kind, holder.id, parent)), holder);
+    onStored?.(holder);
   }
 
   function reloadTheirs(theirs: Item) {
@@ -334,7 +340,8 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         onDelete={() => setDialog('delete')}
       />
       <div className="ed-body" ref={bodyRef}>
-        {failure && <FailureBanner failure={failure} onShow={(holder) => queryClient.setQueryData(scopedKey(client.conn.id, queryKeys.item(kind, holder.id, parent)), holder)} />}
+        {failure && <FailureBanner failure={failure} onShow={showStored} />}
+        {notice}
         {isNew && start?.copy && <CopyNotice notes={start.copy} />}
         {isNew && !def.idFromDraft && fixedId === undefined && (
           <NewIdField

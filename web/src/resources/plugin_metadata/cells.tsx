@@ -25,7 +25,7 @@ export function StateCell({ item }: { item: MetadataRow }) {
 export function SummaryCell({ item }: { item: MetadataRow }) {
   const all = usePluginsIfLoaded();
   if (!item.stored) return <span className="cell-muted">{t('ui.empty')}</span>;
-  const masked = redactObject(item.stored.value, 'plugin_metadata', all).value;
+  const masked = redactObject(item.stored.value, 'plugin_metadata', all, item.id).value;
   const text = pluginSummary(item.id, withoutId(masked));
   return (
     <span className="tbl-line mono" title={text}>

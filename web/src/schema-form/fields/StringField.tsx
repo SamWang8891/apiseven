@@ -2,6 +2,7 @@ import { Input, Select, Textarea, useLocked } from '../../ui';
 import type { StringNode } from '../analyze';
 import { useFieldError, useFieldId } from '../context';
 import { FieldLabel } from './chrome';
+import { SecretText } from './SecretText';
 import { useFieldHelp } from './help';
 import { placeholderOf } from './hints';
 import type { FieldProps } from './types';
@@ -33,7 +34,11 @@ export function StringField({ node, value, name, path, onChange, prop, required,
       />
     );
   }
-  // A multi-line secret (a PEM private key) is edited in a textarea, but read masked.
+  // A multi-line secret (a PEM private key) is read masked; while editing, a stored one is not put on
+  // the page until revealed or replaced (SecretText).
+  if (node.multiline && node.secret && !locked) {
+    return <SecretText common={common} name={prop?.key ?? ariaLabel ?? ''} value={text} mono={node.mono} rows={node.mono ? 6 : 3} onText={emit} />;
+  }
   if (node.multiline && !(locked && node.secret)) {
     return <Textarea {...common} mono={node.mono} rows={node.mono ? 6 : 3} value={text} onChange={emit} />;
   }

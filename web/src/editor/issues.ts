@@ -76,6 +76,8 @@ const ERROR_PATHS: { pattern: RegExp; path: (m: RegExpExecArray) => string }[] =
   // The kind's own schema (every kind, also an SSL and a standalone upstream). The first property
   // is the top-level key; a nested one follows it ("property "upstream" … property "nodes"").
   { pattern: /^invalid configuration: property "([^"]+)"/, path: (m) => m[1] ?? '' },
+  // A proto APISIX cannot compile (admin/proto.lua 33–36).
+  { pattern: /^invalid content: /, path: () => 'content' },
   // A plugin a global rule shares with another one (admin/global_rules.lua 72–76).
   { pattern: /^plugin '([^']+)' already exists in global rule with id '/, path: (m) => `plugins.${m[1] ?? ''}` },
   // A plugin's schema; consumers and credentials wrap it in "invalid plugins configuration: ".

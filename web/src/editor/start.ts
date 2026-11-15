@@ -6,7 +6,7 @@ import { t } from '../i18n';
 import { sharedSignInFields, withoutSignInSecrets } from '../plugins/auth';
 import { registry } from '../resources/registry';
 import { servedToClients } from '../resources/resolve';
-import { managerOf, SECRET_FIELDS } from '../resources/secrets/schemas';
+import { managerOf, SECRET_FIELDS, splitSecretId } from '../resources/secrets/schemas';
 import { sniNames } from '../resources/ssls/usage';
 import { holdsPrivateKey, withoutPrivateKeys } from '../schema/secrets';
 import type { CopyNotes } from './CopyNotice';
@@ -28,8 +28,17 @@ export interface EditorStart {
 function secretCopy(sourceId: string, source: Obj, copy: Obj): EditorStart {
   const manager = managerOf(sourceId);
   const fields = manager ? SECRET_FIELDS[manager].filter((path) => path.split('.').reduce<unknown>((at, key) => (isObj(at) ? at[key] : undefined), copy) !== undefined) : [];
-  const credentials = { from: sourceId, fields };
+  const credentials = { from: sourceId, fields, manager: manager ?? splitSecretId(sourceId).manager, known: manager !== undefined };
   return { baseline: source, draft: copy, newId: manager ? `${manager}/` : '', copy: { removed: [], shared: [], credentials } };
+}
+
+/**
+ * A copy of a global rule: its plugins stay in the original, and APISIX refuses to save a plugin a
+ * second global rule holds (admin/global_rules.lua 59–83), so the notice names them before Create.
+ */
+function globalRuleCopy(sourceId: string, source: Obj, copy: Obj): EditorStart {
+  const plugins = isObj(copy.plugins) ? Object.keys(copy.plugins).sort() : [];
+  return { baseline: source, draft: copy, ...(plugins.length > 0 ? { copy: { removed: [], shared: [], globalRule: { from: sourceId, plugins } } } : {}) };
 }
 
 /**
@@ -70,6 +79,7 @@ export function startOf(kind: Kind, duplicateFrom: Item | undefined, initial: Ob
   if (typeof copy.name === 'string' && copy.name !== '') copy.name = t('editor.copyName', { name: copy.name });
   if (kind === 'ssls') return sslCopy(source, copy);
   if (kind === 'secrets') return secretCopy(duplicateFrom.id, source, copy);
+  if (kind === 'global_rules') return globalRuleCopy(duplicateFrom.id, source, copy);
   // A copy of a consumer or credential gets no sign-in secret: a key belongs to one of them only.
   if ((kind === 'consumers' || kind === 'credentials') && isObj(copy.plugins)) {
     const { plugins: kept, removed } = withoutSignInSecrets(copy.plugins, plugins);

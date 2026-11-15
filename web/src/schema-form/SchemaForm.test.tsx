@@ -1,6 +1,7 @@
 import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
+import { t } from '../i18n';
 import { everySchema, schemaOf } from '../test/pluginFixture';
 import { editableControls, renderSchemaForm } from '../test/schemaForm';
 
@@ -499,5 +500,48 @@ describe('SchemaForm: hostile schemas', () => {
     ['enum: {}', { type: 'object', properties: { a: { enum: {} } } }],
   ])('%s renders without throwing', (_name, schema) => {
     expect(() => renderSchemaForm(schema as Obj, { a: 1 })).not.toThrow();
+  });
+});
+
+describe('a stored multi-line secret while editing (StringField)', () => {
+  const schema = { type: 'object', properties: { private_key: { type: 'string' }, note: { type: 'string' } } };
+  const KEY = '-----BEGIN PRIVATE KEY-----\nSTOREDKEY\n-----END PRIVATE KEY-----\n';
+
+  it('is not on the page until revealed; Show puts it in a box, Hide takes it away', async () => {
+    const { user, container } = renderSchemaForm(schema, { private_key: KEY });
+    expect(container.innerHTML).not.toContain('STOREDKEY');
+    expect(screen.getByText(t('sf.secret.stored'))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
+    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue(KEY);
+    await user.click(screen.getByRole('button', { name: t('sf.secret.hide', { name: 'private_key' }) }));
+    expect(container.innerHTML).not.toContain('STOREDKEY');
+  });
+
+  it('Replace: an empty box; typing emits the new text, emptying it puts the stored value back, Keep closes it; leaving it changes nothing', async () => {
+    const { user, value } = renderSchemaForm(schema, { private_key: KEY });
+    await user.click(screen.getByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
+    const box = screen.getByRole('textbox', { name: 'private_key' });
+    expect(box).toHaveValue('');
+    await user.type(box, 'NEW');
+    expect(value()).toEqual({ private_key: 'NEW' });
+    await user.tab();
+    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue('NEW');
+    await user.clear(screen.getByRole('textbox', { name: 'private_key' }));
+    expect(value()).toEqual({ private_key: KEY });
+    await user.click(screen.getByRole('button', { name: t('sf.secret.keep') }));
+    expect(screen.queryByRole('textbox', { name: 'private_key' })).not.toBeInTheDocument();
+    expect(value()).toEqual({ private_key: KEY });
+  });
+
+  it('a value typed into an empty field stays in its box (it is never swapped for the masked view while editing)', async () => {
+    const { user, value } = renderSchemaForm(schema, {});
+    await user.type(screen.getByRole('textbox', { name: 'private_key' }), 'K1');
+    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue('K1');
+    expect(value()).toEqual({ private_key: 'K1' });
+  });
+
+  it('locked: masked with a reveal, as before', () => {
+    const { container } = renderSchemaForm(schema, { private_key: KEY }, { locked: true });
+    expect(container.innerHTML).not.toContain('STOREDKEY');
   });
 });

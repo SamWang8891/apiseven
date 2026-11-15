@@ -3,7 +3,7 @@ import { useList, useSupports } from '../api/hooks';
 import type { Item, Kind } from '../api/types';
 
 /** The lists of a Ctx, by field name. */
-export type CtxList = 'routes' | 'streamRoutes' | 'services' | 'upstreams' | 'ssls' | 'pluginConfigs' | 'consumerGroups' | 'consumers';
+export type CtxList = 'routes' | 'streamRoutes' | 'services' | 'upstreams' | 'ssls' | 'pluginConfigs' | 'consumerGroups' | 'consumers' | 'globalRules';
 
 /** The lists the resolvers look objects up in (see resolve.ts). Treat the arrays as read-only. */
 export interface Ctx {
@@ -15,6 +15,8 @@ export interface Ctx {
   pluginConfigs: Item[];
   consumerGroups: Item[];
   consumers: Item[];
+  /** Global rules: what uses a proto through grpc-transcode (the sidebar's count already fetches the list). */
+  globalRules: Item[];
   /**
    * Whether each list has loaded at least once. Until then its array is empty though the objects may
    * exist, so an id that matches nothing in it is not yet a dangling reference.
@@ -49,6 +51,7 @@ export function useCtx(): Ctx {
   const [pluginConfigs, pluginConfigsLoaded] = useItems('plugin_configs');
   const [consumerGroups, consumerGroupsLoaded] = useItems('consumer_groups');
   const [consumers, consumersLoaded] = useItems('consumers');
+  const [globalRules, globalRulesLoaded] = useItems('global_rules');
   const loaded = useMemo(
     () => ({
       routes: routesLoaded,
@@ -59,11 +62,12 @@ export function useCtx(): Ctx {
       pluginConfigs: pluginConfigsLoaded,
       consumerGroups: consumerGroupsLoaded,
       consumers: consumersLoaded,
+      globalRules: globalRulesLoaded,
     }),
-    [routesLoaded, streamRoutesLoaded, servicesLoaded, upstreamsLoaded, sslsLoaded, pluginConfigsLoaded, consumerGroupsLoaded, consumersLoaded],
+    [routesLoaded, streamRoutesLoaded, servicesLoaded, upstreamsLoaded, sslsLoaded, pluginConfigsLoaded, consumerGroupsLoaded, consumersLoaded, globalRulesLoaded],
   );
   return useMemo(
-    () => ({ routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, loaded }),
-    [routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, loaded],
+    () => ({ routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, globalRules, loaded }),
+    [routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, globalRules, loaded],
   );
 }

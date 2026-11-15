@@ -27,6 +27,9 @@ afterEach(() => {
 
 const VAULT: Obj = { id: 'vault/v1', uri: 'http://127.0.0.1:8200', prefix: 'kv/apisix', token: 'hvs-stored-token', x_future: { kept: true } };
 const AWS: Obj = { id: 'aws/a1', access_key_id: 'AKIA-STORED', secret_access_key: 'aws-stored-secret', region: 'eu-west-1' };
+const GCP_KEY = '-----BEGIN PRIVATE KEY-----\nGCPSTOREDKEYTEXT\n-----END PRIVATE KEY-----\n';
+const GCP: Obj = { id: 'gcp/g1', auth_config: { client_email: 'svc@p.iam', private_key: GCP_KEY, project_id: 'p1' } };
+const GCP_FILE: Obj = { id: 'gcp/g2', auth_file: '/etc/gcp.json' };
 
 const open = (hash: string, stored: Obj[] = [VAULT, AWS]) => openEditor(hash, { objects: { secrets: stored } });
 const create = (user: UserEvent) => user.click(main().getByRole('button', { name: t('editor.create') }));
@@ -165,6 +168,57 @@ describe('a stored secret', () => {
     expect(dialog.textContent).toContain(`${MASK} (changed)`);
   });
 
+  it('a GCP private key (multi-line) is not on the page on Edit until revealed; Replace starts empty and keeps the stored key while empty; after Save it is masked again', async () => {
+    const { user, admin } = await open('#/secrets/gcp%2Fg1', [GCP]);
+    await main().findByRole('heading', { level: 1, name: 'gcp/g1' });
+    await settled();
+    await main().findByText('svc@p.iam');
+    await user.keyboard('e');
+    await main().findByRole('textbox', { name: 'client_email (required)' });
+    expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
+    expect(main().getByText(t('sf.secret.stored'))).toBeInTheDocument();
+    // Replace: an empty box; while it is empty the stored key stays.
+    await user.click(main().getByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
+    const box = main().getByRole('textbox', { name: 'private_key (required)' });
+    expect(box).toHaveValue('');
+    expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
+    await user.click(main().getByRole('button', { name: t('sf.secret.keep') }));
+    // Reveal: the key in a box; a save sends it back unchanged; then it is masked again.
+    await user.click(main().getByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
+    expect(main().getByRole('textbox', { name: 'private_key (required)' })).toHaveValue(GCP_KEY);
+    await user.type(main().getByRole('textbox', { name: 'project_id (required)' }), '2');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'secrets/gcp/g1', body: { ...GCP, auth_config: { ...(GCP.auth_config as Obj), project_id: 'p12' } } }]));
+    await main().findByRole('button', { name: t('editor.edit') });
+    expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
+    await user.keyboard('e');
+    await main().findByRole('textbox', { name: 'client_email (required)' });
+    expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
+  });
+
+  it('a GCP Replace that is typed sends the new key, and emptying the box again puts the stored one back', async () => {
+    const { user, admin } = await open('#/secrets/gcp%2Fg1', [GCP]);
+    await main().findByRole('heading', { level: 1, name: 'gcp/g1' });
+    await settled();
+    await main().findByText('svc@p.iam');
+    await user.keyboard('e');
+    await user.click(await main().findByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
+    const box = main().getByRole('textbox', { name: 'private_key (required)' });
+    await user.type(box, 'NEW');
+    await user.clear(box);
+    await user.type(main().getByRole('textbox', { name: 'project_id (required)' }), '2');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(((writesOf(admin)[0]?.body as Obj).auth_config as Obj).private_key).toBe(GCP_KEY);
+    await main().findByRole('button', { name: t('editor.edit') });
+    await user.keyboard('e');
+    await user.click(await main().findByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
+    await user.type(main().getByRole('textbox', { name: 'private_key (required)' }), 'NEW-KEY');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(2));
+    expect(((writesOf(admin)[1]?.body as Obj).auth_config as Obj).private_key).toBe('NEW-KEY');
+  });
+
   it('an AWS entry masks its access key id too, locked and in the JSON tab', async () => {
     const { user } = await open('#/secrets/aws%2Fa1');
     await main().findByRole('heading', { level: 1, name: 'aws/a1' });
@@ -190,6 +244,20 @@ describe('a stored secret', () => {
     const copied = { ...VAULT };
     delete copied.id;
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'secrets/vault/v2', body: copied }]));
+  });
+});
+
+describe("a copy's notice says what was copied", () => {
+  it('a GCP entry that reads its credentials from a file: every setting copied, none stored here', async () => {
+    await open('#/secrets/new?from=gcp%2Fg2', [GCP_FILE]);
+    const notice = await main().findByRole('note', { name: t('editor.copyNotice.title') });
+    expect(notice).toHaveTextContent(t('editor.copyNotice.credentialsElsewhere', { from: 'gcp/g2' }));
+  });
+
+  it('an entry of a manager APISIX lacks: every setting copied, masked, which are credentials unknown', async () => {
+    await open('#/secrets/new?from=nope%2Fn1', [{ id: 'nope/n1', anything: 'x' }]);
+    const notice = await main().findByRole('note', { name: t('editor.copyNotice.title') });
+    expect(notice).toHaveTextContent(t('editor.copyNotice.unknownManager', { from: 'nope/n1', manager: 'nope' }));
   });
 });
 

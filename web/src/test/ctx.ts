@@ -15,6 +15,7 @@ const ALL_LOADED: Ctx['loaded'] = {
   pluginConfigs: true,
   consumerGroups: true,
   consumers: true,
+  globalRules: true,
 };
 
 /**
@@ -32,6 +33,7 @@ export function ctxOf(parts: Partial<Omit<Ctx, 'loaded'>> & { loaded?: Partial<C
     pluginConfigs: [],
     consumerGroups: [],
     consumers: [],
+    globalRules: [],
     ...lists,
     loaded: { ...ALL_LOADED, ...loaded },
   };

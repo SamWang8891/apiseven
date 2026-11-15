@@ -60,6 +60,7 @@ export function EditorDialogs(p: EditorDialogsProps) {
           name={p.name}
           resource={p.kind}
           plugins={p.plugins}
+          id={p.original.id}
           loaded={p.original.value}
           theirs={p.conflict.value}
           onOverwrite={p.onOverwrite}
@@ -68,7 +69,7 @@ export function EditorDialogs(p: EditorDialogsProps) {
         />
       )}
       {p.original && p.dialog === 'json' && (
-        <ViewJsonDialog open onClose={p.closeDialog} title={t('json.title', { kind: singular, name: p.name })} kind={p.kind} value={p.original.value} />
+        <ViewJsonDialog open onClose={p.closeDialog} title={t('json.title', { kind: singular, name: p.name })} kind={p.kind} id={p.original.id} value={p.original.value} />
       )}
       {p.original && p.dialog === 'delete' && (
         <DeleteResourceDialog open kind={p.kind} item={p.original} parent={p.parent} ctx={p.ctx} onClose={p.closeDialog} onDeleted={p.onDeleted} />

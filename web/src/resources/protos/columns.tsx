@@ -10,13 +10,13 @@ import { contentBytes, formatBytes, isDescriptorSet } from './content';
 
 /**
  * The objects whose grpc-transcode names the proto (referencesTo): routes and services, which
- * APISIX's delete check looks at (admin/proto.lua 61–101), and plugin configs, consumers and consumer
- * groups, which it does not, though they use it as well. Undefined until every one of those lists has
- * loaded, so "unused" is never said of a proto APISIX would refuse to delete.
+ * APISIX's delete check looks at (admin/proto.lua 61–101), and plugin configs, consumers, consumer
+ * groups and global rules, which it does not, though they use it as well (deleting the proto breaks
+ * them). Undefined until every one of those lists has loaded, so "unused" means none of them names it.
  */
-export function protoUsers(item: Item, ctx: Ctx) {
-  const { routes, services, pluginConfigs, consumers, consumerGroups } = ctx.loaded;
-  return routes && services && pluginConfigs && consumers && consumerGroups ? referencesTo('protos', item.id, ctx) : undefined;
+export function protoUsers(id: string, ctx: Ctx) {
+  const { routes, services, pluginConfigs, consumers, consumerGroups, globalRules } = ctx.loaded;
+  return routes && services && pluginConfigs && consumers && consumerGroups && globalRules ? referencesTo('protos', id, ctx) : undefined;
 }
 
 /** The content's size in bytes (UTF-8, as stored); undefined without content. */
@@ -67,9 +67,9 @@ export const protoColumns: ColumnDef[] = [
     get header() {
       return t('column.used_by');
     },
-    accessor: (item, ctx) => protoUsers(item, ctx)?.length,
+    accessor: (item, ctx) => protoUsers(item.id, ctx)?.length,
     cell: (item, ctx) => {
-      const users = protoUsers(item, ctx);
+      const users = protoUsers(item.id, ctx);
       return users ? <UsedByCell refs={users} /> : <span className="cell-muted">{t('picker.loading')}</span>;
     },
     defaultVisible: true,

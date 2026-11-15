@@ -507,3 +507,34 @@
   outline-offset: 2px;
   border-radius: 2px;
 }
+
+/* A multi-line secret while editing (SecretText): set, not shown, with Show and Replace; or its box
+   with Hide / Keep under it. */
+.sf-secret {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--s1);
+}
+
+.sf-secret__box {
+  align-self: stretch;
+}
+
+.sf-secret__set {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--control-h);
+  padding: 0 var(--s2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+}
+
+.sf-secret__stored {
+  flex: 1;
+  color: var(--text);
+  font-size: 13px;
+}

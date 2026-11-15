@@ -55,10 +55,11 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
   ];
 
   /** One write per item, in order; then one reload and one toast with the outcome. */
-  async function each(label: string, items: Item[], op: (client: AdminClient, item: Item) => Promise<unknown>, progress?: (done: number, total: number) => void) {
+  async function each(label: string, items: Item[], op: (client: AdminClient, item: Item) => Promise<unknown>, progress?: (done: number, total: number) => void, deletes = false) {
     const failed: { item: Item; error: ApiError }[] = [];
     for (const [i, item] of items.entries()) {
-      const result = await write((client) => op(client, item), { silent: true });
+      // A deleted object's cached item goes with it (WriteOptions.forget).
+      const result = await write((client) => op(client, item), { silent: true, forget: deletes ? [{ kind, id: item.id, parent }] : [] });
       if (!result.ok) failed.push({ item, error: result.error });
       progress?.(i + 1, items.length);
     }
@@ -111,7 +112,7 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
         </div>
       ),
     }),
-    run: (items, progress) => each(t('action.delete'), items, (client, item) => client.remove(kind, item.id, parent), progress),
+    run: (items, progress) => each(t('action.delete'), items, (client, item) => client.remove(kind, item.id, parent), progress, true),
   };
 
   const dialogs = (
@@ -122,6 +123,7 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
           onClose={() => setViewing(undefined)}
           title={t('json.title', { kind: def.singular, name: def.nameOf(viewing) })}
           kind={kind}
+          id={viewing.id}
           value={viewing.value}
         />
       )}

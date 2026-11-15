@@ -16,6 +16,8 @@ export interface ConflictDialogProps {
   /** The object's kind, and its scope's plugin list (undefined while loading): which values are secret. */
   resource: Kind;
   plugins: Record<string, PluginInfo> | undefined;
+  /** The object's id: what masks a plugin metadata or secret manager entry whose body has none. */
+  id?: string;
   /** The stored value the draft was loaded from, and the server's current one. */
   loaded: Obj;
   theirs: Obj;
@@ -64,8 +66,8 @@ function DiffLine({ hunk }: { hunk: Hunk }) {
  * masked value that differs reads "(changed)" on their side. Only the display is masked: Overwrite
  * saves the draft and Reload takes the server's item, both with their real values.
  */
-export function ConflictDialog({ kind, name, resource, plugins, loaded, theirs, onOverwrite, onReload, onCancel }: ConflictDialogProps) {
-  const pair = useMemo(() => redactPair(stripTimestamps(loaded), stripTimestamps(theirs), resource, plugins), [loaded, theirs, resource, plugins]);
+export function ConflictDialog({ kind, name, resource, plugins, id, loaded, theirs, onOverwrite, onReload, onCancel }: ConflictDialogProps) {
+  const pair = useMemo(() => redactPair(stripTimestamps(loaded), stripTimestamps(theirs), resource, plugins, id), [loaded, theirs, resource, plugins, id]);
   const [revealed, setRevealed] = useReveal();
   const [mine, others] = revealed ? pair.revealed : pair.masked;
   const lines = useMemo(() => hunks(lineDiff(pretty(canonical(mine)), pretty(canonical(others)))), [mine, others]);

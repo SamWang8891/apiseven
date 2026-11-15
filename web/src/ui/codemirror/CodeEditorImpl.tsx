@@ -32,6 +32,17 @@ const base: Extension = [
   highlightSelectionMatches(),
   // Tab is left to move focus (keyboard users are never trapped); Mod-[ / Mod-] indent.
   keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, ...searchKeymap, ...foldKeymap, ...completionKeymap, ...lintKeymap]),
+  // A dropped file is never read into the text (CodeMirror's own drop reads any file whole, with no
+  // size limit, and pastes it at the drop point): the drop is stopped here and goes on to the page,
+  // where a field that takes files (a proto's content) handles it with its own checks; elsewhere it
+  // does nothing. Dropped text is still a paste.
+  EditorView.domEventHandlers({
+    drop: (event) => {
+      if (!event.dataTransfer?.files.length) return false;
+      event.preventDefault();
+      return true;
+    },
+  }),
   kitTheme,
 ];
 

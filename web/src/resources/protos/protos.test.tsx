@@ -1,9 +1,9 @@
 // Protos at page level, on a fake Admin API: the Content tab (an upload of .proto source fills the
 // content; a compiled descriptor set is stored as base64 and shown as one; a refused file changes
 // nothing), what Save sends, APISIX's delete refusal, and the list's size and used-by columns.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
-import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Obj } from '../../api/types';
 import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
@@ -105,6 +105,53 @@ describe('the Content tab', () => {
     expect(await main().findByText(t('pr.issue.content'))).toBeInTheDocument();
   });
 
+  it('a file dropped on the proto editor goes through the same checks as Upload: refused with its reason, or taken whole', async () => {
+    const { user } = await open('#/protos/hello?tab=content');
+    await main().findByRole('heading', { level: 1, name: 'hello' });
+    await settled();
+    await user.keyboard('e');
+    await editor();
+    const target = () => screen.getByRole('main').querySelector('.cm-content') as HTMLElement;
+    const drop = (file: File) => fireEvent.drop(target(), { dataTransfer: { files: [file], types: ['Files'], getData: () => '' } });
+    drop(new File([new Uint8Array([0x00, 0x01, 0x02, 0x03, 0xff, 0x41])], 'junk.bin'));
+    expect(await main().findByText(t('pr.file.notDescriptor'))).toBeInTheDocument();
+    expect((await editor()).textContent).toContain('package hello;');
+    drop(new File(['syntax = "proto3";\npackage dropped;\n'], 'dropped.proto'));
+    await waitFor(async () => expect((await editor()).textContent).toBe('syntax = "proto3";package dropped;'));
+  });
+
+  it('a file dropped on any other code editor (the JSON tab) changes nothing', async () => {
+    const { user } = await open('#/protos/hello?tab=json');
+    await main().findByRole('heading', { level: 1, name: 'hello' });
+    await user.keyboard('e');
+    const json = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: t('kind.protos.singular') }) });
+    const before = json.textContent;
+    // CodeMirror's own drop reads every dropped file as text (FileReader) and inserts it.
+    const read = vi.spyOn(FileReader.prototype, 'readAsText');
+    const drop = fireEvent.drop(json, { dataTransfer: { files: [new File(['{"content":"dropped"}'], 'x.json')], types: ['Files'], getData: () => '' } });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(read).not.toHaveBeenCalled();
+    expect(drop).toBe(false);
+    expect(json.textContent).toBe(before);
+    expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+  });
+
+  it("APISIX's \"invalid content: …\" lands on Content: the tab opens, badged, the field says it", async () => {
+    const refusal = 'invalid content: [string "filename for loaded"]:1: syntax error';
+    const { user } = await openEditor('#/protos/hello', {
+      objects: { protos: [HELLO], routes: [], services: [] },
+      replies: { 'protos/hello': (req) => (req.method === 'PUT' ? json(400, { error_msg: refusal }) : undefined) },
+    });
+    await main().findByRole('heading', { level: 1, name: 'hello' });
+    await settled();
+    await user.keyboard('e');
+    await user.type(main().getByRole('textbox', { name: t('pr.general.desc') }), '!');
+    await save(user);
+    await waitFor(() => expect(main().getByRole('tab', { name: new RegExp(`^${t('pr.tab.content')}`) })).toHaveAttribute('aria-selected', 'true'));
+    expect(main().getByRole('tab', { name: new RegExp(`^${t('pr.tab.content')}`) })).toHaveTextContent(t('ui.tabs.errors', { count: 1 }));
+    expect(await main().findAllByText(refusal)).toHaveLength(2);
+  });
+
   it('locked: no form controls; a stored descriptor set shows as one', async () => {
     await open('#/protos/compiled?tab=content', [{ id: 'compiled', content: toBase64(DESCRIPTOR) }]);
     await main().findByRole('heading', { level: 1, name: 'compiled' });
@@ -139,6 +186,21 @@ describe('a proto', () => {
     expect(await main().findByRole('alert')).toHaveTextContent(t('editor.taken.message', { kind: t('kind.protos.singular'), id: 'hello' }));
     expect(writesOf(admin)).toEqual([]);
     expect(admin.stored('protos')).toEqual([HELLO]);
+  });
+
+  it('Delete separates what APISIX refuses over (routes, services) from what only stops working (a global rule …)', async () => {
+    const uses = { 'grpc-transcode': { proto_id: 'hello', service: 'hello.Greeter', method: 'SayHello' } };
+    const { user } = await openEditor('#/protos/hello', {
+      objects: { protos: [HELLO], routes: [{ id: 'g1', name: 'greeter', uri: '/g', plugins: uses }], services: [], global_rules: [{ id: 'all', plugins: uses }] },
+    });
+    await main().findByRole('heading', { level: 1, name: 'hello' });
+    await user.click(main().getByRole('button', { name: t('editor.more') }));
+    await user.click(await screen.findByRole('menuitem', { name: t('action.delete') }));
+    const dialog = await screen.findByRole('alertdialog');
+    const refuses = await within(dialog).findByRole('list', { name: t('delete.refusedBy') });
+    expect(within(refuses).getByRole('link', { name: /greeter/ })).toBeInTheDocument();
+    const breaks = within(dialog).getByRole('list', { name: t('delete.breaks') });
+    expect(within(breaks).getByRole('link', { name: /all/ })).toHaveAttribute('href', '#/global_rules/all');
   });
 
   it("Delete lists what uses it, and shows APISIX's refusal verbatim", async () => {
@@ -187,5 +249,13 @@ describe('the protos list columns', () => {
     expect(col('used_by').accessor(BIG, ctx)).toBe(1);
     expect(col('used_by').accessor(WIDE, ctx)).toBe(0);
     expect(col('used_by').accessor(SMALL, ctxOf({ ...ctx, loaded: { services: false } }))).toBeUndefined();
+  });
+
+  it('used by: a global rule whose grpc-transcode names it counts (APISIX deletes it anyway, and the rule breaks); nothing until the global rules have loaded', () => {
+    const uses = (id: string) => ({ plugins: { 'grpc-transcode': { proto_id: id } } });
+    const ctx = ctxOf({ globalRules: [itemOf('everywhere', uses('w'))] });
+    expect(col('used_by').accessor(WIDE, ctx)).toBe(1);
+    expect(col('used_by').accessor(SMALL, ctx)).toBe(0);
+    expect(col('used_by').accessor(WIDE, ctxOf({ ...ctx, loaded: { globalRules: false } }))).toBeUndefined();
   });
 });

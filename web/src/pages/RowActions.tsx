@@ -9,7 +9,8 @@ import type { Ctx } from '../resources/ctx';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
 import { copiedWithout, redactObject } from '../plugins/secrets';
 import { registry } from '../resources/registry';
-import { referencesTo } from '../resources/resolve';
+import { protoUsers } from '../resources/protos/columns';
+import { referencesTo, type Reference } from '../resources/resolve';
 import { pathFor } from '../router/paths';
 import { Button, CodeEditor, ConfirmDialog, Dialog, toast, useReveal } from '../ui';
 import './list.css';
@@ -18,10 +19,10 @@ import './list.css';
  * A stored object as pretty JSON, read-only, with a Copy button. Its secrets (an auth plugin's key:
  * redactObject) are masked until "Show secrets"; Copy copies what is shown.
  */
-export function ViewJsonDialog({ open, onClose, title, kind, value }: { open: boolean; onClose: () => void; title: string; kind: Kind; value: Obj }) {
+export function ViewJsonDialog({ open, onClose, title, kind, id, value }: { open: boolean; onClose: () => void; title: string; kind: Kind; id: string; value: Obj }) {
   const scope = scopeOfKind[kind];
   const plugins = useAllPlugins(scope && subsystemOf(scope)).data;
-  const hidden = redactObject(value, kind, plugins);
+  const hidden = redactObject(value, kind, plugins, id);
   // Each opening starts masked (the dialog is mounted only while open), and a lock change hides them.
   const [revealed, setRevealed] = useReveal();
   const text = JSON.stringify(revealed ? hidden.revealed : hidden.value, null, 2);
@@ -66,6 +67,51 @@ export function ViewJsonDialog({ open, onClose, title, kind, value }: { open: bo
   );
 }
 
+/** What uses an object, as links, under a warning line; `label` names the list for assistive tech. */
+function RefList({ refs, warning, label }: { refs: Reference[]; warning: string; label?: string }) {
+  return (
+    <div className="list-refs">
+      <p className="list-refs__warning">
+        <TriangleAlert size={14} aria-hidden="true" />
+        <span>{warning}</span>
+      </p>
+      <ul className="list-refs__list" aria-label={label}>
+        {refs.map((ref) => (
+          <li key={`${ref.kind}/${ref.id}`}>
+            <Link to={pathFor(ref.kind, ref.id)}>
+              <span className="list-refs__kind">{t(`kind.${ref.kind}.singular`)}</span> {ref.name}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** The kinds APISIX's delete check of a proto looks at (admin/proto.lua 61–101); what else uses it only breaks. */
+const PROTO_BLOCKERS = new Set<string>(['routes', 'services']);
+
+/**
+ * What uses the object, as the dialog lists it. A proto's users are split into those APISIX refuses
+ * the delete over and those that just stop working, once every list they come from has loaded.
+ */
+function References({ kind, id, ctx }: { kind: Kind; id: string; ctx: Ctx }) {
+  if (kind !== 'protos') {
+    const refs = referencesTo(kind, id, ctx);
+    return refs.length > 0 ? <RefList refs={refs} warning={t('delete.inUse')} /> : null;
+  }
+  const refs = protoUsers(id, ctx);
+  if (!refs) return <p className="list-refs__warning">{t('delete.checking')}</p>;
+  const refuses = refs.filter((ref) => PROTO_BLOCKERS.has(ref.kind));
+  const breaks = refs.filter((ref) => !PROTO_BLOCKERS.has(ref.kind));
+  return (
+    <>
+      {refuses.length > 0 && <RefList refs={refuses} warning={t('delete.refusedByWarning')} label={t('delete.refusedBy')} />}
+      {breaks.length > 0 && <RefList refs={breaks} warning={t('delete.breaksWarning')} label={t('delete.breaks')} />}
+    </>
+  );
+}
+
 export interface DeleteResourceDialogProps {
   open: boolean;
   kind: Kind;
@@ -86,7 +132,6 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
   const [error, setError] = useState<string>();
   const def = registry[kind];
   const name = def.nameOf(item);
-  const refs = referencesTo(kind, item.id, ctx);
   // A kind whose delete is a reset (plugin metadata) says so.
   const title = def.resets
     ? t('delete.reset.title', { kind: def.singular, name })
@@ -100,6 +145,7 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
     const result = await write((client) => client.remove(kind, item.id, parent), {
       // A consumer's credentials go with it.
       invalidate: [{ kind, parent }, ...(kind === 'consumers' ? [{ kind: 'credentials' as const }] : [])],
+      forget: [{ kind, id: item.id, parent }],
       success: t(def.resets ? 'delete.reset.done' : 'delete.done', { name }),
       silent: true,
     });
@@ -127,23 +173,7 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
       body={
         <div className="list-delete">
           <p>{def.resets ? t('delete.reset.body', { name }) : t('delete.body')}</p>
-          {refs.length > 0 && (
-            <div className="list-refs">
-              <p className="list-refs__warning">
-                <TriangleAlert size={14} aria-hidden="true" />
-                <span>{t('delete.inUse')}</span>
-              </p>
-              <ul className="list-refs__list">
-                {refs.map((ref) => (
-                  <li key={`${ref.kind}/${ref.id}`}>
-                    <Link to={pathFor(ref.kind, ref.id)}>
-                      <span className="list-refs__kind">{t(`kind.${ref.kind}.singular`)}</span> {ref.name}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <References kind={kind} id={item.id} ctx={ctx} />
           {error && (
             <p className="list-error mono" role="alert">
               {error}

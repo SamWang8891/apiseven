@@ -4,9 +4,11 @@
 // as a file, is stored as base64 and shown as a summary (its size) with Replace, Download and a way
 // back to source. Whether the content shows as a descriptor set is decided when editing begins and
 // when a file is taken, never while typing, so the editor is never swapped out under the cursor. A
-// refused file changes nothing, and its reason is shown without any of its content.
+// file uploaded or dropped anywhere on the field (the editor never reads a dropped file itself) goes
+// through readProtoFile; a refused file changes nothing, and its reason is shown without any of its
+// content. Dropped text is a paste into the editor.
 import { Download, FileCode, Upload } from 'lucide-react';
-import { useRef } from 'react';
+import { useRef, type DragEvent } from 'react';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -53,6 +55,21 @@ export function ContentTab({ draft, setDraft, issues, id }: TabProps) {
       .catch(() => setFileProblem(t('pr.file.readFailed')));
   }
 
+  /** A file dropped on the field: the same as an upload while editing; locked, nothing. */
+  const dropZone = locked
+    ? {}
+    : {
+        onDragOver: (e: DragEvent) => {
+          if (e.dataTransfer.types.includes('Files')) e.preventDefault();
+        },
+        onDrop: (e: DragEvent) => {
+          const file = e.dataTransfer.files[0];
+          if (!file) return;
+          e.preventDefault();
+          take(file);
+        },
+      };
+
   const write = (next: string | undefined) => {
     setFileProblem(undefined);
     setDraft(setPath(draft, ['content'], next));
@@ -81,38 +98,40 @@ export function ContentTab({ draft, setDraft, issues, id }: TabProps) {
 
   if (binary && isDescriptorSet(content)) {
     return (
-      <Field label={t('pr.content.label')} error={error}>
-        <div className="res-file">
-          <FileCode className="res-file__icon" size={20} aria-hidden="true" />
-          <div className="res-file__text">
-            <p className="res-file__title">{t('pr.content.binary')}</p>
-            <p className="res-file__note">{t('pr.content.binaryNote', { size: formatBytes(decodedSize(text)) })}</p>
-          </div>
-          <div className="res-file__actions">
-            {upload}
-            <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={() => download(text, id ?? 'proto')}>
-              {t('pr.content.download')}
-            </Button>
-            {!locked && (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setBinary(false);
-                  write(undefined);
-                }}
-              >
-                {t('pr.content.toText')}
+      <div {...dropZone}>
+        <Field label={t('pr.content.label')} error={error}>
+          <div className="res-file">
+            <FileCode className="res-file__icon" size={20} aria-hidden="true" />
+            <div className="res-file__text">
+              <p className="res-file__title">{t('pr.content.binary')}</p>
+              <p className="res-file__note">{t('pr.content.binaryNote', { size: formatBytes(decodedSize(text)) })}</p>
+            </div>
+            <div className="res-file__actions">
+              {upload}
+              <Button size="sm" variant="ghost" icon={<Download size={13} />} onClick={() => download(text, id ?? 'proto')}>
+                {t('pr.content.download')}
               </Button>
-            )}
+              {!locked && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setBinary(false);
+                    write(undefined);
+                  }}
+                >
+                  {t('pr.content.toText')}
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      </Field>
+        </Field>
+      </div>
     );
   }
 
   return (
-    <div className="ed-stack">
+    <div className="ed-stack" {...dropZone}>
       <Field label={t('pr.content.label')} help={locked ? undefined : t('pr.content.help')} error={error}>
         {locked && text === '' ? (
           <p className="res-note">{t('pr.content.empty')}</p>

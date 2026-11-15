@@ -229,6 +229,33 @@ describe("a plugin's metadata page", () => {
     expect(await main().findByText('$host')).toBeInTheDocument();
   });
 
+  it("after a Reset from its page, the plugin's page is the create form again (the deleted entry is not shown as stored)", async () => {
+    const { user, admin } = await open([AZURE], '#/plugin_metadata/azure-functions');
+    await main().findByRole('heading', { level: 1, name: 'azure-functions' });
+    await user.click(main().getByRole('button', { name: t('editor.more') }));
+    await user.click(await screen.findByRole('menuitem', { name: t('action.reset') }));
+    await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('action.reset') }));
+    await waitFor(() => expect(window.location.hash).toBe('#/plugin_metadata'));
+    const row = await rowOf('azure-functions');
+    await waitFor(() => expect(within(row).getByText(t('pm.state.notSet'))).toBeInTheDocument());
+    await user.click(within(row).getByRole('link', { name: 'azure-functions' }));
+    expect(await main().findByRole('button', { name: t('editor.create') })).toBeInTheDocument();
+    expect(main().queryByRole('button', { name: t('editor.edit') })).not.toBeInTheDocument();
+    await settled();
+    await user.type(await main().findByLabelText(/^master_apikey/), 'again');
+    await create(user);
+    await waitFor(() => expect(writesOf(admin).at(-1)).toEqual({ method: 'PUT', path: 'plugin_metadata/azure-functions', body: { master_apikey: 'again' } }));
+  });
+
+  it('New when the stored entries fail to load: every plugin with metadata settings is offered, and the page says why', async () => {
+    const { user } = await open([], '#/plugin_metadata/new', { plugin_metadata: () => json(500, { error_msg: 'etcd down' }) });
+    const picker = await main().findByRole('combobox', { name: /^Plugin/ });
+    await waitFor(() => expect(picker).toBeEnabled());
+    expect(main().getByText(/The stored entries didn't load/)).toBeInTheDocument();
+    await user.click(picker);
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toContain('http-logger');
+  });
+
   it("New with the plugin list down: the plugin's name is typed; a slash is refused at once, Save and Cmd/Ctrl-S send nothing, the toast names it", async () => {
     const { user, admin } = await open([], '#/plugin_metadata/new', { plugins: () => json(500, { error_msg: 'down' }) });
     const name = await main().findByRole('textbox', { name: /^Plugin/ });

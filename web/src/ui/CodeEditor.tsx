@@ -19,6 +19,8 @@ export interface CodeEditorProps {
   /** The text is not accepted (it doesn't parse): marked for assistive tech, and found by a refused Save. */
   'aria-invalid'?: boolean;
 }
+// A file dropped on the editor is never read into its text (codemirror/CodeEditorImpl.tsx): the drop
+// event goes on to the page, so a field that takes files listens around the editor.
 
 // CodeMirror is fetched on first use; until then the text shows as a plain block of the same size.
 const CodeEditorImpl = lazy(() => import('./codemirror/CodeEditorImpl'));
