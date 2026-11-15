@@ -90,6 +90,10 @@ describe('ui CSS', () => {
     }
     const busy = toggle.find(([sel]) => sel === ".ui-switch[aria-busy='true']")?.[1] ?? '';
     expect(busy).toMatch(/cursor:\s*progress/);
+    // A busy switch is aria-disabled, not :disabled (it keeps focus), so hover leaves it out by itself.
+    const hovers = toggle.filter(([sel]) => sel.includes('.ui-switch') && sel.includes(':hover'));
+    expect(hovers.length).toBeGreaterThan(0);
+    for (const [sel] of hovers) expect(sel).toContain(":not([aria-busy='true'])");
   });
 
   it('a field inside a box that rings itself draws no second ring', () => {

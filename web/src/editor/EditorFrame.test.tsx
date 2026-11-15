@@ -153,6 +153,36 @@ describe('lock', () => {
     await user.click(button(t('editor.save')));
     await waitFor(() => expect(writesOf(admin)[0]?.body).toMatchObject({ status: 0 }));
   });
+
+  it('while a save is out the switch keeps focus: busy and aria-disabled (not disabled), it says it is saving and takes no change; after a refused save it is free again, still focused', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { user, admin } = await openRoute({
+      replies: { 'routes/r1': (req) => (req.method === 'PUT' ? gate.then(() => json(400, { error_msg: 'refused' })) : undefined) },
+    });
+    await user.keyboard('e');
+    const toggle = await main().findByRole('switch', { name: t('table.status.toggle', { name: 'web' }) });
+    toggle.focus();
+    await user.keyboard(' ');
+    expect(toggle).not.toBeChecked();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, bubbles: true, cancelable: true }));
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-busy', 'true'));
+    expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    // Not disabled: a focused control that becomes disabled loses focus in a browser (jsdom does not show that).
+    expect(toggle).not.toBeDisabled();
+    expect(toggle).toHaveFocus();
+    expect(toggle).toHaveAccessibleDescription(t('editor.status.saving'));
+    expect(main().getByText(t('editor.status.saving'), { selector: '[aria-live="polite"]' })).toBeInTheDocument();
+    await user.keyboard(' ');
+    expect(toggle).not.toBeChecked();
+    release();
+    expect(await main().findByRole('alert')).toHaveTextContent('refused');
+    expect(toggle).not.toHaveAttribute('aria-busy');
+    expect(toggle).not.toHaveAttribute('aria-disabled');
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveFocus();
+    expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/r1', body: { ...stripTimestamps(ROUTE), status: 0 } }]);
+  });
 });
 
 describe('save', () => {

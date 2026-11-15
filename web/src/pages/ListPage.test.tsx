@@ -190,42 +190,54 @@ describe('status', () => {
     expect(await screen.findByText('etcd down')).toBeInTheDocument();
   });
 
-  it('while its write is out the switch is disabled and busy, says it is saving, and a click changes nothing; it is enabled again once the write settles', async () => {
+  it('toggled from the keyboard, the switch keeps focus while its write is out: busy and aria-disabled (not disabled), it says it is saving and takes no change; free again once the write settles, still focused', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
     const { user, admin } = await open('#/routes', {
       replies: { 'routes/r1': (req) => (req.method === 'PATCH' ? gate.then(() => undefined) : undefined) },
     });
-    await user.click(await toggle('alpha'));
+    (await toggle('alpha')).focus();
+    await user.keyboard(' ');
     const busy = await toggle('alpha');
     expect(busy).not.toBeChecked();
-    expect(busy).toBeDisabled();
     expect(busy).toHaveAttribute('aria-busy', 'true');
+    expect(busy).toHaveAttribute('aria-disabled', 'true');
+    // Not disabled: a focused control that becomes disabled loses focus in a browser (jsdom does not show that).
+    expect(busy).not.toBeDisabled();
+    expect(busy).toHaveFocus();
     expect(busy).toHaveAccessibleDescription(t('table.status.saving'));
+    // Said once, in a polite live region beside it.
+    expect(within(await rowOf('alpha')).getByText(t('table.status.saving'), { selector: '[aria-live="polite"]' })).toBeInTheDocument();
     // The value stays readable while it saves.
     expect(within(await rowOf('alpha')).getByText(t('table.status.disabled'))).toBeInTheDocument();
+    await user.keyboard(' ');
     await user.click(busy);
+    expect(busy).not.toBeChecked();
     expect(requestsTo(admin, 'PATCH')).toEqual([{ path: 'routes/r1', body: { status: 0 } }]);
     release();
-    await waitFor(async () => expect(await toggle('alpha')).toBeEnabled());
-    expect(await toggle('alpha')).not.toHaveAttribute('aria-busy');
+    await waitFor(async () => expect(await toggle('alpha')).not.toHaveAttribute('aria-busy'));
+    expect(await toggle('alpha')).not.toHaveAttribute('aria-disabled');
     expect(await toggle('alpha')).not.toBeChecked();
-    await user.click(await toggle('alpha'));
+    expect(await toggle('alpha')).toHaveFocus();
+    await user.keyboard(' ');
     await waitFor(() => expect(requestsTo(admin, 'PATCH').at(-1)).toEqual({ path: 'routes/r1', body: { status: 1 } }));
   });
 
-  it('after a refused write the switch is enabled again, back at the stored state', async () => {
+  it('after a refused write the switch is free again, back at the stored state, and still has focus', async () => {
     let release: () => void = () => {};
     const gate = new Promise<void>((resolve) => (release = resolve));
     const { user } = await open('#/routes', {
       replies: { 'routes/r1': (req) => (req.method === 'PATCH' ? gate.then(() => json(500, { error_msg: 'etcd down' })) : undefined) },
     });
-    await user.click(await toggle('alpha'));
-    expect(await toggle('alpha')).toBeDisabled();
+    (await toggle('alpha')).focus();
+    await user.keyboard(' ');
+    expect(await toggle('alpha')).toHaveAttribute('aria-disabled', 'true');
+    expect(await toggle('alpha')).toHaveFocus();
     release();
-    await waitFor(async () => expect(await toggle('alpha')).toBeEnabled());
+    await waitFor(async () => expect(await toggle('alpha')).not.toHaveAttribute('aria-busy'));
+    expect(await toggle('alpha')).not.toHaveAttribute('aria-disabled');
     expect(await toggle('alpha')).toBeChecked();
-    expect(await toggle('alpha')).not.toHaveAttribute('aria-busy');
+    expect(await toggle('alpha')).toHaveFocus();
   });
 
   it('bulk Disable on three selected routes sends three PATCHes with {status: 0}', async () => {

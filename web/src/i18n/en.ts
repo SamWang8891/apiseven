@@ -382,6 +382,7 @@ export const en: Record<string, string> = {
   'editor.save': 'Save',
   'editor.create': 'Create',
   'editor.saving': 'Saving',
+  'editor.status.saving': 'Saving…',
   'editor.discard': 'Discard',
   'editor.more': 'More actions',
   'editor.saved': 'Saved {name}',

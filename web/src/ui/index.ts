@@ -9,6 +9,7 @@ export { NumberInput, type NumberInputProps } from './NumberInput';
 export { Textarea, type TextareaProps } from './Textarea';
 export { Select, type Option, type SelectProps } from './Select';
 export { Switch, type SwitchProps } from './Switch';
+export { BusySwitch, type BusySwitchProps } from './BusySwitch';
 export { Checkbox, type CheckboxProps } from './Checkbox';
 export { Segmented, type SegmentedOption, type SegmentedProps } from './Segmented';
 export { TagInput, type TagInputProps } from './TagInput';

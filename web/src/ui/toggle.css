@@ -41,8 +41,9 @@
   transform: translateX(16px);
 }
 
-/* Busy (its write is out): it takes no click and keeps the colours of its state, with a spinner in
-   its thumb; the pointer says it is working. Not the disabled look, which reads as "can't be changed". */
+/* Busy (its write is out; BusySwitch): aria-disabled, so it keeps focus and takes no change. It
+   keeps the colours of its state, with a spinner in its thumb, and no hover; the pointer says it is
+   working. Not the disabled look, which reads as "can't be changed". */
 .ui-switch[aria-busy='true'] {
   cursor: progress;
 }
@@ -55,11 +56,11 @@
   color: var(--accent);
 }
 
-.ui-switch:hover:not(:disabled) {
+.ui-switch:hover:not(:disabled):not([aria-busy='true']) {
   border-color: var(--text-2);
 }
 
-.ui-switch[data-state='checked']:hover:not(:disabled) {
+.ui-switch[data-state='checked']:hover:not(:disabled):not([aria-busy='true']) {
   border-color: var(--accent);
 }
 

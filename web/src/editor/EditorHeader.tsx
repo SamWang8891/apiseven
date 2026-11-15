@@ -1,6 +1,5 @@
 // The editor's sticky header: what the object is, whether it is locked, and the actions.
 import { ArrowLeft, Braces, Copy, Ellipsis, Lock, Pencil, Trash2 } from 'lucide-react';
-import { Switch } from 'radix-ui';
 import type { Ref } from 'react';
 import { Link } from 'react-router';
 import type { Item } from '../api/types';
@@ -8,7 +7,7 @@ import { t } from '../i18n';
 import { IdCell } from '../resources/cells';
 import { formatAbsolute, formatRelative } from '../table/format';
 import { StatusIgnored } from '../table/StatusCell';
-import { Badge, Button, Menu, Tooltip } from '../ui';
+import { Badge, BusySwitch, Button, Menu, Tooltip } from '../ui';
 import { clipTitle } from '../ui/clipTitle';
 
 export interface EditorHeaderProps {
@@ -127,15 +126,14 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
                 {p.status.enabled ? t('table.status.enabled') : t('table.status.disabled')}
               </Badge>
               {!p.locked && (
-                <Switch.Root
-                  className="ui-switch"
+                // Busy, not disabled, while a save is out: it keeps focus (BusySwitch).
+                <BusySwitch
                   checked={p.status.enabled}
-                  disabled={p.saving}
+                  busy={p.saving}
+                  busyText={t('editor.status.saving')}
                   aria-label={t('table.status.toggle', { name: p.status.name })}
                   onCheckedChange={p.status.onChange}
-                >
-                  <Switch.Thumb className="ui-switch__thumb" />
-                </Switch.Root>
+                />
               )}
             </span>
           )}
