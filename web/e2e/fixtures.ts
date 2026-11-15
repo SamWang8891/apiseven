@@ -292,3 +292,32 @@ export async function codeText(editor: Locator): Promise<string> {
     return [...(content?.querySelectorAll('.cm-line') ?? [])].map((line) => line.textContent ?? '').join('\n');
   });
 }
+
+// ---- Plugins ------------------------------------------------------------------------------------
+
+/** A plugin's card on the Plugins tab. */
+export function pluginCard(page: Page, name: string): Locator {
+  return page.getByRole('main').getByRole('group', { name, exact: true });
+}
+
+/** Add plugin → search → Enter: the plugin is added with its card open. */
+export async function addPlugin(page: Page, name: string): Promise<Locator> {
+  await page.getByRole('main').getByRole('button', { name: t('pl.add'), exact: true }).click();
+  const picker = page.getByRole('dialog', { name: t('pl.picker.title') });
+  await picker.getByRole('combobox', { name: t('pl.picker.search') }).fill(name);
+  await expect(picker.getByRole('option', { name, exact: true })).toBeVisible();
+  await picker.getByRole('option', { name, exact: true }).click();
+  await expect(picker).toBeHidden();
+  const card = pluginCard(page, name);
+  await expect(card.getByRole('button', { name: new RegExp(`^${escape(name)}\\b`) }).first()).toHaveAttribute('aria-expanded', 'true');
+  return card;
+}
+
+/** Opens a plugin card (its header button) unless it is open already. */
+export async function openCard(page: Page, name: string): Promise<Locator> {
+  const card = pluginCard(page, name);
+  const head = card.getByRole('button', { name: new RegExp(`^${escape(name)}\\b`) }).first();
+  if ((await head.getAttribute('aria-expanded')) !== 'true') await head.click();
+  await expect(head).toHaveAttribute('aria-expanded', 'true');
+  return card;
+}
