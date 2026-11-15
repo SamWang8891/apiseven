@@ -6,6 +6,7 @@ import { screen } from '@testing-library/react';
 import { beforeAll, describe, expect, it } from 'vitest';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
+import { NO_SAN, RSA_LEAF } from '../../test/certs';
 import { itemOf } from '../../test/ctx';
 import { SEED_CERT } from '../../test/sslSeed';
 import { renderTab } from '../../test/tab';
@@ -14,7 +15,7 @@ import { SnisTab } from './SnisTab';
 import { sslIssues } from './validate';
 
 beforeAll(async () => {
-  await fingerprintOf(SEED_CERT);
+  await Promise.all([SEED_CERT, NO_SAN, RSA_LEAF].map(fingerprintOf));
 });
 
 const renderSnis = (draft: Obj, opts: Parameters<typeof renderTab>[4] = {}) => renderTab('ssls', SnisTab, draft, sslIssues, { original: itemOf('s1', draft), ...opts });
@@ -33,9 +34,20 @@ describe('SNIs the certificate does not name', () => {
     expect(held()).toEqual([]);
     await user.click(screen.getByRole('button', { name: t('ssl.snis.useSans') }));
     expect(value()).toEqual({ cert: SEED_CERT, snis: ['apiseven.test', '*.apiseven.test'] });
-    expect(screen.queryByText(/does not name/)).toBeNull();
+    expect(screen.queryByText(/do not include/)).toBeNull();
     lock(true);
-    expect(screen.queryByText(/does not name/)).toBeNull();
+    expect(screen.queryByText(/do not include/)).toBeNull();
+  });
+
+  it('a name that is only the subject CN: the note is still true for it (it speaks of the SANs)', () => {
+    renderSnis({ cert: NO_SAN, sni: 'nosan.internal' });
+    expect(screen.getByText(note('nosan.internal'))).toBeInTheDocument();
+    expect(note('nosan.internal')).toMatch(/alternative names/);
+  });
+
+  it('an IP SNI the certificate names as an IP is not in the note (fix round 1, R9)', () => {
+    renderSnis({ cert: RSA_LEAF, snis: ['10.0.0.1', 'example.org'] });
+    expect(screen.queryByRole('note')).toBeNull();
   });
 
   it('shown on a locked page too', () => {
@@ -51,6 +63,6 @@ describe('SNIs the certificate does not name', () => {
     ['every SNI named', { cert: SEED_CERT, snis: ['apiseven.test', 'x.apiseven.test'] }],
   ])('nothing for %s', (_, draft) => {
     const { container } = renderSnis(draft);
-    expect(container).not.toHaveTextContent(/does not name/);
+    expect(container).not.toHaveTextContent(/do not include/);
   });
 });

@@ -11,6 +11,8 @@ export interface CertInfo {
   sans: string[];
   /** The dNSName entries alone, in order: the names a client can send as SNI (an address is not one). */
   dns: string[];
+  /** The iPAddress entries alone, in order (IPv6 as eight groups, not shortened). */
+  ips: string[];
   /** Milliseconds since the epoch. */
   notBefore: number;
   notAfter: number;
@@ -107,8 +109,8 @@ function ip(bytes: Uint8Array): string | undefined {
 
 const SUBJECT_ALT_NAME = '2.5.29.17';
 
-function subjectAltNames(der: Uint8Array, extensions: Node | undefined): { sans: string[]; dns: string[] } {
-  const none = { sans: [], dns: [] };
+function subjectAltNames(der: Uint8Array, extensions: Node | undefined): { sans: string[]; dns: string[]; ips: string[] } {
+  const none = { sans: [], dns: [], ips: [] };
   if (!extensions) return none;
   const [list] = children(der, extensions);
   for (const extension of children(der, ofTag(list, SEQUENCE))) {
@@ -119,6 +121,7 @@ function subjectAltNames(der: Uint8Array, extensions: Node | undefined): { sans:
     const [names] = children(der, value);
     const sans: string[] = [];
     const dns: string[] = [];
+    const ips: string[] = [];
     for (const general of children(der, ofTag(names, SEQUENCE))) {
       // Other name forms (email, URI, directory name…) are not host names.
       if (general.tag === DNS_NAME) {
@@ -127,9 +130,12 @@ function subjectAltNames(der: Uint8Array, extensions: Node | undefined): { sans:
         dns.push(host);
       }
       const address = general.tag === IP_ADDRESS ? ip(bytesOf(der, general)) : undefined;
-      if (address !== undefined) sans.push(address);
+      if (address !== undefined) {
+        sans.push(address);
+        ips.push(address);
+      }
     }
-    return { sans, dns };
+    return { sans, dns, ips };
   }
   return none;
 }
@@ -161,13 +167,14 @@ function parseDer(der: Uint8Array): CertInfo {
   // A positive integer whose top bit is set carries a leading 00 sign byte.
   if (serial.length > 1 && serial[0] === 0 && (serial[1] ?? 0) & 0x80) serial = serial.subarray(1);
 
-  const { sans, dns } = subjectAltNames(der, optional.find((node) => node.tag === EXTENSIONS));
+  const { sans, dns, ips } = subjectAltNames(der, optional.find((node) => node.tag === EXTENSIONS));
   return {
     publicKey: publicKeyOf(der, publicKey ?? fail()),
     subject: name(der, subjectNode ?? fail()),
     issuer: name(der, issuerNode ?? fail()),
     sans,
     dns,
+    ips,
     notBefore: time(der, notBefore ?? fail()),
     notAfter: time(der, notAfter ?? fail()),
     serial: hex(serial),
@@ -202,6 +209,7 @@ export function parseCert(pem: string): CertInfo | undefined {
   if (info) {
     Object.freeze(info.sans);
     Object.freeze(info.dns);
+    Object.freeze(info.ips);
     Object.freeze(info);
   }
   if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value as string);

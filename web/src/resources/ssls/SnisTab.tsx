@@ -40,7 +40,7 @@ export function SnisTab({ draft, setDraft, issues, ctx, original }: TabProps) {
   const sansNote = sansNoteOf(draft.cert, dns);
   const client = typeOf(draft) === 'client';
   // A client certificate is shown to no TLS client; a certificate whose names aren't known says nothing.
-  const unnamed = info && !client ? uncoveredSnis(snis, dns) : [];
+  const unnamed = info && !client ? uncoveredSnis(snis, dns, info.ips) : [];
   // Other enabled server certificates with one of these SNIs, once the list has loaded.
   const own = new Set(sniList(draft));
   const others = ctx.loaded.ssls && servedToClients(draft)

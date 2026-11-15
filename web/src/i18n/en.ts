@@ -1390,7 +1390,7 @@ export const en: Record<string, string> = {
   'ssl.snis.sansRef': 'The certificate is a reference that APISIX resolves at runtime, so its names aren’t known here.',
   'ssl.snis.sansUnreadable': 'The certificate can’t be read here, so its names aren’t known.',
   'ssl.snis.clientNote': 'A client certificate is never presented to TLS clients, so its SNIs aren’t used.',
-  'ssl.snis.notNamed': 'The certificate does not name {names}: clients will be shown a certificate that does not name them.',
+  'ssl.snis.notNamed': 'The certificate’s alternative names (SANs) do not include {names}: clients will be shown a certificate that is not valid for them (browsers do not read the subject’s CN).',
   'ssl.snis.shared': 'Another certificate has one of these SNIs too ({names}): APISIX presents the one it loaded first.',
   'ssl.sni.wildcard': 'a wildcard covers whole labels: write *.example.com',
   'ssl.client.enable': 'Verify client certificates (mTLS)',
