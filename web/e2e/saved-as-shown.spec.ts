@@ -10,9 +10,10 @@ import {
   recordWrites,
   save,
   setCode,
-  t,
-  test,
   storedRoute as stored_,
+  t,
+  tabNamed,
+  test,
   toast,
   unlock,
   type Json,
@@ -97,7 +98,8 @@ test('broken JSON-tab text asks before another tab: Stay keeps it; Discard and s
   const json = jsonEditor(page, ROUTE);
   await setCode(page, json, '{"name": "broken", ');
   await switchTabAnswering(page, t('rt.tab.general'), 'stay');
-  await expect(page.getByRole('main').getByRole('tab', { name: t('editor.json.tab'), exact: true })).toHaveAttribute('aria-selected', 'true');
+  // The tab's name goes on with its problem badge while the text is broken.
+  await expect(tabNamed(page, t('editor.json.tab'))).toHaveAttribute('aria-selected', 'true');
   await expect(json).toContainText('"name": "broken",');
   await switchTabAnswering(page, t('rt.tab.general'), 'discard');
   await page.getByRole('main').getByRole('textbox', { name: t('rt.general.desc') }).fill('the only change');

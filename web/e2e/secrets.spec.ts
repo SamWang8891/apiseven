@@ -247,6 +247,7 @@ test.describe('search', () => {
   // Task 16b item 72 (verify-only there): the list's search text leaves out every secret field.
   test.fixme('16b-72: the consumers list search does not find a consumer by its key', async ({ page, admin }) => {
     const { username, key } = await consumerWithKey(admin);
+    expectNoCredentials(page, username);
     const main = await openList(page, 'consumers');
     await expect(main.getByRole('link', { name: username, exact: true })).toBeVisible();
     const search = main.getByRole('searchbox', { name: t('table.search.label', { plural: t('kind.consumers.plural') }) });
