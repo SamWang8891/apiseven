@@ -237,22 +237,37 @@ describe('Save anyway', () => {
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/r1', body: { ...stripTimestamps(ROUTE), uri: '/strict' } }]));
   });
 
-  it('a real disagreement: a plugin field holding a $env:// reference, which APISIX does not check (secret.lua 268–280) but the schema pattern refuses', async () => {
+  /** The stored route with proxy-rewrite, opened on its JSON tab and unlocked, its text replaced by `draft`. */
+  async function routeJson(draft: (stored: Obj) => Obj) {
     const stored = { ...ROUTE, plugins: { 'proxy-rewrite': { host: 'upstream.test' } } };
-    const { user, admin } = await openEditor('#/routes/r1?tab=json', { objects: { routes: [stored] }, replies: pluginReplies() });
+    const app = await openEditor('#/routes/r1?tab=json', { objects: { routes: [stored] }, replies: pluginReplies() });
     await main().findByRole('heading', { level: 1, name: 'web' });
-    await user.keyboard('e');
+    await app.user.keyboard('e');
     const box = await jsonEditor('Route');
-    await user.click(box);
-    await user.keyboard('{Control>}a{/Control}');
-    const draft = { ...stripTimestamps(stored), plugins: { 'proxy-rewrite': { host: '$env://APISEVEN_UPSTREAM_HOST' } } };
-    await user.paste(JSON.stringify(draft));
+    await app.user.click(box);
+    await app.user.keyboard('{Control>}a{/Control}');
+    const value = draft(stripTimestamps(stored));
+    await app.user.paste(JSON.stringify(value));
+    return { ...app, value };
+  }
+
+  it('a real disagreement no fix removes: PCRE\'s $ matches before a final newline (APISIX stores "upstream.test\\n"), JavaScript\'s does not', async () => {
+    const { user, admin, value } = await routeJson((stored) => ({ ...stored, plugins: { 'proxy-rewrite': { host: 'upstream.test\n' } } }));
     await user.click(main().getByRole('button', { name: t('editor.save') }));
     await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne')));
     await user.click(await main().findByRole('button', { name: t('editor.anyway.action') }));
     const dialog = await screen.findByRole('alertdialog');
     expect(within(dialog).getByRole('listitem').textContent).toMatch(/^Plugins, plugins\.proxy-rewrite\.host: must match pattern/);
     await user.click(within(dialog).getByRole('button', { name: t('editor.anyway.confirm') }));
-    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/r1', body: draft }]));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/r1', body: value }]));
+  });
+
+  it('a $env:// reference in proxy-rewrite\'s host, which APISIX does not check: a plain Save, no issue, nothing offered (fix round 1, R1)', async () => {
+    const { user, admin, value } = await routeJson((stored) => ({ ...stored, plugins: { 'proxy-rewrite': { host: '$env://APISEVEN_UPSTREAM_HOST' } } }));
+    // No problem on the Plugins tab (its name would carry the count).
+    expect(main().getByRole('tab', { name: /^Plugins/ })).toHaveAccessibleName('Plugins');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'routes/r1', body: value }]));
+    expect(main().queryByRole('button', { name: t('editor.anyway.action') })).toBeNull();
   });
 });

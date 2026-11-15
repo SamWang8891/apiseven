@@ -4,7 +4,7 @@
 import Ajv, { type ErrorObject, type ValidateFunction } from 'ajv';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
-import { normalize, type SchemaGaps } from './prepare';
+import { normalize, originalSchemaPath, skippingSecretRefs, type SchemaGaps } from './prepare';
 import { deref, isObj, resolveRef } from './refs';
 
 export type { SchemaGap, SchemaGaps } from './prepare';
@@ -15,40 +15,65 @@ export type { SchemaGap, SchemaGaps } from './prepare';
 const ajv = new Ajv({ allErrors: true, strict: false, validateFormats: false });
 
 interface Compiled {
+  /** The validator of the wrapped copy (prepare.ts: secret references skipped as APISIX skips them). */
   validate: ValidateFunction | null;
+  /** What it compiled, to map its errors back to the schema's own paths. */
+  wrapped: Obj | undefined;
+  /** The normalized copy, unwrapped (for `secretRefs: false`). */
+  normalized: Obj;
+  plain?: ValidateFunction | null;
   /** What the checks leave to APISIX (prepare.ts); undefined when nothing. */
   gaps: SchemaGaps | undefined;
 }
 const compiled = new WeakMap<Obj, Compiled>();
 
+function ajvCompile(schema: Obj): ValidateFunction | null {
+  try {
+    return ajv.compile(schema);
+  } catch {
+    return null;
+  } finally {
+    // Keeps the instance from collecting schemas, and two schemas with the same $id from clashing.
+    ajv.removeSchema(schema);
+  }
+}
+
 function compile(schema: Obj): Compiled {
   let entry = compiled.get(schema);
   if (entry === undefined) {
     const prepared = normalize(schema);
-    let validate: ValidateFunction | null = null;
-    if (prepared.gaps !== 'all') {
-      try {
-        validate = ajv.compile(prepared.schema);
-      } catch {
-        validate = null;
-      } finally {
-        // Keeps the instance from collecting schemas, and two schemas with the same $id from clashing.
-        ajv.removeSchema(prepared.schema);
-      }
-    }
-    entry = { validate, gaps: validate === null ? 'all' : prepared.gaps.length > 0 ? prepared.gaps : undefined };
+    const wrapped = prepared.gaps === 'all' ? undefined : skippingSecretRefs(prepared.schema);
+    const validate = wrapped ? ajvCompile(wrapped) : null;
+    entry = { validate, wrapped, normalized: prepared.schema, gaps: validate === null ? 'all' : prepared.gaps.length > 0 ? prepared.gaps : undefined };
     compiled.set(schema, entry);
   }
   return entry;
 }
 
 /**
- * Compiles once per schema object (the copy prepare.ts makes, which leaves to APISIX what the
- * browser cannot read, never refusing more for it); null when Ajv cannot compile it (callers then
- * skip validation). What it left out is schemaGaps'.
+ * Compiles once per schema object (the copy prepare.ts makes: it leaves to APISIX what the browser
+ * cannot read, never refusing more for it, and skips a secret reference wherever APISIX does); null
+ * when Ajv cannot compile it (callers then skip validation). What it left out is schemaGaps'.
  */
 export function validatorFor(schema: Obj): ValidateFunction | null {
   return compile(schema).validate;
+}
+
+/** Whether to skip secret references as APISIX does (the default); false only to compare with the check without it. */
+export interface CheckOptions {
+  secretRefs?: boolean;
+}
+
+/** The errors `validate` found, at the schema's own paths: the wrapping's own tests dropped. */
+function mapped(entry: Compiled, errors: ErrorObject[]): ErrorObject[] {
+  const wrapped = entry.wrapped;
+  if (!wrapped) return errors;
+  const out: ErrorObject[] = [];
+  for (const error of errors) {
+    const schemaPath = originalSchemaPath(wrapped, error.schemaPath);
+    if (schemaPath !== undefined) out.push({ ...error, schemaPath });
+  }
+  return out;
 }
 
 /** What `schema`'s checks leave to APISIX (prepare.ts SchemaGaps), or undefined when they cover it whole. */
@@ -95,11 +120,23 @@ export function withDefaults(schema: Obj, value: unknown): unknown {
   return fill(schema, schema, value, 0);
 }
 
-/** Ajv's errors for `value` (defaults applied first, as APISIX does): [] when valid, null when the schema does not compile. */
-export function schemaErrors(schema: Obj, value: unknown): ErrorObject[] | null {
-  const validate = validatorFor(schema);
+/**
+ * Ajv's errors for `value` (defaults applied first, as APISIX does), at the schema's own paths: []
+ * when valid, null when the schema does not compile. A secret reference is accepted wherever APISIX
+ * skips it (prepare.ts), unless `secretRefs` is false.
+ */
+export function schemaErrors(schema: Obj, value: unknown, opts: CheckOptions = {}): ErrorObject[] | null {
+  const entry = compile(schema);
+  if (opts.secretRefs === false) {
+    if (!entry.validate) return null;
+    entry.plain ??= ajvCompile(entry.normalized);
+    const plain = entry.plain;
+    if (!plain) return null;
+    return plain(withDefaults(schema, value)) ? [] : [...(plain.errors ?? [])];
+  }
+  const validate = entry.validate;
   if (!validate) return null;
-  return validate(withDefaults(schema, value)) ? [] : [...(validate.errors ?? [])];
+  return validate(withDefaults(schema, value)) ? [] : mapped(entry, validate.errors ?? []);
 }
 
 /** The keys of a JSON pointer (Ajv's instancePath), unescaped. */
@@ -196,8 +233,8 @@ function emptyTableTypeError(error: ErrorObject, value: unknown): boolean {
  * `luaTables`: an empty `[]` or `{}` passes as either a list or an object, as in APISIX's validator
  * (used where the check blocks a save of something APISIX stores: plugin metadata, secret managers).
  */
-export function fieldErrors(schema: Obj, value: unknown, opts: { luaTables?: boolean } = {}): FieldError[] | null {
-  const all = schemaErrors(schema, value);
+export function fieldErrors(schema: Obj, value: unknown, opts: { luaTables?: boolean } & CheckOptions = {}): FieldError[] | null {
+  const all = schemaErrors(schema, value, opts);
   if (all === null) return null;
   const errors = opts.luaTables ? all.filter((error) => !emptyTableTypeError(error, withDefaults(schema, value))) : all;
   const seen = new Set<string>();
