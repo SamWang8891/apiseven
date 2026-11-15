@@ -25,15 +25,17 @@ function without(o: Obj, ...keys: string[]): Obj {
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE', 'PURGE'];
 
 /**
- * What only an HTTP(S) check reads, by block: hidden for tcp, and removed from the block when its
+ * What only an HTTP(S) active probe reads: hidden for tcp, and removed from the active block when its
  * type becomes tcp (as `https_verify_certificate` when it becomes anything but https). APISIX hands
- * `checks` to lua-resty-healthcheck as it is (healthcheck_manager.lua 100–103), whose tcp checks
- * read none of these; none is required, and each has a default (schema_def.lua 150–298).
+ * `checks` to lua-resty-healthcheck as it is (healthcheck_manager.lua 100–103), whose tcp probes only
+ * connect; none of these is required, and each has a default (schema_def.lua 150–234).
+ * The passive block has no such keys: on HTTP routes APISIX reports every response's status to the
+ * checker whatever `passive.type` is (init.lua 1490–1548 `healthcheck_passive`; lua-resty-healthcheck
+ * counts them against `unhealthy.http_failures`), so its statuses and HTTP failures always apply.
  */
-const HTTP_ONLY: Record<'active' | 'passive', string[][]> = {
-  active: [['http_method'], ['http_path'], ['http_req_body'], ['req_headers'], ['https_verify_certificate'], ['healthy', 'http_statuses'], ['unhealthy', 'http_failures'], ['unhealthy', 'http_statuses']],
-  passive: [['healthy', 'http_statuses'], ['unhealthy', 'http_failures'], ['unhealthy', 'http_statuses']],
-};
+const ACTIVE_HTTP_ONLY: string[][] = [
+  ['http_method'], ['http_path'], ['http_req_body'], ['req_headers'], ['https_verify_certificate'], ['healthy', 'http_statuses'], ['unhealthy', 'http_failures'], ['unhealthy', 'http_statuses'],
+];
 
 /** The probe's own keys in `checks.active` (the rest of the block is `healthy` / `unhealthy`). */
 const PROBE_KEYS = new Set(['type', 'http_method', 'http_path', 'host', 'port', 'timeout', 'concurrency', 'https_verify_certificate', 'http_req_body', 'req_headers']);
@@ -64,9 +66,9 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
     return {
       get: (...path: string[]) => getPath(conf, path),
       set: (path: string[], v: unknown) => onChange(setPath(value, ['checks'], { ...checks, [which]: setPath(conf, path, v) })),
-      /** The check's type, and what it no longer reads out of the block (HTTP_ONLY). */
+      /** The check's type, and, for the active probe, what it no longer reads out of the block (ACTIVE_HTTP_ONLY). */
       setType: (type: string | undefined) => {
-        const hidden = type === 'tcp' ? HTTP_ONLY[which] : type !== 'https' && which === 'active' ? [['https_verify_certificate']] : [];
+        const hidden = which === 'passive' ? [] : type === 'tcp' ? ACTIVE_HTTP_ONLY : type !== 'https' ? [['https_verify_certificate']] : [];
         const next = hidden.reduce((at, path) => setPath(at, path, undefined), setPath(conf, ['type'], type));
         onChange(setPath(value, ['checks'], { ...checks, [which]: next }));
       },
@@ -200,16 +202,18 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
         {passive !== undefined && (
           <>
             <div className="ed-grid">{protocol(p)}</div>
+            {/* init.lua 1490–1548: on HTTP routes the statuses and HTTP failures count whatever the type. */}
+            {passiveType === 'tcp' && <p className="up-help">{t('up.hc.passiveTcpHttp')}</p>}
             <div className="up-sections">
               <Part title={t('up.hc.passiveHealthy')} summary={passiveHealthySummary(passive)} issues={countUnder(issues, 'passive', (k) => k === 'healthy')}>
                 {number(p, ['healthy', 'successes'], t('up.hc.successes'), { min: 0, max: 254, byDefault: 5 })}
-                {passiveType !== 'tcp' && statuses(p, ['healthy', 'http_statuses'], '200–208, 226, 300–308')}
+                {statuses(p, ['healthy', 'http_statuses'], '200–208, 226, 300–308')}
               </Part>
               <Part title={t('up.hc.passiveUnhealthy')} summary={passiveUnhealthySummary(passive)} issues={countUnder(issues, 'passive', (k) => k === 'unhealthy')}>
-                {passiveType !== 'tcp' && number(p, ['unhealthy', 'http_failures'], t('up.hc.httpFailures'), { min: 0, max: 254, byDefault: 5 })}
+                {number(p, ['unhealthy', 'http_failures'], t('up.hc.httpFailures'), { min: 0, max: 254, byDefault: 5 })}
                 {number(p, ['unhealthy', 'tcp_failures'], t('up.hc.tcpFailures'), { min: 0, max: 254, byDefault: 2 })}
                 {number(p, ['unhealthy', 'timeouts'], t('up.hc.timeouts'), { min: 0, max: 254, byDefault: 7 })}
-                {passiveType !== 'tcp' && statuses(p, ['unhealthy', 'http_statuses'], '429, 500, 503')}
+                {statuses(p, ['unhealthy', 'http_statuses'], '429, 500, 503')}
               </Part>
             </div>
           </>

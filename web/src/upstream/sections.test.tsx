@@ -42,8 +42,9 @@ describe('load balancing', () => {
 });
 
 describe('health checks', () => {
-  // Task 16b item 45: what a type hides is not kept behind it (schema_def.lua 150-234: none is required, each has a default).
-  it('switching a check to tcp removes what only http(s) reads; to http, the https certificate check', async () => {
+  // Task 16b item 45: what an active probe's type hides is not kept behind it (schema_def.lua 150-234: none is required,
+  // each has a default). Fix round 1, F5: the passive block keeps its HTTP values, which APISIX reads on HTTP routes whatever the type.
+  it('switching the active probe to tcp removes what only http(s) reads; to http, the https certificate check; passive keeps its values', async () => {
     const h = renderUpstream(
       {
         checks: {
@@ -68,7 +69,14 @@ describe('health checks', () => {
     expect((h.value().checks as Obj).active).toEqual({ type: 'tcp', host: 'h.test', healthy: { interval: 2 }, unhealthy: { tcp_failures: 2 } });
     await h.user.click(types()[1] as HTMLElement);
     await h.user.click(await screen.findByRole('option', { name: 'tcp' }));
-    expect((h.value().checks as Obj).passive).toEqual({ type: 'tcp', healthy: { successes: 3 }, unhealthy: { timeouts: 4 } });
+    expect((h.value().checks as Obj).passive).toEqual({
+      type: 'tcp',
+      healthy: { http_statuses: [200], successes: 3 },
+      unhealthy: { http_failures: 2, timeouts: 4, http_statuses: [503] },
+    });
+    // The open sections show them, with the line that says they still count.
+    const passive = screen.getByRole('group', { name: t('up.hc.passive') });
+    expect(within(passive).getByText(t('up.hc.passiveTcpHttp'))).toBeInTheDocument();
   });
 
   it('turning active checks off removes checks.active, and checks once empty', async () => {

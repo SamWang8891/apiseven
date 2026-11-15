@@ -1,7 +1,8 @@
 // One-line summaries of the health checks' sections (Probe, Mark healthy / unhealthy after, and the
 // passive counts), shown while a section is closed: every value the upstream sets that the open
-// section shows for the check's protocol (HealthChecks.tsx: HTTP's fields hide for tcp, the
-// certificate check shows for https only), in the order of the fields, or "defaults". Pure.
+// section shows for the check's protocol (HealthChecks.tsx: the active probe's HTTP fields hide for
+// tcp, the certificate check shows for https only; the passive ones always show), in the order of
+// the fields, or "defaults". Pure.
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { num, obj, str } from './values';
@@ -64,20 +65,19 @@ export function unhealthySummary(active: Obj): string {
   ]);
 }
 
-/** Passive "Count as healthy": successes, statuses (HTTP). */
+/** Passive "Count as healthy": successes, statuses (whatever the type: they count on HTTP routes, HealthChecks.tsx). */
 export function passiveHealthySummary(passive: Obj): string {
   const healthy = obj(passive.healthy);
-  return join([count('up.hc.sum.successes', healthy.successes), http(passive) && statuses(healthy.http_statuses)]);
+  return join([count('up.hc.sum.successes', healthy.successes), statuses(healthy.http_statuses)]);
 }
 
-/** Passive "Count as unhealthy": HTTP failures, TCP failures, timeouts, statuses (HTTP's for HTTP only). */
+/** Passive "Count as unhealthy": HTTP failures, TCP failures, timeouts, statuses (whatever the type, as the section shows them). */
 export function passiveUnhealthySummary(passive: Obj): string {
   const unhealthy = obj(passive.unhealthy);
-  const web = http(passive);
   return join([
-    web && count('up.hc.sum.httpFailures', unhealthy.http_failures),
+    count('up.hc.sum.httpFailures', unhealthy.http_failures),
     count('up.hc.sum.tcpFailures', unhealthy.tcp_failures),
     count('up.hc.sum.timeouts', unhealthy.timeouts),
-    web && statuses(unhealthy.http_statuses),
+    statuses(unhealthy.http_statuses),
   ]);
 }

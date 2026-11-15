@@ -53,13 +53,20 @@ describe('health-check section summaries follow the protocol', () => {
     unhealthy: { http_failures: 3, tcp_failures: 4, http_statuses: [500] },
   };
 
-  it('tcp: no method, path, body, headers, statuses, HTTP failures or certificate check', () => {
+  it('an active tcp probe: no method, path, body, headers, statuses, HTTP failures or certificate check', () => {
     const tcp = { type: 'tcp', ...HTTP_ALL };
     expect(probeSummary(tcp)).toBe('tcp');
     expect(healthySummary(tcp)).toBe(t('up.hc.sum.every', { n: 2 }));
     expect(unhealthySummary(tcp)).toBe(t('up.hc.sum.tcpFailures', { n: 4 }));
-    expect(passiveHealthySummary(tcp)).toBe(t('up.hc.sum.defaults'));
-    expect(passiveUnhealthySummary(tcp)).toBe(t('up.hc.sum.tcpFailures', { n: 4 }));
+  });
+
+  // Fix round 1, F5: passive statuses and HTTP failures count on HTTP routes whatever the type, and the section shows them.
+  it('passive tcp: the statuses and HTTP failures, as the open section shows them', () => {
+    const tcp = { type: 'tcp', ...HTTP_ALL };
+    expect(passiveHealthySummary(tcp)).toBe(t('up.hc.sum.statuses', { list: '200' }));
+    expect(passiveUnhealthySummary(tcp)).toBe(
+      [t('up.hc.sum.httpFailures', { n: 3 }), t('up.hc.sum.tcpFailures', { n: 4 }), t('up.hc.sum.statuses', { list: '500' })].join(' · '),
+    );
   });
 
   it('http (or none set): the HTTP parts, without the certificate check, which only https reads', () => {

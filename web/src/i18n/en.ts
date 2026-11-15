@@ -887,6 +887,7 @@ export const en: Record<string, string> = {
   'up.hc.passive': 'Passive checks',
   'up.hc.passiveHelp': 'APISIX also watches real responses. A node they mark down comes back only through active checks.',
   'up.hc.passiveNeedsActive': 'Needs active checks: they bring a node back once it recovers.',
+  'up.hc.passiveTcpHttp': 'On HTTP routes, APISIX still counts the statuses and HTTP failures below, whatever the type.',
   'up.hc.probe': 'Probe',
   'up.hc.healthy': 'Mark healthy after',
   'up.hc.unhealthy': 'Mark unhealthy after',
