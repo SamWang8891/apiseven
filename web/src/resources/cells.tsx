@@ -12,6 +12,7 @@ import { pathFor } from '../router/paths';
 import { Empty, Lines, NameCell } from '../table/cells';
 import { formatAbsolute, formatRelative } from '../table/format';
 import { Badge, toast, Tooltip } from '../ui';
+import { LabelTip } from '../ui/Tooltip';
 import { clipTitle } from '../ui/clipTitle';
 import { nameOfValue, type CtxKind, type Reference, type RefTarget, type UpstreamSummary } from './resolve';
 import './cells.css';
@@ -399,9 +400,11 @@ export function IdCell({ id }: { id: string }) {
       <span className="cell-id__text mono" {...clipTitle(id)}>
         {id}
       </span>
-      <button type="button" className="cell-copy" aria-label={t('cell.copyId', { id })} title={t('cell.copyId', { id })} onClick={() => void copy(id)}>
-        <Copy size={13} aria-hidden="true" />
-      </button>
+      <LabelTip label={t('cell.copyId', { id })}>
+        <button type="button" className="cell-copy" aria-label={t('cell.copyId', { id })} onClick={() => void copy(id)}>
+          <Copy size={13} aria-hidden="true" />
+        </button>
+      </LabelTip>
     </span>
   );
 }
