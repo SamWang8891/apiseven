@@ -38,7 +38,8 @@ export function StatusBadge({ kind, item }: { kind: Kind; item: Item }) {
 
 /**
  * The status column: a switch and the state in words. Toggling PATCHes `{status}` at once and
- * shows the new state until the reloaded list confirms it; a refused write puts it back.
+ * shows the new state until the reloaded list confirms it; a refused write puts it back. With a key
+ * that turned out read-only there is nothing to switch: the state in words only (StatusBadge).
  */
 export function StatusCell({ kind, item }: { kind: Kind; item: Item }) {
   const write = useWrite();
@@ -51,6 +52,7 @@ export function StatusCell({ kind, item }: { kind: Kind; item: Item }) {
   const name = registry[kind].nameOf(item);
   const ignored = registry[kind].statusIgnored?.(item.value);
   if (ignored !== undefined) return <StatusIgnored why={ignored} />;
+  if (readOnly) return <StatusBadge kind={kind} item={item} />;
 
   async function toggle(next: boolean) {
     if (pending && !pending.saved) return;
@@ -64,7 +66,6 @@ export function StatusCell({ kind, item }: { kind: Kind; item: Item }) {
       <Switch.Root
         className="ui-switch"
         checked={enabled}
-        disabled={readOnly}
         aria-busy={pending && !pending.saved ? true : undefined}
         aria-label={t('table.status.toggle', { name })}
         onCheckedChange={(next) => void toggle(next)}

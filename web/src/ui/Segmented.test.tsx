@@ -4,11 +4,12 @@ import { useState } from 'react';
 import { describe, expect, it } from 'vitest';
 import { LockProvider } from './LockContext';
 import { Segmented } from './Segmented';
+import { TooltipProvider } from './Tooltip';
 
 const OPTIONS = [
   { value: 'nodes', label: 'Nodes' },
   { value: 'discovery', label: 'Service discovery' },
-  { value: 'off', label: 'Off', disabled: true },
+  { value: 'off', label: 'Off', disabled: true, reason: 'Nothing to turn off yet' },
 ];
 
 function Harness({ locked = false }: { locked?: boolean }) {
@@ -43,7 +44,29 @@ describe('Segmented', () => {
     expect(nodes).toHaveFocus();
     await user.keyboard('{ArrowLeft}');
     expect(screen.getByRole('status')).toHaveTextContent('discovery');
-    expect(screen.getByRole('radio', { name: 'Off' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Off' })).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('a disabled option stays readable, chooses nothing on a click, and says why in a tooltip (known item 17)', async () => {
+    const user = userEvent.setup();
+    render(
+      <TooltipProvider>
+        <Harness />
+      </TooltipProvider>,
+    );
+    const off = screen.getByRole('radio', { name: 'Off' });
+    expect(off).toHaveAttribute('aria-disabled', 'true');
+    expect(off).not.toHaveAttribute('disabled');
+    await user.hover(off);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Nothing to turn off yet');
+    await user.click(off);
+    expect(screen.getByRole('status')).toHaveTextContent('nodes');
+    expect(off).not.toBeChecked();
+  });
+
+  it('without a TooltipProvider the reason is the native title', () => {
+    render(<Harness />);
+    expect(screen.getByRole('radio', { name: 'Off' })).toHaveAttribute('title', 'Nothing to turn off yet');
   });
 
   it('reads as the chosen label when locked', () => {

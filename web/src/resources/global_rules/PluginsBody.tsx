@@ -1,6 +1,8 @@
 // The global rule editor's Plugins tab: what APISIX does with a global rule's plugins (each sentence
 // from the 3.20 source, cited below), a note when another stored global rule holds the same plugin
 // (APISIX refuses that), and the plugin cards.
+import { ChevronRight } from 'lucide-react';
+import { useId, useState } from 'react';
 import { useList } from '../../api/hooks';
 import { isObj } from '../../api/sanitize';
 import { t } from '../../i18n';
@@ -21,16 +23,46 @@ import '../resources.css';
  * - a plugin switched off (`_meta.disable`) is skipped by plugin.filter (plugin.lua 595–597): the
  *   cards and the list say "off".
  */
+/** Where the explainer remembers whether its details are open ('1') or not. */
+export const EXPLAINER_KEY = 'apiseven.globalRules.explainer';
+
+function storedOpen(): boolean {
+  try {
+    return localStorage.getItem(EXPLAINER_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+/** One line always in view; the details behind a disclosure that stays as the user left it (view state). */
 function Explainer() {
+  const [open, setOpen] = useState(storedOpen);
+  const detailsId = useId();
+  const toggle = () => {
+    setOpen(!open);
+    try {
+      localStorage.setItem(EXPLAINER_KEY, open ? '0' : '1');
+    } catch {
+      // Not stored: the choice lasts while the page shows.
+    }
+  };
   return (
     <section className="res-explain" aria-label={t('gr.explainer.title')}>
-      <h3 className="res-explain__title">{t('gr.explainer.title')}</h3>
-      <ul className="res-explain__list">
-        <li>{t('gr.explainer.every')}</li>
-        <li>{t('gr.explainer.order')}</li>
-        <li>{t('gr.explainer.prefer')}</li>
-        <li>{t('gr.explainer.once')}</li>
-      </ul>
+      <div className="res-explain__head">
+        <h3 className="res-explain__title">{t('gr.explainer.title')}</h3>
+        <button type="button" className="res-explain__toggle" aria-expanded={open} aria-controls={detailsId} onClick={toggle}>
+          <ChevronRight className="res-explain__chevron" size={14} aria-hidden="true" />
+          {t('gr.explainer.how')}
+        </button>
+      </div>
+      {open && (
+        <ul id={detailsId} className="res-explain__list">
+          <li>{t('gr.explainer.every')}</li>
+          <li>{t('gr.explainer.order')}</li>
+          <li>{t('gr.explainer.prefer')}</li>
+          <li>{t('gr.explainer.once')}</li>
+        </ul>
+      )}
     </section>
   );
 }

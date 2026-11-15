@@ -147,7 +147,9 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
   }
 
   const options = [
-    ...(allowService ? [{ value: 'service', label: t('rt.up.source.service'), disabled: serviceId === undefined }] : []),
+    ...(allowService
+      ? [{ value: 'service', label: t('rt.up.source.service'), disabled: serviceId === undefined, reason: t('rt.up.sourceHelpNoService') }]
+      : []),
     { value: 'existing', label: t('rt.up.source.existing') },
     { value: 'inline', label: t('rt.up.source.inline') },
   ];

@@ -18,10 +18,20 @@ import { snisOf } from './columns';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 
-/** `addr:port`, `[v6]:port`, the address alone, or "port N", the values in mono. */
+/**
+ * `addr:port`, `[v6]:port`, the address alone, or "port N", the values in mono. A range
+ * (`10.0.0.0/8`, `fe80::/64`) is no address a port can be joined to: "10.0.0.0/8 port 9100".
+ */
 function serverOf(draft: Obj): ReactNode {
   const addr = typeof draft.server_addr === 'string' && draft.server_addr !== '' ? draft.server_addr : undefined;
   const port = typeof draft.server_port === 'number' ? draft.server_port : undefined;
+  if (addr !== undefined && port !== undefined && addr.includes('/')) {
+    return (
+      <>
+        <Mono values={[addr]} /> {t('sr.overview.port')} <Mono values={[String(port)]} />
+      </>
+    );
+  }
   if (addr !== undefined && port !== undefined) return <Mono values={[`${addr.includes(':') ? `[${addr}]` : addr}:${port}`]} />;
   if (addr !== undefined) return <Mono values={[addr]} />;
   return port !== undefined ? (

@@ -24,6 +24,11 @@
   outline: none;
 }
 
+/* The dialog box itself is no control: focus that falls back to it (FocusScope) draws no ring round it. */
+.ui-dialog:focus-visible {
+  outline: none;
+}
+
 .ui-dialog--sm {
   max-width: 440px;
 }
@@ -152,10 +157,15 @@
   box-shadow: var(--shadow);
 }
 
+/*
+ * Bottom right, lifted above a list's footer (its pager). While a dialog is open: the newest toast
+ * only, centred in the band a dialog leaves free at the bottom (.ui-overlay: 12vh above, a 76vh
+ * dialog at most), wide enough that a long message stays short.
+ */
 .ui-toast-viewport {
   position: fixed;
   right: 0;
-  bottom: 0;
+  bottom: 56px;
   z-index: 70;
   display: flex;
   flex-direction: column;
@@ -166,6 +176,15 @@
   padding: var(--s4);
   list-style: none;
   outline: none;
+}
+
+.ui-toast-viewport--modal {
+  bottom: 0;
+  left: 0;
+  width: auto;
+  max-width: 760px;
+  margin: 0 auto;
+  padding-bottom: var(--s3);
 }
 
 .ui-toast {
@@ -219,6 +238,23 @@
 
 .ui-toast__message {
   overflow-wrap: anywhere;
+}
+
+.ui-toast--collapsed {
+  display: none;
+}
+
+/* "×3": the same notice raised again while it showed. */
+.ui-toast__count {
+  margin-left: var(--s2);
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--neutral-bg);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* A toast's one link ("Open alice"), after its message. */

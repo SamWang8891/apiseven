@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Item, Kind } from '../api/types';
 import { t } from '../i18n';
-import type { ColumnDef, Ctx } from '../resources/registry';
+import { registry, type ColumnDef, type Ctx } from '../resources/registry';
 import { ctxOf, itemOf } from '../test/ctx';
 import { locationOf, renderWithProviders } from '../test/providers';
 import { DataTable, type DataTableProps } from './DataTable';
@@ -132,13 +132,22 @@ describe('paging', () => {
 });
 
 describe('empty states', () => {
-  it('with zero items shows the empty state and a New link to the create page', () => {
+  it('with zero items shows the empty state, what the kind is for, and a New link to the create page (known item 12)', () => {
     renderTable({ items: [], kind: 'routes' });
     const empty = screen.getByRole('region', { name: t('table.empty.title', { plural: t('kind.routes.plural') }) });
+    expect(within(empty).getByText(t('kind.routes.about'))).toBeInTheDocument();
     expect(within(empty).getByRole('link', { name: t('page.new', { kind: t('kind.routes.singular') }) })).toHaveAttribute(
       'href',
       '/routes/new',
     );
+  });
+
+  it('every kind says in one sentence what it is for', () => {
+    for (const kind of Object.keys(registry) as Kind[]) {
+      const about = t(`kind.${kind}.about`);
+      expect(about, kind).not.toBe(`kind.${kind}.about`);
+      expect(about.split(/[.!?](\s|$)/).filter((s) => s.trim()).length, kind).toBe(1);
+    }
   });
 
   it('with no matches offers to clear the search and filters', async () => {
@@ -223,6 +232,48 @@ describe('columns menu', () => {
     await user.keyboard('{Alt>}{ArrowDown}{/Alt}');
     await user.click(menu.getByRole('button', { name: t('table.columns.reset') }));
     expect(headerNames()).toEqual(['Name', 'Host', 'Priority', 'Tags', 'WebSocket']);
+  });
+});
+
+describe('column widths (known item 9: the edge works from the keyboard)', () => {
+  const items = [itemOf('r1', { name: 'web', host: 'a.example', priority: 1 })];
+  const edge = (name: string) => within(header(name)).getByRole('separator', { name: t('table.resizeLabel', { column: name }) });
+  const stored = () => (JSON.parse(localStorage.getItem(tableStorageKey('upstreams')) ?? '{}') as { widths?: Record<string, number> }).widths;
+
+  it('each header edge is a focusable vertical separator with its width as the value', async () => {
+    const { user } = renderTable({ items });
+    const host = edge('Host');
+    expect(host).toHaveAttribute('aria-orientation', 'vertical');
+    expect(host).toHaveAttribute('aria-valuenow', '160');
+    expect(host).toHaveAttribute('aria-valuetext', t('table.resizeValue', { width: 160 }));
+    // In the tab order, right after its column's sort button.
+    sortButton('Host').focus();
+    await user.tab();
+    expect(host).toHaveFocus();
+  });
+
+  it('Left and Right resize (Shift for bigger steps), the width is kept, and Enter resets it', async () => {
+    const first = renderTable({ items });
+    edge('Host').focus();
+    await first.user.keyboard('{ArrowRight}{ArrowRight}');
+    expect(edge('Host')).toHaveAttribute('aria-valuenow', '180');
+    await first.user.keyboard('{Shift>}{ArrowLeft}{/Shift}');
+    expect(edge('Host')).toHaveAttribute('aria-valuenow', '130');
+    expect(edge('Host')).toHaveFocus();
+    expect(stored()).toEqual({ host: 130 });
+    first.unmount();
+    const again = renderTable({ items });
+    expect(edge('Host')).toHaveAttribute('aria-valuenow', '130');
+    edge('Host').focus();
+    await again.user.keyboard('{Enter}');
+    expect(edge('Host')).toHaveAttribute('aria-valuenow', '160');
+  });
+
+  it('never goes below the narrowest width', async () => {
+    const { user } = renderTable({ items });
+    edge('Priority').focus();
+    for (let i = 0; i < 5; i++) await user.keyboard('{Shift>}{ArrowLeft}{/Shift}');
+    expect(edge('Priority')).toHaveAttribute('aria-valuenow', '60');
   });
 });
 

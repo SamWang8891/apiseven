@@ -175,7 +175,7 @@
   cursor: pointer;
 }
 
-.ui-segmented__option:hover:not(:disabled) {
+.ui-segmented__option:hover:not([aria-disabled='true']) {
   color: var(--text);
 }
 
@@ -191,8 +191,11 @@
   outline-offset: 1px;
 }
 
-.ui-segmented__option:disabled {
+/* Can't be chosen now: still readable, plainer than the others, a dotted underline for its reason (tooltip). */
+.ui-segmented__option[aria-disabled='true'] {
   color: var(--text-2);
-  text-decoration: line-through;
+  font-weight: 400;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
   cursor: not-allowed;
 }

@@ -26,20 +26,26 @@
   margin-top: 2px;
 }
 
-/* Links to other objects: plain weight, so the row's own name stays the strongest link. */
+/*
+ * Links to other objects: plain weight, so the row's own name (bold) stays the strongest link. A quiet
+ * underline at rest tells them from text without relying on colour; it takes the link colour on hover.
+ */
 .cell-link {
   display: inline-block;
   max-width: 100%;
   overflow: hidden;
   color: var(--accent);
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-decoration-thickness: 1px;
   text-overflow: ellipsis;
+  text-underline-offset: 3px;
   white-space: nowrap;
   vertical-align: top;
 }
 
 .cell-link:hover {
-  text-decoration: underline;
+  text-decoration-color: currentColor;
 }
 
 .cell-time {
@@ -54,6 +60,26 @@
   align-items: baseline;
   gap: 2px 4px;
   min-width: 0;
+}
+
+/* One line of chips, fitted to the column (FitChips): the rest behind `+N`. */
+.cell-chips--fit {
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+
+.cell-fit__item {
+  display: inline-flex;
+  flex: none;
+  min-width: 0;
+}
+
+.cell-fit__item[hidden] {
+  display: none;
+}
+
+.cell-more {
+  flex: none;
 }
 
 .cell-chip {
@@ -80,17 +106,22 @@
   white-space: nowrap;
 }
 
-/* Methods: outlined monospace tokens. ANY (no restriction) recedes, so a real limit stands out. */
+/*
+ * Methods: filled monospace tokens, tight, so two fit the column beside `+N`. ANY (no restriction)
+ * recedes to an outline, so a real limit stands out.
+ */
 .cell-method {
-  padding: 0 4px;
-  border-color: var(--border-strong);
+  padding: 0 3px;
+  border: 0;
+  background: var(--neutral-bg);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .cell-method--any {
-  border-color: var(--border);
+  border: 1px solid var(--border);
+  background: transparent;
   color: var(--text-2);
   font-weight: 400;
 }
@@ -111,7 +142,7 @@
   padding-left: 5px;
   border-left: 1px solid var(--border-strong);
   color: var(--text-2);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
@@ -121,7 +152,7 @@
   padding-left: 5px;
   border-left: 1px solid var(--border-strong);
   color: var(--danger);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 

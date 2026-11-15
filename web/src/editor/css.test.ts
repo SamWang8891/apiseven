@@ -37,8 +37,9 @@ describe('editor CSS', () => {
     expect(body('.ed-head::after')).toMatch(/position:\s*absolute/);
     expect(body('.ed-head--editing::after')).toMatch(/background:\s*var\(--accent\)/);
     expect(body('.ed-head--editing')).toBe('');
-    // The meta line keeps its height whether or not "Unsaved changes" shows.
-    expect(body('.ed-meta')).toMatch(/min-height:\s*18px/);
+    // The meta line keeps its height whether or not "Unsaved changes" shows: one line, never wrapping.
+    expect(body('.ed-meta')).toMatch(/(^|[;\s])height:\s*18px/);
+    expect(body('.ed-meta')).toMatch(/flex-wrap:\s*nowrap/);
   });
 
   it('keeps the header in view while the page scrolls', () => {

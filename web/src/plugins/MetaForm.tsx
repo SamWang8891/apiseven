@@ -16,8 +16,15 @@ export interface MetaFormProps {
   meta: Obj | undefined;
   /** The next `_meta`; undefined when nothing is left in it. */
   onChange: (meta: Obj | undefined) => void;
-  /** The plugin (its default priority; error_response is offered to auth plugins). */
+  /** The plugin (its default priority). */
   info?: PluginInfo;
+  /**
+   * Whether to offer error_response (a stored one is always shown). APISIX sends it in place of the
+   * body of any plugin that rejects an HTTP request (plugin.lua run_plugin, `code >= 400`), so it is
+   * offered for every plugin except where it is never used: the stream subsystem (the session is
+   * closed) and a consumer's or credential's sign-in plugin (its config is the credential).
+   */
+  offerErrorResponse?: boolean;
   /** Issues with paths relative to `_meta` (`priority`, `filter`, …). */
   issues: Issue[];
   /** Prefix of the fields' DOM ids. */
@@ -106,7 +113,7 @@ function JsonValue({ value, onChange, label, ariaLabel, help, error, check, id, 
 const arrayOnly: Check = (v) => (Array.isArray(v) ? undefined : t('pl.meta.filterNotArray'));
 const objectOnly: Check = (v) => (isObj(v) ? undefined : t('pl.meta.errorNotObject'));
 
-export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisable }: MetaFormProps) {
+export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisable, offerErrorResponse }: MetaFormProps) {
   const locked = useLocked();
   const current = meta ?? {};
   const set = (key: string, v: unknown) => {
@@ -117,7 +124,7 @@ export function MetaForm({ meta, onChange, info, issues, idPrefix, name, noDisab
   };
 
   const errorResponse = current.error_response;
-  const offerError = info?.type === 'auth' || errorResponse !== undefined;
+  const offerError = offerErrorResponse === true || errorResponse !== undefined;
   // How error_response is written: follows the stored value, else the user's pick.
   const [pick, setPick] = useState<'text' | 'json'>(isObj(errorResponse) ? 'json' : 'text');
   const kind = isObj(errorResponse) ? 'json' : typeof errorResponse === 'string' ? 'text' : pick;

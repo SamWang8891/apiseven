@@ -82,7 +82,7 @@ samp {
   outline-offset: 2px;
 }
 
+/* Selected text keeps its own colour (syntax colours in code too) on a tint every text colour reads on. */
 ::selection {
-  background: var(--accent);
-  color: var(--accent-text);
+  background: var(--selection);
 }

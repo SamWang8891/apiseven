@@ -1,7 +1,8 @@
 import { Plus, RefreshCw, Rows3, Rows4, Search } from 'lucide-react';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { useInvalidate } from '../api/hooks';
+import { useReadOnlyKey } from '../api/write';
 import type { Kind, Parent } from '../api/types';
 import { t } from '../i18n';
 import { newPathFor } from '../router/paths';
@@ -88,9 +89,13 @@ export function DensityButton({ compact, onChange }: { compact: boolean; onChang
   );
 }
 
-/** The primary "New <kind>" action, a link to the create page. */
-/** The create link of a kind; `to` and `label` replace its target and text (a table embedded in its owner's editor creates in that owner). */
+/**
+ * The primary "New <kind>" action, a link to the create page; `to` and `label` replace its target and
+ * text (a table embedded in its owner's editor creates in that owner). Not there with a key that
+ * turned out read-only: nothing it leads to could be saved.
+ */
 export function NewLink({ kind, parent, to, label }: { kind: Kind; parent?: Parent; to?: string; label?: string }) {
+  if (useReadOnlyKey()) return null;
   return (
     <Link className="ui-btn ui-btn--primary ui-btn--md tbl-new" to={to ?? newPathFor(kind, parent)}>
       <span className="ui-btn__icon" aria-hidden="true">
@@ -102,13 +107,44 @@ export function NewLink({ kind, parent, to, label }: { kind: Kind; parent?: Pare
 }
 
 /**
- * Left: search and filter chips. Right: the result count, then the table's own controls. They are
- * view controls (`data-view-control`): they change how the list is shown, never data.
+ * The filter chips in one row. When the window is too narrow for all of them the row scrolls
+ * sideways (a chip that takes focus scrolls into view), and its right edge fades while more follow.
  */
-export function Toolbar({ start, count, end }: { start: ReactNode; count: ReactNode; end: ReactNode }) {
+function Filters({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [more, setMore] = useState(false);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const check = () => setMore(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    check();
+    const observer = typeof ResizeObserver === 'function' ? new ResizeObserver(check) : undefined;
+    observer?.observe(el);
+    el.addEventListener('scroll', check, { passive: true });
+    return () => {
+      observer?.disconnect();
+      el.removeEventListener('scroll', check);
+    };
+  }, []);
+  return (
+    <div ref={ref} className={more ? 'tbl-toolbar__filters tbl-toolbar__filters--more' : 'tbl-toolbar__filters'}>
+      {children}
+    </div>
+  );
+}
+
+/**
+ * Left: search and filter chips. Right: the result count, then the table's own controls. They are
+ * view controls (`data-view-control`): they change how the list is shown, never data. One row: the
+ * chips give way (scrolling sideways) before anything wraps.
+ */
+export function Toolbar({ search, filters, count, end }: { search: ReactNode; filters: ReactNode; count: ReactNode; end: ReactNode }) {
   return (
     <div className="shell-toolbar tbl-toolbar" data-view-control="">
-      <div className="tbl-toolbar__start">{start}</div>
+      <div className="tbl-toolbar__start">
+        {search}
+        <Filters>{filters}</Filters>
+      </div>
       <div className="tbl-toolbar__end">
         <span className="tbl-toolbar__count" aria-live="polite">
           {count}

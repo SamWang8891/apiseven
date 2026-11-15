@@ -15,20 +15,22 @@ import { parse, pretty } from './json';
 const LINE = 18;
 /** Room kept under the editor: its frame, and the page's bottom padding. */
 const BELOW = 44;
+/** While editing, the line under the editor where a parse error shows is kept free, so it appearing moves nothing. */
+const ERROR_LINE = LINE;
 const MIN_LINES = 12;
 
-/** As many lines as fit between the editor's top and the bottom of the window (at least MIN_LINES). */
-function useFitLines(ref: RefObject<HTMLElement | null>): number {
+/** As many lines as fit between the editor's top and `below` px above the bottom of the window (at least MIN_LINES). */
+function useFitLines(ref: RefObject<HTMLElement | null>, below: number): number {
   const [lines, setLines] = useState(30);
   useLayoutEffect(() => {
     const measure = () => {
       const top = ref.current?.getBoundingClientRect().top ?? 0;
-      setLines(Math.max(MIN_LINES, Math.floor((window.innerHeight - top - BELOW) / LINE)));
+      setLines(Math.max(MIN_LINES, Math.floor((window.innerHeight - top - below) / LINE)));
     };
     measure();
     window.addEventListener('resize', measure);
     return () => window.removeEventListener('resize', measure);
-  }, [ref]);
+  }, [ref, below]);
   return lines;
 }
 
@@ -74,7 +76,7 @@ function draftOf(kind: Kind, text: string, notes: KeyNotes): Obj | undefined {
 export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
   const locked = useLocked();
   const hostRef = useRef<HTMLDivElement>(null);
-  const maxLines = useFitLines(hostRef);
+  const maxLines = useFitLines(hostRef, locked ? BELOW : BELOW + ERROR_LINE);
   /** `error` (shown) and `held` (for Save) are set while the text does not parse to an object. */
   const [state, setState] = useEditingState<JsonState>(() => stateOf(kind, draft, newKeyNotes()));
 
@@ -160,7 +162,9 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
           aria-invalid={!locked && current.held !== undefined}
         />
       </div>
-      <div aria-live="polite">{current.error !== undefined && <p className="ed-json__error mono">{current.error}</p>}</div>
+      <div className={locked ? undefined : 'ed-json__status'} aria-live="polite">
+        {current.error !== undefined && <p className="ed-json__error mono">{current.error}</p>}
+      </div>
       {issues.length > 0 && (
         <section className="ed-issues" aria-label={t('editor.issues')}>
           <h3 className="ed-issues__title">{t('editor.issues')}</h3>

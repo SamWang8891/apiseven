@@ -5,6 +5,7 @@ import { Field, type FieldProps } from './Field';
 import { useFieldIds } from './fieldIds';
 import { useLocked, useReveal } from './LockContext';
 import { ReadOnlyValue } from './ReadOnly';
+import { LabelTip } from './Tooltip';
 import './input.css';
 
 const MASK = '••••••••';
@@ -24,16 +25,13 @@ export function Input({ label, help, error, required, htmlFor, mono, secret, id,
   const [revealed, setRevealed] = useReveal();
   const field = { label, help, error, required, htmlFor: locked ? undefined : ids.id };
 
+  const revealLabel = revealed ? t('ui.secret.hide') : t('ui.secret.show');
   const reveal = secret && (
-    <button
-      type="button"
-      className="ui-input__affix"
-      aria-label={revealed ? t('ui.secret.hide') : t('ui.secret.show')}
-      aria-pressed={revealed}
-      onClick={() => setRevealed((r) => !r)}
-    >
-      {revealed ? <EyeOff aria-hidden="true" size={15} /> : <Eye aria-hidden="true" size={15} />}
-    </button>
+    <LabelTip label={revealLabel}>
+      <button type="button" className="ui-input__affix" aria-label={revealLabel} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
+        {revealed ? <EyeOff aria-hidden="true" size={15} /> : <Eye aria-hidden="true" size={15} />}
+      </button>
+    </LabelTip>
   );
 
   if (locked) {

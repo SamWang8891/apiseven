@@ -3,6 +3,8 @@
 export const en: Record<string, string> = {
   'app.name': 'apiseven',
   'app.loading': 'Loading apiseven',
+  'title.page': '{page} · apiseven',
+  'title.object': '{name} · {kind} · apiseven',
 
   // Resource kinds, named as in the Admin API's URL paths (web/src/api/types.ts Kind).
   'kind.routes.plural': 'Routes',
@@ -31,6 +33,20 @@ export const en: Record<string, string> = {
   'kind.plugin_metadata.singular': 'Plugin Metadata',
   'kind.protos.plural': 'Protos',
   'kind.protos.singular': 'Proto',
+  // What each kind is for, in one sentence: the empty list says it.
+  'kind.routes.about': 'A route matches requests by host, path and method, and sends them through its plugins to an upstream.',
+  'kind.stream_routes.about': 'A stream route matches TCP and UDP connections by address and port, and proxies them to an upstream.',
+  'kind.services.about': 'A service holds the upstream, hosts and plugins that several routes share.',
+  'kind.upstreams.about': 'An upstream is a pool of backend nodes, with load balancing and health checks, that routes and services send traffic to.',
+  'kind.consumers.about': 'A consumer is a client of your APIs: its credentials sign it in, and its plugins apply to its requests.',
+  'kind.credentials.about': 'A credential is one way for a consumer to sign in: a key, a password or a token.',
+  'kind.consumer_groups.about': 'A consumer group holds plugins that several consumers share.',
+  'kind.ssls.about': 'An SSL certificate and its private key serve HTTPS for the host names (SNIs) it lists.',
+  'kind.secrets.about': 'A secret manager (Vault, AWS, GCP) holds values that settings refer to with $secret:// instead of storing them.',
+  'kind.global_rules.about': 'A global rule holds plugins that run on every request, before any route’s own.',
+  'kind.plugin_configs.about': 'A plugin config is a set of plugins that routes can share by referring to it.',
+  'kind.plugin_metadata.about': 'Plugin metadata holds the settings a plugin shares everywhere it runs, such as a logger’s log format.',
+  'kind.protos.about': 'A proto holds Protocol Buffers definitions that the grpc-transcode plugin uses to call gRPC services.',
 
   // Sidebar groups
   'nav.traffic': 'Traffic',
@@ -119,7 +135,7 @@ export const en: Record<string, string> = {
   'page.count': '{count} total',
   'notFound.title': 'Not found',
   'notFound.body': 'Nothing in apiseven lives at',
-  'notFound.back': 'Go to Routes',
+  'notFound.back': 'Go to {plural}',
 
   // List columns every kind starts with (web/src/resources/registry.ts)
   'column.id': 'ID',
@@ -262,7 +278,9 @@ export const en: Record<string, string> = {
   'table.actions': 'Actions',
   'table.actionsFor': 'Actions for {name}',
   'table.sort.priority': 'sort {n}',
-  'table.resize': 'Drag to resize {column}, double-click to reset',
+  'table.resize': 'Drag, or focus and press ← →, to resize {column}; double-click or Enter resets it',
+  'table.resizeLabel': 'Resize {column}',
+  'table.resizeValue': '{width} pixels wide',
   'table.status': 'Status',
   'table.status.enabled': 'Enabled',
   'table.status.disabled': 'Disabled',
@@ -270,7 +288,6 @@ export const en: Record<string, string> = {
   'table.status.ignored': 'Status not used',
   'table.more': '+{count} more',
   'table.empty.title': 'No {plural} yet',
-  'table.empty.body': 'Create one to see it here.',
   'table.empty.noMatch': 'No {plural} match',
   'table.empty.noMatchBody': 'Nothing matches the search and filters.',
   'table.clearFilters': 'Clear filters',
@@ -434,6 +451,8 @@ export const en: Record<string, string> = {
   'time.years': '{n}y ago',
 
   // Shown in the shell once a write is refused for the key's role (web/src/api/write.ts)
+  'unreachable.title': 'Can’t reach the Admin API at',
+  'unreachable.body': '{error}. What this page shows may be out of date.',
   'readOnly.banner': "This admin key is read-only: changes can't be saved. Connect with a key that may write to change anything.",
 
   // Errors that replace a page
@@ -535,6 +554,7 @@ export const en: Record<string, string> = {
   'ui.toast.label': 'Notification',
   'ui.toast.region': 'Notifications ({hotkey})',
   'ui.toast.dismiss': 'Dismiss',
+  'ui.toast.repeat': '×{count}',
   'ui.code.loading': 'Loading editor…',
 
   // Schema form (web/src/schema-form): forms generated from JSON Schema
@@ -1447,6 +1467,7 @@ export const en: Record<string, string> = {
 
   // Global rules (resources/global_rules).
   'gr.explainer.title': 'Plugins here run on every request',
+  'gr.explainer.how': 'How they run',
   'gr.explainer.every': 'Also on a request no route matches: APISIX answers 404 after their access phase.',
   'gr.explainer.order': "In each phase they run before the matched route's own plugins. Their access phase comes after the route's rewrite phase, where sign-in plugins run, so the consumer is known by then; a consumer's own plugins are merged into the route, never into a global rule.",
   'gr.explainer.prefer': 'prometheus, request-decompress and skywalking give way to the same plugin when the matched route has it on.',

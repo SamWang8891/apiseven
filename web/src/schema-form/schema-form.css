@@ -240,7 +240,7 @@
   overflow: hidden;
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -367,7 +367,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-2);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }

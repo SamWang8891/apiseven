@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { fakeAdmin, json, type FakeAdminOptions } from '../test/fakeAdmin';
-import { getToasts } from '../ui/toast';
+import { getToasts, toastsRaised } from '../ui/toast';
 import { AdminClient } from './client';
 import { ApiError } from './errors';
 import { ClientProvider, queryKeys, scopedKey, useList } from './hooks';
@@ -78,11 +78,11 @@ describe('useWrite', () => {
 
   it('silent skips the error toast', async () => {
     const { result } = setup({ replies: { 'routes/r1': () => json(500, { error_msg: 'etcd down' }) } });
-    const before = getToasts().length;
+    const before = toastsRaised();
     await act(async () => {
       await result.current.write((c) => c.remove('routes', 'r1'), { silent: true });
     });
-    expect(getToasts()).toHaveLength(before);
+    expect(toastsRaised()).toBe(before);
   });
 
   // That it does not navigate either is shown with the whole app, in ListPage.test.tsx.

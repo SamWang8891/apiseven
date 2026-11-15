@@ -6,6 +6,7 @@ import type { Item, Kind, Parent } from '../api/types';
 import { t } from '../i18n';
 import { pathFor } from '../router/paths';
 import { Tooltip } from '../ui';
+import { clipTitle } from '../ui/clipTitle';
 import { isEmptyValue } from './sort';
 
 /** How many lines of a list a cell shows before `+N more`. */
@@ -30,7 +31,7 @@ export function Lines({ lines, mono }: { lines: string[]; mono?: boolean }) {
   return (
     <>
       {lines.slice(0, SHOWN_LINES).map((text, i) => (
-        <span key={i} className={cls} title={text}>
+        <span key={i} className={cls} {...clipTitle(text)}>
           {text}
         </span>
       ))}
@@ -66,7 +67,7 @@ export function DefaultCell({ value, mono }: { value: unknown; mono?: boolean })
   const isObject = typeof value === 'object';
   const text = line(value);
   return (
-    <span className={mono || isObject ? 'tbl-line mono' : 'tbl-line'} title={text}>
+    <span className={mono || isObject ? 'tbl-line mono' : 'tbl-line'} {...clipTitle(text)}>
       {text}
     </span>
   );
@@ -76,7 +77,7 @@ export function DefaultCell({ value, mono }: { value: unknown; mono?: boolean })
 export function NameCell({ kind, item, value, parent, mono }: { kind: Kind; item: Item; value: unknown; parent?: Parent; mono?: boolean }) {
   const text = isEmptyValue(value) ? item.id : line(value);
   return (
-    <Link className={mono ? 'tbl-name mono' : 'tbl-name'} to={pathFor(kind, item.id, parent)} title={text}>
+    <Link className={mono ? 'tbl-name mono' : 'tbl-name'} to={pathFor(kind, item.id, parent)} {...clipTitle(text)}>
       {text}
     </Link>
   );

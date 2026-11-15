@@ -37,6 +37,7 @@ import { useLeaveGuard } from './useLeaveGuard';
 import { useMounted } from './useMounted';
 import { tabStrip } from './tabStrip';
 import { useSaveRequest } from './useSaveRequest';
+import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { useShownTabs } from './useShownTabs';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
@@ -130,6 +131,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   }
 
   const name = isNew && fixedId === undefined ? t('page.new', { kind: def.singular }) : def.nameOf({ id: id ?? '', value: draft });
+  useDocumentTitle(isNew && fixedId === undefined ? pageTitle(name) : objectTitle(name, def.singular));
   const back = backOf(kind, parent);
   const listPath = back.to;
 

@@ -45,7 +45,7 @@ const COLOR_TOKENS = [
   '--bg', '--bg-raised', '--bg-sunken', '--text', '--text-2', '--border', '--border-strong',
   '--accent', '--accent-text', '--ok', '--ok-bg', '--warn', '--warn-bg', '--danger', '--danger-bg',
   '--neutral-bg', '--focus', '--accent-bg', '--on-danger', '--code-key', '--code-string',
-  '--code-literal',
+  '--code-literal', '--selection',
 ];
 const OTHER_TOKENS = [
   '--font-sans', '--font-mono', '--radius', '--s1', '--s2', '--s3', '--s4', '--s5', '--s6',
@@ -98,6 +98,12 @@ const KIT_PAIRS: [string, string, number][] = [
   ['--code-literal', '--bg-sunken', 4.5],
 ];
 
+// Selected text keeps its colour on --selection (base.css ::selection, CodeMirror's selection layer):
+// every text colour, syntax colours included (known item 15).
+const SELECTION_PAIRS: [string, string, number][] = [
+  '--text', '--text-2', '--accent', '--ok', '--warn', '--danger', '--code-key', '--code-string', '--code-literal',
+].map((fg): [string, string, number] => [fg, '--selection', 4.5]);
+
 // Shell and Connect page: the detail line of an error box is body text on the danger tint.
 const SHELL_PAIRS: [string, string, number][] = [['--text', '--danger-bg', 4.5]];
 
@@ -128,7 +134,7 @@ describe('tokens.css', () => {
 
   for (const [theme, vars] of Object.entries(themes)) {
     describe(`${theme} theme`, () => {
-      for (const [fg, bg, min] of [...PAIRS, ...MORE_PAIRS, ...KIT_PAIRS, ...SHELL_PAIRS, ...CELL_PAIRS]) {
+      for (const [fg, bg, min] of [...PAIRS, ...MORE_PAIRS, ...KIT_PAIRS, ...SELECTION_PAIRS, ...SHELL_PAIRS, ...CELL_PAIRS]) {
         it(`${fg} on ${bg} has contrast >= ${min}`, () => {
           const ratio = contrast(vars.get(fg) ?? 'missing', vars.get(bg) ?? 'missing');
           expect(ratio, `${fg} ${vars.get(fg)} on ${bg} ${vars.get(bg)}`).toBeGreaterThanOrEqual(min);

@@ -214,6 +214,12 @@
   text-decoration: underline;
 }
 
+/* One value of a Mono list: kept whole on its line, unless it is wider than the line by itself. */
+.res-mono__value {
+  display: inline-block;
+  max-width: 100%;
+}
+
 /* Several facts on one line (Overview.tsx Parts), separated by dots. */
 .res-overview__parts {
   display: inline-flex;
@@ -384,19 +390,60 @@
   background: var(--bg-sunken);
 }
 
+/* The summary line: the title, and the disclosure of the details beside it. */
+.res-explain__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1) var(--s3);
+}
+
 .res-explain__title {
-  margin: 0 0 var(--s1);
+  margin: 0;
   color: var(--text);
   font-size: 13px;
   font-weight: 600;
   line-height: 18px;
 }
 
+.res-explain__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0;
+  padding: 0 4px 0 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.res-explain__toggle:hover {
+  text-decoration: underline;
+}
+
+.res-explain__chevron {
+  transition: transform 120ms ease-out;
+}
+
+.res-explain__toggle[aria-expanded='true'] .res-explain__chevron {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .res-explain__chevron {
+    transition: none;
+  }
+}
+
 .res-explain__list {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  margin: 0;
+  margin: var(--s2) 0 0;
   padding-left: 18px;
   color: var(--text);
   font-size: 13px;

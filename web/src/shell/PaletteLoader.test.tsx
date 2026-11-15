@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
 import { TooltipProvider } from '../ui';
-import { getToasts } from '../ui/toast';
+import { getToasts, toastsRaised } from '../ui/toast';
 import { Toaster } from '../ui/Toaster';
 import type { CommandPaletteProps } from './CommandPalette';
 import { lazyPalette } from './PaletteLoader';
@@ -90,7 +90,7 @@ describe('lazyPalette', () => {
     }
     const user = userEvent.setup();
     render(<Toggle Palette={lazyPalette(load)} />);
-    const before = getToasts().length;
+    const before = toastsRaised();
     await user.click(screen.getByRole('button', { name: 'toggle' }));
     await user.click(screen.getByRole('button', { name: 'toggle' }));
     // The first load fails with nothing mounted to see it.
@@ -99,7 +99,7 @@ describe('lazyPalette', () => {
     await user.click(screen.getByRole('button', { name: 'toggle' }));
     expect(await screen.findByRole('button', { name: 'palette loaded' })).toBeInTheDocument();
     expect(load).toHaveBeenCalledTimes(2);
-    expect(getToasts()).toHaveLength(before);
+    expect(toastsRaised()).toBe(before);
   });
 
   it('a palette that throws while drawing closes with a message and leaves the page as it was', async () => {

@@ -152,7 +152,8 @@ describe('a stream route (allowService, kind stream_routes)', () => {
   it('offers the service\'s upstream, and says what having none means for a stream route', () => {
     renderTab('stream_routes', StreamSource, { server_port: 9100 }, inlineIssues, { ctx: CTX });
     expect(screen.getByRole('combobox', { name: t('rt.up.service') })).toBeInTheDocument();
-    expect(radio('service')).toBeDisabled();
+    // Disabled, still readable (aria-disabled, known item 17).
+    expect(radio('service')).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText(t('sr.up.noneNote'))).toBeInTheDocument();
     expect(within(screen.getByRole('group', { name: t('rt.up.resolves') })).getByText(t('rt.up.resolvesNone'))).toHaveClass('res-resolves__label--none');
   });

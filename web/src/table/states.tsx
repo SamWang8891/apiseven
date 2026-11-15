@@ -7,14 +7,14 @@ import { registry } from '../resources/registry';
 import { Button } from '../ui';
 import { NewLink } from './Toolbar';
 
-/** No items at all: say so and offer to create the first. */
+/** No items at all: say so, say what the kind is for, and offer to create the first (not with a read-only key: NewLink). */
 export function EmptyState({ kind, parent }: { kind: Kind; parent?: Parent }) {
   const id = useId();
   return (
     <section className="tbl-state" aria-labelledby={id}>
       <Inbox className="tbl-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />
       <h2 id={id}>{t('table.empty.title', { plural: registry[kind].plural })}</h2>
-      <p className="tbl-state__body">{t('table.empty.body')}</p>
+      <p className="tbl-state__body">{t(`kind.${kind}.about`)}</p>
       <NewLink kind={kind} parent={parent} />
     </section>
   );

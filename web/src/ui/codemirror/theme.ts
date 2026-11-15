@@ -14,8 +14,9 @@ const theme = EditorView.theme({
   '.cm-content': { caretColor: 'var(--text)', padding: '6px 0' },
   '.cm-line': { padding: '0 10px 0 6px' },
   '.cm-cursor, .cm-dropCursor': { borderLeft: '2px solid var(--text)' },
+  // Focused or not, editable or read-only: the same tint, on which every syntax colour keeps AA contrast.
   '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection':
-    { backgroundColor: 'var(--accent-bg)' },
+    { backgroundColor: 'var(--selection)' },
   '.cm-gutters': { backgroundColor: 'transparent', color: 'var(--text-2)', borderRight: '1px solid var(--border)' },
   '.cm-lineNumbers .cm-gutterElement': { padding: '0 6px 0 10px', minWidth: '28px' },
   '.cm-activeLine': { backgroundColor: 'transparent' },

@@ -2,6 +2,7 @@ import { AlertDialog } from 'radix-ui';
 import { useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
+import { ModalMark } from './Dialog';
 import { PendingProvider, type PendingEntry } from './PendingContext';
 import './overlay.css';
 
@@ -39,6 +40,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, da
               <AlertDialog.Title className="ui-dialog__title">{title}</AlertDialog.Title>
             </header>
             <BodyAndActions {...{ body, confirmLabel, cancelLabel, danger, busy, onConfirm }} />
+            <ModalMark />
           </AlertDialog.Content>
         </AlertDialog.Overlay>
       </AlertDialog.Portal>

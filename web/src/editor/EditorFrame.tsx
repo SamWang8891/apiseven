@@ -61,7 +61,7 @@ function StoredEditor({ kind, id, parent }: { kind: Kind; id: string; parent?: P
   if (query.data) return <Editor key="stored" kind={kind} id={id} parent={parent} item={query.data} />;
   if (query.error?.status === 404) return <NotFoundState kind={kind} id={id} parent={parent} />;
   if (query.error) return <LoadErrorState kind={kind} id={id} error={query.error} retrying={query.isFetching} onRetry={() => void query.refetch()} />;
-  return <EditorSkeleton kind={kind} />;
+  return <EditorSkeleton kind={kind} id={id} />;
 }
 
 /**

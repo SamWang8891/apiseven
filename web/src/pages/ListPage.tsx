@@ -3,7 +3,9 @@ import { useMemo, useState } from 'react';
 import { useList } from '../api/hooks';
 import type { Item, Kind, Parent } from '../api/types';
 import { registry, useCtx, type Grouping } from '../resources/registry';
+import { pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { DataTable } from '../table/DataTable';
+import { NewLink } from '../table/Toolbar';
 import { tableStorageKey } from '../table/tableState';
 import './list.css';
 import { useResourceActions } from './useResourceActions';
@@ -57,6 +59,7 @@ export function ListPage({ kind, parent }: { kind: Kind; parent?: Parent }) {
   const actions = useResourceActions(kind, parent, ctx);
   const groupings = def.groupings ?? NO_GROUPINGS;
   const [grouping, setGrouping] = useGrouping(kind, groupings);
+  useDocumentTitle(pageTitle(def.plural));
   // Stable while the grouping and the lists stay the same: the table regroups when these change.
   const groupBy = useMemo(() => grouping && ((item: Item) => grouping.groupBy(item, ctx)), [grouping, ctx]);
   const groupHeader = useMemo(
@@ -70,6 +73,7 @@ export function ListPage({ kind, parent }: { kind: Kind; parent?: Parent }) {
           <h1>{def.plural}</h1>
           {list.data && <span className="list-title__count">{list.data.length}</span>}
         </div>
+        <NewLink kind={kind} parent={parent} />
       </div>
       <DataTable
         kind={kind}
@@ -89,6 +93,7 @@ export function ListPage({ kind, parent }: { kind: Kind; parent?: Parent }) {
             <GroupToggle key={g.id} grouping={g} on={g === grouping} onChange={(on) => setGrouping(on ? g.id : undefined)} />
           ))
         }
+        noNewButton
         loading={list.isPending}
         // Data from before a failed refetch stays on screen; the error replaces the table only without it.
         error={list.data ? undefined : (list.error ?? undefined)}

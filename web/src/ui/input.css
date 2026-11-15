@@ -69,7 +69,9 @@
   padding: 0;
 }
 
-.ui-input__bare {
+/* The group rings itself (:focus-within); the field inside draws none, beating base.css's :focus-visible. */
+.ui-input__bare,
+.ui-input__bare:focus-visible {
   flex: 1;
   min-width: 0;
   margin: 0;

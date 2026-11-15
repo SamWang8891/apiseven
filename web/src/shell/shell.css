@@ -257,18 +257,22 @@
   background: var(--bg-sunken);
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 16px;
   white-space: nowrap;
 }
 
-/* Narrow windows: the icon and the shortcut only. */
+/*
+ * Narrow windows: the search shows its icon and shortcut only, and the connection its name only (the
+ * host is in its accessible name and its menu), so the breadcrumb keeps its room.
+ */
 @media (max-width: 1180px) {
   .shell-search {
     width: auto;
   }
 
-  .shell-search__label {
+  .shell-search__label,
+  .shell-conn__host {
     display: none;
   }
 }
@@ -342,10 +346,46 @@
   color: var(--accent);
 }
 
-/* --- Read-only banner (a write was refused for the key's role) ----------------------------- */
+/* --- Banners under the header: APISIX unreachable; the key read-only ------------------------ */
+
+.shell-banners {
+  grid-area: banner;
+  min-width: 0;
+}
+
+.shell-unreachable {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: 40px;
+  padding: 6px var(--s3) 6px var(--s5);
+  border-bottom: 1px solid var(--border);
+  background: var(--danger-bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.shell-unreachable > svg {
+  flex: none;
+  color: var(--danger);
+}
+
+.shell-unreachable__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.shell-unreachable__text strong {
+  color: var(--danger);
+}
+
+.shell-unreachable__error {
+  display: block;
+}
 
 .shell-readonly {
-  grid-area: banner;
   display: flex;
   align-items: center;
   gap: var(--s2);
@@ -416,6 +456,36 @@
 .shell-note {
   margin-top: var(--s4);
   color: var(--text-2);
+}
+
+/* --- Not found (no page at the address), laid out like the editor's own states -------------- */
+
+.shell-state {
+  max-width: 600px;
+  margin: 10vh auto var(--s6);
+  padding: 0 var(--s4);
+}
+
+.shell-state__icon {
+  margin-bottom: var(--s2);
+  color: var(--text-2);
+}
+
+.shell-state__body {
+  margin-top: var(--s1);
+  color: var(--text-2);
+}
+
+.shell-state__body code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.shell-state__link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: var(--s4);
 }
 
 /* --- Error page and splash ----------------------------------------------------------------- */

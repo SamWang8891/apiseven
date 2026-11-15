@@ -3,6 +3,7 @@ import { Dialog as RadixDialog } from 'radix-ui';
 import { useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
+import { useModalMark } from './modal';
 import { PendingProvider, type PendingEntry } from './PendingContext';
 import './overlay.css';
 
@@ -36,6 +37,7 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md' }: 
               </RadixDialog.Close>
             </header>
             <BodyAndFooter footer={footer}>{children}</BodyAndFooter>
+            <ModalMark />
           </RadixDialog.Content>
         </RadixDialog.Overlay>
       </RadixDialog.Portal>
@@ -55,4 +57,10 @@ function BodyAndFooter({ footer, children }: { footer: DialogProps['footer']; ch
       {bar && <footer className="ui-dialog__footer">{bar}</footer>}
     </>
   );
+}
+
+/** Marks a modal as open while its content is mounted (the toasts keep clear of it: Toaster). */
+export function ModalMark() {
+  useModalMark();
+  return null;
 }

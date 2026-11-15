@@ -64,6 +64,8 @@ export interface DataTableProps {
   emptyState?: ReactNode;
   /** Replaces the New button's target and text (e.g. "New route in this service" → `#/routes/new?service_id=…`). */
   newLink?: { to: string; label: string };
+  /** No New button in the toolbar: a list page puts it beside its title. */
+  noNewButton?: boolean;
   /**
    * Whether the status column is a switch that writes at once (a list page) or the state in words
    * (default for an embedded table: one inside an editor never writes with a single click).
@@ -130,14 +132,11 @@ export function DataTable(props: DataTableProps) {
 
   const toolbar = (
     <Toolbar
-      start={
+      search={
+        <SearchBox value={view.query} onChange={(query) => setView({ ...view, query })} label={t('table.search.label', { plural })} shortcut={!embedded} />
+      }
+      filters={
         <>
-          <SearchBox
-            value={view.query}
-            onChange={(query) => setView({ ...view, query })}
-            label={t('table.search.label', { plural })}
-            shortcut={!embedded}
-          />
           {filters.map((filter) => (
             <FilterChip
               key={filter.id}
@@ -172,7 +171,7 @@ export function DataTable(props: DataTableProps) {
           <DensityButton compact={state.density === 'compact'} onChange={(compact) => patch({ density: compact ? 'compact' : 'comfortable' })} />
           <RefreshButton kind={kind} parent={parent} />
           {toolbarExtra}
-          <NewLink kind={kind} parent={parent} to={props.newLink?.to} label={props.newLink?.label} />
+          {!props.noNewButton && <NewLink kind={kind} parent={parent} to={props.newLink?.to} label={props.newLink?.label} />}
         </>
       }
     />
@@ -222,7 +221,7 @@ export function DataTable(props: DataTableProps) {
 
   const showFooter = !props.loading && !props.error && filtered.length > 0;
   return (
-    <div className={`tbl tbl--${state.density}`}>
+    <div className={`tbl tbl--${state.density}${embedded ? ' tbl--embedded' : ''}`}>
       {toolbar}
       <div className="tbl-scroll">{body}</div>
       {showFooter && (

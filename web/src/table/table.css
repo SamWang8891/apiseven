@@ -38,6 +38,14 @@
   border-radius: var(--radius-lg);
 }
 
+/*
+ * A table in the page flow (credentials under their consumer, routes under their service): taller
+ * than the window, it scrolls inside its own frame, so its header stays in view (sticky, above).
+ */
+.tbl--embedded .tbl-scroll {
+  max-height: max(320px, calc(100dvh - 220px));
+}
+
 .tbl-table {
   min-width: 100%;
   border-collapse: separate;
@@ -129,7 +137,7 @@
 }
 
 .tbl-sort__rank {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
@@ -157,11 +165,18 @@
 }
 
 .tbl-resize:hover::after,
-.tbl-resize:active::after {
+.tbl-resize:active::after,
+.tbl-resize:focus-visible::after {
   top: 0;
   bottom: 0;
   width: 3px;
   background: var(--accent);
+}
+
+/* Focused from the keyboard: the edge itself, ringed inside the header. */
+.tbl-resize:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
 }
 
 /* Body rows */

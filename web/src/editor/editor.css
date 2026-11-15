@@ -87,10 +87,11 @@
   white-space: nowrap;
 }
 
+/* The id keeps its width before a long title does (the title gives way first); a long id ends in an ellipsis. */
 .ed-id {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 48px;
-  max-width: 280px;
+  max-width: min(280px, 30%);
   color: var(--text-2);
 }
 
@@ -102,15 +103,30 @@
 }
 
 /* Updated · Created · Unsaved changes, aligned under the title. Always one line high, so the
-   "Unsaved changes" mark appearing changes nothing around it. */
+   "Unsaved changes" mark appearing changes nothing around it: in a narrow header the creation time
+   gives way first (an ellipsis, the whole of it in its title), never the mark. */
 .ed-meta {
   display: flex;
-  flex-wrap: wrap;
-  min-height: 18px;
+  flex-wrap: nowrap;
+  min-width: 0;
+  height: 18px;
+  overflow: hidden;
+  white-space: nowrap;
   padding-left: 30px;
   color: var(--text-2);
   font-size: 12px;
   line-height: 18px;
+}
+
+.ed-meta__item {
+  flex: none;
+}
+
+.ed-meta__item--shrink {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .ed-meta__item + .ed-meta__item::before {
@@ -155,7 +171,7 @@
   border: 1px solid currentColor;
   border-radius: 3px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1;
 }
@@ -347,8 +363,14 @@
   gap: var(--s1);
 }
 
+/* While editing, the parse error's line is kept free (JsonTab ERROR_LINE): it appearing moves nothing. */
+.ed-json__status {
+  min-height: 18px;
+}
+
 .ed-json__error {
   color: var(--danger);
+  line-height: 18px;
   overflow-wrap: anywhere;
 }
 

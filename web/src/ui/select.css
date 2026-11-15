@@ -30,7 +30,9 @@
   background: var(--bg-sunken);
 }
 
-.ui-select__trigger {
+/* The box rings itself (:focus-within); the trigger inside draws none, beating base.css's :focus-visible. */
+.ui-select__trigger,
+.ui-select__trigger:focus-visible {
   display: flex;
   flex: 1;
   align-items: center;
@@ -164,6 +166,7 @@
 }
 
 .ui-select__list:focus-visible {
+  outline: none;
   box-shadow: inset 0 0 0 2px var(--focus);
 }
 

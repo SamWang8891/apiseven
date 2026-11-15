@@ -213,12 +213,23 @@ describe('read-only key', () => {
     await user.click(await toggle('alpha'));
     expect(await screen.findByText('invalid method for role viewer')).toBeInTheDocument();
     expect(await screen.findByText(t('readOnly.banner'))).toBeInTheDocument();
-    await waitFor(async () => expect(await toggle('alpha')).toBeChecked());
+    // Known item 1: once the key is read-only, the status is the badge alone, with no switch.
+    await waitFor(() => expect(main().queryByRole('switch', { name: t('table.status.toggle', { name: 'alpha' }) })).not.toBeInTheDocument());
+    expect(main().queryAllByRole('switch', { name: /enabled$/ })).toHaveLength(0);
+    expect(within(await rowOf('alpha')).getByText(t('table.status.enabled'))).toBeInTheDocument();
+    expect(within(await rowOf('gamma')).getByText(t('table.status.disabled'))).toBeInTheDocument();
     expect(window.location.hash).toBe('#/routes');
+    // Nothing it leads to could be saved: no New.
+    expect(main().queryByRole('link', { name: t('page.new', { kind: t('kind.routes.singular') }) })).not.toBeInTheDocument();
     // The banner stays on other pages of the same connection.
     await user.click(screen.getByRole('link', { name: /^Upstreams/ }));
     expect(await main().findByRole('heading', { level: 1, name: t('kind.upstreams.plural') })).toBeInTheDocument();
     expect(screen.getByText(t('readOnly.banner'))).toBeInTheDocument();
+    // An empty list (known item 12) still says what the kind is for, without the New button.
+    await user.click(screen.getByRole('link', { name: /^Protos/ }));
+    const empty = await main().findByRole('region', { name: t('table.empty.title', { plural: t('kind.protos.plural') }) });
+    expect(within(empty).getByText(t('kind.protos.about'))).toBeInTheDocument();
+    expect(within(empty).queryByRole('link')).not.toBeInTheDocument();
   });
 
   async function toggle(name: string) {

@@ -9,6 +9,7 @@ import { IdCell } from '../resources/cells';
 import { formatAbsolute, formatRelative } from '../table/format';
 import { StatusIgnored } from '../table/StatusCell';
 import { Badge, Button, Menu, Tooltip } from '../ui';
+import { clipTitle } from '../ui/clipTitle';
 
 export interface EditorHeaderProps {
   title: string;
@@ -61,7 +62,7 @@ function Times({ item }: { item: Item }) {
         </time>
       )}
       {created !== undefined && (
-        <time className="ed-meta__item" dateTime={new Date(created * 1000).toISOString()}>
+        <time className="ed-meta__item ed-meta__item--shrink" dateTime={new Date(created * 1000).toISOString()} {...clipTitle(t('editor.createdAt', { time: formatAbsolute(created) }))}>
           {t('editor.createdAt', { time: formatAbsolute(created) })}
         </time>
       )}
@@ -101,7 +102,7 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
           <Link className="ed-back" to={p.back.to} aria-label={p.back.label} title={p.back.label}>
             <ArrowLeft size={16} aria-hidden="true" />
           </Link>
-          <h1 className="ed-title" title={p.title}>
+          <h1 className="ed-title" {...clipTitle(p.title)}>
             {p.title}
           </h1>
           {p.id !== undefined && (

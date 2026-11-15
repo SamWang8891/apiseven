@@ -11,6 +11,7 @@ import { resetApp } from '../../test/app';
 import { main, openEditor, writesOf } from '../../test/editor';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
+import { EXPLAINER_KEY } from './PluginsBody';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -42,9 +43,28 @@ describe('a global rule', () => {
     expect(main().getAllByRole('tab').map((tab) => tab.textContent)).toEqual([t('pl.tab'), t('editor.json.tab')]);
     const panel = await settled();
     const explainer = within(panel).getByRole('region', { name: t('gr.explainer.title') });
-    for (const key of ['gr.explainer.every', 'gr.explainer.order', 'gr.explainer.prefer', 'gr.explainer.once']) expect(explainer).toHaveTextContent(t(key));
     await within(panel).findByRole('group', { name: 'request-id' });
     expect(editableControls(panel)).toEqual([]);
+    // Known item 25: one line in view; the details behind a disclosure, closed at first.
+    const how = within(explainer).getByRole('button', { name: t('gr.explainer.how') });
+    expect(how).toHaveAttribute('aria-expanded', 'false');
+    for (const key of ['gr.explainer.every', 'gr.explainer.order', 'gr.explainer.prefer', 'gr.explainer.once']) expect(explainer).not.toHaveTextContent(t(key));
+  });
+
+  it('the explainer\'s details open on request, and stay open on the next visit', async () => {
+    const { user, unmount } = await open('#/global_rules/default');
+    let panel = await settled();
+    await user.click(within(panel).getByRole('button', { name: t('gr.explainer.how') }));
+    let explainer = within(panel).getByRole('region', { name: t('gr.explainer.title') });
+    for (const key of ['gr.explainer.every', 'gr.explainer.order', 'gr.explainer.prefer', 'gr.explainer.once']) expect(explainer).toHaveTextContent(t(key));
+    unmount();
+    // A fresh page: the stored choice is all that carries over.
+    expect(localStorage.getItem(EXPLAINER_KEY)).toBe('1');
+    await open('#/global_rules/default');
+    panel = await settled();
+    explainer = within(panel).getByRole('region', { name: t('gr.explainer.title') });
+    expect(within(explainer).getByRole('button', { name: t('gr.explainer.how') })).toHaveAttribute('aria-expanded', 'true');
+    expect(explainer).toHaveTextContent(t('gr.explainer.once'));
   });
 
   it('with all its plugins removed, still sends plugins: {} (APISIX requires it)', async () => {

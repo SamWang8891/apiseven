@@ -17,7 +17,7 @@ import { ConfigJson } from './ConfigJson';
 import { MetaForm } from './MetaForm';
 import { signInOf, signInRole } from './auth';
 import { formSchemaOf, isDisabled, META, metaOf, setDisabled, withMeta, withoutMeta } from './meta';
-import { schemaFor, type Scope } from './scope';
+import { schemaFor, subsystemOf, type Scope } from './scope';
 import { runOptionsNote, signInBadge, signInNote } from './signInText';
 import { pluginSummary } from './summary';
 import { configErrors } from './validate';
@@ -162,6 +162,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
               danger={signIn?.state === 'stillSignsIn'}
               runNote={runNote}
               switchless={role !== undefined}
+              offerErrorResponse={role === undefined && subsystemOf(scope) === undefined}
               unchecked={unchecked}
               onChange={onChange}
               onJsonHeld={onJsonHeld}
@@ -173,7 +174,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
   );
 }, sameCard);
 
-function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, note, danger, runNote, switchless, unchecked, onChange, onJsonHeld }: {
+function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, note, danger, runNote, switchless, offerErrorResponse, unchecked, onChange, onJsonHeld }: {
   name: string;
   conf: unknown;
   stored: unknown;
@@ -190,6 +191,8 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
   runNote: string | undefined;
   /** No on/off switch (signInRole): the unchecked note speaks of the mark, and the run options have no disable. */
   switchless: boolean;
+  /** MetaForm's error_response: every plugin on an HTTP request, but not a sign-in plugin's credential. */
+  offerErrorResponse: boolean;
   /** What APISIX would refuse in this switched-off plugin's settings once it is switched on. */
   unchecked: { path: string; message: string }[];
   onChange: (conf: unknown) => void;
@@ -338,7 +341,16 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
               )}
               <PendingScope onChange={metaTrack}>
                 <LockProvider locked={locked || metaWaits}>
-                  <MetaForm meta={meta} onChange={(m) => onChange(withMeta(config, m))} info={info} issues={metaIssues} idPrefix={`pl-${name}`} name={name} noDisable={switchless} />
+                  <MetaForm
+                    meta={meta}
+                    onChange={(m) => onChange(withMeta(config, m))}
+                    info={info}
+                    issues={metaIssues}
+                    idPrefix={`pl-${name}`}
+                    name={name}
+                    noDisable={switchless}
+                    offerErrorResponse={offerErrorResponse}
+                  />
                 </LockProvider>
               </PendingScope>
             </div>

@@ -146,6 +146,27 @@ describe('SchemaForm: values', () => {
     expect(form.value()).toEqual({ count: 2, time_window: 60 });
   });
 
+  it('locked, a field shows its description and, when unset, its default: no entry hints (known item 24)', () => {
+    const schema: Obj = {
+      type: 'object',
+      properties: {
+        uri: { type: 'string', description: 'Where the vault listens', pattern: '^https?://' },
+        timeout: { type: 'integer', minimum: 1, maximum: 60, default: 5 },
+        retries: { type: 'integer', minimum: 1 },
+      },
+    };
+    const edit = renderSchemaForm(schema, { uri: 'https://vault:8200', retries: 2 });
+    expect(screen.getByText(t('sf.pattern', { pattern: '^https?://' }))).toBeInTheDocument();
+    expect(screen.getByText(t('sf.range', { min: 1, max: 60 }))).toBeInTheDocument();
+    expect(screen.getByText(t('sf.min', { min: 1 }))).toBeInTheDocument();
+    edit.update({ locked: true });
+    expect(screen.getByText('Where the vault listens')).toBeInTheDocument();
+    expect(screen.queryByText(t('sf.pattern', { pattern: '^https?://' }))).not.toBeInTheDocument();
+    expect(screen.queryByText(t('sf.min', { min: 1 }))).not.toBeInTheDocument();
+    expect(screen.queryByText(new RegExp(t('sf.range', { min: 1, max: 60 })))).not.toBeInTheDocument();
+    expect(screen.getByText(t('sf.default', { value: '5' }))).toBeInTheDocument();
+  });
+
   it('removes an object that becomes empty, unless it is required', async () => {
     const schema: Obj = {
       type: 'object',

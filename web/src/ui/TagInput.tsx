@@ -6,6 +6,7 @@ import { nameOfField, useFieldIds } from './fieldIds';
 import { useEditingState, useLocked } from './LockContext';
 import { usePending } from './PendingContext';
 import { ReadOnlyValue } from './ReadOnly';
+import { LabelTip } from './Tooltip';
 import './collection.css';
 
 export type TagInputProps = Omit<ComponentProps<'input'>, 'value' | 'onChange' | 'children' | 'type'> &
@@ -122,14 +123,11 @@ export function TagInput({
           <span key={`${i}:${tag}`} className={mono ? 'ui-chip mono' : 'ui-chip'}>
             {tag}
             {!disabled && (
-              <button
-                type="button"
-                className="ui-chip__remove"
-                aria-label={t('ui.tags.remove', { tag })}
-                onClick={() => onChange(value.filter((_, j) => j !== i))}
-              >
-                <X aria-hidden="true" size={12} strokeWidth={2.5} />
-              </button>
+              <LabelTip label={t('ui.tags.remove', { tag })}>
+                <button type="button" className="ui-chip__remove" aria-label={t('ui.tags.remove', { tag })} onClick={() => onChange(value.filter((_, j) => j !== i))}>
+                  <X aria-hidden="true" size={12} strokeWidth={2.5} />
+                </button>
+              </LabelTip>
             )}
           </span>
         ))}

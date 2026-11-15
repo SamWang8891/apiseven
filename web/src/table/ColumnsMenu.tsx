@@ -90,7 +90,7 @@ export function ColumnsMenu({ columns, order, visible, onChange, onReset }: Colu
   return (
     <Popover.Root>
       <Popover.Trigger asChild>
-        <Button icon={<Columns3 size={15} />}>{t('table.columns')}</Button>
+        <Button icon={<Columns3 size={15} />} aria-label={t('table.columns')} />
       </Popover.Trigger>
       <Popover.Portal>
         <Popover.Content className="ui-popover tbl-menu" align="end" sideOffset={4} collisionPadding={8} aria-labelledby={titleId}>

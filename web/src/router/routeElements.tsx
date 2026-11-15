@@ -1,25 +1,30 @@
 // The elements the route table renders: they read the URL params and key the pages by them.
+import { ArrowLeft, SearchX } from 'lucide-react';
 import { Link, useLocation, useParams } from 'react-router';
 import { idSegments, isSegment } from '../api/segments';
 import { t } from '../i18n';
 import { EditorPage } from '../pages/EditorPage';
 import { ListPage } from '../pages/ListPage';
 import { registry } from '../resources/registry';
+import { pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { kindFromSegment, pathFor } from './paths';
 
+/** No page at this address (or an id that is not one path segment): say so, and lead back to the kind's list (Routes when none is named). */
 export function NotFound() {
   const { pathname } = useLocation();
+  useDocumentTitle(pageTitle(t('notFound.title')));
+  const kind = kindFromSegment(pathname.split('/')[1]) ?? 'routes';
   return (
-    <div className="shell-page">
-      <div className="shell-page__head">
-        <h1>{t('notFound.title')}</h1>
-      </div>
-      <p>
+    <div className="shell-state">
+      <SearchX className="shell-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />
+      <h1>{t('notFound.title')}</h1>
+      <p className="shell-state__body">
         {t('notFound.body')} <code className="mono">{pathname}</code>
       </p>
-      <p className="shell-note">
-        <Link to={pathFor('routes')}>{t('notFound.back')}</Link>
-      </p>
+      <Link className="shell-state__link" to={pathFor(kind)}>
+        <ArrowLeft size={14} aria-hidden="true" />
+        {t('notFound.back', { plural: registry[kind].plural })}
+      </Link>
     </div>
   );
 }

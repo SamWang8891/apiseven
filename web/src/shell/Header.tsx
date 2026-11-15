@@ -74,18 +74,16 @@ function ConnectionSwitcher() {
           </span>
         </Tooltip>
         {keyRequired && (
-          <Tooltip content={t('header.disconnect')}>
-            <Button
-              variant="ghost"
-              size="sm"
-              icon={<LogOut size={14} />}
-              aria-label={t('header.disconnect')}
-              onClick={() => {
-                disconnect();
-                void navigate('/connect');
-              }}
-            />
-          </Tooltip>
+          <Button
+            variant="ghost"
+            size="sm"
+            icon={<LogOut size={14} />}
+            aria-label={t('header.disconnect')}
+            onClick={() => {
+              disconnect();
+              void navigate('/connect');
+            }}
+          />
         )}
       </span>
     );
@@ -146,18 +144,18 @@ function ThemeToggle() {
   const [choice, setChoice] = useTheme();
   return (
     <div className="shell-theme" role="group" aria-label={t('theme.label')}>
+      {/* Icon-only kit buttons: each shows its label as a tooltip. */}
       {THEMES.map(({ value, icon }) => (
-        <Tooltip key={value} content={t(`theme.${value}`)}>
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={icon}
-            aria-label={t(`theme.${value}`)}
-            aria-pressed={choice === value}
-            className="shell-theme__option"
-            onClick={() => setChoice(value)}
-          />
-        </Tooltip>
+        <Button
+          key={value}
+          variant="ghost"
+          size="sm"
+          icon={icon}
+          aria-label={t(`theme.${value}`)}
+          aria-pressed={choice === value}
+          className="shell-theme__option"
+          onClick={() => setChoice(value)}
+        />
       ))}
     </div>
   );

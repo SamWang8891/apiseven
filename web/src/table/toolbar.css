@@ -5,21 +5,46 @@
 
 /* --- Toolbar -------------------------------------------------------------------------------- */
 
-/* `.tbl` raises it above .shell-toolbar's wrap: the start wraps its chips, the end stays on the first row. */
+/*
+ * One row (`.tbl` raises it above .shell-toolbar's wrap): search and the filter chips on the left,
+ * the table's own buttons on the right. When the row is short, the search narrows to its minimum,
+ * then the chips scroll sideways in their own group (the right edge fades while more follow).
+ */
 .tbl .tbl-toolbar {
   flex: none;
   flex-wrap: nowrap;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--s3);
 }
 
 .tbl-toolbar__start {
   display: flex;
   flex: 1 1 auto;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--s2);
   min-width: 0;
+}
+
+/* Padding inside, margin outside: the chips' focus rings stay inside the scrolling box. */
+.tbl-toolbar__filters {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+  margin: -4px;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.tbl-toolbar__filters:empty {
+  display: none;
+}
+
+.tbl-toolbar__filters--more {
+  mask-image: linear-gradient(to right, var(--text) calc(100% - 28px), transparent);
 }
 
 .tbl-toolbar__end {
@@ -74,7 +99,7 @@
   background: var(--bg-sunken);
   color: var(--text-2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1;
   transform: translateY(-50%);
   pointer-events: none;
@@ -102,7 +127,7 @@
   border-radius: 9px;
   background: var(--accent);
   color: var(--accent-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }

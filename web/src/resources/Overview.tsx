@@ -1,13 +1,22 @@
 // An object at a glance on its General tab: one line per other tab, each name linking to that tab,
 // as a two-column list of facts (the service and stream route editors; the route and upstream
 // editors have their own, with the same classes). Locked, it is the object's spec sheet.
-import { useId, type ReactNode } from 'react';
+import { Fragment, useId, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import './resources.css';
 
-/** Mono values joined by commas, as one run of text. */
+/** Mono values joined by commas, as one run of text that wraps between values, never inside one that fits a line. */
 export function Mono({ values }: { values: string[] }) {
-  return <span className="mono">{values.join(', ')}</span>;
+  return (
+    <span className="mono">
+      {values.map((value, i) => (
+        <Fragment key={i}>
+          {i > 0 && ', '}
+          <span className="res-mono__value">{value}</span>
+        </Fragment>
+      ))}
+    </span>
+  );
 }
 
 /** Facts on one line, separated by dots. */

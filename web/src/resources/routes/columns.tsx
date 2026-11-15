@@ -91,8 +91,8 @@ const time = (value: unknown): number | undefined => (typeof value === 'number' 
 
 // Headers are getters, so they follow the language table at use (never spread a column). The
 // default columns' widths add up, with the status, checkbox and actions columns, to the 1010px a
-// 1280px window leaves beside the sidebar; each fits the widest seeded value (a 21-character host,
-// `10.0.2.10:8080`, `response-rewrite`).
+// 1280px window leaves beside the sidebar: a 20-character host, `10.0.2.10:8080`, two methods and
+// `+N` on one line; longer values end in an ellipsis with their whole text in a title.
 export const routeColumns: ColumnDef[] = [
   {
     id: 'name',
@@ -115,7 +115,7 @@ export const routeColumns: ColumnDef[] = [
       return <HostsCell hosts={hosts} viaService={viaService} />;
     },
     defaultVisible: true,
-    width: 172,
+    width: 164,
   },
   {
     id: 'uris',
@@ -135,7 +135,7 @@ export const routeColumns: ColumnDef[] = [
     accessor: (item) => methodsOf(item.value),
     cell: (item) => <MethodChips methods={methodsOf(item.value)} />,
     defaultVisible: true,
-    width: 92,
+    width: 104,
   },
   {
     id: 'upstream',
@@ -159,7 +159,7 @@ export const routeColumns: ColumnDef[] = [
     accessor: (item, ctx) => effectivePlugins(item.value, ctx).map((p) => p.name),
     cell: (item, ctx) => <PluginChips plugins={pluginChips(item.value, ctx)} />,
     defaultVisible: true,
-    width: 128,
+    width: 124,
   },
   {
     id: 'updated',

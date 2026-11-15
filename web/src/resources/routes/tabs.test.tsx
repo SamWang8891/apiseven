@@ -228,7 +228,7 @@ describe('Upstream: where requests go', () => {
   it('a new route starts on Inline, with the node table ready', async () => {
     renderRouteTab(UpstreamTab, { uri: '/*', status: 1 }, { isNew: true, ctx: CTX });
     expect(radio('inline')).toBeChecked();
-    expect(radio('service')).toBeDisabled();
+    expect(radio('service')).toHaveAttribute('aria-disabled', 'true');
     expect(await screen.findByRole('textbox', { name: t('up.nodes.new') })).toBeInTheDocument();
   });
 

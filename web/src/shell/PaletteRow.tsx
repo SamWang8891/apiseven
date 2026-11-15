@@ -28,6 +28,7 @@ import { statusApplies } from '../resources/ssls/usage';
 import { StatusBadge } from '../table/StatusCell';
 import type { PaletteAction } from './paletteActions';
 import { labelRanges, type FieldName, type Hit } from './search';
+import { clipTitle } from '../ui/clipTitle';
 
 export type Row =
   | { type: 'hit'; key: string; hit: Hit; item?: Item }
@@ -102,7 +103,7 @@ function HitContent({ hit, item }: { hit: Hit; item?: Item }) {
           <Marked text={entry.title} ranges={inTitle ? ranges : []} />
         </span>{' '}
         {!inTitle && (
-          <span className="cp-row__detail">
+          <span className="cp-row__detail" {...clipTitle(`${fieldLabel(entry.kind, field)} ${text}`)}>
             <span className="cp-row__field">{fieldLabel(entry.kind, field)}</span>{' '}
             <span className={MONO.has(field) ? 'mono' : undefined}>
               <Marked text={text} ranges={ranges} />

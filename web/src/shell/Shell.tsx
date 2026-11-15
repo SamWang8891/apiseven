@@ -1,5 +1,5 @@
 import { LockKeyhole } from 'lucide-react';
-import { Fragment, useMemo, useRef, type ReactNode } from 'react';
+import { Fragment, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AdminClient } from '../api/client';
 import { ClientProvider } from '../api/hooks';
@@ -8,9 +8,12 @@ import { needsKey, useConnections, type SavedConnection } from '../connection/st
 import { t } from '../i18n';
 import { kindFromSegment, pathFor } from '../router/paths';
 import { Toaster, TooltipProvider } from '../ui';
+import { clipTitle } from '../ui/clipTitle';
+import { setToastPage } from '../ui/toast';
 import { Header, SearchTrigger } from './Header';
 import { lazyPalette } from './PaletteLoader';
 import { Sidebar } from './Sidebar';
+import { UnreachableBanner } from './UnreachableBanner';
 import { usePalette } from './usePalette';
 import './shell.css';
 
@@ -44,12 +47,18 @@ function Frame({ conn }: { conn: SavedConnection }) {
 function Body({ connId }: { connId: string }) {
   const main = useRef<HTMLElement>(null);
   const palette = usePalette(main);
+  // Before the new page's effects run, so what it raises belongs to it; a refusal from the last page goes.
+  const { pathname } = useLocation();
+  useLayoutEffect(() => setToastPage(pathname), [pathname]);
   return (
     <>
       <div className="shell">
         <Sidebar />
         <Header title={<Breadcrumb />} search={<SearchTrigger onOpen={palette.show} />} />
-        <ReadOnlyBanner />
+        <div className="shell-banners">
+          <UnreachableBanner />
+          <ReadOnlyBanner />
+        </div>
         {/* Keyed by connection: a page never carries state over to another APISIX. Focusable, for the
             page the palette opens. */}
         <main key={connId} ref={main} className="shell-main" tabIndex={-1}>
@@ -86,13 +95,17 @@ function Breadcrumb() {
   const kind = kindFromSegment(segments[0]);
   if (!kind) return null;
 
-  const crumbs: { label: ReactNode; to?: string }[] = [{ label: t(`kind.${kind}.plural`), to: pathFor(kind) }];
-  const item = (raw: string, singular: string): ReactNode =>
-    raw === 'new' ? t('page.new', { kind: singular }) : <span className="mono">{decode(raw)}</span>;
+  // `text`: the crumb as plain text, its title while a narrow header cuts it off.
+  const crumbs: { label: ReactNode; text: string; to?: string }[] = [{ label: t(`kind.${kind}.plural`), text: t(`kind.${kind}.plural`), to: pathFor(kind) }];
+  const item = (raw: string, singular: string): { label: ReactNode; text: string } =>
+    raw === 'new' ? { label: t('page.new', { kind: singular }), text: t('page.new', { kind: singular }) } : { label: <span className="mono">{decode(raw)}</span>, text: decode(raw) };
 
-  if (segments[1] !== undefined) crumbs.push({ label: item(segments[1], t(`kind.${kind}.singular`)), to: `/${segments[0]}/${segments[1]}` });
+  if (segments[1] !== undefined) crumbs.push({ ...item(segments[1], t(`kind.${kind}.singular`)), to: `/${segments[0]}/${segments[1]}` });
   if (kind === 'consumers' && segments[2] === 'credentials' && segments[3] !== undefined) {
-    crumbs.push({ label: t('kind.credentials.plural'), to: `/${segments[0]}/${segments[1]}?tab=credentials` }, { label: item(segments[3], t('kind.credentials.singular')) });
+    crumbs.push(
+      { label: t('kind.credentials.plural'), text: t('kind.credentials.plural'), to: `/${segments[0]}/${segments[1]}?tab=credentials` },
+      item(segments[3], t('kind.credentials.singular')),
+    );
   }
 
   return (
@@ -107,7 +120,7 @@ function Breadcrumb() {
                   /
                 </li>
               )}
-              <li className="shell-crumbs__item">
+              <li className="shell-crumbs__item" {...clipTitle(c.text)}>
                 {last || !c.to ? (
                   <span aria-current={last ? 'page' : undefined}>{c.label}</span>
                 ) : (

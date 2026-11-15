@@ -98,9 +98,7 @@ function Buttons() {
           <Button size={size} variant="primary" disabled>
             Disabled
           </Button>
-          <Tooltip content="Copy ID">
-            <Button size={size} icon={<Copy size={size === 'sm' ? 13 : 15} />} aria-label="Copy ID" />
-          </Tooltip>
+          <Button size={size} icon={<Copy size={size === 'sm' ? 13 : 15} />} aria-label="Copy ID" />
           <Button size={size} variant="ghost" icon={<Pencil size={size === 'sm' ? 13 : 15} />} aria-label="Edit" />
         </div>
       ))}

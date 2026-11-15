@@ -6,10 +6,12 @@ import type { Kind, Parent } from '../api/types';
 import { t } from '../i18n';
 import { registry } from '../resources/registry';
 import { Button } from '../ui';
+import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { backOf } from './back';
 
 /** The header and body outlines while the object loads. */
-export function EditorSkeleton({ kind }: { kind: Kind }) {
+export function EditorSkeleton({ kind, id }: { kind: Kind; id?: string }) {
+  useDocumentTitle(id === undefined ? pageTitle(t('page.new', { kind: registry[kind].singular })) : objectTitle(id, registry[kind].singular));
   return (
     <div className="ed" role="status" aria-busy="true" aria-label={t('editor.loading', { kind: registry[kind].singular })}>
       <div className="ed-head">
@@ -32,6 +34,7 @@ export function EditorSkeleton({ kind }: { kind: Kind }) {
 export function NotFoundState({ kind, id, parent, copying }: { kind: Kind; id: string; parent?: Parent; copying?: boolean }) {
   const back = backOf(kind, parent);
   const singular = registry[kind].singular;
+  useDocumentTitle(pageTitle(t('notFound.title')));
   return (
     <div className="ed-state">
       <SearchX className="ed-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />
@@ -47,6 +50,7 @@ export function NotFoundState({ kind, id, parent, copying }: { kind: Kind; id: s
 
 /** The read failed for another reason (auth errors excepted: they send the app to Connect). */
 export function LoadErrorState({ kind, id, error, retrying, onRetry }: { kind: Kind; id: string; error: ApiError; retrying: boolean; onRetry: () => void }) {
+  useDocumentTitle(objectTitle(id, registry[kind].singular));
   return (
     <div className="ed-state ed-state--error" role="alert">
       <CircleAlert className="ed-state__icon" size={28} strokeWidth={1.75} aria-hidden="true" />

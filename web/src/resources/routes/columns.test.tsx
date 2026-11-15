@@ -14,6 +14,15 @@ import { routeColumns } from './columns';
 
 afterEach(() => vi.useRealTimers());
 
+/** Makes jsdom report `el` narrower than its text, as a browser does for an ellipsis. */
+function clip(el: HTMLElement) {
+  Object.defineProperty(el, 'scrollWidth', { configurable: true, value: 240 });
+  Object.defineProperty(el, 'clientWidth', { configurable: true, value: 100 });
+}
+function unclip(el: HTMLElement) {
+  Object.defineProperty(el, 'scrollWidth', { configurable: true, value: 100 });
+}
+
 function col(id: string): ColumnDef {
   const column = routeColumns.find((c) => c.id === id);
   if (!column) throw new Error(`no column ${id}`);
@@ -206,11 +215,18 @@ describe('plugins', () => {
     expect(within(el).getByText('gzip').closest('.cell-plugin')).toHaveTextContent(/^gzip$/);
   });
 
-  it('names a long plugin in full: the chip text can ellipsise, the chip title holds the name', async () => {
+  it('names a long plugin in full: the chip text can ellipsise, the chip title holds the name only while it is cut off', async () => {
     const own = cell('plugins', route({ plugins: { 'ext-plugin-post-resp': {} } }));
-    const chip = within(own.el).getByText('ext-plugin-post-resp');
-    expect(chip).toHaveClass('cell-chip__text');
-    expect(chip.closest('.cell-plugin')).toHaveAttribute('title', 'ext-plugin-post-resp');
+    const text = within(own.el).getByText('ext-plugin-post-resp');
+    expect(text).toHaveClass('cell-chip__text');
+    const chip = text.closest('.cell-plugin') as HTMLElement;
+    // Known item 5: a title that repeats what is shown would be read twice.
+    await own.user.hover(chip);
+    expect(chip).not.toHaveAttribute('title');
+    await own.user.unhover(chip);
+    clip(text);
+    await own.user.hover(chip);
+    expect(chip).toHaveAttribute('title', 'ext-plugin-post-resp');
     own.unmount();
 
     // An inherited chip has a tooltip instead of a title: the name, then where it comes from.
@@ -219,6 +235,17 @@ describe('plugins', () => {
     const inherited = within(el).getByText('request-validation').closest('.cell-plugin') as HTMLElement;
     expect(inherited).not.toHaveAttribute('title');
     await user.hover(inherited);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(`request-validation${t('cell.plugin.fromService', { name: 'web' })}`);
+  });
+
+  it('an inherited chip takes keyboard focus and shows where it comes from (known item 3)', async () => {
+    const ctx = ctxOf({ services: [itemOf('s1', { name: 'web', plugins: { 'request-validation': {} } })] });
+    const { el, user } = cell('plugins', route({ service_id: 's1', plugins: { gzip: {} } }), ctx);
+    const inherited = within(el).getByText('request-validation').closest('.cell-plugin') as HTMLElement;
+    const own = within(el).getByText('gzip').closest('.cell-plugin') as HTMLElement;
+    expect(own).not.toHaveAttribute('tabindex');
+    await user.tab();
+    expect(inherited).toHaveFocus();
     expect(await screen.findByRole('tooltip')).toHaveTextContent(`request-validation${t('cell.plugin.fromService', { name: 'web' })}`);
   });
 
@@ -288,11 +315,22 @@ describe('the other optional columns', () => {
     expect(el.querySelector('.cell-label')).toHaveTextContent('team:core');
   });
 
-  it('labels: a long pair can ellipsise, its full text in the chip title', () => {
-    const { el } = cell('labels', route({ labels: { 'owner-team': 'platform-infrastructure-oncall' } }));
-    const chip = el.querySelector('.cell-label');
-    expect(chip).toHaveAttribute('title', 'owner-team:platform-infrastructure-oncall');
-    expect(chip?.querySelector('.cell-chip__text')).toHaveTextContent('owner-team:platform-infrastructure-oncall');
+  it('labels: a long pair can ellipsise, its full text in the chip title only while it is cut off (known item 5)', async () => {
+    const { el, user } = cell('labels', route({ labels: { 'owner-team': 'platform-infrastructure-oncall', team: 'core' } }));
+    const [long, short] = [...el.querySelectorAll<HTMLElement>('.cell-label')] as [HTMLElement, HTMLElement];
+    const text = long.querySelector<HTMLElement>('.cell-chip__text') as HTMLElement;
+    expect(text).toHaveTextContent('owner-team:platform-infrastructure-oncall');
+    clip(text);
+    await user.hover(long);
+    expect(long).toHaveAttribute('title', 'owner-team:platform-infrastructure-oncall');
+    // The short pair shows all of itself: no title repeating it.
+    await user.hover(short);
+    expect(short).not.toHaveAttribute('title');
+    // Wider again (the column was widened): the title goes.
+    unclip(text);
+    await user.unhover(long);
+    await user.hover(long);
+    expect(long).not.toHaveAttribute('title');
   });
 
   it('remote_addrs: from remote_addr or remote_addrs', () => {

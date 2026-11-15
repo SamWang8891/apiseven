@@ -19,7 +19,7 @@ import { SEED_CERT, SEED_KEY } from '../test/sslSeed';
 import { renderWithProviders } from '../test/providers';
 import { EditorPage } from '../pages/EditorPage';
 import { usePending } from '../ui';
-import { getToasts } from '../ui/toast';
+import { getToasts, toastsRaised } from '../ui/toast';
 
 const undo: (() => void)[] = [];
 afterEach(() => {
@@ -186,12 +186,12 @@ describe('Save anyway', () => {
     await waitFor(() => expect(offer()).toBeNull());
     const held = t('editor.fixHeld', { fix: t('editor.fixMany', { count: 2 }), message: 'Holder: not taken yet' });
     // The button's refusal, then Cmd/Ctrl-S's: one more toast each, so each was refused on its own.
-    const before = getToasts().length;
+    const before = toastsRaised();
     await user.click(main().getByRole('button', { name: t('editor.save') }));
-    await waitFor(() => expect(getToasts().length).toBe(before + 1));
+    await waitFor(() => expect(toastsRaised()).toBe(before + 1));
     expect(getToasts().at(-1)?.message).toBe(held);
     fireEvent.keyDown(window, { key: 's', ctrlKey: true });
-    await waitFor(() => expect(getToasts().length).toBe(before + 2));
+    await waitFor(() => expect(toastsRaised()).toBe(before + 2));
     expect(getToasts().at(-1)?.message).toBe(held);
     expect(offer()).toBeNull();
     expect(main().queryByRole('button', { name: t('editor.anyway.action') })).toBeNull();

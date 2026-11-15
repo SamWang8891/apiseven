@@ -1,8 +1,8 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { t } from '../i18n';
 import type { ColumnDef } from '../resources/registry';
-import { MIN_COLUMN_WIDTH } from './tableState';
+import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from './tableState';
 
 export interface HeaderCellProps {
   column: ColumnDef;
@@ -19,9 +19,15 @@ export interface HeaderCellProps {
   onResetWidth: () => void;
 }
 
+/** Pixels an arrow key moves the edge; with Shift, `BIG_STEP`. */
+const STEP = 10;
+const BIG_STEP = 50;
+
 /**
- * A sortable header (click; shift-click adds a rule) with a draggable right edge (double-click resets);
- * a column with `sortable: false` has a plain label instead of the sort button.
+ * A sortable header (click; shift-click adds a rule) with a resizable right edge: drag it, or focus it
+ * (a vertical separator in the tab order) and press Left / Right (Shift for bigger steps); double-click
+ * or Enter puts the default width back. A column with `sortable: false` has a plain label instead of
+ * the sort button.
  */
 export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, onResizing, onResize, onResetWidth }: HeaderCellProps) {
   const sorted = sortIndex >= 0;
@@ -49,9 +55,28 @@ export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, 
     handle.addEventListener('pointercancel', end);
   }
 
+  function keyResize(e: ReactKeyboardEvent<HTMLSpanElement>) {
+    const step = e.shiftKey ? BIG_STEP : STEP;
+    const by = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+    if (by !== 0) {
+      e.preventDefault();
+      const next = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width + by));
+      if (next !== width) onResize(next);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      onResetWidth();
+    }
+  }
+
   const sortable = column.sortable !== false;
   return (
-    <th scope="col" className={sorted ? 'tbl-th tbl-th--sorted' : 'tbl-th'} aria-sort={sortable ? (sorted ? (desc ? 'descending' : 'ascending') : 'none') : undefined}>
+    // Named by its header alone: the resize edge inside has a name of its own ("Resize Hosts").
+    <th
+      scope="col"
+      className={sorted ? 'tbl-th tbl-th--sorted' : 'tbl-th'}
+      aria-label={column.header}
+      aria-sort={sortable ? (sorted ? (desc ? 'descending' : 'ascending') : 'none') : undefined}
+    >
       {sortable ? (
         <button type="button" className="tbl-sort" onClick={(e) => onSort(e.shiftKey)}>
           <span className="tbl-sort__label">{column.header}</span>
@@ -68,10 +93,18 @@ export function HeaderCell({ column, width, sortIndex, desc, multiSort, onSort, 
       )}
       <span
         className="tbl-resize"
-        aria-hidden="true"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('table.resizeLabel', { column: column.header })}
+        aria-valuenow={width}
+        aria-valuemin={MIN_COLUMN_WIDTH}
+        aria-valuemax={MAX_COLUMN_WIDTH}
+        aria-valuetext={t('table.resizeValue', { width })}
+        tabIndex={0}
         title={t('table.resize', { column: column.header })}
         onPointerDown={startResize}
         onDoubleClick={onResetWidth}
+        onKeyDown={keyResize}
       />
     </th>
   );

@@ -6,6 +6,7 @@ import { Field, type FieldProps } from './Field';
 import { useFieldIds } from './fieldIds';
 import { useLocked } from './LockContext';
 import { ReadOnlyValue } from './ReadOnly';
+import { LabelTip } from './Tooltip';
 import './select.css';
 
 export interface Option {
@@ -142,17 +143,19 @@ export function Select({
               <ChevronDown className="ui-select__chevron" aria-hidden="true" size={15} />
             </button>
             {clearable && value !== undefined && !disabled && (
-              <button
-                type="button"
-                className="ui-select__clear"
-                aria-label={t('ui.select.clear')}
-                onClick={() => {
-                  onChange(undefined);
-                  triggerRef.current?.focus();
-                }}
-              >
-                <X aria-hidden="true" size={14} />
-              </button>
+              <LabelTip label={t('ui.select.clear')}>
+                <button
+                  type="button"
+                  className="ui-select__clear"
+                  aria-label={t('ui.select.clear')}
+                  onClick={() => {
+                    onChange(undefined);
+                    triggerRef.current?.focus();
+                  }}
+                >
+                  <X aria-hidden="true" size={14} />
+                </button>
+              </LabelTip>
             )}
           </div>
         </Popover.Anchor>

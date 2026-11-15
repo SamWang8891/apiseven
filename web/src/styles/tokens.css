@@ -16,6 +16,8 @@
  *            --code-key / --code-string / --code-literal syntax colours on --bg-raised and
  *            --bg-sunken (comments use --text-2) · --scrim behind dialogs · --shadow under
  *            floating surfaces · control heights and the larger radius of floating surfaces.
+ * Selection: --selection behind selected text, which keeps its own colour: every text colour above
+ *            stays >= 4.5:1 on it, and it stands apart from all three surfaces (code blocks too).
  */
 
 :root {
@@ -42,6 +44,7 @@
   --neutral-bg: #e3e6eb;
 
   --accent-bg: #ebe9fc;
+  --selection: #dcd7fb;
   --on-danger: #ffffff;
   --code-key: #1f4fbf;
   --code-string: #8a2b80;
@@ -90,6 +93,7 @@
   --neutral-bg: #2c313b;
 
   --accent-bg: #221d4a;
+  --selection: #352d75;
   --on-danger: #1a0705;
   --code-key: #8cb4ff;
   --code-string: #f0a3e6;

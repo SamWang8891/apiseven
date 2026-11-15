@@ -10,6 +10,7 @@ import { t } from '../i18n';
 import { Badge, Button, Checkbox, ConfirmDialog, Input } from '../ui';
 import { needsKey, useConnections, type SavedConnection } from './store';
 import { hostOf, isMixedContent, normalizeAdminUrl } from './url';
+import { pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import './connect.css';
 
 /** Router state of a redirect here after a read failed with an auth error. */
@@ -27,6 +28,7 @@ export interface ConnectState {
 export function ConnectPage() {
   const { serverManaged, keyRequired } = useConnections();
   const state = useLocation().state as ConnectState | null;
+  useDocumentTitle(pageTitle(t('connect.title')));
   if (serverManaged && !keyRequired) {
     return state?.reason ? <ServerKeyRejected reason={state.reason} /> : <Navigate to="/routes" replace />;
   }

@@ -3,7 +3,7 @@
 // routes/columns.tsx) and hand them in; these only present them. Each cell's first line is text (or
 // a chip whose first item is text), so it shares the row's baseline (table.css).
 import { Copy } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { Item, Kind, Parent } from '../api/types';
 import { t } from '../i18n';
@@ -12,6 +12,7 @@ import { pathFor } from '../router/paths';
 import { Empty, Lines, NameCell } from '../table/cells';
 import { formatAbsolute, formatRelative } from '../table/format';
 import { Badge, toast, Tooltip } from '../ui';
+import { clipTitle } from '../ui/clipTitle';
 import { nameOfValue, type CtxKind, type Reference, type RefTarget, type UpstreamSummary } from './resolve';
 import './cells.css';
 
@@ -26,7 +27,7 @@ export function NameDescCell({ kind, item, parent, mono }: { kind: Kind; item: I
     <>
       <NameCell kind={kind} item={item} value={name} parent={parent} mono={mono} />
       {typeof desc === 'string' && desc !== '' && desc !== name && (
-        <span className="cell-sub" title={desc}>
+        <span className="cell-sub" {...clipTitle(desc)}>
           {desc}
         </span>
       )}
@@ -71,17 +72,73 @@ function ChipList({ chips, all }: { chips: ReactNode[]; all: ReactNode[] }) {
   );
 }
 
-/** HTTP methods as chips; `ANY` (no restriction) quieter than a real list. */
-export function MethodChips({ methods }: { methods: string[] }) {
+/** Room kept for the `+N` button when some chips are left out (its width at 12px), and the gap (cells.css). */
+const MORE_WIDTH = 15;
+const CHIP_GAP = 3;
+
+/**
+ * Chips on one line: as many as the column has room for, then `+N` with all of them in a tooltip
+ * (focusable). Widths are measured once with every chip shown, then the row is fitted again whenever
+ * the column changes width. At least one chip shows.
+ */
+function FitChips({ chips, all, signature }: { chips: ReactNode[]; all: ReactNode[]; signature: string }) {
+  const row = useRef<HTMLSpanElement>(null);
+  const [fit, setFit] = useState({ signature, count: chips.length });
+  const count = fit.signature === signature ? fit.count : chips.length;
+
+  useLayoutEffect(() => {
+    const el = row.current;
+    if (!el) return;
+    const items = [...el.querySelectorAll<HTMLElement>(':scope > .cell-fit__item')];
+    // Measured while all of them show (the first layout for this list of chips).
+    const widths = items.map((item) => item.offsetWidth);
+    const place = () => {
+      const room = el.clientWidth;
+      let used = 0;
+      let n = 0;
+      for (const [i, w] of widths.entries()) {
+        const next = used + (i > 0 ? CHIP_GAP : 0) + w;
+        const rest = i < widths.length - 1 ? CHIP_GAP + MORE_WIDTH : 0;
+        if (next + rest > room) break;
+        used = next;
+        n = i + 1;
+      }
+      setFit({ signature, count: Math.max(1, room > 0 ? n : widths.length) });
+    };
+    place();
+    if (typeof ResizeObserver !== 'function') return;
+    const observer = new ResizeObserver(place);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [signature]);
+
+  const hidden = chips.length - count;
   return (
-    <span className="cell-chips">
-      {methods.map((method) => (
-        <span key={method} className={method === 'ANY' ? 'cell-chip cell-method cell-method--any' : 'cell-chip cell-method'}>
-          {method}
+    <span ref={row} className="cell-chips cell-chips--fit">
+      {chips.map((chip, i) => (
+        <span key={i} className="cell-fit__item" hidden={i >= count}>
+          {chip}
         </span>
       ))}
+      {hidden > 0 && (
+        <Tooltip content={<span className="cell-tip-list">{all}</span>}>
+          <button type="button" className="tbl-more cell-more">
+            {t('cell.more', { count: hidden })}
+          </button>
+        </Tooltip>
+      )}
     </span>
   );
+}
+
+/** HTTP methods as chips on one line (then `+N`); `ANY` (no restriction) quieter than a real list. */
+export function MethodChips({ methods }: { methods: string[] }) {
+  const chips = methods.map((method) => (
+    <span key={method} className={method === 'ANY' ? 'cell-chip cell-method cell-method--any' : 'cell-chip cell-method'}>
+      {method}
+    </span>
+  ));
+  return <FitChips chips={chips} all={methods.map((method) => <span key={method} className="mono">{method}</span>)} signature={methods.join(' ')} />;
 }
 
 export interface PluginChip {
@@ -104,7 +161,8 @@ export interface PluginChip {
 
 /**
  * One plugin chip. A name wider than the column ends in an ellipsis; the full name is in the chip's
- * title, or, for an inherited plugin, in its tooltip above where it comes from.
+ * title while it is cut off (always, with the reason, when it has one), or, for an inherited plugin,
+ * in its tooltip above where it comes from.
  */
 const why = (plugin: PluginChip): string | undefined =>
   plugin.notApplied
@@ -128,9 +186,11 @@ const offLabel = (plugin: PluginChip): string => t(plugin.unclassified ? 'cell.p
 function pluginChip(plugin: PluginChip): ReactNode {
   const cls = ['cell-chip', 'cell-plugin', plugin.from && 'cell-plugin--inherited', (plugin.disabled || plugin.notApplied || plugin.notUsed) && 'cell-plugin--off'];
   const reason = why(plugin);
-  const title = reason ? `${plugin.name}: ${reason}` : plugin.name;
+  // The reason is more than the visible text, so it is always the title; the bare name only when cut off.
+  const title = plugin.from ? {} : reason ? { title: `${plugin.name}: ${reason}` } : clipTitle(plugin.name);
+  // An inherited chip takes focus, so its tooltip (where it comes from) opens from the keyboard too.
   const chip = (
-    <span key={plugin.name} className={cls.filter(Boolean).join(' ')} title={plugin.from ? undefined : title}>
+    <span key={plugin.name} className={cls.filter(Boolean).join(' ')} tabIndex={plugin.from ? 0 : undefined} {...title}>
       <span className="cell-chip__text">{plugin.name}</span>
       {plugin.disabled && <span className="cell-plugin__off">{offLabel(plugin)}</span>}
       {plugin.notApplied && <span className="cell-plugin__off">{t('cell.plugin.notApplied')}</span>}
@@ -186,11 +246,11 @@ export function PluginChips({ plugins }: { plugins: PluginChip[] }) {
   return <ChipList chips={plugins.map(pluginChip)} all={plugins.map(pluginLine)} />;
 }
 
-/** `key:value` chips, the key quieter than the value; a long pair ends in an ellipsis, in full in the title. */
+/** `key:value` chips, the key quieter than the value; a long pair ends in an ellipsis, in full in the title (only then). */
 export function LabelChips({ pairs }: { pairs: [string, string][] }) {
   if (pairs.length === 0) return <Empty />;
   const chip = ([key, value]: [string, string]) => (
-    <span key={key} className="cell-chip cell-label" title={`${key}:${value}`}>
+    <span key={key} className="cell-chip cell-label" {...clipTitle(`${key}:${value}`)}>
       <span className="cell-chip__text">
         <span className="cell-label__key">{key}:</span>
         {value}
@@ -213,7 +273,7 @@ export function RefCell({ kind, target, loading }: { kind: CtxKind; target: RefT
   if (!target) return <Empty />;
   if (!target.item && loading) {
     return (
-      <span className="tbl-line mono" title={target.id}>
+      <span className="tbl-line mono" {...clipTitle(target.id)}>
         {target.id}
       </span>
     );
@@ -221,7 +281,7 @@ export function RefCell({ kind, target, loading }: { kind: CtxKind; target: RefT
   if (!target.item) return <MissingRef kind={kind} id={target.id} />;
   const name = nameOfValue(target.item.value) ?? target.id;
   return (
-    <Link className="cell-link" to={pathFor(kind, target.id)} title={name}>
+    <Link className="cell-link" to={pathFor(kind, target.id)} {...clipTitle(name)}>
       {name}
     </Link>
   );
@@ -336,7 +396,7 @@ async function copy(text: string) {
 export function IdCell({ id }: { id: string }) {
   return (
     <span className="cell-id">
-      <span className="cell-id__text mono" title={id}>
+      <span className="cell-id__text mono" {...clipTitle(id)}>
         {id}
       </span>
       <button type="button" className="cell-copy" aria-label={t('cell.copyId', { id })} title={t('cell.copyId', { id })} onClick={() => void copy(id)}>

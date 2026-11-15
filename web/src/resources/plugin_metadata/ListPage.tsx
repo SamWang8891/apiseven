@@ -12,7 +12,9 @@ import { useReadOnlyKey } from '../../api/write';
 import { t } from '../../i18n';
 import { DeleteResourceDialog } from '../../pages/RowActions';
 import { pathFor } from '../../router/paths';
+import { pageTitle, useDocumentTitle } from '../../shell/documentTitle';
 import { DataTable } from '../../table/DataTable';
+import { NewLink } from '../../table/Toolbar';
 import { registry, useCtx } from '../registry';
 import { metadataColumns } from './columns';
 import { metadataRows, type MetadataRow } from './rows';
@@ -29,6 +31,7 @@ export function MetadataListPage({ kind }: { kind: Kind }) {
   const navigate = useNavigate();
   const readOnly = useReadOnlyKey();
   const [resetting, setResetting] = useState<Item>();
+  useDocumentTitle(pageTitle(def.plural));
   const settled = plugins.data !== undefined || plugins.isError;
   const rows = useMemo(() => (list.data && settled ? metadataRows(plugins.data, list.data) : undefined), [list.data, settled, plugins.data]);
 
@@ -52,6 +55,7 @@ export function MetadataListPage({ kind }: { kind: Kind }) {
           <h1>{def.plural}</h1>
           {rows && <span className="list-title__count">{rows.length}</span>}
         </div>
+        <NewLink kind={kind} />
       </div>
       <p className="res-note res-note--page">{t('pm.help')}</p>
       {plugins.isError && (
@@ -65,6 +69,7 @@ export function MetadataListPage({ kind }: { kind: Kind }) {
         columns={metadataColumns}
         ctx={ctx}
         rowActions={rowActions}
+        noNewButton
         loading={rows === undefined && !list.error}
         error={list.data ? undefined : (list.error ?? undefined)}
         onRetry={() => void list.refetch()}

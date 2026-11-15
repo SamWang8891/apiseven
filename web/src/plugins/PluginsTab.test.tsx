@@ -233,7 +233,7 @@ describe('Form and JSON', () => {
 });
 
 describe('_meta', () => {
-  async function openMeta(scope: 'route' | 'consumer', value: Record<string, Record<string, unknown>>) {
+  async function openMeta(scope: 'route' | 'consumer' | 'stream_route', value: Record<string, Record<string, unknown>>) {
     const harness = renderPluginsTab({ scope, value, validate: false });
     const name = Object.keys(value)[0] ?? '';
     const el = await card(name);
@@ -279,6 +279,23 @@ describe('_meta', () => {
     expect(value()).toEqual({ 'key-auth': { _meta: { error_response: 'Missing credential' } } });
   });
 
+  it('error_response: offered for any plugin on an HTTP request, since APISIX sends it whenever a plugin rejects one (known item 6)', async () => {
+    const { user, value, el } = await openMeta('route', { 'limit-count': { count: 1, time_window: 1 } });
+    await user.type(within(el).getByRole('textbox', { name: 'error_response' }), 'Slow down');
+    expect(value()).toEqual({ 'limit-count': { _meta: { error_response: 'Slow down' }, count: 1, time_window: 1 } });
+  });
+
+  it('error_response: not offered where APISIX never sends it, a stream route or a consumer\'s sign-in plugin', async () => {
+    const stream = await openMeta('stream_route', { 'limit-conn': { conn: 1, burst: 0, default_conn_delay: 0.1, key: 'remote_addr' } });
+    expect(within(stream.el).queryByRole('textbox', { name: 'error_response' })).not.toBeInTheDocument();
+    stream.unmount();
+    const consumer = await openMeta('consumer', { 'limit-count': { count: 1, time_window: 1 } });
+    expect(within(consumer.el).getByRole('textbox', { name: 'error_response' })).toBeInTheDocument();
+    consumer.unmount();
+    const signIn = await openMeta('consumer', { 'key-auth': { key: 'k' } });
+    expect(within(signIn.el).queryByRole('textbox', { name: 'error_response' })).not.toBeInTheDocument();
+  });
+
   it('error_response: switching between text and JSON converts the value ({"message": text})', async () => {
     const { user, value, el } = await openMeta('route', { 'key-auth': { _meta: { error_response: 'Denied' } } });
     await user.click(within(el).getByRole('combobox', { name: t('pl.meta.errorKind') }));
@@ -290,9 +307,8 @@ describe('_meta', () => {
     expect(value()).toEqual({ 'key-auth': { _meta: { error_response: 'Denied' } } });
   });
 
-  it('error_response is not offered for other plugins unless set; pre_function and unknown keys are kept and named', async () => {
+  it('pre_function and unknown keys are kept and named', async () => {
     const { el } = await openMeta('route', { cors: { _meta: { pre_function: 'return function() end', x: 1 } } });
-    expect(within(el).queryByRole('textbox', { name: 'error_response' })).not.toBeInTheDocument();
     expect(within(el).getByText(t('pl.meta.other', { keys: 'pre_function, x' }))).toBeInTheDocument();
   });
 });

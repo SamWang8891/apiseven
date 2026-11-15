@@ -3,12 +3,16 @@ import { Field, type FieldProps } from './Field';
 import { useFieldIds } from './fieldIds';
 import { useLocked } from './LockContext';
 import { ReadOnlyValue } from './ReadOnly';
+import { Tooltip } from './Tooltip';
+import { useTooltipsAvailable } from './tooltipContext';
 import './toggle.css';
 
 export interface SegmentedOption {
   value: string;
   label: ReactNode;
   disabled?: boolean;
+  /** Why it can't be chosen now: the disabled option's tooltip ("Choose a service above…"). */
+  reason?: string;
 }
 
 export type SegmentedProps = Omit<FieldProps, 'htmlFor'> & {
@@ -20,10 +24,12 @@ export type SegmentedProps = Omit<FieldProps, 'htmlFor'> & {
 
 /**
  * One of a few exclusive choices side by side (a radio group): click, or the arrow keys, which move
- * and choose at once; Tab stops on the chosen option only. Locked: the chosen label as text.
+ * and choose at once; Tab stops on the chosen option only. Locked: the chosen label as text. A
+ * disabled option stays readable and hoverable (aria-disabled), its `reason` in a tooltip.
  */
 export function Segmented({ label, help, error, required, value, onChange, options, id }: SegmentedProps) {
   const locked = useLocked();
+  const tooltips = useTooltipsAvailable();
   const ids = useFieldIds(id, { help, error });
   const labelId = useId();
   const buttons = useRef<(HTMLButtonElement | null)[]>([]);
@@ -63,24 +69,34 @@ export function Segmented({ label, help, error, required, value, onChange, optio
         aria-invalid={error ? true : undefined}
         className="ui-segmented"
       >
-        {options.map((option, i) => (
-          <button
-            key={option.value}
-            ref={(el) => {
-              buttons.current[i] = el;
-            }}
-            type="button"
-            role="radio"
-            aria-checked={option.value === value}
-            tabIndex={i === tabStop ? 0 : -1}
-            disabled={option.disabled}
-            className="ui-segmented__option"
-            onClick={() => onChange(option.value)}
-            onKeyDown={(e) => onKey(e, i)}
-          >
-            {option.label}
-          </button>
-        ))}
+        {options.map((option, i) => {
+          const button = (
+            <button
+              key={option.value}
+              ref={(el) => {
+                buttons.current[i] = el;
+              }}
+              type="button"
+              role="radio"
+              aria-checked={option.value === value}
+              tabIndex={i === tabStop ? 0 : -1}
+              aria-disabled={option.disabled || undefined}
+              title={option.disabled && !tooltips ? option.reason : undefined}
+              className="ui-segmented__option"
+              onClick={() => !option.disabled && onChange(option.value)}
+              onKeyDown={(e) => onKey(e, i)}
+            >
+              {option.label}
+            </button>
+          );
+          return option.disabled && option.reason && tooltips ? (
+            <Tooltip key={option.value} content={option.reason}>
+              {button}
+            </Tooltip>
+          ) : (
+            button
+          );
+        })}
       </div>
     </Field>
   );

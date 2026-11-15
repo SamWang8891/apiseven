@@ -219,6 +219,19 @@ describe('General', () => {
     expect(overview).not.toHaveTextContent('limit-count');
   });
 
+  it('the overview shows a server address range apart from its port (known item 19)', () => {
+    tab(GeneralTab, { server_addr: '10.0.0.0/8', server_port: 9100 }, { locked: true });
+    tab(GeneralTab, { server_addr: 'fe80::/64', server_port: 9100 }, { locked: true });
+    tab(GeneralTab, { server_addr: 'fe80::1', server_port: 9100 }, { locked: true });
+    const [v4, v6, single] = screen.getAllByRole('region', { name: t('sr.overview') }) as [HTMLElement, HTMLElement, HTMLElement];
+    expect(v4).toHaveTextContent(`10.0.0.0/8 ${t('sr.overview.port')} 9100`);
+    expect(v4).not.toHaveTextContent('10.0.0.0/8:9100');
+    expect(v6).toHaveTextContent(`fe80::/64 ${t('sr.overview.port')} 9100`);
+    expect(v6).not.toHaveTextContent('[fe80::/64]:9100');
+    // One address keeps the usual form.
+    expect(single).toHaveTextContent('[fe80::1]:9100');
+  });
+
   it('the overview of a bare stream route, and while the service is loading', () => {
     tab(GeneralTab, {}, { locked: true });
     const bare = screen.getByRole('region', { name: t('sr.overview') });
