@@ -9,7 +9,7 @@ import { HostsCell, IdCell, LabelChips, MethodChips, NameDescCell, PluginChips, 
 import type { Ctx } from '../ctx';
 import { ExpiryBadge } from '../expiry';
 import type { ColumnDef } from '../registry';
-import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
+import { effectivePlugins, labelPairs, nameOfValue, resolveRef, routeHosts, sslExpiries, sslForHost, upstreamSummary, type EffectivePlugin } from '../resolve';
 
 function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v !== '') : [];
@@ -56,12 +56,16 @@ function timeoutOf(timeout: unknown): string | undefined {
   return parts && `${parts.connect}/${parts.send}/${parts.read}`;
 }
 
-/** The soonest expiry (ms) among the certificates APISIX would serve for the route's hosts. */
+/**
+ * The soonest expiry (ms) among the certificates APISIX would serve for the route's hosts; where
+ * several certificates share a host's SNI (APISIX serves the one it loaded first), the soonest of them.
+ */
 function soonestExpiry(route: Obj, ctx: Ctx): number | undefined {
   let soonest: number | undefined;
   for (const host of routeHosts(route, ctx).hosts) {
-    const notAfter = sslForHost(host, ctx)?.notAfter;
-    if (notAfter !== undefined && (soonest === undefined || notAfter < soonest)) soonest = notAfter;
+    for (const notAfter of sslExpiries(sslForHost(host, ctx))) {
+      if (notAfter !== undefined && (soonest === undefined || notAfter < soonest)) soonest = notAfter;
+    }
   }
   return soonest;
 }

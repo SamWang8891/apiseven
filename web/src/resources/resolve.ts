@@ -26,6 +26,12 @@ export interface SslMatch {
   item: Item;
   /** Milliseconds since the epoch. */
   notAfter?: number;
+  /**
+   * Other certificates the SNI router puts level with `item` for this host (the same SNI, or the same
+   * longest wildcard). APISIX serves whichever of them it loaded first, which the dashboard can't
+   * know: `item` is only the first in the list's order (etcd key order, APISIX's own after a restart).
+   */
+  shared: Item[];
 }
 
 export interface Reference {
@@ -237,47 +243,111 @@ export function streamEffectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] 
   return effectivePlugins(asStreamRoute(route), ctx).filter((p) => runsOnStream(p.name));
 }
 
-/** `*.example.org` covers exactly one more label: `a.example.org`, not `a.b.example.org` or `example.org`. */
-function wildcardCovers(sni: string, host: string): boolean {
-  if (!sni.startsWith('*.')) return false;
-  const suffix = sni.slice(1);
-  if (!host.endsWith(suffix)) return false;
-  const label = host.slice(0, -suffix.length);
-  return label !== '' && !label.includes('.');
+/** An SNI as APISIX compares it: lower case, without a trailing dot (ssl.lua 68–69; radixtree_sni.lua 293–301 for stored ones). */
+const normalSni = (sni: string): string => sni.replace(/\.$/, '').toLowerCase();
+
+/**
+ * The SNIs the router serves an SSL for: `snis` when it is a non-empty list, else `sni`
+ * (radixtree_sni.lua 56–64), normalised (normalSni). Empty for neither.
+ */
+export function sniList(ssl: Obj): string[] {
+  const list: unknown[] = Array.isArray(ssl.snis) && ssl.snis.length > 0 ? ssl.snis : [ssl.sni];
+  return list.filter((s): s is string => typeof s === 'string' && s !== '').map(normalSni);
 }
 
-/** 2 for an exact SNI, 1 for a covering wildcard, 0 when the certificate is not served for the host. */
-function sniRank(ssl: Obj, host: string): number {
-  // APISIX serves only enabled server certificates (apisix/ssl/router/radixtree_sni.lua).
-  if (ssl.type === 'client' || ssl.status === 0) return 0;
-  const sni = nonEmpty(ssl.sni);
-  const snis = [...strings(ssl.snis), ...(sni === undefined ? [] : [sni])].map((s) => s.toLowerCase());
-  if (snis.includes(host)) return 2;
-  return snis.some((s) => wildcardCovers(s, host)) ? 1 : 0;
+/**
+ * Whether the SNI router serves this SSL to TLS clients at all: an enabled server certificate
+ * (radixtree_sni.lua 51–52). A missing type is `server`, the schema's default, which APISIX applies
+ * when it loads the object (checked live: an SSL stored without a type is served).
+ */
+export function servedToClients(ssl: Obj): boolean {
+  return (ssl.type === undefined || ssl.type === 'server') && isEnabled(ssl);
 }
+
+const reversed = (text: string): string => [...text].reverse().join('');
+
+/** An enabled server SSL as the router holds it: its SNIs reversed, and whether it has the single `sni`. */
+interface SniRoute {
+  item: Item;
+  paths: string[];
+  single: boolean;
+}
+
+/**
+ * The SSLs at the level of the SNI router that `name` (reversed) reaches: those with an exact path
+ * equal to it; else those whose wildcard prefix is the longest one it starts with. resty.radixtree
+ * looks the exact paths up first (hash_path), then walks the prefixes from the longest down
+ * (radix_tree_search / radix_tree_up) and takes the first route of the first level that has one, in
+ * insertion order (radixtree.lua match_route, insert_route with sort_route). A reversed SNI's `*` is
+ * its last character, so everything before it is the prefix (pre_insert_route: path_op "<=").
+ */
+function levelOf(name: string, routes: SniRoute[]): SniRoute[] {
+  const exact = routes.filter((r) => r.paths.some((p) => !p.includes('*') && p === name));
+  if (exact.length > 0) return exact;
+  let longest = -1;
+  let level: SniRoute[] = [];
+  for (const r of routes) {
+    for (const p of r.paths) {
+      const star = p.indexOf('*');
+      if (star < 0 || !name.startsWith(p.slice(0, star))) continue;
+      if (star > longest) [longest, level] = [star, [r]];
+      else if (star === longest && !level.includes(r)) level.push(r);
+    }
+  }
+  return level;
+}
+
+/**
+ * The check the SNI router makes after the match (radixtree_sni.lua 188–215), which never sends it
+ * back for another certificate: a single `sni` of `*` takes any name; otherwise the name must equal
+ * one of the SSL's reversed SNIs or have no dot from that SNI's length on (Lua's 1-based
+ * `find(name, ".", #sni)`), which is what limits a wildcard to one label, and lets a long name in the
+ * same list wave deeper names through.
+ */
+function passes(route: SniRoute, name: string): boolean {
+  const noDotFrom = (path: string): boolean => name.indexOf('.', path.length - 1) < 0;
+  const [first = ''] = route.paths;
+  if (route.single) return first === '*' || noDotFrom(first);
+  return route.paths.some((p) => p === name || noDotFrom(p));
+}
+
+/** A literal address, which a client never sends as SNI (RFC 6066 section 3). */
+const ADDRESS = /^\d{1,3}(\.\d{1,3}){3}$|:/;
+
+/** A wildcard route host stands for a name under it that no exact SNI has: `*` becomes a character no SNI may hold. */
+const ANY_LABEL = '\u0000';
 
 /**
  * APISIX before 3.7 stored the certificate's expiry as `validity_end`, in seconds; 3.7 removed the
  * field, so read it from the certificate itself (parseCert is memoised per PEM).
  */
-function notAfterOf(ssl: Obj): number | undefined {
+export function sslNotAfter(ssl: Obj): number | undefined {
   const end = ssl.validity_end;
   if (typeof end === 'number' && Number.isFinite(end)) return end * 1000;
   return typeof ssl.cert === 'string' ? parseCert(ssl.cert)?.notAfter : undefined;
 }
 
-/** The certificate APISIX would present for `host`: an exact SNI beats a wildcard, then the later expiry wins. */
+/**
+ * The certificate APISIX presents for `host` (as a route writes it; a wildcard host stands for a
+ * name under it), following the SNI router: only enabled server certificates (servedToClients), an
+ * exact SNI before a wildcard, the longest wildcard first, then its check (passes). None for an
+ * address, for which a client sends no SNI (ssl.lua 42–71: no fallback_sni is assumed). Certificates
+ * level with the first one are `shared`; one that the check would refuse is left out of them (it
+ * takes a long SNI next to a wildcard in only one of them).
+ */
 export function sslForHost(host: string, ctx: Ctx): SslMatch | undefined {
-  const wanted = host.toLowerCase();
-  let best: (SslMatch & { rank: number }) | undefined;
-  for (const item of ctx.ssls) {
-    const rank = sniRank(item.value, wanted);
-    if (rank === 0) continue;
-    const notAfter = notAfterOf(item.value);
-    const later = (notAfter ?? -Infinity) > (best?.notAfter ?? -Infinity);
-    if (!best || rank > best.rank || (rank === best.rank && later)) best = { item, notAfter, rank };
-  }
-  return best && { item: best.item, notAfter: best.notAfter };
+  if (ADDRESS.test(host)) return undefined;
+  const name = reversed(normalSni(host.startsWith('*') ? `${ANY_LABEL}${host.slice(1)}` : host));
+  const routes = ctx.ssls
+    .filter((item) => servedToClients(item.value))
+    .map((item) => ({ item, paths: sniList(item.value).map(reversed), single: !(Array.isArray(item.value.snis) && item.value.snis.length > 0) }));
+  const [first, ...others] = levelOf(name, routes).filter((r) => passes(r, name));
+  return first && { item: first.item, notAfter: sslNotAfter(first.item.value), shared: others.map((r) => r.item) };
+}
+
+/** The expiries (ms) of every certificate a match may present: its own, then the shared ones'. */
+export function sslExpiries(match: SslMatch | undefined): (number | undefined)[] {
+  return match ? [match.notAfter, ...match.shared.map((item) => sslNotAfter(item.value))] : [];
 }
 
 /** Upstream ids in a traffic-split plugin's rules. */

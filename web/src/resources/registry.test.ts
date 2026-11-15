@@ -15,6 +15,8 @@ import { consumerColumns } from './consumers/columns';
 import { consumerFilters } from './consumers/filters';
 import { credentialColumns } from './credentials/columns';
 import { consumerGroupColumns } from './consumer_groups/columns';
+import { sslColumns } from './ssls/columns';
+import { sslFilters } from './ssls/filters';
 
 const KINDS: Kind[] = [
   'routes', 'services', 'upstreams', 'consumers', 'credentials', 'consumer_groups', 'ssls',
@@ -85,7 +87,7 @@ describe('registry', () => {
   });
 
   it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but the kinds with their own tabs) no tabs', () => {
-    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups'].includes(k))) {
+    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups', 'ssls'].includes(k))) {
       const def = registry[kind];
       if (scopeOfKind[kind]) {
         expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields]), kind).toEqual([['plugins', t('pl.tab'), ['plugins']]]);
@@ -192,6 +194,24 @@ describe('registry', () => {
     expect(registry.consumer_groups.validate?.({ plugins: {} }, { isNew: true, ctx: ctxOf() })).toEqual([]);
   });
 
+  it('gives SSLs their own tabs, columns, filters, checks, name and status rule', () => {
+    const def = registry.ssls;
+    expect(def.tabs.map((tab) => [tab.id, tab.fields])).toEqual([
+      ['certificate', ['cert', 'key', 'certs', 'keys']],
+      ['snis', ['sni', 'snis']],
+      ['client', ['client']],
+      ['general', ['type', 'desc', 'labels', 'ssl_protocols']],
+    ]);
+    expect(def.columns).toBe(sslColumns);
+    expect(def.filters).toBe(sslFilters);
+    expect(def.validate?.({}, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['cert', 'key', 'snis']);
+    expect(def.nameOf(itemOf('s1', { snis: ['b.test', 'a.test'] }))).toBe('b.test');
+    expect(def.statusIgnored?.({ type: 'client' })).toBe(t('ssl.status.ignored'));
+    expect(def.statusIgnored?.({})).toBeUndefined();
+    // Only SSLs have a status rule of their own.
+    expect(KINDS.filter((kind) => registry[kind].statusIgnored !== undefined)).toEqual(['ssls']);
+  });
+
   it('gives upstreams their own tabs, columns and checks', () => {
     const def = registry.upstreams;
     expect(def.tabs.map((tab) => tab.id)).toEqual(['general', 'nodes', 'balancing', 'health', 'connection', 'tls']);
@@ -202,7 +222,7 @@ describe('registry', () => {
   });
 
   it('starts every kind without columns of its own with an id + name column pair', () => {
-    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups'].includes(k))) {
+    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups', 'ssls'].includes(k))) {
       const def = registry[kind];
       expect(def.columns.map((c) => [c.id, c.header, c.defaultVisible])).toEqual([
         ['id', t('column.id'), true],

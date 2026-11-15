@@ -10,7 +10,9 @@ function setup(objects: Record<string, Obj[]> = {}) {
   const admin = fakeAdmin({ counts: {}, objects });
   const call = async (method: string, path: string, body?: Obj) => {
     const res = await admin.fetch(`${base}/${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body) });
-    return { status: res.status, body: (await res.json()) as Obj };
+    const text = await res.text();
+    // APISIX's own crashes answer an HTML page.
+    return { status: res.status, body: (text.startsWith('<') ? { html: text } : JSON.parse(text)) as Obj };
   };
   return { admin, call };
 }
@@ -65,5 +67,44 @@ describe('fakeAdmin', () => {
     const { call } = setup();
     expect((await call('GET', 'credentials')).status).toBe(200);
     expect((await call('PUT', 'credentials', {})).status).toBe(405);
+  });
+
+  describe('SSLs, as APISIX 3.20 answered them on the dev stack', () => {
+    const CERT = `-----BEGIN CERTIFICATE-----\n${'A'.repeat(200)}\n-----END CERTIFICATE-----\n`;
+    const KEY = `-----BEGIN PRIVATE KEY-----\n${'B'.repeat(100)}\n-----END PRIVATE KEY-----\n`;
+    const THEN = { error_msg: 'invalid configuration: then clause did not match' };
+    const COUNT = { error_msg: 'mismatched number of certs and keys' };
+
+    it('a server certificate needs cert, key and one of sni / snis; a client one cert and key', async () => {
+      const { call } = setup({ ssls: [] });
+      expect(await call('PUT', 'ssls/s1', { snis: ['a.test'], cert: CERT })).toEqual({ status: 400, body: THEN });
+      expect(await call('PUT', 'ssls/s1', { cert: CERT, key: KEY })).toEqual({ status: 400, body: THEN });
+      expect(await call('PUT', 'ssls/s1', { sni: 'a.test', snis: ['a.test'], cert: CERT, key: KEY })).toEqual({ status: 400, body: THEN });
+      expect((await call('PUT', 'ssls/s1', { type: 'client', cert: CERT, key: KEY })).status).toBe(201);
+      expect((await call('POST', 'ssls', { snis: ['a.test'], cert: CERT, key: KEY })).status).toBe(201);
+    });
+
+    it('counts certs and keys of a server certificate after a PATCH merges into the stored keys; keys: null crashes it', async () => {
+      const { call, admin } = setup({ ssls: [{ id: 's1', snis: ['a.test'], cert: CERT, key: KEY, certs: [CERT], keys: [KEY] }] });
+      expect(await call('PATCH', 'ssls/s1', { certs: [CERT, CERT] })).toEqual({ status: 400, body: COUNT });
+      expect(await call('PATCH', 'ssls/s1', { certs: null })).toEqual({ status: 400, body: COUNT });
+      expect((await call('PATCH', 'ssls/s1', { certs: null, keys: null })).status).toBe(500);
+      expect((await call('PATCH', 'ssls/s1', { snis: ['b.test'] })).status).toBe(200);
+      expect((await call('PATCH', 'ssls/s1', { certs: null, keys: [] })).status).toBe(200);
+      expect(admin.stored('ssls')[0]).not.toHaveProperty('certs');
+      expect(await call('PUT', 'ssls/s1', { snis: ['a.test'], cert: CERT, key: KEY, certs: [CERT] })).toEqual({ status: 400, body: COUNT });
+      expect((await call('PUT', 'ssls/s1', { type: 'client', cert: CERT, key: KEY, certs: [CERT] })).status).toBe(200);
+    });
+
+    it('stores a private key encrypted, echoes the ciphertext, and a GET leaves key and keys out', async () => {
+      const { call, admin } = setup({ ssls: [] });
+      const written = await call('PUT', 'ssls/s1', { snis: ['a.test'], cert: CERT, key: KEY, certs: [CERT], keys: [KEY] });
+      expect(JSON.stringify(written.body)).not.toContain('BBBB');
+      expect(admin.stored('ssls')[0]?.key).toMatch(/^AES:/);
+      const read = (await call('GET', 'ssls/s1')).body.value as Obj;
+      expect(read).not.toHaveProperty('key');
+      expect(read).not.toHaveProperty('keys');
+      expect(read.certs).toEqual([CERT]);
+    });
   });
 });

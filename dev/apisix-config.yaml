@@ -2,6 +2,11 @@
 apisix:
   node_listen: 9080
   enable_ipv6: false
+  # HTTPS with the SSL objects' certificates (APISIX's default, written out: compose publishes it).
+  ssl:
+    enable: true
+    listen:
+      - port: 9443
   proxy_mode: http&stream
   stream_proxy:
     tcp:

@@ -126,7 +126,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const listPath = back.to;
 
   // --- Issues ------------------------------------------------------------------------------------
-  const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins }), [isNew, ctx, plugins, streamPlugins]);
+  const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins, original }), [isNew, ctx, plugins, streamPlugins, original]);
   const checked = useMemo(() => def.validate?.(draft, env) ?? [], [def, draft, env]);
   const typedId = typeof draft.id === 'string' || typeof draft.id === 'number' ? String(draft.id) : undefined;
   const frameIssues = useMemo(() => idIssues(def, draft, { id, isNew, newId, typedId }), [def, draft, id, isNew, newId, typedId]);
@@ -302,6 +302,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const status = def.hasStatus
     ? {
         enabled: isEnabled(draft),
+        ignored: def.statusIgnored?.(draft),
         name,
         onChange: (on: boolean) => {
           const first = pending[0];

@@ -32,6 +32,7 @@ services:
       # Host port 19180: 127.0.0.1:9180 is taken on the dev machine.
       - "127.0.0.1:19180:9180" # Admin API
       - "127.0.0.1:9080:9080" # HTTP gateway
+      - "127.0.0.1:9443:9443" # HTTPS gateway (SSL certificates)
       - "127.0.0.1:9100:9100" # TCP stream proxy
 
 volumes:

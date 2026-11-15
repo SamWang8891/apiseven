@@ -81,7 +81,9 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
       id: enable ? 'enable' : 'disable',
       label,
       disabled: readOnly,
-      run: (items, progress) => each(label, items, (client, item) => client.patch(kind, item.id, { status: enable ? 1 : 0 }), progress),
+      // An object whose status does nothing (ResourceDef.statusIgnored: a client SSL) is left alone.
+      run: (items, progress) =>
+        each(label, items.filter((item) => def.statusIgnored?.(item.value) === undefined), (client, item) => client.patch(kind, item.id, { status: enable ? 1 : 0 }), progress),
     };
   };
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
 import { EC_IPV6, FAR } from '../test/certs';
 import { ctxOf, itemOf } from '../test/ctx';
-import { effectivePlugins, labelPairs, nameOfValue, referencesTo, resolveRef, routeHosts, sslForHost, upstreamSummary } from './resolve';
+import { effectivePlugins, labelPairs, nameOfValue, referencesTo, resolveRef, routeHosts, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
 
 describe('nameOfValue', () => {
   it('takes name, then username, then desc, skipping empty strings', () => {
@@ -299,7 +299,12 @@ describe('sslForHost', () => {
     expect(sslForHost('a.example.org', ctx)?.item.id).toBe('exact');
   });
 
-  it('picks the later expiry among equal matches', () => {
+  it('several certificates with the same SNI: APISIX serves the one it loaded first, so the others are named as shared', () => {
+    // radixtree keeps routes of one path in insertion order (insert_tab_in_order with sort_route:
+    // equal priority and path length never reorder), and the SNI router inserts them in load order:
+    // etcd key order after a restart, a later object after the others (config_etcd.lua 578, 848).
+    // Checked on the dev APISIX: of two SSLs with the same SNI, the one created first is served,
+    // whatever its expiry. The list (key order) is only a guess at that order.
     const ctx = ctxOf({
       ssls: [
         ssl('unknown', { snis: ['a.test'] }),
@@ -307,7 +312,59 @@ describe('sslForHost', () => {
         ssl('earlier', { snis: ['a.test'], validity_end: 1_800_000_000 }),
       ],
     });
-    expect(sslForHost('a.test', ctx)?.item.id).toBe('later');
+    const match = sslForHost('a.test', ctx);
+    expect(match?.item.id).toBe('unknown');
+    expect(match?.shared.map((item) => item.id)).toEqual(['later', 'earlier']);
+    expect(sslForHost('b.test', ctxOf({ ssls: [ssl('one', { snis: ['b.test'] })] }))?.shared).toEqual([]);
+  });
+
+  it('a certificate stored without a type is a server certificate (the schema default, applied when APISIX loads it)', () => {
+    const ctx = ctxOf({ ssls: [itemOf('plain', { snis: ['api.test'] })] });
+    expect(sslForHost('api.test', ctx)?.item.id).toBe('plain');
+  });
+
+  it('routes by snis when it is a non-empty list, else by sni (radixtree_sni.lua 56–64)', () => {
+    const ctx = ctxOf({ ssls: [ssl('both', { sni: 'one.test', snis: ['two.test'] }), ssl('empty', { sni: 'three.test', snis: [] })] });
+    expect(sslForHost('two.test', ctx)?.item.id).toBe('both');
+    expect(sslForHost('one.test', ctx)).toBeUndefined();
+    expect(sslForHost('three.test', ctx)?.item.id).toBe('empty');
+  });
+
+  it('the longest wildcard decides, with no second try: a deeper name than it covers gets no certificate', () => {
+    // radixtree tries the longest prefix first and the SNI check that follows (188–215) never goes back
+    // to a shorter one. Checked live: *foo.probe.test and a catch-all sni "*" give x.foo.probe.test no certificate.
+    const ctx = ctxOf({ ssls: [ssl('all', { sni: '*' }), ssl('foo', { snis: ['*foo.example.org'] })] });
+    expect(sslForHost('foo.example.org', ctx)?.item.id).toBe('foo');
+    expect(sslForHost('xfoo.example.org', ctx)?.item.id).toBe('foo');
+    expect(sslForHost('x.foo.example.org', ctx)).toBeUndefined();
+    expect(sslForHost('other.test', ctx)?.item.id).toBe('all');
+  });
+
+  it('"*" as the single sni serves every name; in an snis list only names without a dot', () => {
+    expect(sslForHost('a.b.test', ctxOf({ ssls: [ssl('single', { sni: '*' })] }))?.item.id).toBe('single');
+    const listed = ctxOf({ ssls: [ssl('listed', { snis: ['*'] })] });
+    expect(sslForHost('localhost', listed)?.item.id).toBe('listed');
+    expect(sslForHost('a.test', listed)).toBeUndefined();
+  });
+
+  it('a longer SNI in the same list lets a wildcard serve deeper names too, as APISIX does', () => {
+    // The check passes when no dot follows at the length of any SNI in the list (radixtree_sni.lua
+    // 192–198), so a long name in the list waves a deeper host through. Checked live on 3.20.
+    const ctx = ctxOf({ ssls: [ssl('wild', { snis: ['*.wild.test', 'averyveryveryverylongname.example.org'] })] });
+    expect(sslForHost('a.b.wild.test', ctx)?.item.id).toBe('wild');
+    expect(sslForHost('a.wild.test', ctx)?.item.id).toBe('wild');
+  });
+
+  it('ignores a trailing dot on either side (ssl.lua 68, radixtree_sni.lua 294–299)', () => {
+    const ctx = ctxOf({ ssls: [ssl('dot', { snis: ['Api.Test.'] })] });
+    expect(sslForHost('api.test', ctx)?.item.id).toBe('dot');
+    expect(sslForHost('API.test.', ctx)?.item.id).toBe('dot');
+  });
+
+  it('gives no certificate for an address: a client sends no SNI for one (RFC 6066 3), and there is no fallback_sni', () => {
+    const ctx = ctxOf({ ssls: [ssl('ip', { snis: ['10.0.0.1'] }), ssl('all', { sni: '*' })] });
+    expect(sslForHost('10.0.0.1', ctx)).toBeUndefined();
+    expect(sslForHost('[::1]', ctx)).toBeUndefined();
   });
 
   it('compares hostnames case-insensitively', () => {
@@ -326,7 +383,7 @@ describe('sslForHost', () => {
     const ctx = ctxOf({
       ssls: [ssl('dated', { snis: ['a.test'], validity_end: 1_800_000_000 }), ssl('plain', { snis: ['b.test'] })],
     });
-    expect(sslForHost('a.test', ctx)).toEqual({ item: ctx.ssls[0], notAfter: 1_800_000_000_000 });
+    expect(sslForHost('a.test', ctx)).toEqual({ item: ctx.ssls[0], notAfter: 1_800_000_000_000, shared: [] });
     expect(sslForHost('b.test', ctx)?.notAfter).toBeUndefined();
   });
 
@@ -343,11 +400,20 @@ describe('sslForHost', () => {
     expect(sslForHost('a.test', ctx)?.notAfter).toBe(1_800_000_000_000);
   });
 
-  it('breaks ties on the expiry read from the certificates', () => {
+  it('reads each shared certificate\'s expiry from its own certificate', () => {
     const ctx = ctxOf({
       ssls: [ssl('soon', { snis: ['a.test'], cert: EC_IPV6 }), ssl('far', { snis: ['a.test'], cert: FAR })],
     });
-    expect(sslForHost('a.test', ctx)?.item.id).toBe('far');
+    expect(sslForHost('a.test', ctx)?.item.id).toBe('soon');
+    expect(sslExpiries(sslForHost('a.test', ctx))).toEqual([Date.UTC(2027, 10, 14, 13, 47, 19), Date.UTC(2051, 5, 30, 23, 59, 59)]);
+  });
+});
+
+describe('sniList', () => {
+  it('is what the router reads: snis when non-empty, else sni; lower-cased, a trailing dot dropped', () => {
+    expect(sniList({ snis: ['A.test.', '*.B.test'] })).toEqual(['a.test', '*.b.test']);
+    expect(sniList({ sni: 'One.Test', snis: [] })).toEqual(['one.test']);
+    expect(sniList({ type: 'client' })).toEqual([]);
   });
 });
 

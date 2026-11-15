@@ -6,6 +6,8 @@ export interface CertInfo {
   issuer: string;
   /** dNSName and iPAddress entries of subjectAltName, in certificate order. */
   sans: string[];
+  /** The dNSName entries alone, in order: the names a client can send as SNI (an address is not one). */
+  dns: string[];
   /** Milliseconds since the epoch. */
   notBefore: number;
   notAfter: number;
@@ -189,8 +191,9 @@ function ip(bytes: Uint8Array): string | undefined {
 
 const SUBJECT_ALT_NAME = '2.5.29.17';
 
-function subjectAltNames(der: Uint8Array, extensions: Node | undefined): string[] {
-  if (!extensions) return [];
+function subjectAltNames(der: Uint8Array, extensions: Node | undefined): { sans: string[]; dns: string[] } {
+  const none = { sans: [], dns: [] };
+  if (!extensions) return none;
   const [list] = children(der, extensions);
   for (const extension of children(der, ofTag(list, SEQUENCE))) {
     const parts = children(der, ofTag(extension, SEQUENCE));
@@ -199,15 +202,20 @@ function subjectAltNames(der: Uint8Array, extensions: Node | undefined): string[
     const value = ofTag(parts[1]?.tag === BOOLEAN ? parts[2] : parts[1], OCTET_STRING);
     const [names] = children(der, value);
     const sans: string[] = [];
+    const dns: string[] = [];
     for (const general of children(der, ofTag(names, SEQUENCE))) {
       // Other name forms (email, URI, directory name…) are not host names.
-      if (general.tag === DNS_NAME) sans.push(latin1(bytesOf(der, general)));
+      if (general.tag === DNS_NAME) {
+        const host = latin1(bytesOf(der, general));
+        sans.push(host);
+        dns.push(host);
+      }
       const address = general.tag === IP_ADDRESS ? ip(bytesOf(der, general)) : undefined;
       if (address !== undefined) sans.push(address);
     }
-    return sans;
+    return { sans, dns };
   }
-  return [];
+  return none;
 }
 
 function parseDer(der: Uint8Array): CertInfo {
@@ -227,10 +235,12 @@ function parseDer(der: Uint8Array): CertInfo {
   // A positive integer whose top bit is set carries a leading 00 sign byte.
   if (serial.length > 1 && serial[0] === 0 && (serial[1] ?? 0) & 0x80) serial = serial.subarray(1);
 
+  const { sans, dns } = subjectAltNames(der, optional.find((node) => node.tag === EXTENSIONS));
   return {
     subject: name(der, subjectNode ?? fail()),
     issuer: name(der, issuerNode ?? fail()),
-    sans: subjectAltNames(der, optional.find((node) => node.tag === EXTENSIONS)),
+    sans,
+    dns,
     notBefore: time(der, notBefore ?? fail()),
     notAfter: time(der, notAfter ?? fail()),
     serial: hex(serial),
@@ -264,6 +274,7 @@ export function parseCert(pem: string): CertInfo | undefined {
   }
   if (info) {
     Object.freeze(info.sans);
+    Object.freeze(info.dns);
     Object.freeze(info);
   }
   if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value as string);

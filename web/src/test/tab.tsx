@@ -47,7 +47,7 @@ export function renderTab(
     useEffect(() => {
       control.lock = setLocked;
     }, []);
-    const issues = useMemo(() => opts.issues ?? validate(draft, { isNew: opts.isNew ?? false, ctx }), [draft]);
+    const issues = useMemo(() => opts.issues ?? validate(draft, { isNew: opts.isNew ?? false, ctx, original: opts.original }), [draft]);
     return (
       <PendingProvider onChange={(entries) => (pending = entries)}>
         <LockProvider locked={locked}>

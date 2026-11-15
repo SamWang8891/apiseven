@@ -7,6 +7,7 @@ import type { Item } from '../api/types';
 import { t } from '../i18n';
 import { IdCell } from '../resources/cells';
 import { formatAbsolute, formatRelative } from '../table/format';
+import { StatusIgnored } from '../table/StatusCell';
 import { Badge, Button, Menu, Tooltip } from '../ui';
 
 export interface EditorHeaderProps {
@@ -23,8 +24,11 @@ export interface EditorHeaderProps {
   note?: string;
   /** The object this one belongs to (a credential's consumer), linked: "Consumer jo". */
   owner?: { kind: string; name: string; to: string };
-  /** Kinds with a status: whether the draft is enabled, and the switch's handler. */
-  status?: { enabled: boolean; name: string; onChange: (enabled: boolean) => void };
+  /**
+   * Kinds with a status: whether the draft is enabled, and the switch's handler; `ignored` says why
+   * the status does nothing for this object (ResourceDef.statusIgnored), which then has no switch.
+   */
+  status?: { enabled: boolean; ignored?: string; name: string; onChange: (enabled: boolean) => void };
   readOnly: boolean;
   saving: boolean;
   /** Save is impossible (the JSON tab holds text that doesn't parse). */
@@ -108,7 +112,8 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
               {t('editor.editing')}
             </Badge>
           )}
-          {p.status && (
+          {p.status?.ignored !== undefined && <StatusIgnored why={p.status.ignored} />}
+          {p.status && p.status.ignored === undefined && (
             <span className="ed-status">
               <Badge tone={p.status.enabled ? 'ok' : 'neutral'}>
                 {p.status.enabled ? t('table.status.enabled') : t('table.status.disabled')}

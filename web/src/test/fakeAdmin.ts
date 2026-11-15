@@ -273,6 +273,20 @@ function forbidden(body: Obj): string | undefined {
   return undefined;
 }
 
+/**
+ * Why APISIX 3.20 refuses an SSL as it would be stored (after a PATCH's merge), or undefined: the
+ * schema's per-type `required` (schema_def.lua 979–992; for a server, exactly one of sni / snis) and,
+ * for a server certificate, as many keys as certs (ssl.lua 205–208). The messages are APISIX's.
+ */
+function sslRefusal(value: Obj): string | undefined {
+  const server = value.type === undefined || value.type === 'server';
+  const has = (k: string) => value[k] !== undefined;
+  if (!has('cert') || !has('key') || (server && has('sni') === has('snis'))) return 'invalid configuration: then clause did not match';
+  const count = (v: unknown) => (Array.isArray(v) ? v.length : 0);
+  if (server && count(value.certs) !== count(value.keys)) return 'mismatched number of certs and keys';
+  return undefined;
+}
+
 /** What a GET shows: SSL private keys never leave APISIX. */
 function shown(kind: string, value: Obj): Obj {
   if (kind !== 'ssls') return value;
@@ -296,6 +310,9 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
   const now = () => CLOCK + revision.n;
   if ((req.method === 'POST' || req.method === 'PUT') && forbidden(body)) {
     return json(400, { error_msg: `the property is forbidden:  ${forbidden(body) ?? ''}` });
+  }
+  if ((req.method === 'POST' || req.method === 'PUT') && kind === 'ssls' && sslRefusal(body)) {
+    return json(400, { error_msg: sslRefusal(body) });
   }
   if (id === undefined) {
     if (req.method === 'POST') {
@@ -322,6 +339,12 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
     }
     case 'PATCH': {
       if (!current) return json(404, { message: 'Key not found' });
+      if (kind === 'ssls') {
+        // admin/resource.lua 477–480 runs `#conf.keys` on the null it was sent: a Lua error, so a 500.
+        if (body.keys === null) return new Response('<html><body>500 Internal Server Error</body></html>', { status: 500, headers: { 'Content-Type': 'text/html' } });
+        const refused = sslRefusal(merge(current.value, body));
+        if (refused) return json(400, { error_msg: refused });
+      }
       current.value = storedAs(kind, { ...merge(current.value, body), ...(body.update_time === undefined ? { update_time: now() } : {}) });
       current.index = ++revision.n;
       return json(200, written(current.value));

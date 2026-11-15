@@ -1,0 +1,254 @@
+/*
+ * The SSL editor's tabs (web/src/resources/ssls). Class prefix ssl-; colours from the tokens;
+ * nothing is faded.
+ *
+ *   .ssl-dl        a certificate's details: term and value rows (CertDetails, the key line)
+ *   .ssl-pem       PEM text with its Upload button; --over while a file is dragged over it
+ *   .ssl-pair      one additional certificate: its line, where its key stands, its tools
+ *   .ssl-compare   before and after a replacement, in the dialog
+ *   .ssl-warn      a consequence worth knowing that blocks nothing: body text beside a warning rule
+ *   .ssl-issue     a problem the save would meet, in the danger colour
+ */
+
+.ssl-tab {
+  min-width: 0;
+  max-width: 880px;
+}
+
+.ssl-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+/* --- Details ------------------------------------------------------------------------------- */
+
+.ssl-dl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  margin: 0;
+}
+
+.ssl-dl__row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  column-gap: var(--s3);
+  align-items: baseline;
+}
+
+.ssl-dl__term {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.ssl-dl__value {
+  margin: 0;
+  min-width: 0;
+  color: var(--text);
+  line-height: 20px;
+}
+
+.ssl-names {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--s3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ssl-expiry {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.ssl-wrap {
+  overflow-wrap: anywhere;
+}
+
+.ssl-muted {
+  color: var(--text-2);
+}
+
+.ssl-warn {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ssl-issue {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ssl-keyline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0;
+  color: var(--text);
+}
+
+/* --- PEM text ------------------------------------------------------------------------------ */
+
+.ssl-pem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-width: 0;
+  border-radius: var(--radius);
+}
+
+.ssl-pem--over {
+  outline: 2px dashed var(--accent);
+  outline-offset: 4px;
+}
+
+.ssl-pem__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.ssl-pem__file {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.ssl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ssl-field__label {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+
+/* --- The dialog ---------------------------------------------------------------------------- */
+
+.ssl-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s4);
+  min-width: 0;
+}
+
+.ssl-compare {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  padding: var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ssl-compare__title {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ssl-compare__pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s3);
+}
+
+.ssl-compare__cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s1);
+  min-width: 0;
+}
+
+/* --- Additional pairs ---------------------------------------------------------------------- */
+
+.ssl-pairs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.ssl-pairs__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ssl-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ssl-pair__cert {
+  flex: 1 1 320px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--s2);
+  min-width: 0;
+}
+
+.ssl-pair__key {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.ssl-pair__key--needed {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.ssl-pair__tools {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+/* --- SNIs and protocols -------------------------------------------------------------------- */
+
+.ssl-sans {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2) var(--s3);
+}
+
+.ssl-protocols {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+}

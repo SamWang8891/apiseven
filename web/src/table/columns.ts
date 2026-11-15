@@ -21,7 +21,7 @@ function statusColumn(kind: Kind, editable: boolean): ColumnDef {
     },
     // 1 enabled, 0 disabled: sortable, and what the status filter of a kind can match on.
     accessor: (item) => (isEnabled(item.value) ? 1 : 0),
-    cell: (item) => (editable ? createElement(StatusCell, { kind, item }) : createElement(StatusBadge, { item })),
+    cell: (item) => (editable ? createElement(StatusCell, { kind, item }) : createElement(StatusBadge, { kind, item })),
     defaultVisible: true,
     // A switch and "Disabled" with the cell padding.
     width: 126,

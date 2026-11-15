@@ -6,12 +6,13 @@ import { describe, expect, it } from 'vitest';
 
 // Checks on the resource pieces' CSS sources (Vitest blanks CSS imports, so read from disk): the list
 // cells (cell-), the shared editor pieces: Section, ResourcePicker, UpstreamSourceField, Overview and
-// the embedded lists (res-), and the route editor's tabs (rt-).
+// the embedded lists (res-), the route editor's tabs (rt-) and the SSL editor's (ssl-).
 const dir = dirname(fileURLToPath(import.meta.url));
 const FILES = [
   { name: 'cells.css', prefix: 'cell-' },
   { name: 'resources.css', prefix: 'res-' },
   { name: 'routes/routes.css', prefix: 'rt-' },
+  { name: 'ssls/ssls.css', prefix: 'ssl-' },
 ];
 
 function rules(name: string): [string, string][] {

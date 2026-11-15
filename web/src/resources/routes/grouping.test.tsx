@@ -46,6 +46,23 @@ describe('hostGrouping', () => {
     expect(container.querySelector('.ui-badge')).toHaveClass('expiry--warn');
   });
 
+  it('with two certificates for the host, shows the sooner expiry and says the certificate is shared', () => {
+    const ctx = ctxOf({
+      ssls: [
+        itemOf('far', { snis: ['api.example'], validity_end: Math.floor((Date.now() + 90 * DAY) / 1000) }),
+        itemOf('near', { snis: ['api.example'], validity_end: Math.floor((Date.now() + 3 * DAY) / 1000) }),
+      ],
+    });
+    const { container } = render(<>{hostGrouping.header?.('api.example', [itemOf('r1')], ctx)}</>);
+    expect(container.querySelector('.ui-badge')).toHaveClass('expiry--warn');
+    expect(container.querySelector('.cell-group__cert')).toHaveAttribute('title', t('group.sharedCert', { host: 'api.example', count: 2 }));
+  });
+
+  it('says nothing about a certificate while the SSL list loads', () => {
+    const { container } = render(<>{hostGrouping.header?.('plain.org', [itemOf('r1')], ctxOf({ loaded: { ssls: false } }))}</>);
+    expect(container.querySelector('.cell-group__cert')).toHaveAttribute('title', t('picker.loading'));
+  });
+
   it('shows an expired certificate as danger, and the empty mark with none', () => {
     const expired = render(<>{hostGrouping.header?.('old.example', [itemOf('r1')], CTX)}</>);
     expect(expired.container.querySelector('.ui-badge')).toHaveClass('expiry--danger');

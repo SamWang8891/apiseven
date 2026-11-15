@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MASK } from '../schema/secrets';
 import { pluginFixture } from '../test/pluginFixture';
-import { copiedWithout, MASK_CHANGED, redactObject, redactPair } from './secrets';
+import { copiedWithout, MASK_CHANGED, redactObject, redactPair, unveilKeys, veilKeys } from './secrets';
+import { t } from '../i18n';
 
 const all = () => pluginFixture().http;
 
@@ -89,6 +90,18 @@ describe('redactObject, per kind', () => {
     expect(redactObject({ secret_access_key: 'k', access_key_id: 'AKIA' }, 'secrets', all()).value).toEqual({ secret_access_key: MASK, access_key_id: 'AKIA' });
   });
 
+  it("an SSL's private keys (a new one in the draft) are never shown, not even on reveal; its certificates and CA are not secrets", () => {
+    const ssl = { snis: ['a.test'], cert: 'CERT-PEM', key: 'KEY-PEM', certs: ['C1', 'C2'], keys: ['K1', null], client: { ca: 'CA-PEM' } };
+    const out = redactObject(ssl, 'ssls', undefined);
+    expect(out.value).toEqual({ ...ssl, key: MASK, keys: [MASK, null] });
+    expect(out.revealed).toEqual(out.value);
+    expect(out).toMatchObject({ redacted: true, revealable: false });
+    expect(JSON.stringify(out)).not.toMatch(/KEY-PEM|K1/);
+    // A plugin's `key` (key-auth) is another matter: only an SSL's top-level key fields are never shown.
+    expect(redactObject({ key: 'k' }, 'routes', all()).value).toEqual({ key: 'k' });
+    expect(redactObject({ snis: ['a.test'], cert: 'C' }, 'ssls', undefined)).toMatchObject({ redacted: false });
+  });
+
   it("plugin metadata: its plugin's metadata encrypt_fields (azure-functions master_apikey); everything while loading", () => {
     expect(redactObject({ id: 'azure-functions', master_apikey: 'k1', other: 'x' }, 'plugin_metadata', all()).value).toEqual({ id: 'azure-functions', master_apikey: MASK, other: 'x' });
     expect(redactObject({ id: 'azure-functions', master_apikey: 'k1' }, 'plugin_metadata', undefined).value).toEqual({ id: 'azure-functions', master_apikey: MASK });
@@ -128,5 +141,33 @@ describe('copiedWithout: what a copy of the shown JSON lacks, for its toast', ()
     expect(copiedWithout(upstream, false)).toBe('neverShown');
     expect(copiedWithout(redactObject({ plugins: logger }, 'routes', all()), true)).toBeUndefined();
     expect(copiedWithout(redactObject({ uri: '/' }, 'routes', all()), false)).toBeUndefined();
+  });
+});
+
+describe('veilKeys / unveilKeys: the editing JSON tab never shows an SSL key it holds', () => {
+  const draft = { snis: ['a.test'], cert: 'CERT', key: 'NEW-KEY', certs: ['C1', 'C2'], keys: ['K1', 'K2'] };
+
+  it('shows each key as a note in its place; other kinds and SSLs without keys are left as they are', () => {
+    const veiled = veilKeys('ssls', draft);
+    expect(veiled.veiled).toBe(true);
+    expect(veiled.value).toEqual({ ...draft, key: t('json.keyHidden'), keys: [t('json.keysHidden', { n: 1 }), t('json.keysHidden', { n: 2 })] });
+    expect(JSON.stringify(veiled.value)).not.toMatch(/NEW-KEY|K1|K2/);
+    expect(veilKeys('routes', { key: 'x' })).toEqual({ value: { key: 'x' }, veiled: false });
+    const plain = { snis: ['a.test'], cert: 'CERT', keys: [null] };
+    expect(veilKeys('ssls', plain)).toEqual({ value: plain, veiled: false });
+  });
+
+  it('turns the notes back into the keys they stand for, where they went; a removed note removes its key; typed text stays', () => {
+    const shown = veilKeys('ssls', draft).value;
+    expect(unveilKeys('ssls', shown, draft)).toEqual(draft);
+    expect(unveilKeys('ssls', { ...shown, desc: 'd' }, draft)).toEqual({ ...draft, desc: 'd' });
+    const reordered = { ...shown, certs: ['C2', 'C1'], keys: [t('json.keysHidden', { n: 2 }), t('json.keysHidden', { n: 1 })] };
+    expect(unveilKeys('ssls', reordered, draft)).toEqual({ ...draft, certs: ['C2', 'C1'], keys: ['K2', 'K1'] });
+    const withoutKey: Record<string, unknown> = { ...shown };
+    delete withoutKey.key;
+    expect(unveilKeys('ssls', withoutKey, draft)).not.toHaveProperty('key');
+    expect(unveilKeys('ssls', { ...shown, key: '-----BEGIN PRIVATE KEY-----typed' }, draft).key).toBe('-----BEGIN PRIVATE KEY-----typed');
+    // A note with nothing behind it (pasted into another object) stays as typed, for the checks to refuse.
+    expect(unveilKeys('ssls', { key: t('json.keyHidden') }, {}).key).toBe(t('json.keyHidden'));
   });
 });

@@ -18,6 +18,7 @@ const SAMPLES: Partial<Record<Kind, Item[]>> = {
     { id: 'alice', value: { username: 'alice', group_id: 'partners', plugins: { 'key-auth': {} }, labels: { org: 'acme' } } },
     { id: 'bob', value: { username: 'bob' } },
   ],
+  ssls: [itemOf('c1', { snis: ['a.test'], status: 0 }), itemOf('c2', { type: 'client' })],
 };
 const CTX = ctxOf({ services: [itemOf('s1', { name: 'web' })], consumerGroups: [itemOf('partners', { name: 'partners' })], routes: SAMPLES.routes });
 

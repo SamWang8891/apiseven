@@ -332,6 +332,13 @@ describe('the other optional columns', () => {
     expect(value('ssl_expiry', route({ host: 'none.example' }), ctx)).toBeUndefined();
     expect(value('ssl_expiry', route({}), ctx)).toBeUndefined();
   });
+
+  it('ssl_expiry: with two certificates for one SNI, the sooner of the two (APISIX serves the one it loaded first)', () => {
+    const ctx = ctxOf({
+      ssls: [itemOf('first', { snis: ['a.example'], validity_end: 2_000_000_000 }), itemOf('second', { snis: ['a.example'], validity_end: 1_900_000_000 })],
+    });
+    expect(value('ssl_expiry', route({ host: 'a.example' }), ctx)).toBe(1_900_000_000_000);
+  });
 });
 
 describe('sorting', () => {

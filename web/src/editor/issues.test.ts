@@ -80,6 +80,13 @@ describe('pathOfError: the draft path an APISIX save error is about', () => {
     ["'script' should be a Lua object", 'script'],
     ['failed to parse cert: PEM_read_bio_X509_AUX() failed', 'cert'],
     ['failed to parse key: PEM_read_bio_PrivateKey() failed', 'key'],
+    // An SSL's extra pairs and client CA (ssl.lua 123, 208, 217, 230): the SSL editor shows each field.
+    ['failed to decrypt previous encrypted key', 'key'],
+    ['mismatched number of certs and keys', 'keys'],
+    ['failed to handle cert-key pair[1]: failed to parse cert: bad', 'certs.0'],
+    ['failed to handle cert-key pair[2]: failed to parse key: PEM_read_bio_PrivateKey() failed', 'keys.1'],
+    ['failed to handle cert-key pair[3]: failed to decrypt previous encrypted key', 'keys.2'],
+    ['failed to validate client_cert: failed to parse cert: bad', 'client.ca'],
     // A stream route's (stream/router/ip_port.lua, stream/xrpc.lua, admin/stream_routes.lua).
     ['invalid remote_addr: fe80::/200', 'remote_addr'],
     ['invalid server_addr: :/8', 'server_addr'],
@@ -101,8 +108,6 @@ describe('pathOfError: the draft path an APISIX save error is about', () => {
       'invalid configuration: value should match only one schema, but matches none',
       'something else: property "uri" validation failed',
       'invalid plugins configuration: plugin limit-count is not allowed here',
-      "failed to handle cert-key pair[1]: failed to parse cert: bad",
-      'failed to validate client_cert: failed to parse cert: bad',
       '`upstream_host` can\'t be empty when `pass_host` is `rewrite`',
     ]) {
       expect(pathOfError(message), message).toBeUndefined();

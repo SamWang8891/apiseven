@@ -77,9 +77,16 @@ const ERROR_PATHS: { pattern: RegExp; path: (m: RegExpExecArray) => string }[] =
   { pattern: /^failed to validate the 'vars' expression: /, path: () => 'vars' },
   { pattern: /^(?:failed to load 'filter_func' string: |'filter_func' should be a function$)/, path: () => 'filter_func' },
   { pattern: /^(?:failed to load 'script' string: |'script' should be a Lua object$)/, path: () => 'script' },
-  // An SSL's main pair (extra pairs and the client CA have their own prefixes and name no field).
+  // An SSL (apisix/ssl.lua): its main pair (111, 123, 128), the number of extra pairs (208), an extra
+  // pair by its 1-based place (217: the key when the rest is about one), the client CA (230).
   { pattern: /^failed to parse cert: /, path: () => 'cert' },
-  { pattern: /^failed to parse key: /, path: () => 'key' },
+  { pattern: /^(?:failed to parse key: |failed to decrypt previous encrypted key$)/, path: () => 'key' },
+  { pattern: /^mismatched number of certs and keys$/, path: () => 'keys' },
+  {
+    pattern: /^failed to handle cert-key pair\[(\d+)\]: (failed to parse key: |failed to decrypt previous encrypted key$)?/,
+    path: (m) => `${m[2] ? 'keys' : 'certs'}.${Number(m[1]) - 1}`,
+  },
+  { pattern: /^failed to validate client_cert: /, path: () => 'client.ca' },
   // A stream route's addresses (stream/router/ip_port.lua) and protocol (stream/xrpc.lua, admin/stream_routes.lua).
   { pattern: /^invalid (remote_addr|server_addr): /, path: (m) => m[1] ?? '' },
   { pattern: /^unknown protocol \[/, path: () => 'protocol.name' },

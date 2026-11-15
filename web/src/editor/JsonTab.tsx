@@ -5,10 +5,12 @@ import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'reac
 import { useAllPlugins } from '../api/hooks';
 import { t } from '../i18n';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
-import { copiedWithout, redactObject } from '../plugins/secrets';
+import type { Kind, Obj } from '../api/types';
+import { copiedWithout, redactObject, unveilKeys, veilKeys } from '../plugins/secrets';
 import { registry, type TabProps } from '../resources/registry';
 import { Button, CodeEditor, toast, useLocked, usePending, useReveal } from '../ui';
-import { parse, pretty, represents } from './json';
+import { deepEqual } from './draft';
+import { parse, pretty } from './json';
 
 const LINE = 18;
 /** Room kept under the editor: its frame, and the page's bottom padding. */
@@ -30,6 +32,15 @@ function useFitLines(ref: RefObject<HTMLElement | null>): number {
   return lines;
 }
 
+/** The text the editing JSON tab shows for `draft`: an SSL's new private key as a note (veilKeys). */
+const textOf = (kind: Kind, draft: Obj): string => pretty(veilKeys(kind, draft).value);
+
+/** `text` parsed, with the notes for an SSL's keys turned back into them (unveilKeys); undefined when it doesn't parse. */
+function draftOf(kind: Kind, text: string, draft: Obj): Obj | undefined {
+  const parsed = parse(text);
+  return parsed.ok ? unveilKeys(kind, parsed.value, draft) : undefined;
+}
+
 /**
  * A CodeMirror editor over JSON.stringify(draft). Every edit that parses to an object becomes the
  * draft; text that doesn't parse stays as typed, with the parser's message, and holds Save
@@ -37,19 +48,22 @@ function useFitLines(ref: RefObject<HTMLElement | null>): number {
  * elsewhere (a form tab, Discard) the text follows. Locked: read-only, still selectable and
  * copyable, its secrets masked (an auth plugin's key: redactObject) behind "Show secrets", which
  * hides them again on every lock change. While editing, the text is the real one: it is what Save
- * sends. `issues` (those no form tab owns) are listed under it.
+ * sends, except an SSL's new private key, which is never shown: a note stands in its place and
+ * stands for it (veilKeys), and removing the note removes the key. `issues` (those no form tab owns)
+ * are listed under it.
  */
 export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   const locked = useLocked();
   const hostRef = useRef<HTMLDivElement>(null);
   const maxLines = useFitLines(hostRef);
   /** `error` (shown) and `held` (for Save) are set while the text does not parse to an object. */
-  const [state, setState] = useState(() => ({ text: pretty(draft), synced: draft, error: undefined as string | undefined, held: undefined as string | undefined }));
+  const [state, setState] = useState(() => ({ text: textOf(kind, draft), synced: draft, error: undefined as string | undefined, held: undefined as string | undefined }));
 
   // A draft changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
   let current = state;
   if (draft !== state.synced) {
-    current = state.held !== undefined || represents(state.text, draft) ? { ...state, synced: draft } : { text: pretty(draft), synced: draft, error: undefined, held: undefined };
+    const says = deepEqual(draftOf(kind, state.text, draft), draft);
+    current = state.held !== undefined || says ? { ...state, synced: draft } : { text: textOf(kind, draft), synced: draft, error: undefined, held: undefined };
     setState(current);
   }
   usePending(locked ? undefined : current.held);
@@ -64,8 +78,9 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   function change(text: string) {
     const parsed = parse(text);
     if (parsed.ok) {
-      setState({ text, synced: parsed.value, error: undefined, held: undefined });
-      setDraft(parsed.value);
+      const value = unveilKeys(kind, parsed.value, draft);
+      setState({ text, synced: value, error: undefined, held: undefined });
+      setDraft(value);
     } else {
       const field = t('editor.json.tab');
       const held = parsed.notObject ? t('ui.pending.jsonType', { field, type: 'object' }) : t('ui.pending.json', { field });
@@ -78,8 +93,9 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
       if (!navigator.clipboard) throw new Error('clipboard unavailable');
       await navigator.clipboard.writeText(shown);
       // The masked text says so: the clipboard has the mask characters, not the secrets.
-      // The toast says what the clipboard lacks: secrets Show secrets would add, or a never-shown key.
-      const without = copiedWithout(hidden, revealed);
+      // The toast says what the clipboard lacks: secrets Show secrets would add, or a never-shown key
+      // (also an SSL's new key while editing, which the text shows as a note).
+      const without = hidden ? copiedWithout(hidden, revealed) : veilKeys(kind, draft).veiled ? 'neverShown' : undefined;
       toast.success(without === 'masked' ? t('json.copiedMasked') : without === 'neverShown' ? t('json.copiedNoKey') : t('json.copied'));
     } catch (err) {
       toast.error(t('json.copyFailed', { error: err instanceof Error ? err.message : String(err) }));
@@ -87,7 +103,7 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
   }
 
   const singular = registry[kind].singular;
-  const formatted = current.error === undefined && current.text === pretty(draft);
+  const formatted = current.error === undefined && current.text === textOf(kind, draft);
   return (
     <div className="ed-json">
       <div className="ed-json__bar">
@@ -99,7 +115,7 @@ export function JsonTab({ draft, setDraft, kind, issues }: TabProps) {
             </Button>
           )}
           {!locked && (
-            <Button size="sm" variant="ghost" icon={<WandSparkles size={13} />} disabled={formatted || current.error !== undefined} onClick={() => change(pretty(draft))}>
+            <Button size="sm" variant="ghost" icon={<WandSparkles size={13} />} disabled={formatted || current.error !== undefined} onClick={() => change(textOf(kind, draft))}>
               {t('editor.json.format')}
             </Button>
           )}

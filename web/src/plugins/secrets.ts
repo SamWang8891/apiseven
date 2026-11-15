@@ -8,9 +8,13 @@
 //   know (removed, or a custom one not loaded) or while the list loads: which are secret is unknown;
 // - plugin metadata: its plugin's metadata `encrypt_fields` (azure-functions' master_apikey);
 // - any `client_key` (an upstream's or an inline upstream's tls.client_key, which a GET returns as
-//   APISIX's AES ciphertext) is never shown, not even on "Show secrets".
+//   APISIX's AES ciphertext) is never shown, not even on "Show secrets";
+// - an SSL's private keys, `key` and each of `keys`: a GET never returns them (admin/resource.lua
+//   180–193), but a new one sits in the draft from Replace until the save, so they are never shown
+//   either; the editing JSON tab shows a note in their place (veilKeys).
 import { isObj } from '../api/sanitize';
 import type { Kind, Obj, PluginInfo } from '../api/types';
+import { t } from '../i18n';
 import { MASK, redactSecrets } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
 
@@ -26,6 +30,20 @@ export interface Redacted {
   redacted: boolean;
   /** Whether "Show secrets" would show more (something other than a never-shown key is masked). */
   revealable: boolean;
+}
+
+/** An SSL's top-level `key` and every text of `keys` masked (sslKeys: never shown). */
+function maskSslKeys(value: Obj): { value: Obj; redacted: boolean } {
+  let redacted = false;
+  const out: Obj = { ...value };
+  const hide = (v: unknown): unknown => {
+    if (typeof v !== 'string') return v;
+    redacted = true;
+    return MASK;
+  };
+  if (out.key !== undefined) out.key = hide(out.key);
+  if (Array.isArray(out.keys)) out.keys = out.keys.map(hide);
+  return { value: out, redacted };
 }
 
 /** The schema's own top-level encrypt_fields. */
@@ -95,8 +113,10 @@ function maskPlugins(plugins: Obj, kind: Kind, all: Record<string, PluginInfo> |
  * secret is not known, so every text inside `plugins` is masked.
  */
 export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginInfo> | undefined): Redacted {
-  const never = mask(value, (k) => NEVER_SHOWN.has(k));
-  const revealed = never.redacted ? (never.value as Obj) : value;
+  const clientKeys = mask(value, (k) => NEVER_SHOWN.has(k));
+  const never = kind === 'ssls' ? maskSslKeys(clientKeys.value as Obj) : { value: clientKeys.value as Obj, redacted: false };
+  never.redacted ||= clientKeys.redacted;
+  const revealed = never.redacted ? never.value : value;
   const byName = redactSecrets(revealed, '', []);
   let masked = byName.value as Obj;
   let secrets = byName.redacted;
@@ -153,4 +173,36 @@ export function redactPair(
     redacted: l.redacted || r.redacted,
     revealable: l.revealable || r.revealable,
   };
+}
+
+/**
+ * The draft as the editing JSON tab shows it: an SSL's `key` and each text of `keys` (a new pair
+ * from Replace, never shown) replaced by a note that stands for it (`json.keyHidden`,
+ * `json.keysHidden`); unveilKeys turns the notes back. Every other kind, and an SSL without a new
+ * key, as it is.
+ */
+export function veilKeys(kind: Kind, draft: Obj): { value: Obj; veiled: boolean } {
+  if (kind !== 'ssls' || (typeof draft.key !== 'string' && !(Array.isArray(draft.keys) && draft.keys.some((k) => typeof k === 'string')))) {
+    return { value: draft, veiled: false };
+  }
+  const value: Obj = { ...draft };
+  if (typeof value.key === 'string') value.key = t('json.keyHidden');
+  if (Array.isArray(value.keys)) value.keys = (value.keys as unknown[]).map((k, i) => (typeof k === 'string' ? t('json.keysHidden', { n: i + 1 }) : k));
+  return { value, veiled: true };
+}
+
+/**
+ * `edited` (the JSON tab's text, parsed) with each note veilKeys put there turned back into the key
+ * of `draft` it stands for, wherever the note now is (keys reordered with their certs keep their
+ * keys). A note that was removed takes its key with it; text typed over one is kept as typed.
+ */
+export function unveilKeys(kind: Kind, edited: Obj, draft: Obj): Obj {
+  if (kind !== 'ssls') return edited;
+  const out: Obj = { ...edited };
+  if (out.key === t('json.keyHidden') && typeof draft.key === 'string') out.key = draft.key;
+  if (Array.isArray(out.keys) && Array.isArray(draft.keys)) {
+    const keys = new Map((draft.keys as unknown[]).flatMap((k, i) => (typeof k === 'string' ? [[t('json.keysHidden', { n: i + 1 }), k] as const] : [])));
+    out.keys = (out.keys as unknown[]).map((k) => (typeof k === 'string' ? (keys.get(k) ?? k) : k));
+  }
+  return out;
 }

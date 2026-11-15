@@ -34,6 +34,11 @@ import { credentialIssues } from './credentials/validate';
 import { consumerGroupColumns } from './consumer_groups/columns';
 import { consumerGroupTabs } from './consumer_groups/tabs';
 import { consumerGroupIssues } from './consumer_groups/validate';
+import { sslColumns } from './ssls/columns';
+import { sslFilters } from './ssls/filters';
+import { sslTabs } from './ssls/tabs';
+import { sniNames, statusApplies } from './ssls/usage';
+import { sslIssues } from './ssls/validate';
 
 export type { Ctx } from './ctx';
 export { useCtx } from './ctx';
@@ -95,6 +100,11 @@ export interface ValidateEnv {
   plugins?: Record<string, PluginInfo>;
   /** Every stream plugin (useAllPlugins('stream').data), for kinds whose plugins run in the stream subsystem; undefined until loaded and for other kinds. */
   streamPlugins?: Record<string, PluginInfo>;
+  /**
+   * The stored object as loaded (undefined for a new one): what APISIX merges a PATCH into, for the
+   * one kind saved that way without its whole value (an SSL without a new key, editor/save.ts).
+   */
+  original?: Item;
 }
 
 /** A way to group a list's rows (a toggle on the list page); one item can sit in several groups. */
@@ -145,6 +155,12 @@ export interface ResourceDef {
    * with `service_id: 's1'`); any other param is ignored.
    */
   prefill?: string[];
+  /**
+   * For kinds with a status: why it does nothing for this object, when it does nothing (an SSL of
+   * type client, which APISIX uses whatever its status). The editor's header and the list then say
+   * so instead of offering a switch.
+   */
+  statusIgnored?(value: Obj): string | undefined;
 }
 
 /** name → username → desc → id. */
@@ -177,7 +193,7 @@ function baseColumns(): ColumnDef[] {
 }
 
 type Spec = Omit<ResourceDef, 'kind' | 'singular' | 'plural' | 'nameOf' | 'columns' | 'tabs' | 'blank'> &
-  Partial<Pick<ResourceDef, 'columns' | 'tabs' | 'blank'>>;
+  Partial<Pick<ResourceDef, 'columns' | 'tabs' | 'blank' | 'nameOf'>>;
 
 function define(kind: Kind, spec: Spec): ResourceDef {
   return {
@@ -284,7 +300,19 @@ export const registry: Record<Kind, ResourceDef> = {
     validate: (draft, env) => consumerGroupIssues(draft, env),
     columns: consumerGroupColumns,
   }),
-  ssls: define('ssls', { group: 'access', hasStatus: true, idMode: 'optional', blank: () => ({ status: 1 }) }),
+  ssls: define('ssls', {
+    group: 'access',
+    hasStatus: true,
+    idMode: 'optional',
+    blank: () => ({ status: 1 }),
+    tabs: sslTabs,
+    validate: (draft, env) => sslIssues(draft, env),
+    columns: sslColumns,
+    filters: sslFilters,
+    // An SSL has no name: its first SNI reads best in titles, delete dialogs and search.
+    nameOf: (item) => sniNames(item.value)[0] ?? item.id,
+    statusIgnored: (value) => (statusApplies(value) ? undefined : t('ssl.status.ignored')),
+  }),
   secrets: define('secrets', { group: 'access', hasStatus: false, idMode: 'required' }),
   global_rules: define('global_rules', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins, ...withPlugins('global_rule') }),
   plugin_configs: define('plugin_configs', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins, ...withPlugins('plugin_config') }),

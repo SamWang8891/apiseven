@@ -2,7 +2,6 @@
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
-import { deepEqual } from './draft';
 
 /** The id of the frame's own JSON tab, after the kind's tabs. Registry tabs must not use it. */
 export const JSON_TAB = 'json';
@@ -34,10 +33,4 @@ export function parse(text: string): Parsed {
     return { ok: false, error: t('editor.json.invalid', { error: err instanceof Error ? err.message : String(err) }) };
   }
   return isObj(value) ? { ok: true, value } : { ok: false, error: t('editor.json.invalid', { error: t('editor.json.notObject') }), notObject: true };
-}
-
-/** Whether `text` already says `draft` (so a draft change made from here doesn't reformat what was typed). */
-export function represents(text: string, draft: Obj): boolean {
-  const parsed = parse(text);
-  return parsed.ok && deepEqual(parsed.value, draft);
 }
