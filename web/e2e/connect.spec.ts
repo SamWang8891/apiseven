@@ -22,7 +22,7 @@ test.describe('the Connect page', () => {
   }
 
   test.describe('a refused key', () => {
-    test.use({ allowConsole: [/^401 GET .*\/apisix\/admin\/routes/] });
+    test.use({ allowConsole: /^401 GET .*\/apisix\/admin\/routes/ });
     test('a wrong key shows that the Admin API rejected it, with APISIX’s reason', async ({ page }) => {
       await fill(page, env.adminUrl, 'not-the-key');
       await page.getByRole('button', { name: t('connect.submit') }).click();
@@ -34,7 +34,7 @@ test.describe('the Connect page', () => {
   });
 
   test.describe('an unreachable address', () => {
-    test.use({ allowConsole: [/^failed GET http:\/\/127\.0\.0\.1:\d+\/apisix\/admin\/routes/] });
+    test.use({ allowConsole: /^failed GET http:\/\/127\.0\.0\.1:\d+\/apisix\/admin\/routes/ });
     test('the message names allow_admin and enable_admin_cors', async ({ page }) => {
       const url = `http://127.0.0.1:${await closedPort()}`;
       await fill(page, url, env.adminKey);
@@ -75,7 +75,7 @@ test.describe('the Connect page', () => {
 });
 
 test.describe('a viewer (read-only) key', () => {
-  test.use({ connectAs: 'viewer', allowConsole: [/^40[13] (PUT|PATCH) .*\/apisix\/admin\/routes\//] });
+  test.use({ connectAs: 'viewer', allowConsole: /^40[13] (PUT|PATCH) .*\/apisix\/admin\/routes\// });
 
   test('lists load; a status toggle shows APISIX’s refusal and the read-only banner; Edit is then disabled', async ({ page, admin }) => {
     const main = await openList(page, 'routes');

@@ -316,7 +316,7 @@ test.describe('when APISIX disagrees', () => {
 });
 
 test.describe('APISIX’s own refusal', () => {
-  test.use({ allowConsole: [/^400 PUT .*\/apisix\/admin\/routes\//] });
+  test.use({ allowConsole: /^400 PUT .*\/apisix\/admin\/routes\// });
 
   test('APISIX’s refusal is shown verbatim, and nothing is stored', async ({ page, admin }) => {
     const { id } = await storedRoute(admin);

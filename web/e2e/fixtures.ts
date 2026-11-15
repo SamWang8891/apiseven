@@ -20,11 +20,12 @@ interface Options {
   /** The saved connection the browser starts with. `none`: the Connect page. */
   connectAs: ConnectAs;
   /**
-   * Console errors and failed requests this test expects (a negative test). Matched against
+   * Console errors and failed requests this test expects (a negative test), as one pattern (an array
+   * would read as Playwright's [value, options] pair in test.use). Matched against
    * `<status> <METHOD> <url>` for a failed request, `failed <METHOD> <url> <reason>` for one that got
    * no answer, and the message text for anything else.
    */
-  allowConsole: (string | RegExp)[];
+  allowConsole: RegExp | undefined;
 }
 
 interface Fixtures {
@@ -82,7 +83,7 @@ const ALWAYS_ALLOWED = [/^404 GET .*\/config\.json$/, /^404 GET .*\/apisix\/admi
 
 export const test = base.extend<Options & Fixtures>({
   connectAs: ['admin', { option: true }],
-  allowConsole: [[], { option: true }],
+  allowConsole: [undefined, { option: true }],
   context: async ({ context, connectAs }, use) => {
     if (connectAs !== 'none') await saveConnection(context, connectAs === 'admin' ? env.adminKey : env.viewerKey);
     await use(context);
@@ -90,8 +91,8 @@ export const test = base.extend<Options & Fixtures>({
   page: async ({ page, allowConsole }, use) => {
     const seen = watchConsole(page);
     await use(page);
-    const allowed = [...ALWAYS_ALLOWED, ...allowConsole];
-    const unexpected = describeProblems(seen).filter((text) => !allowed.some((a) => (typeof a === 'string' ? text.includes(a) : a.test(text))));
+    const allowed = allowConsole ? [...ALWAYS_ALLOWED, allowConsole] : ALWAYS_ALLOWED;
+    const unexpected = describeProblems(seen).filter((text) => !allowed.some((a) => a.test(text)));
     expect(unexpected, 'no console errors or unhandled rejections').toEqual([]);
   },
   admin: async ({}, use) => {
