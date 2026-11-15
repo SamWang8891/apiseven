@@ -5,7 +5,7 @@
 // host field keeps focus while the node appears. A map-shaped list stays a map through edits (see
 // NodesTable and nodes.ts). Locked, it is a plain table.
 import { Copy, X } from 'lucide-react';
-import { useEffect, useRef, type ClipboardEvent } from 'react';
+import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { issueAt } from '../editor/issues';
@@ -198,6 +198,9 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   function settle(i: number) {
     const id = idOf(i);
     const h = held[id];
+    // The one write leaving a field makes: an all-digit map host, held while typed (`10` may be the start
+    // of `10.0.0.5`, and JavaScript would move an integer key to the top of the map under the cursor). It
+    // writes exactly the host and port the fields show, so nothing a save sends differs from the screen.
     const done = h ? (i === fresh ? editNew(h.host, true) : editAddress(i, h, true)) : true;
     if (done) delete start.current[id];
   }
@@ -235,6 +238,16 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     if (i === fresh) return '';
     const as = typedAs[id];
     return map && as && rows[i]?.addr === as.key ? as.text : (rows[i]?.host ?? '');
+  };
+
+  /**
+   * Enter in a host field whose text holds a port (`10.0.0.5:8080`, `[::1]:9000`): the commit, doing
+   * exactly what "Move <port> to Port" does, in either form, for a row just added or a stored one.
+   */
+  const enterMoves = (i: number) => (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== 'Enter' || portInHost(hostText(i)) === undefined) return;
+    e.preventDefault();
+    movePort(i);
   };
 
   /** "Move <port> to Port": the port a host holds goes to the node's port, in one change (an array row, a held map row, the new-node field). */
@@ -330,6 +343,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
             error={duplicateOf(i) ?? issue(i, 'host') ?? colonHeld(i)}
             help={hostHint(i)}
             onChange={(e) => (map ? editAddress(i, { host: e.target.value, port: address.port }) : onChange(setNodeField(value, i, 'host', e.target.value)))}
+            onKeyDown={enterMoves(i)}
             onBlur={() => map && settle(i)}
             onPaste={paste(i)}
           />

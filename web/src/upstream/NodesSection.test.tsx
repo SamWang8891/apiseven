@@ -225,6 +225,37 @@ describe('host:port typed by hand', () => {
     expect(h.held()).toEqual([]);
   });
 
+  // Fix round 2, ruling point 2: Enter in a host field holding `host:port` does what "Move <port> to Port" does.
+  it('"Add a node" with 10.0.0.5:8080, then Enter (an array): a node at host 10.0.0.5, port 8080', async () => {
+    const h = renderUpstream({ type: 'roundrobin', nodes: [{ host: 'a', port: 80, weight: 1 }] }, { section: 'nodes' });
+    await h.user.type(newHost(), '10.0.0.5:8080');
+    expect(h.value().nodes).toEqual([{ host: 'a', port: 80, weight: 1 }, { host: '10.0.0.5:8080', weight: 1 }]);
+    const writes = h.changes.mock.calls.length;
+    await h.user.keyboard('{Enter}');
+    expect(h.value().nodes).toEqual([{ host: 'a', port: 80, weight: 1 }, { host: '10.0.0.5', port: 8080, weight: 1 }]);
+    expect(h.changes.mock.calls.length).toBe(writes + 1);
+  });
+
+  it('"Add a node" with 10.0.0.5:8080, then Enter (a map): the entry 10.0.0.5:8080', async () => {
+    const h = renderUpstream({ type: 'roundrobin', nodes: { 'a:80': 2 } }, { section: 'nodes' });
+    await h.user.type(newHost(), '10.0.0.5:8080');
+    expect(h.held()).toHaveLength(1);
+    await h.user.keyboard('{Enter}');
+    expect(h.value().nodes).toEqual({ 'a:80': 2, '10.0.0.5:8080': 1 });
+    expect(h.held()).toEqual([]);
+  });
+
+  it("Enter in a stored row's host holding a port moves it; Enter in a host without one changes nothing", async () => {
+    const h = renderUpstream({ nodes: [{ host: '10.0.0.5:8080', port: 80, weight: 1 }, { host: 'b', port: 80, weight: 1 }] }, { section: 'nodes' });
+    await h.user.click(host(1));
+    await h.user.keyboard('{Enter}');
+    expect(h.value().nodes).toEqual([{ host: '10.0.0.5', port: 8080, weight: 1 }, { host: 'b', port: 80, weight: 1 }]);
+    const writes = h.changes.mock.calls.length;
+    await h.user.click(host(2));
+    await h.user.keyboard('{Enter}');
+    expect(h.changes.mock.calls.length).toBe(writes);
+  });
+
   it('a paste of host:port into a host cell splits at once, as before', async () => {
     const h = renderUpstream({ nodes: [{ host: 'a', port: 80, weight: 1 }] }, { section: 'nodes' });
     await h.user.clear(host(1));
