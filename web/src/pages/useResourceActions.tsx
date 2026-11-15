@@ -55,16 +55,29 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
     { id: 'delete', label: def.resets ? t('action.reset') : t('action.delete'), icon: <Trash2 size={14} />, danger: true, disabled: readOnly, onSelect: () => setDeleting(item) },
   ];
 
-  /** One write per item, in order; then one reload and one toast with the outcome. */
+  /**
+   * One write per item, in order; then one reload and one toast with the outcome. A write refused for
+   * the key (it is then read-only, api/write.ts) ends the run: the rest would be refused too.
+   */
   async function each(label: string, items: Item[], op: (client: AdminClient, item: Item) => Promise<unknown>, progress?: (done: number, total: number) => void, deletes = false) {
     const failed: { item: Item; error: ApiError }[] = [];
+    let stopped: { error: ApiError; done: number } | undefined;
     for (const [i, item] of items.entries()) {
       // A deleted object's cached item goes with it (WriteOptions.forget).
       const result = await write((client) => op(client, item), { silent: true, forget: deletes ? [{ kind, id: item.id, parent }] : [] });
       if (!result.ok) failed.push({ item, error: result.error });
+      if (!result.ok && result.error.kind === 'auth') {
+        stopped = { error: result.error, done: i + 1 - failed.length };
+        break;
+      }
       progress?.(i + 1, items.length);
     }
     await Promise.all([invalidate(kind, parent), ...(kind === 'consumers' ? [invalidate('credentials')] : [])]);
+    if (stopped) {
+      const { error, done } = stopped;
+      toast.error(t('bulk.stopped', { action: label, done, total: items.length, error: error.errorMsg ?? error.message }));
+      return;
+    }
     const first = failed[0];
     if (!first) {
       toast.success(t('bulk.done', { action: label, done: items.length }));

@@ -99,7 +99,7 @@ describe('G2 / G3: what the field shows and what Keep means survive a remount', 
   });
 
   it('a new object: a typed key after a tab switch reads "a new value was entered", with no Keep (nothing is stored)', async () => {
-    const { user } = await openEditor('#/secrets/new', { objects: { secrets: [] } });
+    const { user } = await openEditor('#/secrets/~new', { objects: { secrets: [] } });
     await user.click(main().getByRole('combobox', { name: /^Secret manager/ }));
     await user.click(await screen.findByRole('option', { name: new RegExp(`^${t('sc.manager.gcp')}`) }));
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'g9');

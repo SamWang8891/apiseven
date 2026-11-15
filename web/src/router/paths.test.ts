@@ -25,9 +25,11 @@ describe('pathFor', () => {
 });
 
 describe('newPathFor', () => {
-  it('gives the create path', () => {
-    expect(newPathFor('routes')).toBe('/routes/new');
-    expect(newPathFor('credentials', { consumer: 'jo e' })).toBe('/consumers/jo%20e/credentials/new');
+  // Task 16b item 14: "~" is in no APISIX id (^[a-zA-Z0-9-_.]+$), so no object's path is the create page's.
+  it('gives the create path, a segment no id can equal', () => {
+    expect(newPathFor('routes')).toBe('/routes/~new');
+    expect(newPathFor('credentials', { consumer: 'jo e' })).toBe('/consumers/jo%20e/credentials/~new');
+    expect(newPathFor('routes')).not.toBe(pathFor('routes', 'new'));
   });
 });
 

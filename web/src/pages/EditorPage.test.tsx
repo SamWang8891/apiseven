@@ -221,7 +221,7 @@ describe('the ⋯ menu', () => {
   it('Duplicate opens the create page from this object', async () => {
     const { user } = await openMenu();
     await user.click(await screen.findByRole('menuitem', { name: t('action.duplicate') }));
-    await waitFor(() => expect(window.location.hash).toBe('#/routes/new?from=r1'));
+    await waitFor(() => expect(window.location.hash).toBe('#/routes/~new?from=r1'));
     expect(await main().findByRole('heading', { level: 1, name: t('page.new', { kind: 'Route' }) })).toBeInTheDocument();
   });
 

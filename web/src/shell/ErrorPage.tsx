@@ -15,8 +15,11 @@ function messageOf(error: unknown): string {
   }
 }
 
-/** What replaces a page that crashed: the error, Reload, and a way back to the Connect page. */
-export function ErrorPage({ error }: { error: unknown }) {
+/**
+ * What replaces a page that crashed: the error, Reload, and a way back to the Connect page; with
+ * `onRetry`, Try again first, which renders the page again without leaving it.
+ */
+export function ErrorPage({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
   return (
     <div className="shell-error" role="alert">
       <CircleAlert className="shell-error__icon" aria-hidden="true" size={22} strokeWidth={2.25} />
@@ -24,7 +27,12 @@ export function ErrorPage({ error }: { error: unknown }) {
       <p className="shell-error__body">{t('error.body')}</p>
       <pre className="shell-error__message">{messageOf(error)}</pre>
       <div className="shell-error__actions">
-        <Button variant="primary" onClick={() => window.location.reload()}>
+        {onRetry && (
+          <Button variant="primary" onClick={onRetry}>
+            {t('error.retry')}
+          </Button>
+        )}
+        <Button variant={onRetry ? 'secondary' : 'primary'} onClick={() => window.location.reload()}>
           {t('error.reload')}
         </Button>
         <Button onClick={() => (window.location.hash = '#/connect')}>{t('error.backToConnections')}</Button>
@@ -38,7 +46,7 @@ export function RouteErrorPage() {
   return <ErrorPage error={useRouteError()} />;
 }
 
-/** Catches what the router can't (the providers around it). Going to another page clears the error. */
+/** Catches what the router can't (the providers around it). Try again, or going to another page, clears the error. */
 export class AppErrorBoundary extends Component<{ children: ReactNode }, { error?: { value: unknown } }> {
   state: { error?: { value: unknown } } = {};
 
@@ -59,6 +67,6 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { error
   };
 
   render() {
-    return this.state.error ? <ErrorPage error={this.state.error.value} /> : this.props.children;
+    return this.state.error ? <ErrorPage error={this.state.error.value} onRetry={this.reset} /> : this.props.children;
   }
 }

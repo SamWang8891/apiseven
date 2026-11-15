@@ -47,12 +47,12 @@ describe('ListPage', () => {
     expect(main().getAllByRole('link', { name: /^(alpha|beta|gamma)$/ })).toHaveLength(3);
   });
 
-  it('with zero items shows the empty state and a Create link to #/<kind>/new', async () => {
+  it('with zero items shows the empty state and a Create link to #/<kind>/~new', async () => {
     await open('#/protos');
     const empty = await main().findByRole('region', { name: t('table.empty.title', { plural: t('kind.protos.plural') }) });
     expect(within(empty).getByRole('link', { name: t('page.new', { kind: t('kind.protos.singular') }) })).toHaveAttribute(
       'href',
-      '#/protos/new',
+      '#/protos/~new',
     );
   });
 
@@ -60,7 +60,7 @@ describe('ListPage', () => {
     // An id with a slash names no object since fix round 2 (R4); one with a space still needs encoding.
     const { user } = await open('#/routes', { objects: { routes: [{ id: 'a b', name: 'slashy' }] } });
     await rowAction(user, 'slashy', t('action.duplicate'));
-    await waitFor(() => expect(window.location.hash).toBe('#/routes/new?from=a%20b'));
+    await waitFor(() => expect(window.location.hash).toBe('#/routes/~new?from=a%20b'));
     window.history.back();
     // The copy is unsaved work (a duplicate starts dirty), so leaving it asks first.
     await user.click(await screen.findByRole('button', { name: t('editor.leave.confirm') }));
@@ -199,6 +199,24 @@ describe('status', () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(main().queryByRole('link', { name: 'alpha' })).not.toBeInTheDocument());
     expect(main().getByRole('link', { name: 'beta' })).toBeInTheDocument();
+  });
+
+  // Task 16b item 13: a key refused once is refused for the rest.
+  it('a bulk action stops at the first write refused for the key, and says how many were done', async () => {
+    const { user, admin } = await open('#/routes', {
+      replies: { 'routes/r2': (req) => (req.method === 'PATCH' ? json(401, { error_msg: 'invalid method for role viewer' }) : undefined) },
+    });
+    await main().findByRole('link', { name: 'gamma' });
+    await user.click(main().getByRole('checkbox', { name: t('table.selectAll', { count: 3 }) }));
+    await user.click(main().getByRole('button', { name: t('action.disable') }));
+    expect(
+      await screen.findByText(t('bulk.stopped', { action: t('action.disable'), done: 1, total: 3, error: 'invalid method for role viewer' })),
+    ).toBeInTheDocument();
+    expect(requestsTo(admin, 'PATCH')).toEqual([
+      { path: 'routes/r1', body: { status: 0 } },
+      { path: 'routes/r2', body: { status: 0 } },
+    ]);
+    expect(await screen.findByText(t('readOnly.banner'))).toBeInTheDocument();
   });
 });
 

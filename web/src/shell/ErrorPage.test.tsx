@@ -48,4 +48,26 @@ describe('AppErrorBoundary', () => {
     expect(window.location.hash).toBe('#/connect');
     expect(await screen.findByText('fine again')).toBeInTheDocument();
   });
+
+  // Task 16b item 9: recovering does not need another page.
+  it('Try again renders the tree again, on the same page', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const user = userEvent.setup();
+    window.history.replaceState(null, '', '/#/routes');
+    let broken = true;
+    function MaybeBoom() {
+      if (broken) throw new Error('render exploded');
+      return <p>fine again</p>;
+    }
+    render(
+      <AppErrorBoundary>
+        <MaybeBoom />
+      </AppErrorBoundary>,
+    );
+    expect(screen.getByText('render exploded')).toBeInTheDocument();
+    broken = false;
+    await user.click(screen.getByRole('button', { name: t('error.retry') }));
+    expect(await screen.findByText('fine again')).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/routes');
+  });
 });

@@ -7,7 +7,9 @@ import { useNavigate } from 'react-router';
 import { queryKeys, scopedKey, useAllPlugins, useClient, useInvalidate } from '../api/hooks';
 import { stripTimestamps } from '../api/sanitize';
 import type { Item, Kind, Obj, Parent } from '../api/types';
+import type { ApiError } from '../api/errors';
 import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
+import type { ConnectState } from '../connection/ConnectPage';
 import { t } from '../i18n';
 import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
@@ -109,6 +111,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const focusNext = useRef<'edit' | 'field' | undefined>(undefined);
   /** False once the page is gone: a create answered after that must not navigate back to it. */
   const mounted = useMounted();
+  /** Set at once by a save that writes: a second request in the same tick (Cmd/Ctrl-S twice) sees it before `saving` renders. */
+  const inFlight = useRef(false);
 
   // The draft changes only while editing and not saving (what is typed during a save would be
   // replaced by the saved object). The tab area is locked meanwhile as well; this is the backstop.
@@ -207,7 +211,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
 
   /** `anyway`: Save anyway, which sends the draft past the kind's own checks (only those). */
   async function save(force = false, left?: HTMLElement, anyway = false) {
-    if (saving || locked) return;
+    if (saving || locked || inFlight.current) return;
     if (problems > 0 && !(anyway && onlyLocal)) {
       setSaveAttempts((n) => n + 1);
       const fix = problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems });
@@ -231,9 +235,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       toast.info(t('editor.nothingToSave'));
       return;
     }
+    inFlight.current = true;
     setSaving(true);
     setFailure(undefined);
     const result = await saveResource(client, { kind, id: isNew ? createId : id, isNew, draft, original, parent, force });
+    inFlight.current = false;
     setSaving(false);
 
     if (result.ok) {
@@ -264,15 +270,28 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       setFailure(refusal);
       toast.error(refusal.message, refusal.link && { label: refusal.link.label, href: `#${refusal.link.to}` });
       if (refusal.path !== undefined) goTab(tabOfIssue({ path: refusal.path, message: '' }, tabFields, JSON_TAB));
+      if ('unchecked' in result && result.unchecked.kind === 'auth') toConnect(result.unchecked);
     } else {
       const { error } = result;
-      if (error.kind === 'auth') markReadOnly();
+      // Only a refused write says the key may not write; a refused read says the key is wrong.
+      if (error.kind === 'auth') {
+        if (result.read) toConnect(error);
+        else markReadOnly();
+      }
       const path = pathOfError(error.errorMsg);
       setFailure(saveFailure(error, path));
       if (path !== undefined) goTab(tabOfIssue({ path, message: '' }, tabFields, JSON_TAB));
     }
   }
 
+  /**
+   * A read on the way to a write was refused for the key: as for a query (App.tsx), Connect, with the
+   * reason; the leave guard asks first when there is something to lose.
+   */
+  function toConnect(error: ApiError) {
+    const state: ConnectState = { reason: error.errorMsg ?? error.message, connId: client.conn.id };
+    if (mounted.current) void navigate('/connect', { replace: true, state });
+  }
 
   function discard() {
     if (isNew) {

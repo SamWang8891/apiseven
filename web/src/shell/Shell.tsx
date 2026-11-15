@@ -6,7 +6,7 @@ import { ClientProvider } from '../api/hooks';
 import { useReadOnlyKey } from '../api/write';
 import { needsKey, useConnections, type SavedConnection } from '../connection/store';
 import { t } from '../i18n';
-import { kindFromSegment, pathFor } from '../router/paths';
+import { kindFromSegment, NEW_SEGMENT, pathFor } from '../router/paths';
 import { Toaster, TooltipProvider } from '../ui';
 import { clipTitle } from '../ui/clipTitle';
 import { setToastPage } from '../ui/toast';
@@ -99,7 +99,7 @@ function Breadcrumb() {
   // which gives way first; the kinds' names keep their width.
   const crumbs: { label: ReactNode; text: string; to?: string; id?: boolean }[] = [{ label: t(`kind.${kind}.plural`), text: t(`kind.${kind}.plural`), to: pathFor(kind) }];
   const item = (raw: string, singular: string): { label: ReactNode; text: string; id?: boolean } =>
-    raw === 'new' ? { label: t('page.new', { kind: singular }), text: t('page.new', { kind: singular }) } : { label: <span className="mono">{decode(raw)}</span>, text: decode(raw), id: true };
+    raw === NEW_SEGMENT ? { label: t('page.new', { kind: singular }), text: t('page.new', { kind: singular }) } : { label: <span className="mono">{decode(raw)}</span>, text: decode(raw), id: true };
 
   if (segments[1] !== undefined) crumbs.push({ ...item(segments[1], t(`kind.${kind}.singular`)), to: `/${segments[0]}/${segments[1]}` });
   if (kind === 'consumers' && segments[2] === 'credentials' && segments[3] !== undefined) {

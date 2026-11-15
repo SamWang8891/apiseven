@@ -138,7 +138,7 @@ describe('empty states', () => {
     expect(within(empty).getByText(t('kind.routes.about'))).toBeInTheDocument();
     expect(within(empty).getByRole('link', { name: t('page.new', { kind: t('kind.routes.singular') }) })).toHaveAttribute(
       'href',
-      '/routes/new',
+      '/routes/~new',
     );
   });
 

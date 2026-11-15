@@ -178,8 +178,8 @@ describe('Routes', () => {
 
   it('the new-route links carry the service id', async () => {
     tab(RoutesTab, WEB);
-    expect(await screen.findByRole('link', { name: t('svc.routes.newRoute') })).toHaveAttribute('href', '/routes/new?service_id=web');
-    expect(screen.getByRole('link', { name: t('svc.routes.newStreamRoute') })).toHaveAttribute('href', '/stream_routes/new?service_id=web');
+    expect(await screen.findByRole('link', { name: t('svc.routes.newRoute') })).toHaveAttribute('href', '/routes/~new?service_id=web');
+    expect(screen.getByRole('link', { name: t('svc.routes.newStreamRoute') })).toHaveAttribute('href', '/stream_routes/~new?service_id=web');
   });
 
   it('with no routes using it, each table says so and still offers the new-route link', async () => {

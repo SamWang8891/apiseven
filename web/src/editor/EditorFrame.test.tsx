@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it } from 'vitest';
 import { stripTimestamps } from '../api/sanitize';
@@ -114,6 +114,19 @@ describe('lock', () => {
     expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
   });
 
+  // Task 16b item 12: the second press comes before React has rendered the first one's "saving".
+  it('Cmd/Ctrl+S twice in the same tick starts one save', async () => {
+    const { user, admin } = await openRoute();
+    await unlockAndSetUri(user, '/z');
+    act(() => {
+      fireEvent.keyDown(window, { key: 's', metaKey: true });
+      fireEvent.keyDown(window, { key: 's', metaKey: true });
+    });
+    expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(writesOf(admin)).toMatchObject([{ method: 'PUT', path: 'routes/r1', body: { uri: '/z' } }]);
+  });
+
   it('shows the status as a badge while locked and as a switch bound to draft.status while editing', async () => {
     const { user, admin } = await openRoute();
     expect(main().getByText(t('table.status.enabled'))).toBeInTheDocument();
@@ -209,6 +222,39 @@ describe('save', () => {
     expect(await main().findByRole('button', { name: t('editor.edit') })).toBeDisabled();
     await user.keyboard('e');
     expect(inputsInMain()).toHaveLength(0);
+  });
+
+  // Task 16b item 11: only a refused write says the key may not write; a refused read says the key is wrong.
+  it('a 401 on the read before the write: no write, not read-only; it leads to Connect as a failed query does (asking first)', async () => {
+    let gets = 0;
+    const { user, admin } = await openRoute({
+      replies: {
+        'routes/r1': (req) =>
+          req.method === 'GET' && ++gets > 1 ? json(401, { error_msg: 'failed to check token', description: 'wrong apikey' }) : undefined,
+      },
+    });
+    await unlockAndSetUri(user, '/b');
+    await user.click(button(t('editor.save')));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.leave.title') });
+    expect(writesOf(admin)).toEqual([]);
+    expect(screen.queryByText(t('readOnly.banner'))).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: t('editor.leave.confirm') }));
+    await waitFor(() => expect(window.location.hash).toBe('#/connect'));
+    const banner = await screen.findByRole('alert');
+    expect(banner).toHaveTextContent('failed to check token: wrong apikey');
+    expect(screen.queryByText(t('readOnly.banner'))).not.toBeInTheDocument();
+  });
+
+  it('a 401 on the create check is the same: no write, not read-only, Connect', async () => {
+    const { user, admin } = await openEditor('#/upstreams/new', {
+      replies: { 'upstreams/u9': (req) => (req.method === 'GET' ? json(401, { error_msg: 'failed to check token', description: 'wrong apikey' }) : undefined) },
+    });
+    await user.type(await main().findByRole('textbox', { name: /^ID/ }), 'u9');
+    await user.click(button(t('editor.create')));
+    await user.click(await screen.findByRole('button', { name: t('editor.leave.confirm') }));
+    await waitFor(() => expect(window.location.hash).toBe('#/connect'));
+    expect(writesOf(admin)).toEqual([]);
+    expect(screen.queryByText(t('readOnly.banner'))).not.toBeInTheDocument();
   });
 
   it('nothing changed: Save locks again without writing', async () => {

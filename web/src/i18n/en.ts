@@ -345,6 +345,7 @@ export const en: Record<string, string> = {
   'bulk.delete.confirm': 'Delete {count}',
   'bulk.done': '{action}: {done} done',
   'bulk.someFailed': '{action}: {done} done, {failed} failed ({names}). {error}',
+  'bulk.stopped': '{action}: {done} of {total} done, then stopped: the admin key was refused. {error}',
 
   // Editor frame (web/src/editor, web/src/pages/EditorPage.tsx)
   'editor.back': 'Back to {plural}',
@@ -463,6 +464,7 @@ export const en: Record<string, string> = {
   // Errors that replace a page
   'error.title': 'Something went wrong',
   'error.body': 'This page hit an error it could not recover from. Reloading usually fixes it.',
+  'error.retry': 'Try again',
   'error.reload': 'Reload',
   'error.backToConnections': 'Back to connections',
 

@@ -28,18 +28,26 @@ function base(kind: Kind, parent?: Parent): string {
 }
 
 /**
+ * The create page's last segment. "~" is in no APISIX id (`^[a-zA-Z0-9-_.]+$`, schema_def.lua 47–51
+ * id_schema; a consumer's username and a plugin's name are narrower), so no object's path is it.
+ */
+export const NEW_SEGMENT = '~new';
+/** The create page's segment before NEW_SEGMENT: the object "new" when one is stored, else the create page (routeElements.tsx). */
+export const OLD_NEW_SEGMENT = 'new';
+
+/**
  * The hash-route path of a kind's list, or of one object when `id` is given. Ids are encoded, so
  * `a/b` stays one segment; the router hands them back decoded. Credentials need their consumer.
- * Not for the create page: use newPathFor (an object whose ID is literally "new" can't be opened).
+ * Not for the create page: use newPathFor.
  */
 export function pathFor(kind: Kind, id?: string, parent?: Parent): string {
   if (kind === 'credentials' && id === undefined) throw new Error('credentials have no list page of their own');
   return id === undefined ? base(kind, parent) : `${base(kind, parent)}/${enc(id)}`;
 }
 
-/** The create page of a kind: /routes/new, /consumers/<username>/credentials/new. */
+/** The create page of a kind: /routes/~new, /consumers/<username>/credentials/~new. */
 export function newPathFor(kind: Kind, parent?: Parent): string {
-  return `${base(kind, parent)}/new`;
+  return `${base(kind, parent)}/${NEW_SEGMENT}`;
 }
 
 /** The kind a top-level URL segment names, exactly as written; undefined for anything else. */

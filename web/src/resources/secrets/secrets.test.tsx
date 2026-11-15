@@ -80,7 +80,7 @@ describe('a new secret', () => {
   });
 
   it('switching to another manager asks, then starts the settings over: what is sent has none of the first manager’s', async () => {
-    const { user, admin } = await open('#/secrets/new', []);
+    const { user, admin } = await open('#/secrets/~new', []);
     await pickManager(user, t('sc.manager.vault'));
     await user.type(idBox(), 'x');
     await settled();
@@ -98,7 +98,7 @@ describe('a new secret', () => {
   });
 
   it('an id with a slash is refused at once: Save and Cmd/Ctrl-S send nothing, and the toast names the ID', async () => {
-    const { user, admin } = await open('#/secrets/new', []);
+    const { user, admin } = await open('#/secrets/~new', []);
     await pickManager(user, t('sc.manager.vault'));
     await user.type(idBox(), 'a/b');
     expect(main().getByText(t('sc.id.slash', { id: 'a/b' }))).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe('a new secret', () => {
   });
 
   it('Create never overwrites: an id that exists (with its slash) is refused, linked, and the stored entry is unchanged', async () => {
-    const { user, admin } = await open('#/secrets/new');
+    const { user, admin } = await open('#/secrets/~new');
     await pickManager(user, t('sc.manager.vault'));
     await user.type(idBox(), 'v1');
     await settled();
@@ -300,7 +300,7 @@ describe('a stored secret', () => {
 
 describe('a new GCP secret', () => {
   it('whose Create APISIX refuses (late) keeps the key that was typed in its box, which says an empty box saves nothing', async () => {
-    const { user, admin } = await openEditor('#/secrets/new', {
+    const { user, admin } = await openEditor('#/secrets/~new', {
       objects: { secrets: [] },
       replies: { 'secrets/gcp/g9': (req) => (req.method === 'PUT' ? later(() => json(400, { error_msg: 'invalid configuration: refused' })) : undefined) },
     });

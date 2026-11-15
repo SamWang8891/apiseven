@@ -4,7 +4,7 @@ import { ConnectPage } from '../connection/ConnectPage';
 import { RouteErrorPage } from '../shell/ErrorPage';
 import { Shell } from '../shell/Shell';
 import { TooltipProvider } from '../ui';
-import { pathFor } from './paths';
+import { NEW_SEGMENT, pathFor } from './paths';
 import { CredentialRoute, EditorRoute, ListRoute, NotFound } from './routeElements';
 
 // The UI kit showcase and the schema form playground, in development builds only (the imports are
@@ -55,9 +55,9 @@ const routes: RouteObject[] = [
             children: [
               { index: true, element: <Navigate to={pathFor('routes')} replace /> },
               { path: ':kind', element: <ListRoute /> },
-              { path: ':kind/new', element: <EditorRoute creating /> },
+              { path: `:kind/${NEW_SEGMENT}`, element: <EditorRoute creating /> },
               { path: ':kind/:id', element: <EditorRoute /> },
-              { path: 'consumers/:username/credentials/new', element: <CredentialRoute creating /> },
+              { path: `consumers/:username/credentials/${NEW_SEGMENT}`, element: <CredentialRoute creating /> },
               { path: 'consumers/:username/credentials/:id', element: <CredentialRoute /> },
               { path: '*', element: <NotFound /> },
             ],
@@ -69,8 +69,8 @@ const routes: RouteObject[] = [
 ];
 
 /**
- * The app's hash router: #/connect, #/:kind (with ?q= and f.<filter>= for the list's search), #/:kind/new, #/:kind/:id,
- * #/consumers/:username/credentials/new|:id, and #/__kit and #/__schema in development.
+ * The app's hash router: #/connect, #/:kind (with ?q= and f.<filter>= for the list's search), #/:kind/~new, #/:kind/:id,
+ * #/consumers/:username/credentials/~new|:id, and #/__kit and #/__schema in development.
  */
 export function createAppRouter() {
   return createHashRouter(routes);

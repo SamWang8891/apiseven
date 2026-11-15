@@ -32,7 +32,8 @@ function Root({ server }: { server?: ServerConfig }) {
         if (connId === undefined || connId !== store.getSnapshot().active?.id) return;
         if (router.state.location.pathname === '/connect') return;
         const state: ConnectState = { reason: error.errorMsg ?? error.message, connId };
-        void router.navigate('/connect', { state });
+        // Replaces the failing page: Back must not lead into the same failure again.
+        void router.navigate('/connect', { state, replace: true });
       },
     });
     return { store, router, queryClient };

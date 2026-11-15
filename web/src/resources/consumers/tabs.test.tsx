@@ -175,7 +175,7 @@ describe('Credentials', () => {
   it('New links to a new credential of this consumer', async () => {
     tab(CredentialsTab, JO);
     const region = await screen.findByRole('region', { name: t('kind.credentials.plural') });
-    expect(within(region).getByRole('link', { name: t('cs.credentials.new') })).toHaveAttribute('href', '/consumers/jo/credentials/new');
+    expect(within(region).getByRole('link', { name: t('cs.credentials.new') })).toHaveAttribute('href', '/consumers/jo/credentials/~new');
   });
 
   it.each([

@@ -15,7 +15,7 @@ function prefillOf(kind: Kind, params: URLSearchParams): Obj | undefined {
 }
 
 /**
- * The route element of #/<kind>/<id>, #/<kind>/new and the credential pages. `id` is decoded;
+ * The route element of #/<kind>/<id>, #/<kind>/~new and the credential pages. `id` is decoded;
  * undefined on the create page, where `?from=<id>` starts from a copy of that object, and the
  * params the kind lists in `prefill` (`?service_id=s1`) are copied into the new object.
  */

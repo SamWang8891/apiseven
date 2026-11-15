@@ -82,7 +82,7 @@ describe('a plugin config', () => {
     expect(await within(region).findByRole('link', { name: 'shop' })).toHaveAttribute('href', '#/routes/r1');
     expect(within(region).queryByText('blog')).not.toBeInTheDocument();
     expect(within(region).queryAllByRole('switch')).toEqual([]);
-    expect(within(region).getByRole('link', { name: t('pc.usedBy.new') })).toHaveAttribute('href', '#/routes/new?plugin_config_id=common');
+    expect(within(region).getByRole('link', { name: t('pc.usedBy.new') })).toHaveAttribute('href', '#/routes/~new?plugin_config_id=common');
     await user.click(within(region).getByRole('button', { name: t('table.actionsFor', { name: 'shop' }) }));
     expect(within(await screen.findByRole('menu')).getAllByRole('menuitem').map((m) => m.textContent)).toEqual([t('action.edit')]);
   });

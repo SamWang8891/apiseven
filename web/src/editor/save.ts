@@ -21,7 +21,8 @@ export interface SaveArgs {
 export type SaveResult =
   | { ok: true; item: Item }
   | { ok: false; conflict: Item }
-  | { ok: false; error: ApiError }
+  /** `read`: the read before the write failed (the conflict check), so nothing was written. */
+  | { ok: false; error: ApiError; read?: true }
   /** A create whose id is taken: nothing was written; `exists` is what holds the id. */
   | { ok: false; exists: Item }
   /** A create whose id could not be checked (the GET failed for another reason than 404): nothing was written. */
@@ -119,7 +120,12 @@ export async function saveResource(client: AdminClient, a: SaveArgs): Promise<Sa
       return { ok: true, item: await reread(client, a.kind, created, body, a.parent) };
     }
     if (a.id === undefined) throw new Error('saving an existing object needs its id');
-    const current = await client.get(a.kind, a.id, a.parent);
+    let current: Item;
+    try {
+      current = await client.get(a.kind, a.id, a.parent);
+    } catch (err) {
+      return { ok: false, error: asApiError(err), read: true };
+    }
     if (!a.force && current.modifiedIndex !== a.original?.modifiedIndex) return { ok: false, conflict: current };
     const written =
       a.kind === 'ssls'

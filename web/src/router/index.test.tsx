@@ -49,6 +49,42 @@ describe('editor routes', () => {
     );
   });
 
+  // Task 16b item 14: an object whose id is "new" is a page of its own; the old create URL still works without one.
+  it('an object whose id is "new" opens at its path, with the create page beside it', async () => {
+    saveConnections([DEV_CONN], DEV_CONN.id);
+    renderApp({ hash: `#${pathFor('routes', 'new')}`, objects: { routes: [{ id: 'new', name: 'fresh', uri: '/' }] } });
+    const main = await mainRegion();
+    expect(await main.findByRole('heading', { level: 1, name: 'fresh' })).toBeInTheDocument();
+    expect(main.getByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    const crumbs = within(screen.getByRole('navigation', { name: t('shell.breadcrumb') }));
+    expect(crumbs.getByText('new', { selector: '.mono' })).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/routes/new');
+  });
+
+  it('a credential whose id is "new" opens at its path', async () => {
+    saveConnections([DEV_CONN], DEV_CONN.id);
+    renderApp({ hash: `#${pathFor('credentials', 'new', { consumer: 'jo' })}`, objects: { consumers: [{ username: 'jo' }] }, credentials: { jo: [{ id: 'new', plugins: {} }] } });
+    const main = await mainRegion();
+    expect(await main.findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    expect(window.location.hash).toBe('#/consumers/jo/credentials/new');
+  });
+
+  for (const [hash, to] of [
+    ['#/routes/new?service_id=s1', '#/routes/~new?service_id=s1'],
+    ['#/consumers/jo/credentials/new', '#/consumers/jo/credentials/~new'],
+  ] as const) {
+    it(`${hash} without an object "new" opens the create page, at ${to}`, async () => {
+      saveConnections([DEV_CONN], DEV_CONN.id);
+      renderApp({ hash, objects: { routes: [], consumers: [{ username: 'jo' }] } });
+      const main = await mainRegion();
+      const singular = hash.includes('credentials') ? t('kind.credentials.singular') : t('kind.routes.singular');
+      expect(await main.findByRole('heading', { level: 1, name: t('page.new', { kind: singular }) })).toBeInTheDocument();
+      expect(window.location.hash).toBe(to);
+      const crumbs = within(screen.getByRole('navigation', { name: t('shell.breadcrumb') }));
+      expect(crumbs.getByText(t('page.new', { kind: singular }))).toBeInTheDocument();
+    });
+  }
+
   it('mounts the list page at #/<kind>', async () => {
     saveConnections([DEV_CONN], DEV_CONN.id);
     renderApp({ hash: '#/upstreams', counts: { upstreams: 2 } });

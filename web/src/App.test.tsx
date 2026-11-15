@@ -87,6 +87,16 @@ describe('errors', () => {
     expect(screen.getByLabelText(t('connect.key'), { exact: false })).toBeInTheDocument();
   });
 
+  // Task 16b item 4: the redirect replaces the failing page, so Back does not lead into it again.
+  it('the auth redirect to Connect replaces the failing page in the history', async () => {
+    saveConnections([DEV_CONN], DEV_CONN.id);
+    renderApp({ hash: '#/upstreams', key: 'the-real-key' });
+    const before = window.history.length;
+    await waitFor(() => expect(window.location.hash).toBe('#/connect'));
+    await screen.findByRole('alert');
+    expect(window.history.length).toBe(before);
+  });
+
   it('an HTML 502 on one list keeps the shell and marks that sidebar entry', async () => {
     const unhandled = vi.fn();
     window.addEventListener('unhandledrejection', unhandled);

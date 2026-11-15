@@ -69,7 +69,7 @@ describe('Consumers (members)', () => {
   it('the new-consumer link starts a consumer in this group', async () => {
     tab(MembersTab, PARTNERS);
     const region = await screen.findByRole('region', { name: t('cg.tab.members') });
-    expect(within(region).getByRole('link', { name: t('cg.members.new') })).toHaveAttribute('href', '/consumers/new?group_id=partners');
+    expect(within(region).getByRole('link', { name: t('cg.members.new') })).toHaveAttribute('href', '/consumers/~new?group_id=partners');
   });
 
   it('while the consumers load, the table says so; with none in the group, it says that', async () => {
