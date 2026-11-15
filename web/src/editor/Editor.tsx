@@ -16,22 +16,25 @@ import { newPathFor, pathFor } from '../router/paths';
 import { LockProvider, PendingProvider, Tabs, toast } from '../ui';
 import { backOf, ownerPath } from './back';
 import { EditorDialogs } from './EditorDialogs';
-import { deepEqual, useDraft } from './draft';
+import { useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
 import { takenFailure, uncheckedFailure, type Failure } from './failure';
 import { CopyNotice } from './CopyNotice';
 import { FailureBanner } from './FailureBanner';
 import { useHeaderStatus } from './headerStatus';
-import { idIssues, issuesByTab, ownedKeys, pathOfError, tabOfIssue, type Issue, type TabFields } from './issues';
+import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
 import { JSON_TAB } from './json';
 import { JsonTab } from './JsonTab';
 import { NewIdField } from './NewIdField';
 import { saveResource } from './save';
+import { SaveAnywayNotice } from './SaveAnyway';
+import { useSaveAnyway } from './useSaveAnyway';
 import type { EditorStart } from './start';
 import { useEditorKeys } from './useEditorKeys';
 import { useActiveTab } from './useActiveTab';
 import { useLeaveGuard } from './useLeaveGuard';
 import { useMounted } from './useMounted';
+import { tabStrip } from './tabStrip';
 import { useSaveRequest } from './useSaveRequest';
 import { useShownTabs } from './useShownTabs';
 
@@ -81,7 +84,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const attempted = saveAttempts > 0;
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<Failure>();
-  const [conflict, setConflict] = useState<Item>();
+  /** The server's item when a save found it changed; `anyway`: that save was a Save anyway, and Overwrite goes on as one. */
+  const [conflict, setConflict] = useState<{ item: Item; anyway: boolean }>();
   const [dialog, setDialog] = useState<'json' | 'delete' | 'discard'>();
   /**
    * Bumped by Discard (and reloading theirs): remounts the tab area, so nothing a field held without
@@ -193,9 +197,13 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   }, [locked]);
 
   // --- Save --------------------------------------------------------------------------------------
-  async function save(force = false, left?: HTMLElement) {
+  /** Only the kind's own checks (which can be stricter than APISIX) stand in the way: nothing held, no problem with the id. */
+  const onlyLocal = pending.length === 0 && frameIssues.length === 0 && !idMissing && !idRefused;
+
+  /** `anyway`: Save anyway, which sends the draft past the kind's own checks (only those). */
+  async function save(force = false, left?: HTMLElement, anyway = false) {
     if (saving || locked) return;
-    if (problems > 0) {
+    if (problems > 0 && !(anyway && onlyLocal)) {
       setSaveAttempts((n) => n + 1);
       const fix = problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems });
       // Input a field holds comes first: the toast names it, as its own error may not ("Not valid JSON").
@@ -240,7 +248,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         lock(false);
       }
     } else if ('conflict' in result) {
-      setConflict(result.conflict);
+      setConflict({ item: result.conflict, anyway });
     } else if ('exists' in result || 'unchecked' in result) {
       // A create never overwrites: the id is taken, or could not be checked (saveResource).
       // On a page fixed to that id (a plugin's metadata), the stored object is shown on request instead of linked.
@@ -257,8 +265,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     }
   }
 
-  // Save from the button, Cmd/Ctrl-S or the conflict dialog: after the focused field is left.
+  // Save from the button, Cmd/Ctrl-S, Save anyway or the conflict dialog: after the focused field is left.
   const requestSave = useSaveRequest(bodyRef, save, !saving && !locked);
+  const offered = !locked && !readOnly && attempted && onlyLocal && checked.length > 0;
+  const anyway = useSaveAnyway({ session, offered, checked, shown: shownTabs, tabFields, send: () => requestSave(false, true) });
 
   function discard() {
     if (isNew) {
@@ -299,18 +309,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     const tab = shownTabs.find((candidate) => candidate.id === active);
     return tab ? tab.render(props) : <JsonTab {...props} />;
   }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, objectId]);
-  const changedHere = (tab: TabFields) => ownedKeys(tab, tabFields, draft, baseline).some((field) => !deepEqual(draft[field], baseline[field]));
-  const label = (text: string, changed: boolean) => (
-    <>
-      {text}
-      {changed && <span className="ed-dot" aria-hidden="true" />}
-    </>
-  );
-  const badge = (tab: string) => (byTab.get(tab)?.length ?? 0) + (failureTab === tab ? 1 : 0) + (tab === active ? pending.length : 0);
-  const tabs = [
-    ...shownTabs.map((tab, i) => ({ id: tab.id, label: label(tab.label, changedHere(tabFields[i] ?? tab)), badge: badge(tab.id), content: tab.id === active ? content : null })),
-    { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? content : null },
-  ];
+  const tabs = tabStrip({ shown: shownTabs, tabFields, draft, baseline, dirty, active, content, byTab, failureTab, pending });
 
   const status = useHeaderStatus({ def, draft, name, held: active === JSON_TAB ? pending[0] : undefined, body: bodyRef, edit });
 
@@ -341,6 +340,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       />
       <div className="ed-body" ref={bodyRef}>
         {failure && <FailureBanner failure={failure} onShow={showStored} />}
+        {anyway.offered && <SaveAnywayNotice count={checked.length} kind={def.singular} busy={saving} onPress={anyway.press} />}
         {notice}
         {isNew && start?.copy && <CopyNotice notes={start.copy} />}
         {isNew && !def.idFromDraft && fixedId === undefined && (
@@ -382,11 +382,12 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
           reset();
           lock(true);
         }}
-        conflict={conflict}
+        conflict={conflict?.item}
         onOverwrite={() => {
           setConflict(undefined);
-          requestSave(true);
+          requestSave(true, conflict?.anyway);
         }}
+        anyway={anyway}
         onReload={reloadTheirs}
         onCancelConflict={() => setConflict(undefined)}
         onDeleted={() => {

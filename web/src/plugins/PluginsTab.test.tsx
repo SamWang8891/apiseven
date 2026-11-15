@@ -179,6 +179,21 @@ describe('Form and JSON', () => {
     expect(within(el).getByRole('textbox', { name: 'count (required)' })).toHaveValue('7');
   });
 
+  it('a schema with a pattern JavaScript cannot read: no issue from it, and a quiet note in the JSON view (Task 16 B18)', async () => {
+    // openwhisk (3.20) checks action, namespace and package with PCRE's \A…\z.
+    const conf = { api_host: 'http://ow.test', service_token: 'u:p', namespace: 'guest', action: 'hello world' };
+    const { user, value } = renderPluginsTab({ scope: 'route', value: { openwhisk: conf } });
+    const el = await card('openwhisk');
+    expect(within(el).queryByText(t('pl.card.problems.one'))).not.toBeInTheDocument();
+    await user.click(toggle(el, 'openwhisk'));
+    await user.click(within(el).getByRole('button', { name: t('pl.card.json') }));
+    expect(await within(el).findByText(t('pl.card.schemaGaps.patterns'))).toBeInTheDocument();
+    expect(value()).toEqual({ openwhisk: conf });
+    // A schema it reads whole has no note.
+    await user.click(within(el).getByRole('button', { name: t('pl.card.form') }));
+    expect(within(el).queryByText(t('pl.card.schemaGaps.patterns'))).not.toBeInTheDocument();
+  });
+
   it('JSON that does not parse, or is not an object, is not emitted', async () => {
     const { user, changes } = renderPluginsTab({ scope: 'route', value: { cors: {} } });
     const el = await card('cors');

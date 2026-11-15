@@ -253,6 +253,47 @@
   font-weight: 600;
 }
 
+/* Save anyway (SaveAnyway.tsx): only the browser's own checks stand in the way of a save. */
+.ed-anyway {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: var(--s4);
+  padding: 10px var(--s3);
+  border: 1px solid var(--warn);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--text);
+}
+
+.ed-anyway > svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--warn);
+}
+
+.ed-anyway__text {
+  display: flex;
+  flex: 1 1 320px;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ed-anyway__title {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.ed-anyway__list {
+  margin: var(--s2) 0;
+  padding-left: var(--s4);
+  overflow-wrap: anywhere;
+}
+
 /* What to do about it: open the object that holds the id. */
 .ed-banner__link {
   color: var(--accent);

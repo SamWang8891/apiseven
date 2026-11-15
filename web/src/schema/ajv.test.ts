@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
+import { t } from '../i18n';
 import { schemaOf } from '../test/pluginFixture';
-import { fieldErrors, schemaErrors, specificErrors, validatorFor, withDefaults } from './ajv';
+import { fieldErrors, schemaErrors, schemaGaps, specificErrors, validatorFor, withDefaults } from './ajv';
 
 describe('validatorFor', () => {
   it('compiles once per schema object', () => {
@@ -32,6 +33,48 @@ describe('validatorFor', () => {
   it('compiles schemas that share an $id side by side', () => {
     expect(validatorFor({ $id: 'x', type: 'string' })?.('a')).toBe(true);
     expect(validatorFor({ $id: 'x', type: 'integer' })?.(1)).toBe(true);
+  });
+});
+
+describe('failing open (Task 16 B18): what JavaScript cannot read is left to APISIX, never refused', () => {
+  // PCRE's \A and \z (openwhisk in 3.20): an invalid escape for JavaScript's unicode RegExp.
+  const PCRE = '\\A([\\w]|[\\w][\\w@ .-]*[\\w@.-]+)\\z';
+
+  it('a pattern JavaScript cannot compile is skipped alone: the schema still checks everything else', () => {
+    const schema: Obj = { type: 'object', required: ['name'], properties: { name: { type: 'string', pattern: PCRE, maxLength: 5 } } };
+    expect(validatorFor(schema)).not.toBeNull();
+    expect(fieldErrors(schema, { name: 'hello' })).toEqual([]);
+    expect(fieldErrors(schema, { name: 'not matched by a JS reading of \\A' })).toEqual([{ path: 'name', message: 'must NOT have more than 5 characters' }]);
+    expect(fieldErrors(schema, {})).toEqual([{ path: 'name', message: t('schema.required') }]);
+    expect(schemaGaps(schema)).toBe('patterns');
+  });
+
+  it('a patternProperties key JavaScript cannot compile is skipped, and keys it may have meant are not refused as additional', () => {
+    const schema: Obj = { type: 'object', patternProperties: { [PCRE]: { type: 'integer' } }, additionalProperties: false };
+    expect(fieldErrors(schema, { anything: 'text' })).toEqual([]);
+    expect(schemaGaps(schema)).toBe('patterns');
+  });
+
+  it('an unknown format produces no issue', () => {
+    const schema: Obj = { type: 'object', properties: { at: { type: 'string', format: 'lua-time' } } };
+    expect(fieldErrors(schema, { at: 'whenever' })).toEqual([]);
+    expect(schemaGaps(schema)).toBeUndefined();
+  });
+
+  it('a schema Ajv cannot compile produces no issue, and says so', () => {
+    expect(fieldErrors({ properties: { a: { $ref: '#/nope' } } }, { a: 1 })).toBeNull();
+    expect(schemaGaps({ properties: { a: { $ref: '#/nope' } } })).toBe('all');
+  });
+
+  it('a schema it reads whole has no gaps', () => {
+    expect(schemaGaps(schemaOf('limit-count'))).toBeUndefined();
+  });
+
+  it("openwhisk (3.20): its PCRE patterns are skipped, its other checks run", () => {
+    const openwhisk = schemaOf('openwhisk');
+    expect(schemaGaps(openwhisk)).toBe('patterns');
+    expect(fieldErrors(openwhisk, { api_host: 'http://ow.test', service_token: 'u:p', namespace: 'guest', action: 'hello' })).toEqual([]);
+    expect(fieldErrors(openwhisk, { api_host: 'http://ow.test', namespace: 'guest', action: 'hello' })).toEqual([{ path: 'service_token', message: t('schema.required') }]);
   });
 });
 

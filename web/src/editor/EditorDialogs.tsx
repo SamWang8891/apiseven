@@ -1,5 +1,5 @@
 // The editor's overlays (moved out of Editor.tsx unchanged): leaving with unsaved work, a tab change
-// that would drop held input, Discard, a save conflict, View JSON and Delete. Editor.tsx owns the
+// that would drop held input, Discard, a save conflict, Save anyway's question, View JSON and Delete. Editor.tsx owns the
 // state; these only show it and hand the choice back.
 import type { Item, Kind, Parent, PluginInfo } from '../api/types';
 import { t } from '../i18n';
@@ -8,6 +8,8 @@ import { registry, type Ctx } from '../resources/registry';
 import type { PendingEntry } from '../ui';
 import { ConflictDialog } from './ConflictDialog';
 import { DiscardDialog, PendingDialog } from './DiscardDialog';
+import { SaveAnywayDialog } from './SaveAnyway';
+import type { SaveAnyway } from './useSaveAnyway';
 import type { ActiveTab } from './useActiveTab';
 import type { LeaveGuard } from './useLeaveGuard';
 
@@ -38,6 +40,8 @@ export interface EditorDialogsProps {
   onCancelConflict: () => void;
   /** After a confirmed Delete. */
   onDeleted: () => void;
+  /** Save anyway's question (asked once per editing session). */
+  anyway: SaveAnyway;
 }
 
 export function EditorDialogs(p: EditorDialogsProps) {
@@ -71,6 +75,7 @@ export function EditorDialogs(p: EditorDialogsProps) {
       {p.original && p.dialog === 'json' && (
         <ViewJsonDialog open onClose={p.closeDialog} title={t('json.title', { kind: singular, name: p.name })} kind={p.kind} id={p.original.id} value={p.original.value} />
       )}
+      <SaveAnywayDialog anyway={p.anyway} />
       {p.original && p.dialog === 'delete' && (
         <DeleteResourceDialog open kind={p.kind} item={p.original} parent={p.parent} ctx={p.ctx} onClose={p.closeDialog} onDeleted={p.onDeleted} />
       )}
