@@ -8,6 +8,9 @@ import { registry } from './registry';
 import { routeColumns } from './routes/columns';
 import { routeFilters } from './routes/filters';
 import { hostGrouping } from './routes/grouping';
+import { serviceColumns } from './services/columns';
+import { serviceFilters } from './services/filters';
+import { streamRouteColumns } from './stream_routes/columns';
 
 const KINDS: Kind[] = [
   'routes', 'services', 'upstreams', 'consumers', 'credentials', 'consumer_groups', 'ssls',
@@ -75,8 +78,8 @@ describe('registry', () => {
     expect(registry.routes.groupings).toEqual([hostGrouping]);
   });
 
-  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but routes and upstreams) no tabs', () => {
-    for (const kind of KINDS.filter((k) => k !== 'upstreams' && k !== 'routes')) {
+  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but the kinds with their own tabs) no tabs', () => {
+    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes'].includes(k))) {
       const def = registry[kind];
       if (scopeOfKind[kind]) {
         expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields]), kind).toEqual([['plugins', t('pl.tab'), ['plugins']]]);
@@ -107,6 +110,49 @@ describe('registry', () => {
     expect(def.validate?.({ uri: '/*', status: 1 }, { isNew: true, ctx: ctxOf() }).map((i) => [i.path, i.tab])).toEqual([['', 'upstream']]);
   });
 
+  it('gives services their own tabs, columns, filters and checks', () => {
+    const def = registry.services;
+    expect(def.tabs.map((tab) => [tab.id, tab.label])).toEqual([
+      ['general', t('svc.tab.general')],
+      ['upstream', t('rt.tab.upstream')],
+      ['plugins', t('pl.tab')],
+      ['routes', t('svc.tab.routes')],
+    ]);
+    // Each top-level service field is owned by one tab at most (the frame's own: id, timestamps);
+    // `script` has no form and badges the JSON tab; Routes owns nothing.
+    const owned = def.tabs.flatMap((tab) => tab.fields);
+    expect(new Set(owned).size).toBe(owned.length);
+    expect(owned.sort()).toEqual(['name', 'desc', 'labels', 'hosts', 'enable_websocket', 'upstream_id', 'upstream', 'plugins'].sort());
+    expect(def.tabs.find((tab) => tab.id === 'routes')?.fields).toEqual([]);
+    expect(def.columns).toBe(serviceColumns);
+    expect(def.filters).toBe(serviceFilters);
+    expect(def.prefill).toBeUndefined();
+    expect(def.validate?.({}, { isNew: true, ctx: ctxOf() })).toEqual([]);
+    expect(def.validate?.({ hosts: ['bad host'] }, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['hosts.0']);
+  });
+
+  it('gives stream routes their own tabs, columns, checks and prefill', () => {
+    const def = registry.stream_routes;
+    expect(def.tabs.map((tab) => [tab.id, tab.label])).toEqual([
+      ['general', t('sr.tab.general')],
+      ['matching', t('sr.tab.matching')],
+      ['upstream', t('rt.tab.upstream')],
+      ['plugins', t('pl.tab')],
+      ['advanced', t('sr.tab.advanced')],
+    ]);
+    // Every top-level field of the stream_route schema is owned by exactly one tab (but id and the timestamps).
+    const owned = def.tabs.flatMap((tab) => tab.fields);
+    expect(new Set(owned).size).toBe(owned.length);
+    expect(owned.sort()).toEqual(
+      ['name', 'desc', 'labels', 'server_addr', 'server_port', 'remote_addr', 'sni', 'snis', 'service_id', 'upstream_id', 'upstream', 'plugins', 'protocol', 'tls_passthrough'].sort(),
+    );
+    expect(def.columns).toBe(streamRouteColumns);
+    expect(def.prefill).toEqual(['service_id', 'upstream_id']);
+    // APISIX takes a stream route with nothing in it, an upstream included.
+    expect(def.validate?.({}, { isNew: true, ctx: ctxOf() })).toEqual([]);
+    expect(def.validate?.({ server_port: 0 }, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['server_port']);
+  });
+
   it('gives upstreams their own tabs, columns and checks', () => {
     const def = registry.upstreams;
     expect(def.tabs.map((tab) => tab.id)).toEqual(['general', 'nodes', 'balancing', 'health', 'connection', 'tls']);
@@ -114,8 +160,8 @@ describe('registry', () => {
     expect(def.validate?.({ nodes: [] }, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['nodes']);
   });
 
-  it('starts every kind but routes and upstreams with an id + name column pair', () => {
-    for (const kind of KINDS.filter((k) => k !== 'routes' && k !== 'upstreams')) {
+  it('starts every kind without columns of its own with an id + name column pair', () => {
+    for (const kind of KINDS.filter((k) => !['routes', 'upstreams', 'services', 'stream_routes'].includes(k))) {
       const def = registry[kind];
       expect(def.columns.map((c) => [c.id, c.header, c.defaultVisible])).toEqual([
         ['id', t('column.id'), true],
@@ -133,7 +179,7 @@ describe('registry', () => {
   });
 
   it('fills the columns from the item', () => {
-    const [idCol, nameCol] = registry.services.columns;
+    const [idCol, nameCol] = registry.protos.columns;
     const item = itemOf('s1', { name: 'web' });
     expect(idCol?.accessor(item, ctxOf())).toBe('s1');
     expect(nameCol?.accessor(item, ctxOf())).toBe('web');
@@ -150,7 +196,8 @@ describe('registry strings', () => {
     en['kind.routes.plural'] = 'Rutas';
     en['column.name'] = 'Nombre';
     expect(registry.routes.plural).toBe('Rutas');
-    expect(registry.services.columns[1]?.header).toBe('Nombre');
+    expect(registry.protos.columns[1]?.header).toBe('Nombre');
+    expect(registry.services.columns.find((c) => c.id === 'name')?.header).toBe('Nombre');
     expect(registry.routes.columns.find((c) => c.id === 'name')?.header).toBe('Nombre');
   });
 });

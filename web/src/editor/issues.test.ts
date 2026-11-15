@@ -80,6 +80,13 @@ describe('pathOfError: the draft path an APISIX save error is about', () => {
     ["'script' should be a Lua object", 'script'],
     ['failed to parse cert: PEM_read_bio_X509_AUX() failed', 'cert'],
     ['failed to parse key: PEM_read_bio_PrivateKey() failed', 'key'],
+    // A stream route's (stream/router/ip_port.lua, stream/xrpc.lua, admin/stream_routes.lua).
+    ['invalid remote_addr: fe80::/200', 'remote_addr'],
+    ['invalid server_addr: :/8', 'server_addr'],
+    ['unknown protocol [redis]', 'protocol.name'],
+    ['stream route can not set itself as superior_id', 'protocol.superior_id'],
+    ['failed to fetch stream routes[sr9], response code: 404', 'protocol.superior_id'],
+    ['protocol mismatch: subordinate protocol [dubbo] does not match superior protocol [redis]', 'protocol.name'],
   ];
   for (const [message, path] of cases) {
     it(`${path} ← ${message.slice(0, 60)}`, () => expect(pathOfError(message)).toBe(path));

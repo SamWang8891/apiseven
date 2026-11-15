@@ -2,7 +2,9 @@
 // `upstream` schema in apisix/schema_def.lua (nodes, timeout, tls dependencies, health checker
 // ranges, warm_up_conf) and check_upstream_conf / check_warm_up_conf in apisix/upstream.lua (chash
 // key, pass_host rewrite, map ports, ws + ca_certs). Pure; used by the Upstream editor's `validate`
-// and, with a path prefix, by editors that hold an upstream inline.
+// and, with a path prefix, by editors that hold an upstream inline. A stream route's inline upstream
+// is checked by the schema alone (apisix/admin/stream_routes.lua never calls check_upstream_conf):
+// `{ checkConf: false }` keeps only what the schema refuses.
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { getPath } from '../editor/draft';
@@ -66,8 +68,17 @@ function numberIssue(value: unknown, { whole, min, max }: NumberRule): string | 
 
 type Add = (path: string, message: string) => void;
 
-/** Nodes or discovery (APISIX's oneOf), then each node. */
-function checkTarget(up: Obj, add: Add): void {
+export interface UpstreamCheckOptions {
+  /**
+   * Also what check_upstream_conf / check_warm_up_conf refuse beyond the schema (apisix/upstream.lua:
+   * the chash key, pass_host rewrite, map ports, ws + ca_certs, slow start's fit), and an empty node
+   * list. Default true; false for an upstream APISIX checks by the schema only.
+   */
+  checkConf?: boolean;
+}
+
+/** Nodes or discovery (APISIX's oneOf), then each node. `conf`: the checks beyond the schema too. */
+function checkTarget(up: Obj, add: Add, conf: boolean): void {
   const discovery = up.discovery_type !== undefined || up.service_name !== undefined;
   if (up.nodes === undefined) {
     if (!discovery) add('nodes', t('up.issue.noTarget'));
@@ -78,7 +89,7 @@ function checkTarget(up: Obj, add: Add): void {
   if (str(up.discovery_type) && str(up.service_name)) add('nodes', t('up.issue.both'));
   const nodes = up.nodes;
   if (Array.isArray(nodes)) {
-    if (nodes.length === 0) add('nodes', t('up.issue.noNodes'));
+    if (conf && nodes.length === 0) add('nodes', t('up.issue.noNodes'));
     nodes.forEach((node, i) => {
       const n = obj(node);
       if (!str(n.host)) add(`nodes.${i}.host`, t('up.issue.host'));
@@ -90,11 +101,12 @@ function checkTarget(up: Obj, add: Add): void {
   } else if (isObj(nodes)) {
     // A map entry's problems sit on its row, as the table shows it (in key order).
     const entries = Object.entries(nodes);
-    if (entries.length === 0) add('nodes', t('up.issue.noNodes'));
+    if (conf && entries.length === 0) add('nodes', t('up.issue.noNodes'));
     entries.forEach(([addr, weight], i) => {
       const { host, port } = parseAddr(addr);
-      if (host === '') add(`nodes.${i}.host`, t('up.issue.host'));
-      if (port !== undefined && (port < 1 || port > 65535)) add(`nodes.${i}.port`, t('up.issue.port'));
+      // The schema takes any key (patternProperties ".*"); check_upstream_conf parses its port.
+      if (conf && host === '') add(`nodes.${i}.host`, t('up.issue.host'));
+      if (conf && port !== undefined && (port < 1 || port > 65535)) add(`nodes.${i}.port`, t('up.issue.port'));
       if (weight === null || weight === undefined) add(`nodes.${i}.weight`, t('up.issue.weightMissing'));
       else if (!(isWhole(weight) && weight >= 0)) add(`nodes.${i}.weight`, t('up.issue.weight'));
     });
@@ -121,14 +133,14 @@ function checkTimeout(up: Obj, add: Add): void {
   }
 }
 
-function checkTls(up: Obj, add: Add): void {
+function checkTls(up: Obj, add: Add, conf: boolean): void {
   const tls = obj(up.tls);
   const cert = tls.client_cert !== undefined;
   const key = tls.client_key !== undefined;
   if (cert && !key) add('tls.client_key', t('up.issue.needKey'));
   if (key && !cert) add('tls.client_cert', t('up.issue.needCert'));
   if (tls.client_cert_id !== undefined && cert && key) add('tls.client_cert_id', t('up.issue.certBoth'));
-  if ((up.scheme === 'ws' || up.scheme === 'wss') && tls.ca_certs !== undefined) add('tls.ca_certs', t('up.issue.caWs'));
+  if (conf && (up.scheme === 'ws' || up.scheme === 'wss') && tls.ca_certs !== undefined) add('tls.ca_certs', t('up.issue.caWs'));
   if (Array.isArray(tls.ca_certs)) tls.ca_certs.forEach((pem, i) => !str(pem) && add(`tls.ca_certs.${i}`, t('up.issue.pem')));
 }
 
@@ -140,11 +152,12 @@ function checkChecks(up: Obj, add: Add): void {
   else add('checks', t('up.issue.checksActive'));
 }
 
-function checkWarmUp(up: Obj, add: Add): void {
+function checkWarmUp(up: Obj, add: Add, conf: boolean): void {
   if (up.warm_up_conf === undefined) return;
   const warm = obj(up.warm_up_conf);
   if (warm.slow_start_time_seconds === undefined) add('warm_up_conf.slow_start_time_seconds', t('up.issue.required'));
   if (warm.min_weight_percent === undefined) add('warm_up_conf.min_weight_percent', t('up.issue.required'));
+  if (!conf) return;
   if ((str(up.type) ?? 'roundrobin') !== 'roundrobin') add('warm_up_conf', t('up.issue.warmType'));
   const interval = typeof warm.interval === 'number' ? warm.interval : 1;
   if (typeof warm.slow_start_time_seconds === 'number' && interval > warm.slow_start_time_seconds) add('warm_up_conf.interval', t('up.issue.warmInterval'));
@@ -158,15 +171,15 @@ function checkWarmUp(up: Obj, add: Add): void {
  * Problems in an upstream, each at its path (`nodes.0.host`, `timeout.read`, `key`). With a
  * `pathPrefix` (e.g. 'upstream' for a route's inline upstream) every path starts with it.
  */
-export function upstreamIssues(up: Obj, pathPrefix?: string): Issue[] {
+export function upstreamIssues(up: Obj, pathPrefix?: string, { checkConf = true }: UpstreamCheckOptions = {}): Issue[] {
   const issues: Issue[] = [];
   const add: Add = (path, message) => issues.push({ path: pathPrefix ? (path === '' ? pathPrefix : `${pathPrefix}.${path}`) : path, message });
 
-  checkTarget(up, add);
-  checkHashKey(up, add);
+  checkTarget(up, add, checkConf);
+  if (checkConf) checkHashKey(up, add);
   checkTimeout(up, add);
-  if (up.pass_host === 'rewrite' && !str(up.upstream_host)) add('upstream_host', t('up.issue.upstreamHost'));
-  checkTls(up, add);
+  if (checkConf && up.pass_host === 'rewrite' && !str(up.upstream_host)) add('upstream_host', t('up.issue.upstreamHost'));
+  checkTls(up, add, checkConf);
   checkChecks(up, add);
   for (const [path, rule] of NUMBERS) {
     const value = getPath(up, path.split('.'));
@@ -177,7 +190,7 @@ export function upstreamIssues(up: Obj, pathPrefix?: string): Issue[] {
     const list = getPath(up, path.split('.'));
     if (list !== undefined && !(Array.isArray(list) && list.length > 0 && list.every((s) => isWhole(s) && s >= 200 && s <= 599))) add(path, t('up.issue.statuses'));
   }
-  checkWarmUp(up, add);
+  checkWarmUp(up, add, checkConf);
   if (up.labels !== undefined && !(isObj(up.labels) && Object.values(up.labels).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256))) {
     add('labels', t('up.issue.labels'));
   }

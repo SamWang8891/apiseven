@@ -10,7 +10,7 @@ import { AdvancedTab } from './AdvancedTab';
 import { GeneralTab } from './GeneralTab';
 import { MatchingTab } from './MatchingTab';
 import { RoutePluginsTab } from './PluginsTab';
-import { isEmptyUpstream, sourceOf } from './source';
+import { isEmptyUpstream, sourceOf } from '../upstreamSource';
 import { UpstreamTab } from './UpstreamTab';
 
 beforeAll(async () => {

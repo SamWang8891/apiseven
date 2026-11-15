@@ -15,7 +15,7 @@ import type { TabProps } from '../registry';
 import { effectivePlugins, routeHosts } from '../resolve';
 import { inheritLoading } from './inherit';
 import { readPair } from './pairs';
-import { targetOf } from './source';
+import { targetOf } from '../upstreamSource';
 import '../resources.css';
 import './routes.css';
 

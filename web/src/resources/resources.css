@@ -7,6 +7,11 @@
  *                       sections share their rules, so a column of them reads as a list of facts:
  *                       title on the left, what it holds on the right.
  *   .res-picker         a reference picker: the select, then an Open link on the control line.
+ *   .res-source         where an object proxies to (UpstreamSourceField): the choice, a note, and
+ *                       the "Resolves to" line of facts (.res-resolves).
+ *   .res-embedded       a list of other objects inside an editor tab (what uses this one): a title
+ *                       over an embedded DataTable; __empty is what the table shows when none do.
+ *   .res-callout        what a tab says instead of its content (e.g. not saved yet), as body text.
  */
 
 .res-section {
@@ -197,4 +202,127 @@
 
 .res-overview__link:hover {
   text-decoration: underline;
+}
+
+/* Several facts on one line (Overview.tsx Parts), separated by dots. */
+.res-overview__parts {
+  display: inline-flex;
+  flex-wrap: wrap;
+  column-gap: var(--s2);
+}
+
+.res-overview__part + .res-overview__part::before {
+  content: '·';
+  margin-right: var(--s2);
+  color: var(--text-2);
+}
+
+/* A full-width part of a tab (a Section of rarely used fields), as wide as the field grid. */
+.res-wide {
+  max-width: 880px;
+}
+
+/* --- Upstream source (UpstreamSourceField) ------------------------------------------------ */
+
+.res-source {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  max-width: 880px;
+}
+
+/* What an object proxies to, as one line of facts under the source choice. */
+.res-resolves {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: var(--s2);
+  row-gap: 4px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.res-resolves__title {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.res-resolves__label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.res-resolves__label--none {
+  color: var(--danger);
+}
+
+.res-resolves__via {
+  color: var(--text);
+}
+
+.res-resolves__nodes {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.res-source__note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.res-leftover {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-top: 21px;
+}
+
+/* --- A list of other objects in a tab (the service editor's Routes tab) ---------------------- */
+
+.res-embedded {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.res-embedded__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.res-embedded__empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s6) var(--s4);
+  text-align: center;
+}
+
+.res-embedded__none {
+  margin: 0;
+  color: var(--text);
+}
+
+.res-callout {
+  max-width: 880px;
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 20px;
 }

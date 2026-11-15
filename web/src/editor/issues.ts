@@ -80,6 +80,11 @@ const ERROR_PATHS: { pattern: RegExp; path: (m: RegExpExecArray) => string }[] =
   // An SSL's main pair (extra pairs and the client CA have their own prefixes and name no field).
   { pattern: /^failed to parse cert: /, path: () => 'cert' },
   { pattern: /^failed to parse key: /, path: () => 'key' },
+  // A stream route's addresses (stream/router/ip_port.lua) and protocol (stream/xrpc.lua, admin/stream_routes.lua).
+  { pattern: /^invalid (remote_addr|server_addr): /, path: (m) => m[1] ?? '' },
+  { pattern: /^unknown protocol \[/, path: () => 'protocol.name' },
+  { pattern: /^protocol mismatch: /, path: () => 'protocol.name' },
+  { pattern: /^(?:stream route can not set itself as superior_id$|failed to fetch stream routes\[)/, path: () => 'protocol.superior_id' },
 ];
 
 /**

@@ -102,3 +102,43 @@ describe('upstreamIssues', () => {
     expect(paths({ nodes: [{ port: 80, weight: 1 }], type: 'chash' }, 'upstream')).toEqual(['upstream.nodes.0.host', 'upstream.key']);
   });
 });
+
+// A stream route's check_conf (apisix/admin/stream_routes.lua) runs the schema only, never
+// check_upstream_conf: what that adds is not refused there (verified on the dev APISIX 3.20).
+describe('upstreamIssues, schema only (a stream route\'s inline upstream)', () => {
+  const schemaOnly = (up: Obj) => upstreamIssues(up, 'upstream', { checkConf: false }).map((i) => i.path);
+
+  it('skips what check_upstream_conf / check_warm_up_conf add: the chash key, pass_host rewrite, map ports, ws + CA, slow start\'s fit', () => {
+    expect(schemaOnly({ ...NODES, type: 'chash' })).toEqual([]);
+    expect(schemaOnly({ ...NODES, type: 'chash', hash_on: 'header', key: 'bad key!' })).toEqual([]);
+    expect(schemaOnly({ ...NODES, pass_host: 'rewrite' })).toEqual([]);
+    expect(schemaOnly({ nodes: { '127.0.0.1:70000': 1 } })).toEqual([]);
+    expect(schemaOnly({ ...NODES, scheme: 'ws', tls: { ca_certs: ['x'.repeat(200)] } })).toEqual([]);
+    expect(schemaOnly({ ...NODES, type: 'chash', key: 'remote_addr', warm_up_conf: { slow_start_time_seconds: 10, min_weight_percent: 1, interval: 20 } })).toEqual([]);
+  });
+
+  it('skips the empty node list and an empty map key, which the schema takes', () => {
+    expect(schemaOnly({ nodes: [] })).toEqual([]);
+    expect(schemaOnly({ nodes: {} })).toEqual([]);
+    expect(schemaOnly({ nodes: { '': 1 } })).toEqual([]);
+  });
+
+  it('keeps what the schema refuses: no target, both, node fields, timeouts, TLS halves, health check ranges, slow start\'s required fields, labels', () => {
+    expect(schemaOnly({})).toEqual(['upstream.nodes']);
+    expect(schemaOnly({ ...NODES, discovery_type: 'consul', service_name: 'web' })).toEqual(['upstream.nodes']);
+    expect(schemaOnly({ nodes: [{ port: 0, weight: -1 }] })).toEqual(['upstream.nodes.0.host', 'upstream.nodes.0.port', 'upstream.nodes.0.weight']);
+    expect(schemaOnly({ nodes: { 'a:80': -1 } })).toEqual(['upstream.nodes.0.weight']);
+    expect(schemaOnly({ ...NODES, timeout: { connect: 1 } })).toEqual(['upstream.timeout.send', 'upstream.timeout.read']);
+    expect(schemaOnly({ ...NODES, tls: { client_cert: 'c' } })).toEqual(['upstream.tls.client_key']);
+    expect(schemaOnly({ ...NODES, retries: -1 })).toEqual(['upstream.retries']);
+    expect(schemaOnly({ ...NODES, warm_up_conf: {} })).toEqual(['upstream.warm_up_conf.slow_start_time_seconds', 'upstream.warm_up_conf.min_weight_percent']);
+    expect(schemaOnly({ ...NODES, labels: { a: 'b c' } })).toEqual(['upstream.labels']);
+  });
+
+  it('the default still checks what check_upstream_conf adds', () => {
+    expect(paths({ ...NODES, type: 'chash' })).toEqual(['key']);
+    expect(paths({ nodes: { '127.0.0.1:70000': 1 } })).toEqual(['nodes.0.port']);
+    expect(paths({ nodes: [] })).toEqual(['nodes']);
+  });
+});
+

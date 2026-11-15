@@ -67,13 +67,13 @@ function soonestExpiry(route: Obj, ctx: Ctx): number | undefined {
 }
 
 /** A referenced object's name (else its id); undefined when the field is unset. */
-function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx: Ctx): string | undefined {
+export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx: Ctx): string | undefined {
   const target = resolveRef(kind, field, ctx);
   return target && (target.item ? (nameOfValue(target.item.value) ?? target.id) : target.id);
 }
 
-/** The plugins that run, each saying where an inherited one comes from. */
-function pluginChips(route: Obj, ctx: Ctx): PluginChip[] {
+/** The plugins that run, each saying where an inherited one comes from (routes and stream routes). */
+export function pluginChips(route: Obj, ctx: Ctx): PluginChip[] {
   return effectivePlugins(route, ctx).map(({ name, from, disabled }): PluginChip => {
     if (from === 'service') return { name, disabled, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
     if (from === 'plugin_config') {

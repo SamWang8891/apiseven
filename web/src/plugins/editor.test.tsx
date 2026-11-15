@@ -59,10 +59,11 @@ describe('a route with an incomplete limit-count', () => {
 
 describe('every plugin-bearing kind has the Plugins tab', () => {
   it.each([
-    ['services', '#/services/s1', { services: [{ id: 's1', name: 'svc', plugins: { cors: {} } }] }, 'cors'],
+    // Services and stream routes open on General (Task 12): land on Plugins through the URL.
+    ['services', '#/services/s1?tab=plugins', { services: [{ id: 's1', name: 'svc', plugins: { cors: {} } }] }, 'cors'],
     ['consumers', '#/consumers/jo', { consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'k' } } }] }, 'key-auth'],
     ['global rules', '#/global_rules/g1', { global_rules: [{ id: 'g1', plugins: { prometheus: {} } }] }, 'prometheus'],
-    ['stream routes', '#/stream_routes/sr1', { stream_routes: [{ id: 'sr1', plugins: { 'limit-conn': { conn: 1, burst: 0, default_conn_delay: 1, key: 'remote_addr' } } }] }, 'limit-conn'],
+    ['stream routes', '#/stream_routes/sr1?tab=plugins', { stream_routes: [{ id: 'sr1', plugins: { 'limit-conn': { conn: 1, burst: 0, default_conn_delay: 1, key: 'remote_addr' } } }] }, 'limit-conn'],
   ] satisfies [string, string, FakeAdminOptions['objects'], string][])('%s', async (_, hash, objects, plugin) => {
     await openEditor(hash, { objects, replies: pluginReplies() });
     const plugins = await main().findByRole('tab', { name: /^Plugins/ });

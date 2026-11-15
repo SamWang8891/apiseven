@@ -89,13 +89,14 @@ export function DensityButton({ compact, onChange }: { compact: boolean; onChang
 }
 
 /** The primary "New <kind>" action, a link to the create page. */
-export function NewLink({ kind, parent }: { kind: Kind; parent?: Parent }) {
+/** The create link of a kind; `to` and `label` replace its target and text (a table embedded in its owner's editor creates in that owner). */
+export function NewLink({ kind, parent, to, label }: { kind: Kind; parent?: Parent; to?: string; label?: string }) {
   return (
-    <Link className="ui-btn ui-btn--primary ui-btn--md tbl-new" to={newPathFor(kind, parent)}>
+    <Link className="ui-btn ui-btn--primary ui-btn--md tbl-new" to={to ?? newPathFor(kind, parent)}>
       <span className="ui-btn__icon" aria-hidden="true">
         <Plus size={15} />
       </span>
-      <span className="ui-btn__label">{t('page.new', { kind: t(`kind.${kind}.singular`) })}</span>
+      <span className="ui-btn__label">{label ?? t('page.new', { kind: t(`kind.${kind}.singular`) })}</span>
     </Link>
   );
 }

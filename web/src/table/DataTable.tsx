@@ -60,6 +60,8 @@ export interface DataTableProps {
   onRetry?: () => void;
   /** Replaces the default "No <plural> yet" state. */
   emptyState?: ReactNode;
+  /** Replaces the New button's target and text (e.g. "New route in this service" → `#/routes/new?service_id=…`). */
+  newLink?: { to: string; label: string };
 }
 
 const NO_FILTERS: FilterDef[] = [];
@@ -158,7 +160,7 @@ export function DataTable(props: DataTableProps) {
           <DensityButton compact={state.density === 'compact'} onChange={(compact) => patch({ density: compact ? 'compact' : 'comfortable' })} />
           <RefreshButton kind={kind} parent={parent} />
           {toolbarExtra}
-          <NewLink kind={kind} parent={parent} />
+          <NewLink kind={kind} parent={parent} to={props.newLink?.to} label={props.newLink?.label} />
         </>
       }
     />

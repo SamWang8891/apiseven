@@ -13,6 +13,13 @@ import { routeFilters } from './routes/filters';
 import { hostGrouping } from './routes/grouping';
 import { routeTabs } from './routes/tabs';
 import { routeIssues } from './routes/validate';
+import { serviceColumns } from './services/columns';
+import { serviceFilters } from './services/filters';
+import { serviceTabs } from './services/tabs';
+import { serviceIssues } from './services/validate';
+import { streamRouteColumns } from './stream_routes/columns';
+import { streamRouteTabs } from './stream_routes/tabs';
+import { streamRouteIssues } from './stream_routes/validate';
 import { upstreamColumns } from './upstreams/columns';
 import { upstreamFilters } from './upstreams/filters';
 import { upstreamTabs } from './upstreams/tabs';
@@ -195,8 +202,26 @@ export const registry: Record<Kind, ResourceDef> = {
     filters: routeFilters,
     groupings: [hostGrouping],
   }),
-  stream_routes: define('stream_routes', { group: 'traffic', hasStatus: false, idMode: 'optional', ...withPlugins('stream_route') }),
-  services: define('services', { group: 'traffic', hasStatus: false, idMode: 'optional', ...withPlugins('service') }),
+  stream_routes: define('stream_routes', {
+    group: 'traffic',
+    hasStatus: false,
+    idMode: 'optional',
+    tabs: streamRouteTabs,
+    // Includes the plugin checks (the stream set) and the inline upstream's (the schema's only).
+    validate: (draft, env) => streamRouteIssues(draft, env),
+    prefill: ['service_id', 'upstream_id'],
+    columns: streamRouteColumns,
+  }),
+  services: define('services', {
+    group: 'traffic',
+    hasStatus: false,
+    idMode: 'optional',
+    tabs: serviceTabs,
+    // Includes the plugin checks and the inline upstream's.
+    validate: (draft, env) => serviceIssues(draft, env),
+    columns: serviceColumns,
+    filters: serviceFilters,
+  }),
   upstreams: define('upstreams', {
     group: 'traffic',
     hasStatus: false,

@@ -1,9 +1,10 @@
-// Where a route sends requests: its service's upstream, an upstream object, or one written inline.
-import { isObj } from '../../api/sanitize';
-import type { Obj } from '../../api/types';
-import { t } from '../../i18n';
-import type { Ctx } from '../ctx';
-import { upstreamSummary } from '../resolve';
+// Where a route, a stream route or a service sends requests: the service's upstream (not for a
+// service), an upstream object, or one written inline. Pure; UpstreamSourceField is the control.
+import { isObj } from '../api/sanitize';
+import type { Obj } from '../api/types';
+import { t } from '../i18n';
+import type { Ctx } from './ctx';
+import { upstreamSummary } from './resolve';
 
 export type UpstreamSource = 'service' | 'existing' | 'inline' | 'none';
 
@@ -38,7 +39,7 @@ export function withSource(draft: Obj, source: UpstreamSource): Obj {
   return next;
 }
 
-/** What a route proxies to, for the "Resolves to" line and the overview. */
+/** What an object proxies to, for the "Resolves to" line and the overviews. */
 export interface Target {
   /** The upstream's name (or its nodes, for an inline one); for none or a missing reference, the problem. */
   label: string;
@@ -47,9 +48,11 @@ export interface Target {
   nodes: string[];
   /** Nothing to proxy to, or a reference to an upstream that doesn't exist. */
   broken: boolean;
+  /** No upstream at all, by any source (as opposed to one that is missing). */
+  none?: true;
 }
 
-/** Where the route's requests go, as APISIX resolves it (upstreamSummary), naming an inherited upstream rather than its service. */
+/** Where the object's requests go, as APISIX resolves it (upstreamSummary), naming an inherited upstream rather than its service. */
 export function targetOf(draft: Obj, ctx: Ctx): Target {
   // A list that hasn't loaded yet can't tell a missing object from one not seen yet.
   const own = hasId(draft.upstream_id) || isObj(draft.upstream);
@@ -58,7 +61,7 @@ export function targetOf(draft: Obj, ctx: Ctx): Target {
   const summary = upstreamSummary(draft, ctx);
   switch (summary.source) {
     case 'none':
-      return { label: t('rt.up.resolvesNone'), nodes: [], broken: true };
+      return { label: t('rt.up.resolvesNone'), nodes: [], broken: true, none: true };
     case 'missing':
       return { label: t('rt.issue.missing.upstream', { id: summary.refId ?? '' }), nodes: [], broken: true };
     case 'inline':

@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 // Checks on the resource pieces' CSS sources (Vitest blanks CSS imports, so read from disk): the list
-// cells (cell-), the shared editor pieces, Section and ResourcePicker (res-), and the route editor's
-// tabs (rt-).
+// cells (cell-), the shared editor pieces: Section, ResourcePicker, UpstreamSourceField, Overview and
+// the embedded lists (res-), and the route editor's tabs (rt-).
 const dir = dirname(fileURLToPath(import.meta.url));
 const FILES = [
   { name: 'cells.css', prefix: 'cell-' },

@@ -32,7 +32,7 @@ const IPV4_CIDR = new RegExp(`^${OCTET}(\\.${OCTET}){3}/([12]?[0-9]|3[0-2])$`);
 const IPV6_CIDR = /^([a-fA-F0-9]{0,4}:){1,8}(:[a-fA-F0-9]{0,4}){0,8}([a-fA-F0-9]{0,4})?\/[0-9]{1,3}$/;
 
 /** What inet_pton(AF_INET6) takes, as APISIX's jsonschema checks the `ipv6` format. */
-function isIPv6(text: string): boolean {
+export function isIPv6(text: string): boolean {
   let s = text;
   // A trailing IPv4 (::ffff:10.0.0.1) stands for the last two groups.
   if (s.includes('.')) {
@@ -49,7 +49,7 @@ function isIPv6(text: string): boolean {
 }
 
 /** remote_addr_def exactly: format ipv4 or ipv6 (inet_pton in APISIX), or one of ip_def's CIDR patterns. */
-function schemaAddress(text: string): boolean {
+export function schemaAddress(text: string): boolean {
   return IPV4.test(text) || isIPv6(text) || IPV4_CIDR.test(text) || IPV6_CIDR.test(text);
 }
 
@@ -78,6 +78,12 @@ export function uriProblem(uri: string): string | undefined {
 /** Why a client address is refused as it is typed: stricter than the schema's loose IPv6/CIDR pattern. */
 export function addrProblem(addr: string): string | undefined {
   return soundAddress(addr) ? undefined : t('rt.issue.addr', { addr });
+}
+
+/** Whether APISIX refuses these labels: labels_def (schema_def.lua 108–115), each value a label_value_def (98–105): text without spaces, 1–256 characters. */
+export function labelsRefused(labels: unknown): boolean {
+  if (labels === undefined) return false;
+  return !(isObj(labels) && Object.values(labels).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256));
 }
 
 type Add = (path: string, message: string) => void;
@@ -139,9 +145,7 @@ export function routeIssues(draft: Obj, env: ValidateEnv): Issue[] {
   if (filter !== undefined && !(typeof filter === 'string' && filter.length >= 10 && filter.startsWith('function'))) add('filter_func', t('rt.issue.filterFunc'));
 
   if (draft.priority !== undefined && !Number.isInteger(draft.priority)) add('priority', t('rt.issue.priority'));
-  if (draft.labels !== undefined && !(isObj(draft.labels) && Object.values(draft.labels).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256))) {
-    add('labels', t('rt.issue.labels'));
-  }
+  if (labelsRefused(draft.labels)) add('labels', t('rt.issue.labels'));
   if (draft.timeout !== undefined) {
     const timeout = isObj(draft.timeout) ? draft.timeout : {};
     for (const key of ['connect', 'send', 'read']) {
