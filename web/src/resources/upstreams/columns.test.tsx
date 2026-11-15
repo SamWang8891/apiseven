@@ -70,7 +70,8 @@ describe('upstream columns', () => {
   });
 
   // Task 16b item 69: until every list that can point at an upstream has loaded, the count is not known.
-  it.each(['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups'] as const)(
+  // Final wave F4: global rules too (a traffic-split in one names an upstream).
+  it.each(['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups', 'globalRules'] as const)(
     'used_by: "loading…" and no number while %s load',
     (list) => {
       const loading = { ...CTX, loaded: { ...CTX.loaded, [list]: false } };

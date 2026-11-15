@@ -37,8 +37,8 @@ export function healthOf(up: Obj): HealthState {
 
 export const healthLabel = (state: HealthState): string => (state === 'off' ? t('ui.off') : t(`up.health.${state}`));
 
-/** The lists that can point at an upstream (referencesTo: routes, services, stream routes, and a traffic-split rule in a plugin config, consumer or consumer group). */
-export const USAGE_LISTS = ['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups'] as const;
+/** The lists that can point at an upstream (referencesTo: routes, services, stream routes, and a traffic-split rule in a plugin config, consumer, consumer group or global rule). */
+export const USAGE_LISTS = ['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups', 'globalRules'] as const;
 
 /**
  * What points at the upstream: the references once every list that can has loaded; 'unknown' when one

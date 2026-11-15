@@ -411,7 +411,8 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
 
   switch (kind) {
     case 'upstreams': {
-      // APISIX also refuses to delete an upstream a traffic-split rule points at (apisix/admin/upstreams.lua).
+      // APISIX also refuses to delete an upstream a traffic-split rule points at, in a global rule too
+      // (apisix/admin/upstreams.lua delete_checker, 90–129; global rules 123–126).
       const inSplit = (v: Obj): boolean => splitUpstreamIds(v.plugins).some(is);
       const direct = (v: Obj): boolean => is(v.upstream_id) || inSplit(v);
       collect('routes', ctx.routes, direct);
@@ -420,6 +421,7 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
       collect('plugin_configs', ctx.pluginConfigs, inSplit);
       collect('consumers', ctx.consumers, inSplit);
       collect('consumer_groups', ctx.consumerGroups, inSplit);
+      collect('global_rules', ctx.globalRules, inSplit);
       break;
     }
     case 'services':

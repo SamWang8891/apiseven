@@ -518,6 +518,12 @@ describe('referencesTo', () => {
     ]);
   });
 
+  // Final wave F4: APISIX refuses to delete an upstream a global rule's traffic-split names (apisix/admin/upstreams.lua 123–126).
+  it("finds a global rule whose traffic-split names an upstream", () => {
+    const withRule = ctxOf({ globalRules: [itemOf('g-split', { plugins: { 'traffic-split': { rules: [{ weighted_upstreams: [{ upstream_id: 'u9' }] }] } } })] });
+    expect(referencesTo('upstreams', 'u9', withRule)).toEqual([{ kind: 'global_rules', id: 'g-split', name: 'g-split' }]);
+  });
+
   it('gives nothing for an unused id or a kind nothing references', () => {
     expect(referencesTo('upstreams', 'unused', ctx)).toEqual([]);
     expect(referencesTo('routes', 'r-up', ctx)).toEqual([]);
