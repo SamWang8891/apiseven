@@ -404,7 +404,8 @@ describe('S3: a refused file leaves the box and the draft as they were', () => {
     const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.type(cert, 'abc');
     await upload(user, container, 0, new File([COMBINED], 'both.pem'));
-    await waitFor(() => expect(said(cert)).toBe(`${t('ssl.split.file')} ${t('ssl.pem.noCertLabel')}`));
+    // The file offers the split, so the box's own problem points at the action too (fix round 2, R7).
+    await waitFor(() => expect(said(cert)).toBe(`${t('ssl.split.file')} ${t('ssl.split.overCert')}`));
     expect(cert).toHaveValue('abc');
     const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
     await user.click(key);

@@ -33,14 +33,16 @@ interface BoxProps {
 }
 
 /**
- * A box's split offer (rule 10): `consider` looks at every text or file that reaches the box. While
- * an offer stands its parts, key included, are kept in memory only (a ref: not state, not the page);
- * they go when the box's text next changes, when the action is used, when the offer ends with the
- * editing session, and with the box. `from` (editing state) is what offered it: the box's text or a
- * file the box refused. While it stands the box's messages point at the action (rule 8; fix round 1,
- * R7), never at doing by hand what the action does.
+ * A box's split offer (rule 10): `consider` looks at every text or file that reaches the box, a file
+ * that could not be read included (it offers nothing). While an offer stands its parts, key included,
+ * are kept in memory only (a ref: not state, not the page); they go when the box's text next changes,
+ * when another file reaches it, when the action is used, when the offer ends with the editing
+ * session, and with the box. `from` (editing state) is what offered it: the box's text or a file the
+ * box refused. While it stands, whatever offered it, the box's messages point at the action (rule 8;
+ * fix round 1, R7; fix round 2, R7), never at doing by hand what the action does; the pair is told,
+ * for the lines beside the boxes.
  */
-function useSplitOffer(pair: PairLink | undefined) {
+function useSplitOffer(pair: PairLink | undefined, own: BoxKind) {
   const [from, setFrom] = useEditingState<'text' | 'file' | undefined>(undefined);
   const parts = useRef<SplitParts | undefined>(undefined);
   useEffect(() => {
@@ -57,8 +59,19 @@ function useSplitOffer(pair: PairLink | undefined) {
     if (pair && found) pair.split(found);
   };
   const offered = pair !== undefined && from !== undefined;
-  /** The box's own problem, while its text offers the split, points at the action. */
-  const problem = (why: string | undefined) => (why !== undefined && offered && from === 'text' ? t('ssl.split.held') : why);
+  const report = pair?.reportOffer;
+  useLayoutEffect(() => {
+    report?.(own, offered);
+    return () => report?.(own, false);
+  }, [report, own, offered]);
+  /**
+   * The box's own problem while an offer stands: its text is the combined one (`from` text), or text
+   * the file's part replaces (`from` file). Either way the action is what resolves it.
+   */
+  const problem = (why: string | undefined) => {
+    if (why === undefined || !offered) return why;
+    return t(from === 'text' ? 'ssl.split.held' : own === 'cert' ? 'ssl.split.overCert' : 'ssl.split.overKey');
+  };
   /** A refused file's reason, when the file offers the split (consider just looked at it), points at the action. */
   const fileReason = (why: string | undefined) => (why !== undefined && pair !== undefined && parts.current !== undefined ? t('ssl.split.file') : why);
   return { offered, consider, apply, problem, fileReason };
@@ -122,7 +135,7 @@ export function CertBox({ label, help, error, value, onValue, hidden, details, k
   // cannot show (after a remount too: a certificate taken over it is shown).
   const locked = useLocked();
   const box = useBoxText('cert', () => (value === undefined || value === hidden ? '' : value));
-  const split = useSplitOffer(pair);
+  const split = useSplitOffer(pair, 'cert');
   const set = (next: string) => {
     split.consider(next, 'text');
     const v = valueAfter('cert', box.show(next), { held: value, stood: undefined, hidden });
@@ -150,6 +163,7 @@ export function CertBox({ label, help, error, value, onValue, hidden, details, k
           else split.consider(fileText, 'file');
           return split.fileReason(why);
         }}
+        onUnreadable={() => split.consider('', 'file')}
         onBlur={box.leave}
       />
       {split.offered && !locked && <SplitAction label={splitLabel('cert', { cert: value !== undefined, key: pair?.keyEntered === true })} onUse={split.apply} />}
@@ -178,8 +192,12 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
   const [open, setOpen] = useEditingState(false);
   const [stood, setStood] = useEditingState<{ key: string | undefined } | undefined>(undefined);
   const [leftOut, setLeftOut] = useEditingState(false);
-  const split = useSplitOffer(pair);
+  const split = useSplitOffer(pair, 'key');
   const standing = stood ?? { key: value };
+  // The pair's certificate box names text here as what its action replaces (fix round 2, R8).
+  const report = pair?.reportKeyText;
+  const holdsText = box.text.trim() !== '';
+  useLayoutEffect(() => report?.(holdsText), [report, holdsText]);
   const close = () => {
     box.show('');
     split.consider('', 'text');
@@ -267,6 +285,7 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
           else split.consider(fileText, 'file');
           return split.fileReason(why);
         }}
+        onUnreadable={() => split.consider('', 'file')}
         onBlur={box.leave}
       />
       {split.offered && <SplitAction label={splitLabel('key', { cert: pair?.certEntered === true, key: standing.key !== undefined })} onUse={split.apply} />}

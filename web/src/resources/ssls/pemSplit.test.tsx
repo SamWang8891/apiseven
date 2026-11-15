@@ -120,7 +120,7 @@ describe('the split, in a new SSL', () => {
     expect(certBox).toHaveValue(RSA_PAIR.cert + RSA_CA);
     expect(value()).toEqual({ status: 1, cert: RSA_PAIR.cert + RSA_CA, key: RSA_PAIR.key });
     // The box changed: the file's reason goes with it (rule 5), and nothing says the box holds a problem.
-    expect(certBox).not.toHaveAccessibleDescription(expect.stringContaining(t('ssl.pem.fileHasKey')) as string);
+    expect(certBox).not.toHaveAccessibleDescription(expect.stringContaining(t('ssl.split.file')) as string);
     expect(certBox).not.toHaveAttribute('aria-invalid', 'true');
   });
 
@@ -159,6 +159,96 @@ describe('the split, in a new SSL', () => {
     fireEvent.drop(cert, { dataTransfer: { files: [new File([P12], 'export.pem', { type: 'text/plain' })], getData: () => '' } });
     await waitFor(() => expect(cert).toHaveAccessibleDescription(expect.stringContaining(t('ssl.split.file')) as string));
     expect(cert).not.toHaveAccessibleDescription(expect.stringContaining(t('ssl.pem.fileHasKey')) as string);
+  });
+
+  /** The box's messages, as its field says them. */
+  const says = (box: HTMLElement) => box.closest('.ui-field')?.querySelector('.ui-field__error')?.textContent ?? '';
+  /** What a box says to do by hand: none of it while a split is offered (fix round 2, R7). */
+  const BY_HAND = ['ssl.pem.markerCert', 'ssl.pem.markerKey', 'ssl.pem.hasKey', 'ssl.pem.notOneKey', 'ssl.pem.incomplete', 'ssl.pem.fileHasKey'];
+  const noByHand = (box: HTMLElement) => {
+    for (const key of BY_HAND) expect(says(box), key).not.toContain(t(key));
+  };
+  const dropFile = (box: HTMLElement, text: string) => fireEvent.drop(box, { dataTransfer: { files: [new File([text], 'both.pem', { type: 'text/plain' })], getData: () => '' } });
+
+  it("a combined file refused over the key box's own combined text, with focus and after Tab: the messages point at the action (fix round 2, R7)", async () => {
+    const { user } = renderNew({ status: 1, cert: SEED_CERT });
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    await user.click(key);
+    await user.paste(EC_PAIR.key + EC_PAIR.cert);
+    expect(says(key)).toBe(t('ssl.split.held'));
+    dropFile(key, EC_PAIR.key + EC_PAIR.cert);
+    await waitFor(() => expect(says(key)).toBe(`${t('ssl.split.file')} ${t('ssl.split.overKey')}`));
+    noByHand(key);
+    await user.tab();
+    expect(says(key)).toBe(`${t('ssl.split.file')} ${t('ssl.split.overKey')}`);
+    noByHand(key);
+    expect(screen.getByRole('button', { name: t('ssl.split.toCertBoxReplacing', { what: t('ssl.split.what.cert') }) })).toBeInTheDocument();
+  });
+
+  it('the same in the certificate box: no "put only the certificate here" beside the action (fix round 2, R7)', async () => {
+    const { user, value } = renderNew();
+    const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    await paste(user, document.body, t('ssl.pem.cert'), SEED_CERT + SEED_KEY);
+    dropFile(cert, P12);
+    await waitFor(() => expect(says(cert)).toBe(`${t('ssl.split.file')} ${t('ssl.split.overCert')}`));
+    noByHand(cert);
+    await user.tab();
+    noByHand(cert);
+    await user.click(screen.getByRole('button', { name: t('ssl.split.toKeyBox') }));
+    // The file's parts, not the text's: the action replaced the text, as the message said.
+    expect(value()).toEqual({ status: 1, cert: RSA_PAIR.cert + RSA_CA, key: RSA_PAIR.key });
+    expect(says(cert)).toBe('');
+  });
+
+  it('a half key left in the key box, then a combined file: the half key is not asked to be finished (fix round 2, R7)', async () => {
+    const { user } = renderNew({ status: 1, cert: SEED_CERT });
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    await user.click(key);
+    await user.paste('-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMG');
+    expect(says(key)).toBe(t('ssl.pem.incomplete'));
+    await user.tab();
+    expect(says(key)).toBe(t('ssl.pem.markerKey'));
+    dropFile(key, EC_PAIR.key + EC_PAIR.cert);
+    await waitFor(() => expect(says(key)).toBe(`${t('ssl.split.file')} ${t('ssl.split.overKey')}`));
+    noByHand(key);
+  });
+
+  it("a file that cannot be read ends a file's offer, and says why: the action never stands for a file no longer named", async () => {
+    const { user } = renderNew();
+    const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    await user.type(cert, 'junk');
+    dropFile(cert, P12);
+    expect(await screen.findByRole('button', { name: t('ssl.split.toKeyBox') })).toBeInTheDocument();
+    fireEvent.drop(cert, { dataTransfer: { files: [new File([new Uint8Array([0x30, 0x82, 0x00, 0xff])], 'cert.der', { type: 'text/plain' })], getData: () => '' } });
+    await waitFor(() => expect(screen.queryByRole('button', { name: t('ssl.split.toKeyBox') })).toBeNull());
+    expect(says(cert)).toBe(`${t('ssl.pem.binary')} ${t('ssl.pem.noCertLabel')}`);
+  });
+
+  it("the certificate box's action says it replaces unfinished text in the key box (fix round 2, R8)", async () => {
+    const { user, value } = renderNew();
+    await paste(user, document.body, t('ssl.pem.key'), '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMG');
+    await paste(user, document.body, t('ssl.pem.cert'), SEED_CERT + SEED_KEY);
+    expect(screen.queryByRole('button', { name: t('ssl.split.toKeyBox') })).toBeNull();
+    await user.click(screen.getByRole('button', { name: t('ssl.split.toKeyBoxReplacing', { what: t('ssl.split.what.key') }) }));
+    expect(value()).toEqual({ status: 1, cert: SEED_CERT, key: SEED_KEY });
+    // Emptied, the key box no longer counts: the plain name again.
+    await user.click(screen.getByRole('button', { name: t('ssl.key.remove') }));
+    await user.clear(screen.getByRole('textbox', { name: t('ssl.pem.cert') }));
+    await user.paste(EC_PAIR.cert + EC_PAIR.key);
+    expect(screen.getByRole('button', { name: t('ssl.split.toKeyBox') })).toBeInTheDocument();
+  });
+
+  it('"Enter the private key" gives way to the action while either box offers the split (fix round 2, R11)', async () => {
+    const { user } = renderNew({ status: 1, cert: SEED_CERT });
+    const needed = () => screen.queryByText(t('ssl.key.needed'));
+    expect(needed()).toBeInTheDocument();
+    await paste(user, document.body, t('ssl.pem.key'), EC_PAIR.key + EC_PAIR.cert);
+    expect(needed()).toBeNull();
+    await user.clear(screen.getByRole('textbox', { name: t('ssl.pem.key') }));
+    expect(needed()).toBeInTheDocument();
+    dropFile(screen.getByRole('textbox', { name: t('ssl.pem.cert') }), P12);
+    expect(await screen.findByRole('button', { name: t('ssl.split.toKeyBoxReplacing', { what: t('ssl.split.what.cert') }) })).toBeInTheDocument();
+    expect(needed()).toBeNull();
   });
 
   it('the action says what it replaces: a certificate in the certificate box, even unfinished text, and a key (fix round 1, R8)', async () => {

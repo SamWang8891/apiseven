@@ -71,7 +71,7 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
       <section className="ssl-main" aria-label={t('ssl.cert.region')}>
         {isNew ? (
           <>
-            {draft.cert !== undefined && draft.key === undefined && <p className="ed-note">{t('ssl.key.needed')}</p>}
+            {draft.cert !== undefined && draft.key === undefined && !pair.offered && <p className="ed-note">{t('ssl.key.needed')}</p>}
             <CertField draft={draft} write={write('cert')} error={issueAt(issues, 'cert')} pair={pair} />
             <KeyBox label={t('ssl.pem.key')} help={t('ssl.pem.keyHelp')} error={keyError} value={str(draft.key)} onValue={write('key')} pair={pair} />
             <KeyMatchLine verdict={verdict} />

@@ -99,6 +99,8 @@ export interface Model {
   pair: boolean;
   /** In a pair, the other box's value (a key for a certificate box, a certificate for a key box). */
   other: string | undefined;
+  /** In a pair, the other box holds text it has not taken (the `otherText` action; fix round 2, R8): it holds Save, its value as it was. */
+  otherHeld: boolean;
   /** The split this box offers now, if any, and what offered it: the box's text, or a file it refused. */
   offer: (Split & { from: 'text' | 'file' }) | undefined;
   /** A key box closed over a key whose lines before its BEGIN line were left out says so. */
@@ -115,6 +117,7 @@ export const newModel = (kind: Kind, value: string | undefined, text: string, hi
   hidden,
   pair: pair !== undefined,
   other: pair?.other,
+  otherHeld: false,
   offer: undefined,
   leftOut: false,
 });
@@ -159,7 +162,11 @@ export function arrive(m: Model, next: string, focused: boolean): void {
   else if (next.trim() === '') m.value = m.hidden;
 }
 
-/** A file the box refused: the box and the value as they were; the split offer follows what the file held (B23). */
+/**
+ * A file the box refused: the box and the value as they were; the split offer follows what the file
+ * held (B23), and a file that could not be read (`text` '') offers nothing, so whatever the last file
+ * or text offered ends with it.
+ */
 export function refusedFile(m: Model, text: string): void {
   const parts = m.pair ? splitOf(text) : undefined;
   m.offer = parts && { ...parts, from: 'file' };
@@ -176,21 +183,32 @@ export function split(m: Model): void {
     arrive(m, parts.key, false);
     m.other = parts.certs;
   }
+  // The other box took its part: whatever it held is replaced.
+  m.otherHeld = false;
   m.offer = undefined;
 }
 
 /**
  * The split action's name in this box: it says what it replaces (fix round 1, R8). The certificate
- * box's replaces its certificate (the field has a value) and the key entered; the key box's replaces
- * the key that stands and what the certificate box holds (the tests fill that box with a value only).
+ * box's replaces its certificate (the field has a value) and the key entered or text in the key box
+ * (fix round 2, R8); the key box's replaces the key that stands and the certificate entered or text
+ * in the certificate box. The other box's text is its value's, or text it holds (`otherHeld`).
  */
 export function splitLabel(m: Model): string {
-  const cert = m.kind === 'cert' ? m.value !== undefined : m.other !== undefined;
-  const key = m.kind === 'cert' ? m.other !== undefined : standing(m) !== undefined;
+  const cert = m.kind === 'cert' ? m.value !== undefined : m.other !== undefined || m.otherHeld;
+  const key = m.kind === 'cert' ? m.other !== undefined || m.otherHeld : standing(m) !== undefined;
   const what = cert && key ? 'both' : cert ? 'cert' : key ? 'key' : undefined;
   const action = m.kind === 'cert' ? 'ssl.split.toKeyBox' : 'ssl.split.toCertBox';
   return what ? t(`${action}Replacing`, { what: t(`ssl.split.what.${what}`) }) : t(action);
 }
+/**
+ * What a box says to do by hand, past the split action (fix round 2, R7): none of it while an offer
+ * stands in the box, whatever offered it. Every problem a box can state, and a refused file's reason.
+ */
+const BY_HAND = [
+  ...['hasKey', 'fileHasKey', 'incomplete', 'notOneKey', 'refNotAlone', 'markerCert', 'markerKey', 'noCertLabel', 'noKeyLabel', 'isCert', 'encrypted'].map((key) => t(`ssl.pem.${key}`)),
+  t('ssl.pem.fileRefused', { problem: '\u0000' }).split('\u0000')[0] as string,
+];
 /** Every name a split action can have, to check that none but the model's is on the page. */
 const SPLIT_LABELS = ['ssl.split.toKeyBox', 'ssl.split.toCertBox'].flatMap((action) => [t(action), ...['cert', 'key', 'both'].map((what) => t(`${action}Replacing`, { what: t(`ssl.split.what.${what}`) }))]);
 
@@ -204,6 +222,10 @@ export function leave(m: Model): void {
 
 const ENCRYPTED = `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${'E'.repeat(80)}\n-----END ENCRYPTED PRIVATE KEY-----\n`;
 const HALF_KEY = '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49';
+/** Text the other box of a pair does not take (the `otherText` action): a half key, or a certificate box's text with no PEM label. */
+const OTHER_HELD: Record<Kind, string> = { key: HALF_KEY, cert: 'not a certificate yet' };
+/** The files that hold a certificate and its key: a pair's box refuses them and offers the split. */
+const COMBINED_FILES = ['combined', 'keyPlusCert', 'p12'];
 
 /** Every kind of text a user may type, paste or drop, for either kind of box. */
 export const TEXTS: Record<string, string> = {
@@ -258,9 +280,10 @@ export const FILE_NAMES = Object.keys(FILES);
  * upload bar while it has no focus, or dropped on it while it has; a drop may carry nothing; a file
  * comes by a real click on Upload file; the box is emptied, left, returned to; a key box is kept
  * (Keep the entered key) or its key removed; a combined text is split between a pair's boxes (B23);
- * and saving is asked for where the level has a save.
+ * in a pair, text the other box does not take is typed there (fix round 2, R8); and saving is asked
+ * for where the level has a save.
  */
-export const ACTIONS = ['paste', 'dropBox', 'dropBar', 'dropFocused', 'dropNothing', 'upload', 'empty', 'leave', 'return', 'keep', 'remove', 'split', 'save'] as const;
+export const ACTIONS = ['paste', 'dropBox', 'dropBar', 'dropFocused', 'dropNothing', 'upload', 'empty', 'leave', 'return', 'keep', 'remove', 'split', 'otherText', 'save'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** The actions a box of this kind offers; `save` only where the level has one. */
@@ -366,6 +389,9 @@ export class BoxRun {
         return !present(m);
       case 'split':
         return m.offer !== undefined;
+      case 'otherText':
+        // Once it holds that text, typing it again changes nothing.
+        return m.pair && !m.otherHeld;
       default:
         return true;
     }
@@ -418,7 +444,9 @@ export class BoxRun {
         return true;
       }
       case 'upload': {
-        const name = r.pick(FILE_NAMES);
+        // Over text the box holds, a combined file is likelier (fix round 2, R7: its offer over held text).
+        const name = m.pair && held(m) && r.int(2) === 0 ? r.pick(COMBINED_FILES) : r.pick(FILE_NAMES);
+        const heldBefore = held(m);
         const spec = FILES[name] as (typeof FILES)[string];
         const el = await this.ensureBox();
         const input = el.closest('.ssl-pem')?.querySelector<HTMLInputElement>('input[type="file"]') as HTMLInputElement;
@@ -438,8 +466,9 @@ export class BoxRun {
         if (spec.text !== undefined && takes(m.kind, spec.text)) this.arrived(spec.text, false, 'file');
         else {
           this.cov.add('file refused');
-          if (spec.text !== undefined) refusedFile(m, spec.text);
+          refusedFile(m, spec.text ?? '');
           if (m.offer) this.cov.add('split offered for a refused file');
+          if (m.offer && heldBefore) this.cov.add('a refused combined file over held text');
         }
         return true;
       }
@@ -472,10 +501,32 @@ export class BoxRun {
         m.leftOut = false;
         return true;
       }
+      case 'otherText': {
+        // Text the other box does not take, typed there (fix round 2, R8): a closed key box is opened
+        // with Replace key first. The focus moves there, so this box is left.
+        const label = t(m.kind === 'cert' ? 'ssl.pem.key' : 'ssl.pem.cert');
+        const find = () => within(this.scope()).queryByRole<HTMLTextAreaElement>('textbox', { name: label });
+        if (!find()) {
+          const open = this.button(t('ssl.key.replaceKey'));
+          if (!open) return false;
+          await this.user.click(open);
+          this.leftByClick();
+        }
+        const other = find();
+        if (!other) return false;
+        const box = this.box();
+        if (box && m.focused) this.blur(box);
+        act(() => other.focus());
+        fireEvent.change(other, { target: { value: OTHER_HELD[m.kind === 'cert' ? 'key' : 'cert'] } });
+        m.otherHeld = true;
+        m.focused = false;
+        return true;
+      }
       case 'split': {
         const action = this.button(splitLabel(m));
         if (!action || !m.offer) return false;
         this.cov.add(`split from the ${m.kind} box`);
+        if (m.otherHeld) this.cov.add(`split from the ${m.kind} box over text in the other box`);
         await this.user.click(action);
         // The click left the box (its key blocks became markers), then each part went to its box.
         this.leftByClick();
@@ -489,15 +540,36 @@ export class BoxRun {
   /** The invariants every level checks after every step. */
   check(where: string): void {
     this.checkBox(where);
+    const m = this.m;
     // B23: the split is offered exactly when the model says, under its name, and nowhere else.
-    const offered = this.m.offer ? splitLabel(this.m) : undefined;
+    const offered = m.offer ? splitLabel(m) : undefined;
+    // R8, both ways: the name says it replaces text the other box holds, with no value there.
+    if (m.offer && m.otherHeld && m.other === undefined) this.cov.add(`the ${m.kind} box's split names text in the other box`);
     for (const label of SPLIT_LABELS) expect(this.button(label) !== null, `${where}: the split action "${label}"`).toBe(offered === label);
-    // R7: while the box's own text offers it, the box's message points at the action, and only then.
+    // R7 (fix rounds 1 and 2): an offer stands ⇒ no by-hand message in the box, whatever offered it;
+    // its messages point at the action: the combined text's (from the text), or the file's and, over
+    // text the box holds, that the action replaces it (from a file). Without an offer, none of these.
     const box = this.box();
     if (box) {
-      const says = (box.closest('.ui-field')?.querySelector('.ui-field__error')?.textContent ?? '').includes(t('ssl.split.held'));
-      expect(says, `${where}: the box's message points at the split`).toBe(this.m.offer?.from === 'text');
+      const said = box.closest('.ui-field')?.querySelector('.ui-field__error')?.textContent ?? '';
+      if (m.offer) for (const message of BY_HAND) expect(said.includes(message), `${where}: a by-hand message beside the split: "${message}"`).toBe(false);
+      expect(said.includes(t('ssl.split.held')), `${where}: the box's message points at the split (its text)`).toBe(m.offer?.from === 'text');
+      expect(said.includes(t('ssl.split.file')), `${where}: the file's reason points at the split`).toBe(m.offer?.from === 'file');
+      const over = t(m.kind === 'cert' ? 'ssl.split.overCert' : 'ssl.split.overKey');
+      expect(said.includes(over), `${where}: the box's message says the split replaces its text`).toBe(m.offer?.from === 'file' && held(m));
     }
+  }
+
+  /**
+   * A new SSL's line "Enter the private key that belongs to this certificate": while the pair has a
+   * certificate and no key, unless a box offers the split (fix round 2, R11). `cert` and `key` are
+   * the pair's values as the model has them.
+   */
+  checkKeyNeeded(where: string): void {
+    const m = this.m;
+    const [cert, key] = m.kind === 'cert' ? [m.value, m.other] : [m.other, m.value];
+    const shown = within(this.scope()).queryByText(t('ssl.key.needed')) !== null;
+    expect(shown, `${where}: "Enter the private key"`).toBe(cert !== undefined && key === undefined && m.offer === undefined);
   }
 
   private checkBox(where: string): void {

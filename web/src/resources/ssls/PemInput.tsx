@@ -51,11 +51,13 @@ export interface PemInputProps {
    * undefined once the caller has put it in the box or taken it.
    */
   onFile: (text: string) => string | undefined;
+  /** A file reached the box that could not be read as text (too big, binary, unreadable): nothing changes but what the caller made of the last file. */
+  onUnreadable?: () => void;
   autoFocus?: boolean;
   rows?: number;
 }
 
-export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, changes, onFile, autoFocus, rows = 6 }: PemInputProps) {
+export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, changes, onFile, onUnreadable, autoFocus, rows = 6 }: PemInputProps) {
   const locked = useLocked();
   usePending(locked || problem === undefined ? undefined : t('ui.pending.problem', { field: label, problem }));
   const fileRef = useRef<HTMLInputElement>(null);
@@ -77,8 +79,16 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
   const read = (file: File | undefined) => {
     if (!file) return;
     readPem(file)
-      .then((result) => setFileProblem('text' in result ? onFile(result.text) : result.problem))
+      .then((result) => {
+        if ('text' in result) {
+          setFileProblem(onFile(result.text));
+          return;
+        }
+        onUnreadable?.();
+        setFileProblem(result.problem);
+      })
       .catch(() => {
+        onUnreadable?.();
         setFileProblem(t('ssl.pem.readFailed'));
         toast.error(t('ssl.pem.readFailed'));
       });

@@ -15,7 +15,9 @@
 //    pemBoxes.page.property.test.tsx.)
 // In a pair (a new SSL, the dialog) a combined text or file offers the split (Task 16 B23): the
 // action, when the model offers it, gives each part to its box, so the other field's value is
-// checked after every step too.
+// checked after every step too. Text the other box does not take may be typed there (fix round 2,
+// R8): it holds that box, and the split's name says it replaces it. In a new SSL the line "Enter the
+// private key" shows exactly while the pair has a certificate, no key and no offer (fix round 2, R11).
 // Every sequence runs to its end or its first failure; all failures are reported together.
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -112,6 +114,15 @@ const PLACES: Place[] = [
     setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1, cert: SEED_CERT, key: SEED_KEY }, sslIssues, { isNew: true }), model: newModel('key', SEED_KEY, '', undefined, { other: SEED_CERT }) }),
   },
   {
+    // The key box with no certificate entered: its split names text in the certificate box alone (R8).
+    name: 'new SSL key, no certificate',
+    kind: 'key',
+    label: () => t('ssl.pem.key'),
+    field: (d) => d.key,
+    other: (d) => d.cert,
+    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1 }, sslIssues, { isNew: true }), model: newModel('key', undefined, '', undefined, { other: undefined }) }),
+  },
+  {
     name: 'CA, none',
     kind: 'cert',
     label: () => t('ssl.client.ca'),
@@ -157,7 +168,8 @@ const PLACES: Place[] = [
 ];
 
 describe('every PEM box follows one rule (property, seeded, tab level)', () => {
-  const SEEDS = 16;
+  // 18 seeds since fix round 2 added an action (text in the other box): the older actions keep their counts.
+  const SEEDS = 18;
   const STEPS = 14;
   it(`${SEEDS} sequences of ${STEPS} steps in each of ${PLACES.length} places`, async () => {
     const cov = new Coverage();
@@ -175,7 +187,7 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
           const run = new BoxRun(model, label, scope, harness.user, cov);
           const m = run.m;
           const apply = () => within(scope()).getByRole<HTMLButtonElement>('button', { name: t('ssl.replace.apply') });
-          const ready = () => m.value !== undefined && m.other !== undefined && !held(m);
+          const ready = () => m.value !== undefined && m.other !== undefined && !held(m) && !m.otherHeld;
           const check = () => {
             run.check(where);
             if (side) {
@@ -184,7 +196,10 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
               const pending = harness.held().filter((message) => message.startsWith(`${label}: `));
               expect(pending.length > 0, `${where}: held`).toBe(held(m));
               expect(str(place.field?.(harness.value())), `${where}: the field's value`).toBe(m.value);
-              if (place.other) expect(str(place.other(harness.value())), `${where}: the other field's value`).toBe(m.other);
+              if (place.other) {
+                expect(str(place.other(harness.value())), `${where}: the other field's value`).toBe(m.other);
+                run.checkKeyNeeded(where);
+              }
             }
           };
           check();
@@ -220,7 +235,7 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
     if ((import.meta.env as Record<string, string | undefined>).PEM_COVERAGE === '1') console.info(`PEM boxes, tab level: ${JSON.stringify(cov.counts)}`);
     expect(failures).toEqual([]);
     // Keep and Remove exist in the key places only, save in the dialogs only, and split where a combined text was given to a pair's box.
-    const AT_LEAST: Record<string, number> = { keep: 20, remove: 8, save: 30, leave: 50, split: 30 };
+    const AT_LEAST: Record<string, number> = { keep: 20, remove: 8, save: 30, leave: 50, split: 30, otherText: 40 };
     for (const action of actionsFor('key', true)) expect(cov.get(action), action).toBeGreaterThan(AT_LEAST[action] ?? 150);
     for (const name of TEXT_NAMES) expect(cov.get(`text ${name}`), `text ${name}`).toBeGreaterThan(15);
     for (const name of FILE_NAMES) expect(cov.get(`file ${name}`), `file ${name}`).toBeGreaterThan(5);
@@ -229,6 +244,11 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
     expect(cov.get('split from the cert box')).toBeGreaterThan(10);
     expect(cov.get('split from the key box')).toBeGreaterThan(10);
     expect(cov.get('split offered for a refused file')).toBeGreaterThan(5);
+    expect(cov.get('a refused combined file over held text')).toBeGreaterThan(5);
+    for (const kind of ['cert', 'key']) {
+      expect(cov.get(`the ${kind} box's split names text in the other box`), kind).toBeGreaterThan(3);
+      expect(cov.get(`split from the ${kind} box over text in the other box`), kind).toBeGreaterThan(3);
+    }
     expect(cov.get('save: applied after a split')).toBeGreaterThan(0);
     for (const place of PLACES) expect(cov.get(`place ${place.name}`), place.name).toBe(SEEDS);
   }, 300_000);

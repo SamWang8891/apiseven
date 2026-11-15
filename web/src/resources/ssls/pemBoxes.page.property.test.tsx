@@ -14,7 +14,9 @@
 // the box's component state is lost, and what it shows must follow from the draft), and a save
 // APISIX refuses late (a delayed 400: the fields are locked meanwhile, then editable again), each
 // followed by the same checks. In a new SSL's pair a combined text offers the split (Task 16 B23):
-// a request then carries both parts, each where the model put it.
+// a request then carries both parts, each where the model put it. Text the other box does not take
+// may be typed there (fix round 2, R8): a save is then refused for that box, and the split's name
+// says it replaces that text; "Enter the private key" shows only without an offer (R11).
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -171,6 +173,25 @@ const PLACES: Place[] = [
     tab: certTab,
   },
   {
+    // The certificate box with no key entered: its split names text in the key box alone (R8).
+    name: 'new SSL certificate, no key',
+    kind: 'cert',
+    label: () => t('ssl.pem.cert'),
+    setup: async () => ({ app: await newSsl({}), model: newModel('cert', undefined, '', undefined, { other: undefined }) }),
+    sent: posted('cert'),
+    tab: certTab,
+    hiddenAfterRemount: (m) => (holdsKey(m.value) ? m.value : undefined),
+  },
+  {
+    // The key box with no certificate entered: its split names text in the certificate box alone (R8).
+    name: 'new SSL key, no certificate',
+    kind: 'key',
+    label: () => t('ssl.pem.key'),
+    setup: async () => ({ app: await newSsl({}), model: newModel('key', undefined, '', undefined, { other: undefined }) }),
+    sent: posted('key'),
+    tab: certTab,
+  },
+  {
     name: 'CA, none',
     kind: 'cert',
     label: () => t('ssl.client.ca'),
@@ -211,9 +232,10 @@ function remounted(m: Model, place: Place): void {
   m.focused = false;
   m.opened = false;
   m.stood = null;
-  // Session flags go with the box: an offered split, the "left out" line.
+  // Session flags go with the box: an offered split, the "left out" line; the other box's text too.
   m.offer = undefined;
   m.leftOut = false;
+  m.otherHeld = false;
   if (m.kind === 'key') {
     m.text = '';
     return;
@@ -223,7 +245,8 @@ function remounted(m: Model, place: Place): void {
 }
 
 /** What a save would do with the box as the model has it: go out (true), or be refused before any request. */
-const wouldSend = (place: Place, m: Model): boolean => !held(m) && !schemaRefuses(place.kind, m.value) && (m.text.trim() === '' || takes(m.kind, m.text));
+const wouldSend = (place: Place, m: Model): boolean =>
+  !held(m) && !m.otherHeld && !schemaRefuses(place.kind, m.value) && (m.text.trim() === '' || takes(m.kind, m.text));
 
 describe('every PEM box follows one rule through the real editor frame (property, seeded, page level)', () => {
   const SEEDS = 6;
@@ -236,6 +259,7 @@ describe('every PEM box follows one rule through the real editor frame (property
         const r = prng(seed * 104729 + place.name.length);
         const label = place.label();
         const heldPrefix = t('ui.pending.problem', { field: label, problem: '' });
+        const otherPrefix = t('ui.pending.problem', { field: t(place.kind === 'cert' ? 'ssl.pem.key' : 'ssl.pem.cert'), problem: '' });
         let where = 'start';
         const failure = await firstFailure(async () => {
           const { app, model } = await place.setup();
@@ -244,13 +268,17 @@ describe('every PEM box follows one rule through the real editor frame (property
           const m = run.m;
           const initialOther = m.other;
           m.focused = document.activeElement !== null && document.activeElement === run.box();
-          run.check(where);
+          const check = () => {
+            run.check(where);
+            if (m.pair) run.checkKeyNeeded(where);
+          };
+          check();
           cov.add(`place ${place.name}`);
           for (let step = 0; step < STEPS; step++) {
             // The frame's own actions, now and then: a remount, a save APISIX refuses late.
             // A save is likelier once the box has taken a value over one it cannot show (A1's case).
             const frame = m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden ? r.int(3) : r.int(5);
-            if (frame === 0 && !held(m)) {
+            if (frame === 0 && !held(m) && !m.otherHeld) {
               where = `step ${step} (remount)`;
               await user.click(tab(t('ssl.tab.general')));
               await user.click(tab(place.tab()));
@@ -258,7 +286,7 @@ describe('every PEM box follows one rule through the real editor frame (property
               remounted(m, place);
               if (place.reopen && m.value !== undefined && m.value === m.hidden) await place.reopen(app);
               cov.add('remount');
-              run.check(where);
+              check();
               continue;
             }
             if (frame === 1 && wouldSend(place, m)) {
@@ -274,7 +302,7 @@ describe('every PEM box follows one rule through the real editor frame (property
               m.focused = box !== null && document.activeElement === box;
               cov.add('refusedSave');
               if (m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden) cov.add('refusedSave: a value taken over one the box cannot show');
-              run.check(where);
+              check();
               continue;
             }
             // A save is likelier once a split gave the other box its part, so the request is checked to carry both.
@@ -283,7 +311,7 @@ describe('every PEM box follows one rule through the real editor frame (property
             where = `step ${step} (${action})`;
             if (action !== 'save') {
               if (await run.step(action, r)) cov.add(action);
-              run.check(where);
+              check();
               continue;
             }
             cov.add('save');
@@ -300,10 +328,12 @@ describe('every PEM box follows one rule through the real editor frame (property
             // The frame left the box first (a blur), then judged it.
             run.leftByClick();
             const told = getToasts().filter((item) => item.id > toastsBefore);
-            if (held(m)) {
+            if (held(m) || m.otherHeld) {
+              // The toast names a held field: this one, or the other box of the pair (either, when both are).
+              const named = [held(m) ? heldPrefix : undefined, m.otherHeld ? otherPrefix : undefined].filter((p): p is string => p !== undefined);
               expect(writesOf(admin).length, `${where}: held, so no request`).toBe(writes);
-              expect(told.some((item) => item.message.includes(heldPrefix)), `${where}: the toast names the field`).toBe(true);
-              cov.add('save: refused, held');
+              expect(told.some((item) => named.some((p) => item.message.includes(p))), `${where}: the toast names a held field`).toBe(true);
+              cov.add(held(m) ? 'save: refused, held' : 'save: refused, the other box held');
             } else if (schemaRefuses(place.kind, m.value)) {
               expect(writesOf(admin).length, `${where}: the schema refuses the value, so no request`).toBe(writes);
               expect(told.length > 0 && told.every((item) => !item.message.includes(heldPrefix)), `${where}: refused for an issue, not a hold`).toBe(true);
@@ -318,7 +348,7 @@ describe('every PEM box follows one rule through the real editor frame (property
             // Where the frame puts the focus after a refusal is its own (the held field, or the one left).
             const box = run.box();
             m.focused = box !== null && document.activeElement === box;
-            run.check(where);
+            check();
           }
         });
         if (failure) failures.push(`${place.name}, seed ${seed}, ${where}: ${failure.replace(`${where}: `, '')}`);
@@ -341,5 +371,8 @@ describe('every PEM box follows one rule through the real editor frame (property
     expect(cov.get('unfocused arrival of key material not taken')).toBeGreaterThan(20);
     expect(cov.get('split from the cert box') + cov.get('split from the key box')).toBeGreaterThan(8);
     expect(cov.get('save: sent after a split')).toBeGreaterThan(2);
+    expect(cov.get('a refused combined file over held text')).toBeGreaterThan(2);
+    expect(cov.get('save: refused, the other box held')).toBeGreaterThan(2);
+    for (const kind of ['cert', 'key']) expect(cov.get(`the ${kind} box's split names text in the other box`), kind).toBeGreaterThan(0);
   }, 300_000);
 });
