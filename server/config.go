@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/url"
 	"os"
@@ -51,22 +52,26 @@ func loadConfig(getenv func(string) string) (Config, error) {
 	return cfg, nil
 }
 
+// parseAdminURL never repeats the value in an error: a rejected URL may carry credentials, an
+// api_key argument or a fragment. It names at most scheme://host[:port], once those parse.
 func parseAdminURL(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return nil, errors.New("APISIX_ADMIN_URL is required: the APISIX Admin API address, such as http://apisix:9180")
 	}
+	u, parseErr := url.Parse(raw)
 	bad := func(why string) error {
-		return fmt.Errorf("APISIX_ADMIN_URL %q: %s; use an address such as http://apisix:9180", raw, why)
-	}
-	if strings.ContainsFunc(raw, func(r rune) bool { return r <= ' ' || r == 0x7f }) {
-		return nil, bad("it contains spaces or control characters")
-	}
-	u, err := url.Parse(raw)
-	if err != nil {
-		return nil, bad("not a URL")
+		where := ""
+		if parseErr == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Hostname() != "" && !strings.ContainsFunc(u.Host, isSpaceOrControl) {
+			where = fmt.Sprintf(" (%s://%s)", u.Scheme, strings.ToLower(u.Host))
+		}
+		return fmt.Errorf("APISIX_ADMIN_URL%s: %s; use an address such as http://apisix:9180", where, why)
 	}
 	switch {
+	case strings.ContainsFunc(raw, isSpaceOrControl):
+		return nil, bad("the value contains spaces or control characters")
+	case parseErr != nil:
+		return nil, bad("not a URL")
 	case u.Scheme != "http" && u.Scheme != "https":
 		return nil, bad("the scheme must be http or https")
 	case u.Host == "" || u.Hostname() == "":
@@ -74,14 +79,19 @@ func parseAdminURL(raw string) (*url.URL, error) {
 	case u.User != nil:
 		return nil, bad("credentials in the URL are not supported (the key goes in APISIX_ADMIN_KEY)")
 	case u.RawQuery != "" || u.ForceQuery || u.Fragment != "":
-		return nil, bad("a query or fragment is not allowed")
+		return nil, bad("a query or fragment is not allowed (the key goes in APISIX_ADMIN_KEY)")
 	}
 	u.Host = strings.ToLower(u.Host)
 	// The Admin API lives under /apisix/admin; the proxy adds that itself, as the Connect page does.
 	u.Path = strings.TrimRight(strings.TrimSuffix(strings.TrimRight(u.Path, "/"), "/apisix/admin"), "/")
 	u.RawPath = ""
+	if strings.Contains(u.Path+"/", "/apisix/admin/") {
+		return nil, bad("the path goes past /apisix/admin; give the address APISIX listens on, without /apisix/admin or anything after it")
+	}
 	return u, nil
 }
+
+func isSpaceOrControl(r rune) bool { return r <= ' ' || r == 0x7f }
 
 func parseListen(raw string) (string, error) {
 	if raw == "" {
@@ -104,7 +114,13 @@ func secret(getenv func(string) string, name string) (string, error) {
 		source = name + "_FILE"
 		data, err := os.ReadFile(file)
 		if err != nil {
-			return "", fmt.Errorf("%s: cannot read %s: %v", source, file, errors.Unwrap(err))
+			// Only the path and the reason: a *PathError's text is "open <path>: <reason>".
+			var pathErr *fs.PathError
+			if errors.As(err, &pathErr) {
+				err = pathErr.Err
+			}
+			// The image runs as UID 65532: a 0600 file of another user is the usual cause.
+			return "", fmt.Errorf("%s: cannot read %s as UID %d: %v", source, file, os.Getuid(), err)
 		}
 		if value = strings.TrimSpace(string(data)); value == "" {
 			return "", fmt.Errorf("%s: %s is empty", source, file)

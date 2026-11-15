@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -70,14 +71,13 @@ func TestConfigRejectsAdminURLsThatAreNotPlainHTTP(t *testing.T) {
 
 func TestConfigAdminURLDropsTrailingSlashAndAdminPath(t *testing.T) {
 	cases := map[string]string{
-		"http://apisix:9180":                     "http://apisix:9180",
-		"http://apisix:9180/":                    "http://apisix:9180",
-		"https://apisix:9180/apisix/admin/":      "https://apisix:9180",
-		"http://gw.example/prefix/apisix/admin":  "http://gw.example/prefix",
-		"  http://apisix:9180  ":                 "http://apisix:9180",
-		"HTTP://APISIX:9180":                     "http://apisix:9180",
-		"http://[fd00::5]:9180/":                 "http://[fd00::5]:9180",
-		"http://apisix:9180/apisix/admin/routes": "http://apisix:9180/apisix/admin/routes",
+		"http://apisix:9180":                    "http://apisix:9180",
+		"http://apisix:9180/":                   "http://apisix:9180",
+		"https://apisix:9180/apisix/admin/":     "https://apisix:9180",
+		"http://gw.example/prefix/apisix/admin": "http://gw.example/prefix",
+		"  http://apisix:9180  ":                "http://apisix:9180",
+		"HTTP://APISIX:9180":                    "http://apisix:9180",
+		"http://[fd00::5]:9180/":                "http://[fd00::5]:9180",
 	}
 	for in, want := range cases {
 		cfg := mustLoad(t, map[string]string{"APISIX_ADMIN_URL": in})
@@ -191,6 +191,86 @@ func TestConfigAllowedHosts(t *testing.T) {
 		msg := loadErr(t, map[string]string{"APISIX_ADMIN_URL": adminURL, "ALLOWED_HOSTS": bad})
 		if !strings.Contains(msg, "ALLOWED_HOSTS") {
 			t.Errorf("%q: error %q does not name ALLOWED_HOSTS", bad, msg)
+		}
+	}
+}
+
+func TestConfigAdminURLPastTheAdminPathIsAnError(t *testing.T) {
+	for _, bad := range []string{"http://apisix:9180/apisix/admin/routes", "http://gw/x/apisix/admin/routes/"} {
+		msg := loadErr(t, map[string]string{"APISIX_ADMIN_URL": bad})
+		if !strings.Contains(msg, "APISIX_ADMIN_URL") || !strings.Contains(msg, "/apisix/admin") {
+			t.Errorf("%q: error %q does not say what to pass", bad, msg)
+		}
+	}
+}
+
+// Each rejected form of APISIX_ADMIN_URL that can carry a secret (credentials, an api_key argument,
+// a fragment, or text that does not parse at all): the error names the variable and the reason, at
+// most scheme://host[:port], and never the secret.
+func TestConfigAdminURLErrorsNeverRepeatTheSecret(t *testing.T) {
+	for _, bad := range []string{
+		"http://admin:TOPSECRETPW@apisix:9180",
+		"http://TOPSECRETPW@apisix:9180",
+		"https://admin:TOPSECRETPW@apisix:9180/apisix/admin",
+		"ftp://admin:TOPSECRETPW@apisix:9180",
+		"http://apisix:9180/?api_key=TOPSECRETKEY",
+		"http://apisix:9180/apisix/admin?api_key=TOPSECRETKEY#TOPSECRETFRAG",
+		"http://apisix:9180/#TOPSECRETFRAG",
+		"http://apisix:9180/TOPSECRETPATH/apisix/admin/routes",
+		"apisix:TOPSECRETPW",
+		"http://apisix:9180/ TOPSECRETPW",
+		"http://[::1:TOPSECRETPW",
+		"http://admin:TOPSECRETPW@",
+		"//admin:TOPSECRETPW@apisix:9180",
+	} {
+		msg := loadErr(t, map[string]string{"APISIX_ADMIN_URL": bad})
+		if strings.Contains(msg, "TOPSECRET") {
+			t.Errorf("%q: the error repeats a secret: %q", bad, msg)
+		}
+		if !strings.Contains(msg, "APISIX_ADMIN_URL") {
+			t.Errorf("%q: error %q does not name APISIX_ADMIN_URL", bad, msg)
+		}
+	}
+	msg := loadErr(t, map[string]string{"APISIX_ADMIN_URL": "http://admin:TOPSECRETPW@apisix:9180?api_key=TOPSECRETKEY"})
+	if !strings.Contains(msg, "http://apisix:9180") {
+		t.Errorf("error %q does not name scheme://host:port, which is safe to show", msg)
+	}
+}
+
+// The key, the Basic auth pair and their _FILE forms: an error names the variable (and the file),
+// never what it holds.
+func TestConfigSecretErrorsNeverRepeatTheValue(t *testing.T) {
+	for _, vars := range []map[string]string{
+		{"APISIX_ADMIN_KEY": "a\nTOPSECRET"},
+		{"APISIX_ADMIN_KEY_FILE": writeFile(t, "a\x00TOPSECRET")},
+		{"BASIC_AUTH_USER": "ops", "BASIC_AUTH_PASSWORD": "x\x01TOPSECRET"},
+		{"BASIC_AUTH_USER": "ops", "BASIC_AUTH_PASSWORD_FILE": writeFile(t, "x\x7fTOPSECRET")},
+		{"BASIC_AUTH_USER": "ops:TOPSECRET", "BASIC_AUTH_PASSWORD": "pw"},
+		{"BASIC_AUTH_PASSWORD": "TOPSECRET"},
+		{"BASIC_AUTH_PASSWORD_FILE": writeFile(t, "TOPSECRET")},
+		{"BASIC_AUTH_USER": "TOPSECRET"},
+	} {
+		vars["APISIX_ADMIN_URL"] = adminURL
+		if msg := loadErr(t, vars); strings.Contains(msg, "TOPSECRET") {
+			t.Errorf("%v: the error repeats a secret: %q", vars, msg)
+		}
+	}
+}
+
+func TestConfigUnreadableFileNamesTheUserTheServerRunsAs(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads any file")
+	}
+	path := writeFile(t, "TOPSECRET")
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"APISIX_ADMIN_KEY_FILE", "BASIC_AUTH_PASSWORD_FILE"} {
+		vars := map[string]string{"APISIX_ADMIN_URL": adminURL, name: path, "BASIC_AUTH_USER": "ops"}
+		msg := loadErr(t, vars)
+		want := fmt.Sprintf("UID %d", os.Getuid())
+		if !strings.Contains(msg, name) || !strings.Contains(msg, path) || !strings.Contains(msg, want) || strings.Contains(msg, "TOPSECRET") {
+			t.Errorf("%s: error %q should name the variable, the file and %q, and not its content", name, msg, want)
 		}
 	}
 }

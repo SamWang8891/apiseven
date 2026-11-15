@@ -67,7 +67,7 @@ func TestStartupLogDescribesTheSetupWithoutSecrets(t *testing.T) {
 
 func TestRunFailsFastOnBadConfig(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run(nil, env(map[string]string{"APISIX_ADMIN_URL": "ftp://x", "APISIX_ADMIN_KEY": serverKey}), &stdout, &stderr)
+	code := run(nil, env(map[string]string{"APISIX_ADMIN_URL": "http://admin:" + serverKey + "@apisix:9180", "APISIX_ADMIN_KEY": serverKey}), &stdout, &stderr)
 	if code != 2 {
 		t.Errorf("exit code %d, want 2", code)
 	}
