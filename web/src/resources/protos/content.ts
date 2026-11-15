@@ -117,7 +117,7 @@ export async function readProtoFile(file: File): Promise<ProtoFile> {
   if (text !== undefined && text !== '' && readsAsSource(text) && !COMPILED.test(file.name)) {
     if (characters(text) > CONTENT_MAX) return { problem: t('pr.file.tooLong') };
     const sent = sentBytes(text);
-    return sent > REQUEST_MAX ? { problem: t('pr.file.tooBigSent', { size: formatBytes(sent) }) } : { content: text, binary: false };
+    return sent > REQUEST_MAX ? { problem: t('pr.file.tooBigSent') } : { content: text, binary: false };
   }
   if (bytes[0] !== 0x0a) return { problem: t('pr.file.notDescriptor') };
   if (4 * Math.ceil(bytes.length / 3) > CONTENT_MAX) return { problem: t('pr.file.tooLong') };

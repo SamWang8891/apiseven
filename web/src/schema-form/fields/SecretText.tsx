@@ -8,7 +8,8 @@
 //    - an open box (typed in this session, or revealed), or no stored value and no value: the box;
 //    - value === stored: "Set, not shown", with Show and Replace;
 //    - value !== stored and not empty: "A new value was entered, not shown", with Show, Replace and,
-//      only when stored exists, "Keep the stored value";
+//      only when stored exists, "Keep the stored value"; where what is stored can't be known (below a
+//      list's or a map's rows), "A value is set, not shown", with no Keep;
 //    - no value where one is stored (removed elsewhere, the JSON tab): says Save removes it, with
 //      Replace and "Keep the stored value".
 //    A save in flight (useBusy) shows what was shown before Save, inert (no actions, the box read-only).
@@ -33,6 +34,8 @@ export interface SecretTextProps {
   value: string;
   /** The value as stored in APISIX (the form's baseline at this path); undefined for none. */
   stored: string | undefined;
+  /** Whether `stored` is known: below a list's or a map's rows it is not (context.ts BelowRows), so a value there is only "set". */
+  storedKnown?: boolean;
   mono: boolean;
   rows: number;
   /** The next value ('' clears the field). */
@@ -48,7 +51,7 @@ const helpWith = (help: ReactNode, empty: string): ReactNode => (
   </>
 );
 
-export function SecretText({ common, name, value, stored, mono, rows, onText }: SecretTextProps) {
+export function SecretText({ common, name, value, stored, storedKnown = true, mono, rows, onText }: SecretTextProps) {
   const locked = useLocked();
   const busy = useBusy();
   /** Session flag: the text typed in the open box this session (undefined: no box opened by typing or Replace). */
@@ -106,8 +109,9 @@ export function SecretText({ common, name, value, stored, mono, rows, onText }: 
     );
   }
 
-  // A value not shown: the stored one, a new one, or none where one is stored.
-  const words = !has ? t('sf.secret.removed') : value === stored ? t('sf.secret.stored') : t('sf.secret.entered');
+  // A value not shown: the stored one, a new one, or none where one is stored; where what is stored
+  // can't be known, only that a value is set (fix round 1, R2.1).
+  const words = !has ? t('sf.secret.removed') : value === stored ? t('sf.secret.stored') : storedKnown ? t('sf.secret.entered') : t('sf.secret.set');
   return (
     <Field label={common.label} help={common.help} error={common.error} required={common.required}>
       <div className="sf-secret__set">

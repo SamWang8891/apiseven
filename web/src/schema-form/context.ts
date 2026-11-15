@@ -28,6 +28,11 @@ export const FormContext = createContext<FormContextValue>({ prefix: 'sf', encry
  */
 export const BelowRows = createContext(false);
 
+/** Whether the field's stored value can be known: not below a list's or a map's rows (BelowRows). */
+export function useStoredKnown(): boolean {
+  return !use(BelowRows);
+}
+
 /** The stored value at the field's dotted `path`, from the form's baseline; none below a list's or a map's rows (BelowRows). */
 export function useStoredAt(path: string): unknown {
   const { baseline } = use(FormContext);

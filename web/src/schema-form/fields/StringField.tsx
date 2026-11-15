@@ -1,6 +1,6 @@
 import { Input, Select, Textarea } from '../../ui';
 import type { StringNode } from '../analyze';
-import { useFieldError, useFieldId, useStoredAt } from '../context';
+import { useFieldError, useFieldId, useStoredAt, useStoredKnown } from '../context';
 import { FieldLabel } from './chrome';
 import { SecretText } from './SecretText';
 import { useFieldHelp } from './help';
@@ -14,6 +14,7 @@ const SEARCHABLE = 8;
 export function StringField({ node, value, name, path, onChange, prop, required, ariaLabel }: FieldProps<StringNode>) {
   const id = useFieldId(path);
   const stored = useStoredAt(path);
+  const storedKnown = useStoredKnown();
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
   const label = prop ? <FieldLabel name={prop.key} title={prop.title} /> : undefined;
@@ -43,6 +44,7 @@ export function StringField({ node, value, name, path, onChange, prop, required,
         name={prop?.key ?? ariaLabel ?? ''}
         value={text}
         stored={typeof stored === 'string' && stored !== '' ? stored : undefined}
+        storedKnown={storedKnown}
         mono={node.mono}
         rows={node.mono ? 6 : 3}
         onText={emit}

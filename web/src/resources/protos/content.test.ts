@@ -48,7 +48,9 @@ describe('readProtoFile', () => {
     const read = vi.spyOn(huge, 'arrayBuffer');
     expect(await readProtoFile(huge)).toEqual({ problem: t('pr.file.tooBig', { size: formatBytes(REQUEST_MAX + 1) }) });
     expect(read).not.toHaveBeenCalled();
-    expect(t('pr.file.tooBig', { size: '2.0 MB' })).toContain('1.5 MB');
+    // Just over the cap, the size rounds to the cap itself: the words say "more than" (fix round 1, R2.3).
+    expect(formatBytes(REQUEST_MAX + 1)).toBe('1.5 MB');
+    expect(t('pr.file.tooBig', { size: formatBytes(REQUEST_MAX + 1) })).toMatch(/^This file is more than the 1\.5 MB /);
     expect(await readProtoFile(new File(['a'.repeat(CONTENT_MAX + 1)], 'long.proto'))).toEqual({ problem: t('pr.file.tooLong') });
     // A descriptor set whose base64 would pass the limit.
     const big = new Uint8Array(Math.floor((CONTENT_MAX * 3) / 4) + 3);
@@ -62,8 +64,8 @@ describe('readProtoFile', () => {
     const wide = `// ${'界'.repeat(500_000)}\n${'"'.repeat(60_000)}`;
     const file = new File([wide], 'wide.proto');
     expect(file.size).toBeLessThan(REQUEST_MAX);
-    const sent = new TextEncoder().encode(JSON.stringify(wide)).length;
-    expect(await readProtoFile(file)).toEqual({ problem: t('pr.file.tooBigSent', { size: formatBytes(sent) }) });
+    expect(new TextEncoder().encode(JSON.stringify(wide)).length).toBeGreaterThan(REQUEST_MAX);
+    expect(await readProtoFile(file)).toEqual({ problem: t('pr.file.tooBigSent') });
     // Under the cap it is taken as it is, line ends and quotes counted as JSON sends them.
     const fits = `// ${'界'.repeat(400_000)} "q"\n`;
     expect(await readProtoFile(new File([fits], 'fits.proto'))).toEqual({ content: fits, binary: false });

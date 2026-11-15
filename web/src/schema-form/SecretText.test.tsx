@@ -248,6 +248,14 @@ describe('a multi-line secret inside a list or a map (Task 16b, item 129)', () =
     expect(screen.queryByText(STORED)).toBeNull();
   });
 
+  it('an unchanged value below a row says only what is known: a value is set, not "a new value was entered" (fix round 1, R2.1)', () => {
+    renderForm(LIST, { pairs: [{ private_key: STORED }] }, { pairs: [{ private_key: STORED }] });
+    expect(screen.getByText(t('sf.secret.set'))).toBeInTheDocument();
+    expect(screen.queryByText(t('sf.secret.entered'))).toBeNull();
+    expect(screen.queryByRole('button', { name: t('sf.secret.keep') })).toBeNull();
+    expect(screen.queryByText(STORED)).toBeNull();
+  });
+
   it('a map row whose key holds a "." has no stored value either', () => {
     renderForm(MAP, { keys: { 'a.b': { private_key: STORED } } }, { keys: { 'a.b': { private_key: OTHER } } });
     expect(screen.queryByRole('button', { name: t('sf.secret.keep') })).toBeNull();
