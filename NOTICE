@@ -1,0 +1,14 @@
+apiseven
+Copyright 2026 The apiseven authors
+
+This product includes material from Apache APISIX (https://apisix.apache.org/),
+developed at The Apache Software Foundation and licensed under the Apache License,
+Version 2.0:
+
+- the plugin categories and one-line descriptions in web/src/plugins/catalog.ts,
+  generated from the Apache APISIX documentation by dev/gen-plugin-catalog.mjs;
+- the JSON schemas used as test fixtures under web/src/**/fixtures/, dumped from
+  a running Apache APISIX 3.20.
+
+Apache, Apache APISIX and APISIX are trademarks of The Apache Software Foundation.
+apiseven is not affiliated with or endorsed by The Apache Software Foundation.
