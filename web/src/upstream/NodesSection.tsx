@@ -1,11 +1,11 @@
 // Where requests go: a fixed list of nodes, or the nodes a service registry reports. The switch
 // between the two removes the other's fields (APISIX takes exactly one). A switch to discovery
-// with nothing typed yet is view state, kept for the page (useViewState), since the upstream then
-// holds neither.
+// with nothing typed yet is editing state, kept through a tab switch until the editing session ends
+// (useSessionViewState), since the upstream then holds neither; locked, the stored value decides.
 import { isObj } from '../api/sanitize';
 import { setPath, setPathRaw } from '../editor/draft';
 import { t } from '../i18n';
-import { Segmented, useLocked, useViewState } from '../ui';
+import { Segmented, useLocked, useSessionViewState } from '../ui';
 import { Discovery } from './Discovery';
 import { IssueLine } from './fields';
 import type { SectionProps } from './values';
@@ -18,9 +18,9 @@ const DISCOVERY_FIELDS = ['discovery_type', 'service_name', 'discovery_args'];
 export function NodesSection(p: SectionProps) {
   const { value, onChange, issues } = p;
   const locked = useLocked();
-  const [chosen, setChosen] = useViewState<Mode | undefined>('upstream.target', undefined);
+  const [chosen, setChosen] = useSessionViewState<Mode | undefined>('upstream.target', undefined);
   const neither = value.nodes === undefined && !usesDiscovery(value);
-  const mode: Mode = usesDiscovery(value) ? 'discovery' : neither ? (chosen ?? 'nodes') : 'nodes';
+  const mode: Mode = usesDiscovery(value) ? 'discovery' : neither && !locked ? (chosen ?? 'nodes') : 'nodes';
   // APISIX stores an upstream whose node list is empty (only its schema and check_upstream_conf
   // could refuse it, and neither does), so it is not an issue; but nothing answers until a node is
   // added, which is worth saying, locked or not.

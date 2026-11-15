@@ -10,7 +10,7 @@ import { removeAt, setPath, setPathRaw } from '../editor/draft';
 import { issueAt } from '../editor/issues';
 import { t } from '../i18n';
 import { ResourcePicker } from '../resources/ResourcePicker';
-import { Button, Field, Segmented, useLocked, useViewState } from '../ui';
+import { Button, Field, Segmented, useLocked, useSessionViewState } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import { ChoiceSelect, PemField, StreamNote } from './fields';
 import { useRowIds, withoutId } from './rowIds';
@@ -28,9 +28,10 @@ function modeOf(tls: Obj): Mode | undefined {
 export function TlsSection({ value, onChange, issues, ctx, subsystem, stored }: SectionProps) {
   const locked = useLocked();
   const tls = obj(value.tls);
-  // A mode chosen before anything is typed is view state, kept for the page (a tab switch remounts this).
-  const [chosen, setChosen] = useViewState<Mode | undefined>('upstream.tls.mode', undefined);
-  const mode = modeOf(tls) ?? chosen ?? 'none';
+  // A mode chosen before anything is typed is editing state: kept through a tab switch (a remount) until
+  // the editing session ends; never read while locked, where only what is stored decides.
+  const [chosen, setChosen] = useSessionViewState<Mode | undefined>('upstream.tls.mode', undefined);
+  const mode = modeOf(tls) ?? (locked ? undefined : chosen) ?? 'none';
   const issue = (path: string) => issueAt(issues, `tls.${path}`);
   const set = (path: (string | number)[], v: unknown) => onChange(setPath(value, ['tls', ...path], v));
   const verify = tls.verify === true ? 'true' : tls.verify === false ? 'false' : undefined;

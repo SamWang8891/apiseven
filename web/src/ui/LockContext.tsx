@@ -68,6 +68,17 @@ export function useEditingState<T>(initial: T | (() => T)): [T, Dispatch<SetStat
 }
 
 /**
+ * What identifies the current editing session below a LockProvider: its `session` when the owner has
+ * one, else whether it is locked (as useEditingState starts over). For state that must also outlive a
+ * remount inside the session (useSessionViewState).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a hook of the lock, beside it
+export function useSessionKey(): string {
+  const { locked, session } = use(LockContext);
+  return session === undefined ? `locked:${String(locked)}` : `session:${session}`;
+}
+
+/**
  * Whether a secret is shown: hidden again whenever the field locks or unlocks (a save in flight
  * included), so a secret revealed while editing never stays readable in the locked view.
  */

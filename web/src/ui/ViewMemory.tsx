@@ -3,6 +3,7 @@
 // shown. A tab switch, a collapse or a Form/JSON toggle unmounts the parts that hold it. The editor
 // frame keeps one memory for the page's life (nothing is persisted); without one, it is plain state.
 import { createContext, use, useCallback, useLayoutEffect, useState, type Dispatch, type FC, type ReactNode, type SetStateAction } from 'react';
+import { useSessionKey } from './LockContext';
 
 const ViewMemoryContext = createContext<Map<string, unknown> | null>(null);
 
@@ -35,4 +36,15 @@ export function useViewState<T>(key: string | undefined, initial: T | (() => T))
     [],
   );
   return [cell.value, set];
+}
+
+/**
+ * useViewState for a choice that decides what a form shows or writes but the draft can't hold yet (a
+ * target mode chosen before anything is typed): editing state, kept through a remount (a tab switch)
+ * within one editing session, and started over when the session ends (a save, Discard, any lock).
+ * Callers never consult it while locked: the locked view states what is stored.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a hook beside useViewState
+export function useSessionViewState<T>(key: string, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
+  return useViewState(`${key}@${useSessionKey()}`, initial);
 }

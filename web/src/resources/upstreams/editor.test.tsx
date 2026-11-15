@@ -103,6 +103,41 @@ describe('the upstream editor', () => {
     expect(await main().findByRole('radio', { name: t('up.tls.mode.inline') })).toBeChecked();
   });
 
+  // Fix round 1, F2: a mode chosen without typing is editing state: it survives a tab switch within the
+  // session, and the session's end (Discard, a save) forgets it; the locked view says what is stored.
+  it('a client-certificate mode chosen without typing: kept through a tab switch, gone after Discard and after a save', async () => {
+    const { user, admin } = await openEditor('#/upstreams/web-pool?tab=tls', { objects: { upstreams: [POOL] } });
+    await main().findByRole('heading', { level: 1, name: 'web-pool' });
+    const lockedMode = () => main().getByText(t('up.tls.mode.none'));
+    expect(await main().findByText(t('up.tls.mode.none'))).toBeInTheDocument();
+    const choose = async () => {
+      await user.keyboard('e');
+      await user.click(await main().findByRole('radio', { name: t('up.tls.mode.inline') }));
+    };
+    await choose();
+    await user.click(tab(t('up.section.nodes')));
+    await user.click(tab(t('up.section.tls')));
+    expect(await main().findByRole('radio', { name: t('up.tls.mode.inline') })).toBeChecked();
+    await user.click(main().getByRole('button', { name: t('editor.discard') }));
+    await main().findByRole('button', { name: t('editor.edit') });
+    expect(lockedMode()).toBeInTheDocument();
+    expect(main().queryByText(t('up.tls.mode.inline'))).not.toBeInTheDocument();
+    await user.keyboard('e');
+    expect(await main().findByRole('radio', { name: t('up.tls.mode.none') })).toBeChecked();
+    await user.click(main().getByRole('button', { name: t('editor.discard') }));
+    await main().findByRole('button', { name: t('editor.edit') });
+
+    await choose();
+    await user.click(tab(t('up.tab.general')));
+    await user.type(await main().findByRole('textbox', { name: t('up.general.name') }), '-2');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    await main().findByRole('button', { name: t('editor.edit') });
+    await user.click(tab(t('up.section.tls')));
+    expect(await main().findByText(t('up.tls.mode.none'))).toBeInTheDocument();
+    expect(main().queryByText(t('up.tls.mode.inline'))).not.toBeInTheDocument();
+  });
+
   // Task 16b item 50: sections opened or closed on a tab are as the user left them after a tab switch.
   it('health-check sections opened or closed come back so after a tab switch', async () => {
     const { user } = await openEditor('#/upstreams/web-pool?tab=health', { objects: { upstreams: [{ ...POOL, checks: { active: { http_path: '/h' } } }] } });
