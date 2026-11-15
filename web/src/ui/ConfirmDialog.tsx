@@ -27,11 +27,11 @@ export interface ConfirmDialogProps {
  * Asks before an action. Stays open until the caller closes it, so it can show `busy`. Focus starts
  * on Cancel. A field in the body that holds input it has not emitted (usePending) disables the action.
  * It has no trigger of its own: when it closes (Cancel, Escape, or the caller after the action), focus
- * goes back to what had it when it opened, or, when that is gone, to the page's `main`, never `body`.
+ * goes back where the user was (openedFrom, focusBack), never to `body`.
  */
 export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, danger, busy, onConfirm, onCancel }: ConfirmDialogProps) {
-  /** What had focus when the dialog opened (read as its focus moves in). */
-  const returnTo = useRef<Element | null>(null);
+  /** Where the dialog was opened from (read as its focus moves in). */
+  const returnTo = useRef<Opener | null>(null);
   return (
     <AlertDialog.Root open={open} onOpenChange={(next) => !next && !busy && onCancel()}>
       <AlertDialog.Portal>
@@ -42,7 +42,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, da
             onEscapeKeyDown={(e) => busy && e.preventDefault()}
             onKeyDown={escapeFallback(() => !busy && onCancel())}
             onOpenAutoFocus={() => {
-              returnTo.current = document.activeElement;
+              returnTo.current = openedFrom(document.activeElement);
             }}
             onCloseAutoFocus={(e) => {
               e.preventDefault();
@@ -67,17 +67,47 @@ export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, da
   );
 }
 
+/** Where a dialog was opened from: what had focus, the trigger of the menu it was in, the table around it. */
+interface Opener {
+  element: Element | null;
+  /** When `element` was a menu item: its menu's trigger (a row's ⋯, the editor's ⋯), which outlives the menu. */
+  trigger: HTMLElement | null;
+  /** The table the opener sat in, for when its row has gone (deleted). */
+  table: HTMLElement | null;
+}
+
+function openedFrom(element: Element | null): Opener {
+  const menu = element?.closest('[role="menu"]');
+  // Radix labels a menu by its trigger, and the trigger names the menu it controls while it is open.
+  const labelledBy = menu?.getAttribute('aria-labelledby');
+  const byLabel = labelledBy ? document.getElementById(labelledBy) : null;
+  const byControls = menu?.id ? ([...document.querySelectorAll<HTMLElement>('[aria-controls]')].find((el) => el.getAttribute('aria-controls') === menu.id) ?? null) : null;
+  const trigger = menu ? (byLabel ?? byControls) : null;
+  const table = (trigger ?? element)?.closest<HTMLElement>('table') ?? null;
+  return { element, trigger, table };
+}
+
+const usable = (el: Element | null | undefined): el is HTMLElement =>
+  el instanceof HTMLElement && el.isConnected && el !== document.body && !el.matches(':disabled');
+
 /**
- * Focus back on `back` (what had it when the dialog opened) when it is still there and usable, else on
- * the page's `main`. A tab that is not the selected one would be switched to by taking focus (Radix
- * tabs activate on focus), which is what the dialog may have just declined (Stay): its strip's
- * selected tab takes focus instead.
+ * Focus back where the user was: the menu's trigger when the dialog came from a menu item (the item
+ * is gone), else what had focus. A tab that is not the selected one would be switched to by taking
+ * focus (Radix tabs activate on focus), which is what the dialog may have just declined (Stay): its
+ * strip's selected tab takes focus instead. When that is gone (its row was deleted), the table's
+ * first row action; then the page's `main`; then its heading (the Connect page has no `main`).
  */
-function focusBack(back: Element | null) {
-  const usable = back instanceof HTMLElement && back.isConnected && back !== document.body && !back.matches(':disabled');
-  const tab = usable && back.getAttribute('role') === 'tab' && back.getAttribute('aria-selected') !== 'true';
-  const target = tab ? back.closest('[role="tablist"]')?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') : usable ? back : undefined;
-  (target ?? document.querySelector<HTMLElement>('main'))?.focus({ preventScroll: true });
+function focusBack(opener: Opener | null) {
+  const back = opener?.trigger ?? opener?.element;
+  const tab = usable(back) && back.getAttribute('role') === 'tab' && back.getAttribute('aria-selected') !== 'true';
+  const candidates = [
+    tab ? back.closest('[role="tablist"]')?.querySelector<HTMLElement>('[role="tab"][aria-selected="true"]') : back,
+    opener?.table?.isConnected ? opener.table.querySelector<HTMLElement>('.tbl-cell-actions button') : undefined,
+    opener?.table ? document.querySelector<HTMLElement>('main h1[tabindex]') : undefined,
+    document.querySelector<HTMLElement>('main'),
+    document.querySelector<HTMLElement>('h1[tabindex]'),
+  ];
+  candidates.find(usable)?.focus({ preventScroll: true });
 }
 
 /** The body, as a pending-input boundary, and the buttons; the action waits while the body holds input. Both go when the dialog closes. */

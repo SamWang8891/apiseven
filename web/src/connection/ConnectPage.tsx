@@ -55,7 +55,7 @@ function ConnectScreen({ reason, reasonConnId }: { reason?: string; reasonConnId
             </Button>
           )}
         </div>
-        <h1>{t('connect.title')}</h1>
+        <h1 tabIndex={-1}>{t('connect.title')}</h1>
         <p className="connect-intro">
           {target ? t('connect.keyFor', { name: target.name }) : serverManaged ? t('connect.keyFor', { name: location.host }) : t('connect.intro')}
         </p>
@@ -324,7 +324,7 @@ function ServerKeyRejected({ reason }: { reason: string }) {
         <div className="connect-top">
           <Brand />
         </div>
-        <h1>{t('connect.serverKeyRejected.title')}</h1>
+        <h1 tabIndex={-1}>{t('connect.serverKeyRejected.title')}</h1>
         <p className="connect-intro">{t('connect.serverKeyRejected.body')}</p>
         <p className="connect-alert__detail connect-reason mono">{reason}</p>
         <div className="connect-actions">

@@ -220,6 +220,41 @@ describe('status', () => {
   });
 });
 
+// Fix round 1, R1: a confirm opened from a row's menu gives focus back to that row, or to the table when the row went.
+describe('focus after a row action confirm', () => {
+  const actionsOf = async (name: string) => within(await rowOf(name)).getByRole('button', { name: t('table.actionsFor', { name }) });
+  const deleteDialog = () => screen.findByRole('alertdialog');
+
+  it("Cancel: back on the row's ⋯", async () => {
+    const { user } = await open('#/routes');
+    await rowAction(user, 'beta', t('action.delete'));
+    await user.click(within(await deleteDialog()).getByRole('button', { name: t('ui.cancel') }));
+    await waitFor(async () => expect(await actionsOf('beta')).toHaveFocus());
+  });
+
+  it("a confirmed delete: the table's first row action; with no row left, the list's heading", async () => {
+    const { user } = await open('#/routes', { objects: { routes: ROUTES.slice(0, 2), upstreams: [{ id: 'u1', name: 'backend' }] } });
+    await rowAction(user, 'beta', t('action.delete'));
+    const dialog = await deleteDialog();
+    await user.click(within(dialog).getAllByRole('button').find((b) => b.textContent?.startsWith('Delete')) as HTMLElement);
+    await waitFor(() => expect(main().queryByRole('link', { name: 'beta' })).not.toBeInTheDocument());
+    await waitFor(async () => expect(await actionsOf('alpha')).toHaveFocus());
+    await rowAction(user, 'alpha', t('action.delete'));
+    await user.click(within(await deleteDialog()).getAllByRole('button').find((b) => b.textContent?.startsWith('Delete')) as HTMLElement);
+    await waitFor(() => expect(main().getByRole('heading', { level: 1, name: t('kind.routes.plural') })).toHaveFocus());
+  });
+
+  it("the editor's ⋯ → Delete → Cancel: back on the editor's ⋯", async () => {
+    const { user } = await open('#/routes/r1');
+    await main().findByRole('heading', { level: 1, name: 'alpha' });
+    const more = main().getByRole('button', { name: t('editor.more') });
+    await user.click(more);
+    await user.click(await screen.findByRole('menuitem', { name: t('action.delete') }));
+    await user.click(within(await deleteDialog()).getByRole('button', { name: t('ui.cancel') }));
+    await waitFor(() => expect(more).toHaveFocus());
+  });
+});
+
 // Task 16b item 38: the list page itself, its search and its filters over rows of odd shapes.
 describe('rows of odd shapes', () => {
   it('the routes list shows every row, and searching them throws nothing', async () => {

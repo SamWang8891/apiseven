@@ -70,7 +70,7 @@ export function ListPage({ kind, parent }: { kind: Kind; parent?: Parent }) {
     <div className="shell-page shell-page--fill">
       <div className="shell-page__head">
         <div className="list-title">
-          <h1>{def.plural}</h1>
+          <h1 tabIndex={-1}>{def.plural}</h1>
           {list.data && <span className="list-title__count">{list.data.length}</span>}
         </div>
         <NewLink kind={kind} parent={parent} />

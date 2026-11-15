@@ -167,6 +167,8 @@ describe('saved connections', () => {
     await user.click(within(confirm).getByRole('button', { name: t('connect.remove') }));
     await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
     expect(localStorage.getItem(STORAGE_KEYS.connections)).not.toContain('prod-key');
+    // Fix round 1, R1: its Remove button is gone; focus lands on the page's heading, never on body.
+    await waitFor(() => expect(screen.getByRole('heading', { level: 1, name: t('connect.title') })).toHaveFocus());
 
     await user.click(within(list).getByRole('button', { name: t('connect.useNamed', { name: 'dev' }) }));
     await waitFor(() => expect(window.location.hash).toBe('#/routes'));
