@@ -95,3 +95,21 @@ describe('the built file', () => {
     expect(html.match(/__VITE_[A-Z_]+__/g) ?? []).toEqual([]);
   });
 });
+
+describe('vite.single.config.ts', () => {
+  it('is derived from vite.config.ts: its plugins and anything added there (a define here) reach the single file too', async () => {
+    const shared = (await import('./vite.config.ts')).default as Record<string, unknown>;
+    shared.define = { __APISEVEN_PROBE__: '"1"' };
+    try {
+      const single = (await import('./vite.single.config.ts')).default as Record<string, unknown>;
+      const names = (plugins: unknown) => (plugins as unknown[]).flat(4).map((p) => (p as { name?: string }).name);
+      expect(names(single.plugins)).toEqual([...names(shared.plugins), 'apiseven-single-file']);
+      expect(single.define).toEqual({ __APISEVEN_PROBE__: '"1"' });
+      expect(single.base).toBe(shared.base);
+      expect(single.test).toBeUndefined();
+      expect(single.build).toMatchObject({ outDir: 'dist-single', rolldownOptions: { output: { codeSplitting: false } } });
+    } finally {
+      delete shared.define;
+    }
+  });
+});
