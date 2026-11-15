@@ -35,13 +35,26 @@ export function withinPath(issues: Issue[], prefix: string): Issue[] {
 export interface TabFields {
   id: string;
   fields: string[];
+  /** Also every top-level key no tab names, but `id` (TabDef.restFields). */
+  rest?: boolean;
 }
 
-/** `issue.tab` when such a tab exists, else the tab whose fields hold the path's first segment, else `fallback`. */
+/**
+ * `issue.tab` when such a tab exists, else the tab whose fields hold the path's first segment, else
+ * the tab that owns the rest (a key no tab names, but `id`), else `fallback`.
+ */
 export function tabOfIssue(issue: Issue, tabs: TabFields[], fallback: string): string {
   if (issue.tab !== undefined && tabs.some((tab) => tab.id === issue.tab)) return issue.tab;
   const top = issue.path.split('.')[0] ?? '';
-  return tabs.find((tab) => top !== '' && tab.fields.includes(top))?.id ?? fallback;
+  if (top === '') return fallback;
+  return tabs.find((tab) => tab.fields.includes(top))?.id ?? (top !== 'id' ? tabs.find((tab) => tab.rest)?.id : undefined) ?? fallback;
+}
+
+/** The top-level keys of `draft` and `baseline` a tab owns: its fields, or with `rest` also every key no tab names (but `id`). */
+export function ownedKeys(tab: TabFields, tabs: TabFields[], draft: Obj, baseline: Obj): string[] {
+  if (!tab.rest) return tab.fields;
+  const named = new Set(['id', ...tabs.flatMap((other) => other.fields)]);
+  return [...new Set([...tab.fields, ...Object.keys(draft), ...Object.keys(baseline)])].filter((key) => tab.fields.includes(key) || !named.has(key));
 }
 
 /** The issues grouped by the tab they belong to (tabs without any are absent). */
@@ -63,6 +76,8 @@ const ERROR_PATHS: { pattern: RegExp; path: (m: RegExpExecArray) => string }[] =
   // The kind's own schema (every kind, also an SSL and a standalone upstream). The first property
   // is the top-level key; a nested one follows it ("property "upstream" … property "nodes"").
   { pattern: /^invalid configuration: property "([^"]+)"/, path: (m) => m[1] ?? '' },
+  // A plugin a global rule shares with another one (admin/global_rules.lua 72–76).
+  { pattern: /^plugin '([^']+)' already exists in global rule with id '/, path: (m) => `plugins.${m[1] ?? ''}` },
   // A plugin's schema; consumers and credentials wrap it in "invalid plugins configuration: ".
   { pattern: /^(?:invalid plugins configuration: )?failed to check the configuration of plugin (\S+) err: /, path: (m) => `plugins.${m[1] ?? ''}` },
   { pattern: /^failed to check the configuration of stream plugin \[([^\]]+)\]: /, path: (m) => `plugins.${m[1] ?? ''}` },

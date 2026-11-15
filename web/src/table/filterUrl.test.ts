@@ -19,6 +19,8 @@ const SAMPLES: Partial<Record<Kind, Item[]>> = {
     { id: 'bob', value: { username: 'bob' } },
   ],
   ssls: [itemOf('c1', { snis: ['a.test'], status: 0 }), itemOf('c2', { type: 'client' })],
+  plugin_configs: [itemOf('pc1', { plugins: { cors: {} } }), itemOf('pc2', { plugins: {} })],
+  secrets: [itemOf('vault/v1', { uri: 'http://v' }), itemOf('aws/a1', {}), itemOf('gcp/g1', {})],
 };
 const CTX = ctxOf({ services: [itemOf('s1', { name: 'web' })], consumerGroups: [itemOf('partners', { name: 'partners' })], routes: SAMPLES.routes });
 

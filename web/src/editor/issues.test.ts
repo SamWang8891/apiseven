@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { issueAt, issuesByTab, issuesUnder, pathOfError, tabOfIssue, withinPath, type Issue } from './issues';
+import { issueAt, issuesByTab, issuesUnder, ownedKeys, pathOfError, tabOfIssue, withinPath, type Issue } from './issues';
 
 const issues: Issue[] = [
   { path: 'uri', message: 'Enter a URI' },
@@ -59,6 +59,24 @@ describe('attribution', () => {
   });
 });
 
+describe('a tab that owns the rest (TabDef.restFields)', () => {
+  const tabs = [
+    { id: 'general', fields: ['name'] },
+    { id: 'config', fields: [], rest: true },
+  ];
+  it('takes every top-level key no tab names, but id', () => {
+    expect(tabOfIssue({ path: 'log_format.host', message: '' }, tabs, 'json')).toBe('config');
+    expect(tabOfIssue({ path: 'name', message: '' }, tabs, 'json')).toBe('general');
+    expect(tabOfIssue({ path: 'id', message: '' }, tabs, 'json')).toBe('json');
+    expect(tabOfIssue({ path: '', message: '' }, tabs, 'json')).toBe('json');
+  });
+
+  it("owns those keys for the unsaved mark: the draft's and the stored object's", () => {
+    expect(ownedKeys(tabs[1] ?? { id: '', fields: [] }, tabs, { id: 'x', name: 'n', a: 1 }, { b: 2 }).sort()).toEqual(['a', 'b']);
+    expect(ownedKeys(tabs[0] ?? { id: '', fields: [] }, tabs, { a: 1 }, {})).toEqual(['name']);
+  });
+});
+
 describe('pathOfError: the draft path an APISIX save error is about', () => {
   // Every shape below is quoted from APISIX 3.20 (admin/*.lua, plugin.lua, upstream.lua, ssl.lua).
   const cases: [string, string][] = [
@@ -98,6 +116,10 @@ describe('pathOfError: the draft path an APISIX save error is about', () => {
   for (const [message, path] of cases) {
     it(`${path} ← ${message.slice(0, 60)}`, () => expect(pathOfError(message)).toBe(path));
   }
+
+  it("a plugin another global rule holds goes to the plugin (admin/global_rules.lua 72–76)", () => {
+    expect(pathOfError("plugin 'request-id' already exists in global rule with id 'default'")).toBe('plugins.request-id');
+  });
 
   it('names no field when it is not sure: a property mentioned anywhere but at the start, two candidate fields, no field at all', () => {
     for (const message of [

@@ -38,16 +38,20 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
 
   const rowActions: MenuItemFor = (item) => [
     { id: 'edit', label: t('action.edit'), icon: <Pencil size={14} />, onSelect: () => void navigate(pathFor(kind, item.id, parent)) },
-    {
-      id: 'duplicate',
-      label: t('action.duplicate'),
-      icon: <Copy size={14} />,
-      // The editor reads `from` and starts a new object from a copy of this one.
-      onSelect: () => void navigate(`${newPathFor(kind, parent)}?from=${encodeURIComponent(item.id)}`),
-    },
+    ...(def.noDuplicate
+      ? []
+      : [
+          {
+            id: 'duplicate',
+            label: t('action.duplicate'),
+            icon: <Copy size={14} />,
+            // The editor reads `from` and starts a new object from a copy of this one.
+            onSelect: () => void navigate(`${newPathFor(kind, parent)}?from=${encodeURIComponent(item.id)}`),
+          },
+        ]),
     { id: 'json', label: t('action.viewJson'), icon: <Braces size={14} />, onSelect: () => setViewing(item) },
     { separator: true },
-    { id: 'delete', label: t('action.delete'), icon: <Trash2 size={14} />, danger: true, disabled: readOnly, onSelect: () => setDeleting(item) },
+    { id: 'delete', label: def.resets ? t('action.reset') : t('action.delete'), icon: <Trash2 size={14} />, danger: true, disabled: readOnly, onSelect: () => setDeleting(item) },
   ];
 
   /** One write per item, in order; then one reload and one toast with the outcome. */

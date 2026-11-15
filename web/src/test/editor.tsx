@@ -8,7 +8,7 @@ import { Input } from '../ui';
 import { DEV_CONN, renderApp, saveConnections } from './app';
 import type { FakeAdminOptions } from './fakeAdmin';
 
-type Overridable = Pick<ResourceDef, 'tabs' | 'validate' | 'idFromDraft' | 'idMode' | 'blank' | 'hasStatus'>;
+type Overridable = Pick<ResourceDef, 'tabs' | 'validate' | 'idFromDraft' | 'idMode' | 'blank' | 'hasStatus' | 'NewId' | 'ListComponent' | 'createWhenMissing' | 'idProblem'>;
 
 /**
  * Replaces fields of a kind's registry entry for one test and returns the undo (call it in

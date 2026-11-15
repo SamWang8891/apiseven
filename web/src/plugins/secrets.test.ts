@@ -85,9 +85,30 @@ describe('redactObject, per kind', () => {
     expect(JSON.stringify(out.revealed)).toContain('Bearer s3');
   });
 
-  it("a secret manager's token, and an SSL's (never returned) key fields by name", () => {
-    expect(redactObject({ uri: 'https://vault', prefix: 'kv', token: 'hvs.x' }, 'secrets', all()).value).toEqual({ uri: 'https://vault', prefix: 'kv', token: MASK });
-    expect(redactObject({ secret_access_key: 'k', access_key_id: 'AKIA' }, 'secrets', all()).value).toEqual({ secret_access_key: MASK, access_key_id: 'AKIA' });
+  it("a secret manager's credentials (its manager's SECRET_FIELDS, also those not named like secrets); every value of an entry whose manager isn't known", () => {
+    expect(redactObject({ id: 'vault/v1', uri: 'https://vault', prefix: 'kv', token: 'hvs.x' }, 'secrets', all()).value).toEqual({ id: 'vault/v1', uri: 'https://vault', prefix: 'kv', token: MASK });
+    expect(redactObject({ id: 'aws/a1', secret_access_key: 'k', access_key_id: 'AKIA', session_token: 's', region: 'eu-west-1' }, 'secrets', all()).value).toEqual({
+      id: 'aws/a1',
+      secret_access_key: MASK,
+      access_key_id: MASK,
+      session_token: MASK,
+      region: 'eu-west-1',
+    });
+    const gcp = redactObject({ id: 'gcp/g1', auth_config: { client_email: 'a@b.c', private_key: 'PK', project_id: 'p' } }, 'secrets', undefined);
+    expect(gcp.value).toEqual({ id: 'gcp/g1', auth_config: { client_email: 'a@b.c', private_key: MASK, project_id: 'p' } });
+    expect(gcp).toMatchObject({ redacted: true, revealable: true });
+    // Fails closed: a manager APISIX doesn't have, or no id at all.
+    expect(redactObject({ id: 'nope/n1', uri: 'u', anything: 'x' }, 'secrets', all()).value).toEqual({ id: 'nope/n1', uri: MASK, anything: MASK });
+    expect(redactObject({ secret_access_key: 'k', access_key_id: 'AKIA' }, 'secrets', all()).value).toEqual({ secret_access_key: MASK, access_key_id: MASK });
+  });
+
+  it("plugin metadata: its schema's encrypt_fields once the list has the plugin; every value while it doesn't (not loaded, unknown, no metadata schema)", () => {
+    const meta = { id: 'azure-functions', master_apikey: 'key-1', master_clientid: 'cid' };
+    expect(redactObject(meta, 'plugin_metadata', all()).value).toEqual({ ...meta, master_apikey: MASK });
+    expect(redactObject(meta, 'plugin_metadata', undefined).value).toEqual({ id: 'azure-functions', master_apikey: MASK, master_clientid: MASK });
+    expect(redactObject({ id: 'custom-plugin', note: 'x' }, 'plugin_metadata', all()).value).toEqual({ id: 'custom-plugin', note: MASK });
+    expect(redactObject({ id: 'key-auth', note: 'x' }, 'plugin_metadata', all()).value).toEqual({ id: 'key-auth', note: MASK });
+    expect(redactObject({ id: 'http-logger', log_format: { host: '$host' } }, 'plugin_metadata', all()).value).toEqual({ id: 'http-logger', log_format: { host: '$host' } });
   });
 
   it("an SSL's private keys (a new one in the draft) are never shown, not even on reveal; its certificates and CA are not secrets", () => {

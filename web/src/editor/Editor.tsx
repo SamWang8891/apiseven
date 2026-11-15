@@ -11,17 +11,18 @@ import { useMarkReadOnly, useReadOnlyKey } from '../api/write';
 import { t } from '../i18n';
 import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
-import { findInCtx, isEnabled } from '../resources/resolve';
+import { findInCtx } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
 import { LockProvider, PendingProvider, Tabs, toast } from '../ui';
 import { backOf, ownerPath } from './back';
 import { EditorDialogs } from './EditorDialogs';
-import { deepEqual, setPath, useDraft } from './draft';
+import { deepEqual, useDraft } from './draft';
 import { EditorHeader } from './EditorHeader';
 import { takenFailure, uncheckedFailure, type Failure } from './failure';
 import { CopyNotice } from './CopyNotice';
 import { FailureBanner } from './FailureBanner';
-import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
+import { useHeaderStatus } from './headerStatus';
+import { idIssues, issuesByTab, ownedKeys, pathOfError, tabOfIssue, type Issue, type TabFields } from './issues';
 import { JSON_TAB } from './json';
 import { JsonTab } from './JsonTab';
 import { NewIdField } from './NewIdField';
@@ -38,6 +39,7 @@ const valueOf = (item: Item): Obj => stripTimestamps(item.value);
 
 export interface EditorProps {
   kind: Kind;
+  /** The stored object's id; with no `item`, the id a new object is created under (ResourceDef.createWhenMissing). */
   id?: string;
   parent?: Parent;
   /** The stored object as the query has it now (it may refresh in the background); undefined when creating. */
@@ -49,6 +51,8 @@ export interface EditorProps {
 export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const def = registry[kind];
   const isNew = item === undefined;
+  /** A new object's id, when the page fixes it (a plugin's metadata page, nothing stored yet). */
+  const fixedId = isNew ? id : undefined;
   const client = useClient();
   const ctx = useCtx();
   const plugins = useAllPlugins().data;
@@ -66,7 +70,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   const [original, setOriginal] = useState(item);
   const { draft, setDraft, dirty, reset, baseline } = useDraft(item ? valueOf(item) : (start?.baseline ?? {}), item ? undefined : start?.draft);
   const [locked, setLocked] = useState(!isNew);
-  const [newId, setNewId] = useState('');
+  const [newId, setNewId] = useState(start?.newId ?? '');
   /** Saves blocked by problems since the last lock. */
   const [saveAttempts, setSaveAttempts] = useState(0);
   const attempted = saveAttempts > 0;
@@ -121,23 +125,26 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     }
   }
 
-  const name = isNew ? t('page.new', { kind: def.singular }) : def.nameOf({ id: id ?? '', value: draft });
+  const name = isNew && fixedId === undefined ? t('page.new', { kind: def.singular }) : def.nameOf({ id: id ?? '', value: draft });
   const back = backOf(kind, parent);
   const listPath = back.to;
 
   // --- Issues ------------------------------------------------------------------------------------
-  const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins, original }), [isNew, ctx, plugins, streamPlugins, original]);
-  const checked = useMemo(() => def.validate?.(draft, env) ?? [], [def, draft, env]);
   const typedId = typeof draft.id === 'string' || typeof draft.id === 'number' ? String(draft.id) : undefined;
+  // A new object's id: the body field for kinds that have one (a consumer's username); else the one
+  // the page fixes, the ID field, or an id typed into the JSON (POST refuses an id in the body).
+  const createId = def.idFromDraft ? def.idFromDraft(draft) : (fixedId ?? (newId.trim() || typedId));
+  const idMissing = isNew && !def.idFromDraft && def.idMode !== 'optional' && createId === undefined;
+  // An id the kind can't take as it is (a secret's with a slash): named in the field and the toast.
+  const idRefused = isNew && createId !== undefined ? def.idProblem?.(createId) : undefined;
+  const objectId = isNew ? createId : id;
+  const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins, original, id: objectId }), [isNew, ctx, plugins, streamPlugins, original, objectId]);
+  const checked = useMemo(() => def.validate?.(draft, env) ?? [], [def, draft, env]);
   const frameIssues = useMemo(() => idIssues(def, draft, { id, isNew, newId, typedId }), [def, draft, id, isNew, newId, typedId]);
   const issues = useMemo(() => [...checked, ...frameIssues], [checked, frameIssues]);
-  // A new object's id: the body field for kinds that have one (a consumer's username); else the ID
-  // field, else an id typed into the JSON (POST refuses an id in the body).
-  const createId = def.idFromDraft ? def.idFromDraft(draft) : newId.trim() || typedId;
-  const idMissing = isNew && !def.idFromDraft && def.idMode !== 'optional' && createId === undefined;
 
   const shownTabs = useShownTabs(def.tabs);
-  const tabFields = useMemo(() => shownTabs.map((tab) => ({ id: tab.id, fields: tab.fields })), [shownTabs]);
+  const tabFields = useMemo(() => shownTabs.map((tab) => ({ id: tab.id, fields: tab.fields, rest: tab.restFields })), [shownTabs]);
   const tabIds = [...shownTabs.map((tab) => tab.id), JSON_TAB];
   const byTab = useMemo(() => issuesByTab(issues, tabFields, JSON_TAB), [issues, tabFields]);
   // A taken id is an issue only while the draft still holds that id (a consumer's username is a field).
@@ -150,7 +157,7 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   // --- Tabs --------------------------------------------------------------------------------------
   const tabState = useActiveTab(tabIds, bodyRef);
   const { active, pending, goTab } = tabState;
-  const problems = issues.length + (idMissing ? 1 : 0) + pending.length;
+  const problems = issues.length + (idMissing || idRefused ? 1 : 0) + pending.length;
   // A typed ID and input a field holds (JSON text that doesn't parse, …) are work to lose as well,
   // though not in the draft.
   const unsaved = dirty || (isNew && newId !== '') || pending.length > 0;
@@ -193,13 +200,14 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       setSaveAttempts((n) => n + 1);
       const fix = problems === 1 ? t('editor.fixOne') : t('editor.fixMany', { count: problems });
       // Input a field holds comes first: the toast names it, as its own error may not ("Not valid JSON").
-      toast.error(pending[0] ? t('editor.fixHeld', { fix, message: pending[0].message }) : fix);
+      const named = pending[0]?.message ?? idRefused;
+      toast.error(named ? t('editor.fixHeld', { fix, message: named }) : fix);
       // Input this tab holds comes first: stay here, on the field that holds it.
       const holding = pending.length > 0 ? bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"] [aria-invalid="true"]') : undefined;
       const first = pending.length > 0 ? active : tabIds.find((tab) => byTab.has(tab));
       if (first !== undefined && first !== active) goTab(first);
       else if (holding) holding.focus();
-      else if (first === undefined && idMissing) idRef.current?.focus();
+      else if (first === undefined && (idMissing || idRefused)) idRef.current?.focus();
       else if (left?.isConnected) left.focus();
       return;
     }
@@ -235,7 +243,8 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
       setConflict(result.conflict);
     } else if ('exists' in result || 'unchecked' in result) {
       // A create never overwrites: the id is taken, or could not be checked (saveResource).
-      const refusal = 'exists' in result ? takenFailure(kind, result.exists, parent) : uncheckedFailure(createId ?? '', result.unchecked);
+      // On a page fixed to that id (a plugin's metadata), the stored object is shown on request instead of linked.
+      const refusal = 'exists' in result ? takenFailure(kind, result.exists, parent, fixedId !== undefined) : uncheckedFailure(createId ?? '', result.unchecked);
       setFailure(refusal);
       toast.error(refusal.message, refusal.link && { label: refusal.link.label, href: `#${refusal.link.to}` });
       if (refusal.path !== undefined) goTab(tabOfIssue({ path: refusal.path, message: '' }, tabFields, JSON_TAB));
@@ -280,11 +289,11 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
     [byTab, active, failureIssue, failureTab],
   );
   const content = useMemo(() => {
-    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues };
+    const props: TabProps = { draft, setDraft: edit, kind, isNew, ctx, parent, original, saveAttempts, issues: activeIssues, id: objectId };
     const tab = shownTabs.find((candidate) => candidate.id === active);
     return tab ? tab.render(props) : <JsonTab {...props} />;
-  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues]);
-  const changedHere = (fields: string[]) => fields.some((field) => !deepEqual(draft[field], baseline[field]));
+  }, [shownTabs, active, draft, edit, kind, isNew, ctx, parent, original, saveAttempts, activeIssues, objectId]);
+  const changedHere = (tab: TabFields) => ownedKeys(tab, tabFields, draft, baseline).some((field) => !deepEqual(draft[field], baseline[field]));
   const label = (text: string, changed: boolean) => (
     <>
       {text}
@@ -293,28 +302,11 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
   );
   const badge = (tab: string) => (byTab.get(tab)?.length ?? 0) + (failureTab === tab ? 1 : 0) + (tab === active ? pending.length : 0);
   const tabs = [
-    ...shownTabs.map((tab) => ({ id: tab.id, label: label(tab.label, changedHere(tab.fields)), badge: badge(tab.id), content: tab.id === active ? content : null })),
+    ...shownTabs.map((tab, i) => ({ id: tab.id, label: label(tab.label, changedHere(tabFields[i] ?? tab)), badge: badge(tab.id), content: tab.id === active ? content : null })),
     { id: JSON_TAB, label: label(t('editor.json.tab'), dirty), badge: badge(JSON_TAB), content: active === JSON_TAB ? content : null },
   ];
 
-  // The status is part of the JSON tab's text: while that text holds Save, the switch would change a
-  // draft the text no longer follows, and fixing the text would undo it. It waits instead.
-  const status = def.hasStatus
-    ? {
-        enabled: isEnabled(draft),
-        ignored: def.statusIgnored?.(draft),
-        name,
-        onChange: (on: boolean) => {
-          const first = pending[0];
-          if (active === JSON_TAB && first) {
-            toast.error(t('ui.pending.refused', { message: first.message }));
-            bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden]) [aria-invalid="true"]')?.focus();
-            return;
-          }
-          edit(setPath(draft, ['status'], on ? 1 : 0));
-        },
-      }
-    : undefined;
+  const status = useHeaderStatus({ def, draft, name, held: active === JSON_TAB ? pending[0] : undefined, body: bodyRef, edit });
 
   return (
     <div className="ed">
@@ -336,21 +328,25 @@ export function Editor({ kind, id, parent, item, start, copyOf }: EditorProps) {
         onEdit={unlock}
         onSave={() => requestSave()}
         onDiscard={discard}
-        onDuplicate={() => id !== undefined && void navigate(`${newPathFor(kind, parent)}?from=${encodeURIComponent(id)}`)}
+        onDuplicate={def.noDuplicate ? undefined : () => id !== undefined && void navigate(`${newPathFor(kind, parent)}?from=${encodeURIComponent(id)}`)}
+        deleteLabel={def.resets ? t('action.reset') : undefined}
         onViewJson={() => setDialog('json')}
         onDelete={() => setDialog('delete')}
       />
       <div className="ed-body" ref={bodyRef}>
-        {failure && <FailureBanner failure={failure} />}
+        {failure && <FailureBanner failure={failure} onShow={(holder) => queryClient.setQueryData(scopedKey(client.conn.id, queryKeys.item(kind, holder.id, parent)), holder)} />}
         {isNew && start?.copy && <CopyNotice notes={start.copy} />}
-        {isNew && !def.idFromDraft && (
+        {isNew && !def.idFromDraft && fixedId === undefined && (
           <NewIdField
             kind={kind}
             parent={parent}
             value={newId}
             onChange={setNewId}
+            draft={draft}
+            setDraft={edit}
             inputRef={idRef}
             missing={attempted && idMissing}
+            refused={idRefused}
             // A refused create's id while the field still holds it, else an object of a loaded list that has it (the GET decides).
             taken={createId !== undefined && failure?.taken === createId ? createId : createId !== undefined ? findInCtx(kind, createId, ctx)?.id : undefined}
           />

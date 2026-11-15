@@ -181,15 +181,27 @@ export interface FieldError {
   message: string;
 }
 
+/** A `type` error at an empty `[]` or `{}` asked to be an object or a list: APISIX's validator takes an empty table for both (api/lua.ts). */
+function emptyTableTypeError(error: ErrorObject, value: unknown): boolean {
+  if (error.keyword !== 'type') return false;
+  const at = valueAt(value, error.instancePath);
+  const empty = (Array.isArray(at) && at.length === 0) || (isObj(at) && Object.keys(at).length === 0);
+  const wanted = String((error.params as Record<string, unknown>).type).split(',');
+  return empty && wanted.some((type) => type === 'object' || type === 'array');
+}
+
 /**
  * What is wrong with `value`, for showing beside fields: specificErrors, each at a dotted path (array
  * indices as numbers) and a missing required property at its own path (reading "Required"),
  * duplicates once. [] when
  * valid; null when the schema does not compile (the caller then shows nothing; APISIX decides).
+ * `luaTables`: an empty `[]` or `{}` passes as either a list or an object, as in APISIX's validator
+ * (used where the check blocks a save of something APISIX stores: plugin metadata, secret managers).
  */
-export function fieldErrors(schema: Obj, value: unknown): FieldError[] | null {
-  const errors = schemaErrors(schema, value);
-  if (errors === null) return null;
+export function fieldErrors(schema: Obj, value: unknown, opts: { luaTables?: boolean } = {}): FieldError[] | null {
+  const all = schemaErrors(schema, value);
+  if (all === null) return null;
+  const errors = opts.luaTables ? all.filter((error) => !emptyTableTypeError(error, withDefaults(schema, value))) : all;
   const seen = new Set<string>();
   const out: FieldError[] = [];
   for (const error of specificErrors(schema, withDefaults(schema, value), errors)) {

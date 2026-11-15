@@ -12,6 +12,16 @@
  *   .res-embedded       a list of other objects inside an editor tab (what uses this one): a title
  *                       over an embedded DataTable; __empty is what the table shows when none do.
  *   .res-callout        what a tab says instead of its content (e.g. not saved yet), as body text.
+ *   .res-note           a line of secondary text in a tab or above a list; --warn for a warning,
+ *                       --page under a list page's title.
+ *   .res-explain        what APISIX does with a kind's objects (the global rules explainer): a title
+ *                       over a short list of facts.
+ *   .res-file           a stored file that is not text (a proto's compiled descriptor set): an icon,
+ *                       what it is and its size, and its actions; __bar holds an upload button.
+ *   .res-ref            how plugins refer to a secret: the prefix in mono with a Copy button, then
+ *                       a few lines of how.
+ *   .res-newid          a new object's id made of two controls side by side (a secret's manager and id).
+ *   .res-badges         a line of badges at the top of a tab (a secret's manager).
  */
 
 .res-section {
@@ -343,4 +353,157 @@
   color: var(--text);
   font-size: 13px;
   line-height: 20px;
+}
+
+/* --- Notes, explainers and kind-specific blocks (Task 15) ----------------------------------- */
+
+.res-note {
+  max-width: 880px;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.res-note--warn {
+  padding: var(--s2) var(--s3);
+  border-radius: var(--radius);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+
+.res-note--page {
+  margin-bottom: var(--s3);
+}
+
+.res-explain {
+  max-width: 880px;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-sunken);
+}
+
+.res-explain__title {
+  margin: 0 0 var(--s1);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 18px;
+}
+
+.res-explain__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.res-file {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  max-width: 880px;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-raised);
+}
+
+.res-file__icon {
+  flex: none;
+  color: var(--accent);
+}
+
+.res-file__text {
+  flex: 1;
+  min-width: 0;
+}
+
+.res-file__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.res-file__note {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.res-file__actions,
+.res-file__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.res-file__input {
+  display: none;
+}
+
+.res-ref {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  max-width: 880px;
+  padding: var(--s3) var(--s4);
+  border-left: 3px solid var(--accent);
+  background: var(--bg-sunken);
+}
+
+.res-ref__title {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.res-ref__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.res-ref__code {
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--text);
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
+.res-ref__text {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.res-newid {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(200px, 320px);
+  gap: var(--s4);
+  align-items: start;
+}
+
+@media (max-width: 640px) {
+  .res-newid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.res-badges {
+  display: flex;
+  gap: var(--s2);
+  margin: 0;
 }

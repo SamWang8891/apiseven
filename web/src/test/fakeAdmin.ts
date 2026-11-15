@@ -215,7 +215,8 @@ const isPlain = (v: unknown): v is Obj => typeof v === 'object' && v !== null &&
 function encryptFieldsOf(kind: string, name: string): string[] {
   const fixture = pluginFixture();
   const info = kind === 'stream_routes' ? fixture.stream[name] : fixture.http[name];
-  const schema = kind === 'consumers' || kind === 'credentials' ? (info?.consumer_schema ?? info?.schema) : info?.schema;
+  const schema =
+    kind === 'plugin_metadata' ? info?.metadata_schema : kind === 'consumers' || kind === 'credentials' ? (info?.consumer_schema ?? info?.schema) : info?.schema;
   const list: unknown = schema?.encrypt_fields;
   return Array.isArray(list) ? list.filter((f): f is string => typeof f === 'string') : [];
 }
@@ -251,8 +252,12 @@ function storedAs(kind: string, value: Obj): Obj {
   return value;
 }
 
-/** What a write's response shows: the stored value, its plugins' encrypted fields as `$ENC$v1$…`. */
+/** What a write's response shows: the stored value, its plugins' (a plugin metadata entry's own) encrypted fields as `$ENC$v1$…`. */
 function echoed(kind: string, value: Obj): Obj {
+  if (kind === 'plugin_metadata') {
+    // admin/plugin_metadata.lua 80–103: the plugin's metadata schema's encrypt_fields.
+    return encryptFieldsOf(kind, String(value.id)).reduce<unknown>((out, field) => atEncryptPath(out, field.split('.'), encryptLeaf), value) as Obj;
+  }
   if (!isPlain(value.plugins)) return value;
   const plugins = Object.fromEntries(
     Object.entries(value.plugins).map(([name, conf]) => [name, encryptFieldsOf(kind, name).reduce<unknown>((out, field) => atEncryptPath(out, field.split('.'), encryptLeaf), conf)]),
@@ -306,17 +311,27 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
   const written = (value: Obj) => entry(echoed(kind, value));
   const read = (s: Stored) => ({ ...entry(shown(kind, s.value)), modifiedIndex: s.index, createdIndex: s.index });
   const body = (req.body ?? {}) as Obj;
-  // APISIX stamps every write (admin/utils.lua inject_conf_with_prev_conf): create_time kept, update_time now.
+  // APISIX stamps every write (admin/utils.lua inject_conf_with_prev_conf): create_time kept, update_time
+  // now; but plugin metadata, which it writes without that (admin/resource.lua 315–322).
   const now = () => CLOCK + revision.n;
+  const stamps = (created: number): Obj => (kind === 'plugin_metadata' ? {} : { create_time: created, update_time: now() });
   if ((req.method === 'POST' || req.method === 'PUT') && forbidden(body)) {
     return json(400, { error_msg: `the property is forbidden:  ${forbidden(body) ?? ''}` });
   }
   if ((req.method === 'POST' || req.method === 'PUT') && kind === 'ssls' && sslRefusal(body)) {
     return json(400, { error_msg: sslRefusal(body) });
   }
+  // admin/global_rules.lua 59–83: a plugin another global rule holds.
+  if (req.method === 'PUT' && kind === 'global_rules' && isPlain(body.plugins)) {
+    for (const other of stored) {
+      if (other.value.id === id || !isPlain(other.value.plugins)) continue;
+      const shared = Object.keys(body.plugins).find((name) => Object.hasOwn(other.value.plugins as Obj, name));
+      if (shared) return json(400, { error_msg: `plugin '${shared}' already exists in global rule with id '${String(other.value.id)}'` });
+    }
+  }
   if (id === undefined) {
     if (req.method === 'POST') {
-      const value = storedAs(kind, { ...body, id: String(revision.n + 1).padStart(20, '0'), create_time: now(), update_time: now() });
+      const value = storedAs(kind, { ...body, id: String(revision.n + 1).padStart(20, '0'), ...stamps(now()) });
       stored.push({ value, index: ++revision.n });
       return json(201, written(value));
     }
@@ -330,7 +345,7 @@ function answer(kind: string, stored: Stored[], id: string | undefined, req: Fak
       return current ? json(200, read(current)) : json(404, { message: 'Key not found' });
     case 'PUT': {
       const created = typeof current?.value.create_time === 'number' ? current.value.create_time : now();
-      const value = storedAs(kind, { ...body, ...(kind === 'consumers' ? {} : { id }), create_time: created, update_time: now() });
+      const value = storedAs(kind, { ...body, ...(kind === 'consumers' ? {} : { id }), ...stamps(created) });
       if (current) {
         current.value = value;
         current.index = ++revision.n;

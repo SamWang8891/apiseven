@@ -1,10 +1,7 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode, Ref } from 'react';
 import type { Item, Kind, Obj, Parent, PluginInfo } from '../api/types';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
-import type { Scope } from '../plugins/scope';
-import { makePluginsTab } from '../plugins/tab';
-import { pluginIssues } from '../plugins/validate';
 import type { FilterDef } from '../table/filter';
 import type { Ctx } from './ctx';
 import { nameOfValue } from './resolve';
@@ -39,6 +36,26 @@ import { sslFilters } from './ssls/filters';
 import { sslTabs } from './ssls/tabs';
 import { sniNames, statusApplies } from './ssls/usage';
 import { sslIssues } from './ssls/validate';
+import { globalRuleColumns } from './global_rules/columns';
+import { globalRuleTabs } from './global_rules/tabs';
+import { globalRuleIssues } from './global_rules/validate';
+import { pluginConfigColumns } from './plugin_configs/columns';
+import { pluginConfigFilters } from './plugin_configs/filters';
+import { pluginConfigTabs } from './plugin_configs/tabs';
+import { pluginConfigIssues } from './plugin_configs/validate';
+import { metadataColumns } from './plugin_metadata/columns';
+import { MetadataListPage } from './plugin_metadata/ListPage';
+import { NewMetadataId } from './plugin_metadata/NewMetadataId';
+import { metadataTabs } from './plugin_metadata/tabs';
+import { metadataIdProblem, metadataIssues } from './plugin_metadata/validate';
+import { protoColumns } from './protos/columns';
+import { protoTabs } from './protos/tabs';
+import { protoIssues } from './protos/validate';
+import { secretColumns } from './secrets/columns';
+import { secretFilters } from './secrets/filters';
+import { NewSecretId } from './secrets/NewSecretId';
+import { secretTabs } from './secrets/tabs';
+import { secretIdProblem, secretIssues } from './secrets/validate';
 
 export type { Ctx } from './ctx';
 export { useCtx } from './ctx';
@@ -77,6 +94,12 @@ export interface TabProps {
    * new one, e.g. the Plugins tab opens the cards that have issues.
    */
   saveAttempts: number;
+  /**
+   * The object's id: the stored one, or for a new object the id chosen so far (the ID field, a kind's
+   * NewId, an id fixed by the page); undefined while there is none. A secret's tab reads its manager
+   * from it, a plugin metadata's tab its plugin.
+   */
+  id?: string;
 }
 
 export interface TabDef {
@@ -85,6 +108,11 @@ export interface TabDef {
   render(p: TabProps): ReactNode;
   /** Top-level keys this tab owns: an issue or APISIX error about one of them badges this tab. */
   fields: string[];
+  /**
+   * Also owns every top-level key that no other tab names (but `id`): a form over a schema the kind
+   * cannot list in advance (a plugin's metadata), so APISIX's error about one of them badges it.
+   */
+  restFields?: boolean;
   /**
    * A kind the tab lists or edits that older APISIX versions lack (a consumer's credentials, 3.11+):
    * the frame leaves the tab out once useSupports(kind) says false, and shows it while that is unknown.
@@ -105,6 +133,22 @@ export interface ValidateEnv {
    * one kind saved that way without its whole value (an SSL without a new key, editor/save.ts).
    */
   original?: Item;
+  /** The object's id, as TabProps.id has it (a new object's: the one chosen so far). */
+  id?: string;
+}
+
+/** What a kind's own ID control for a new object gets (ResourceDef.NewId). */
+export interface NewIdProps {
+  /** The id chosen so far ('' while none). */
+  value: string;
+  onChange: (id: string) => void;
+  draft: Obj;
+  /** Replaces the draft (a no-op while saving): a secret manager's blank when the manager changes. */
+  setDraft: (next: Obj) => void;
+  /** What is wrong with the id: missing after a Save was tried, taken, or refused (ResourceDef.idProblem). */
+  error?: string;
+  /** For the control that takes the id, so a refused Save can focus it. */
+  inputRef?: Ref<HTMLInputElement>;
 }
 
 /** A way to group a list's rows (a toggle on the list page); one item can sit in several groups. */
@@ -161,6 +205,29 @@ export interface ResourceDef {
    * so instead of offering a switch.
    */
   statusIgnored?(value: Obj): string | undefined;
+  /** Replaces the frame's ID input for a new object (a secret's manager and id, a plugin metadata's plugin). */
+  NewId?: ComponentType<NewIdProps>;
+  /** Replaces the generic list page (plugin metadata lists every plugin that has metadata settings). */
+  ListComponent?: ComponentType<{ kind: Kind }>;
+  /**
+   * The editor of an id nothing is stored under opens in create mode for that id (unlocked, from the
+   * blank) instead of "not found": a plugin's metadata exists or not, but its page always does.
+   */
+  createWhenMissing?: boolean;
+  /**
+   * Why a new object's id can't be taken as it is (a secret's id with a slash, which APISIX would
+   * cut), naming the field; Save is refused meanwhile and the message is its toast.
+   */
+  idProblem?(id: string): string | undefined;
+  /** The kind has no Duplicate (one plugin metadata entry per plugin). */
+  noDuplicate?: boolean;
+  /** Deleting an object resets something rather than removing a thing of its own (plugin metadata): the actions and dialog say Reset. */
+  resets?: boolean;
+  /**
+   * The list's search reads each object as the locked views show it (redactObject), so it never
+   * finds one by a secret it holds.
+   */
+  masksSearch?: boolean;
 }
 
 /** name → username → desc → id. */
@@ -213,15 +280,6 @@ function define(kind: Kind, spec: Spec): ResourceDef {
 }
 
 const plugins = (): Obj => ({ plugins: {} });
-
-/**
- * What every plugin-bearing kind shares: the Plugins tab and the plugin checks, for its scope.
- * Spread into a define() spec (a fresh object each call; a ResourceDef itself is never spread).
- */
-const withPlugins = (scope: Scope): Pick<ResourceDef, 'tabs' | 'validate'> => ({
-  tabs: [makePluginsTab(scope)],
-  validate: (draft, env) => pluginIssues(draft, env, scope),
-});
 
 export const registry: Record<Kind, ResourceDef> = {
   routes: define('routes', {
@@ -313,10 +371,69 @@ export const registry: Record<Kind, ResourceDef> = {
     nameOf: (item) => sniNames(item.value)[0] ?? item.id,
     statusIgnored: (value) => (statusApplies(value) ? undefined : t('ssl.status.ignored')),
   }),
-  secrets: define('secrets', { group: 'access', hasStatus: false, idMode: 'required' }),
-  global_rules: define('global_rules', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins, ...withPlugins('global_rule') }),
-  plugin_configs: define('plugin_configs', { group: 'plugins', hasStatus: false, idMode: 'required', blank: plugins, ...withPlugins('plugin_config') }),
-  // The id is the name of the plugin the metadata belongs to.
-  plugin_metadata: define('plugin_metadata', { group: 'plugins', hasStatus: false, idMode: 'fixed-list' }),
-  protos: define('protos', { group: 'other', hasStatus: false, idMode: 'optional' }),
+  // A secret's id is "<manager>/<id>" (vault/my-id): two path segments (api/client.ts), picked by NewSecretId.
+  secrets: define('secrets', {
+    group: 'access',
+    hasStatus: false,
+    idMode: 'required',
+    tabs: secretTabs,
+    validate: (draft, env) => secretIssues(draft, env),
+    columns: secretColumns,
+    filters: secretFilters,
+    nameOf: (item) => item.id,
+    NewId: NewSecretId,
+    idProblem: secretIdProblem,
+    masksSearch: true,
+  }),
+  global_rules: define('global_rules', {
+    group: 'plugins',
+    hasStatus: false,
+    idMode: 'required',
+    blank: plugins,
+    tabs: globalRuleTabs,
+    // Includes the plugin checks.
+    validate: (draft, env) => globalRuleIssues(draft, env),
+    columns: globalRuleColumns,
+    nameOf: (item) => item.id,
+    masksSearch: true,
+  }),
+  plugin_configs: define('plugin_configs', {
+    group: 'plugins',
+    hasStatus: false,
+    idMode: 'required',
+    blank: plugins,
+    tabs: pluginConfigTabs,
+    // Includes the plugin checks.
+    validate: (draft, env) => pluginConfigIssues(draft, env),
+    columns: pluginConfigColumns,
+    filters: pluginConfigFilters,
+    masksSearch: true,
+  }),
+  // The id is the name of the plugin the metadata belongs to. Its list shows every plugin that has
+  // metadata settings; its page exists whether or not an entry does; one entry per plugin, so no
+  // Duplicate; deleting it resets the plugin's metadata.
+  plugin_metadata: define('plugin_metadata', {
+    group: 'plugins',
+    hasStatus: false,
+    idMode: 'fixed-list',
+    tabs: metadataTabs,
+    validate: (draft, env) => metadataIssues(draft, env),
+    columns: metadataColumns,
+    nameOf: (item) => item.id,
+    NewId: NewMetadataId,
+    ListComponent: MetadataListPage,
+    createWhenMissing: true,
+    idProblem: metadataIdProblem,
+    noDuplicate: true,
+    resets: true,
+    masksSearch: true,
+  }),
+  protos: define('protos', {
+    group: 'other',
+    hasStatus: false,
+    idMode: 'optional',
+    tabs: protoTabs,
+    validate: (draft) => protoIssues(draft),
+    columns: protoColumns,
+  }),
 };

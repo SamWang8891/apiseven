@@ -16,16 +16,25 @@ export interface Failure {
   link?: { to: string; label: string };
   /** The id a create found taken: the ID field says so while it still holds that id. */
   taken?: string;
+  /**
+   * What holds the id, when it belongs on this very page (a plugin's metadata page whose entry was
+   * configured meanwhile): the banner offers to show it instead of linking to the page it is on.
+   */
+  holder?: Item;
 }
 
-/** A create refused because `holder` already has the id (on the kind's id field, when the id is one: a consumer's username). */
-export function takenFailure(kind: Kind, holder: Item, parent?: Parent): Failure {
+/**
+ * A create refused because `holder` already has the id (on the kind's id field, when the id is one: a
+ * consumer's username). `here`: the page is that id's own (ResourceDef.createWhenMissing), so instead
+ * of a link to it the banner offers to show what is stored.
+ */
+export function takenFailure(kind: Kind, holder: Item, parent?: Parent, here = false): Failure {
   const def = registry[kind];
   return {
     title: t('editor.taken.title'),
     message: t('editor.taken.message', { kind: def.singular, id: holder.id }),
     path: def.idField,
-    link: { to: pathFor(kind, holder.id, parent), label: t('editor.taken.open', { kind: def.singular, id: holder.id }) },
+    ...(here ? { holder } : { link: { to: pathFor(kind, holder.id, parent), label: t('editor.taken.open', { kind: def.singular, id: holder.id }) } }),
     taken: holder.id,
   };
 }

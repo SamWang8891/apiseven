@@ -16,16 +16,26 @@ export interface FilterDef {
 /** Selected values per filter id. */
 export type FilterSelection = Record<string, string[]>;
 
-// The search text of an item, built once per stored object (lists keep item identity between fetches).
-// A private key's text is never in it, wherever it is stored (an SSL whose cert also holds its key):
-// a search must not tell whether a key starts with what was typed.
-const haystacks = new WeakMap<Item, string>();
+/** What of an item the search reads: its value as stored, or as a kind shows it (secrets masked: ResourceDef.masksSearch). */
+export type SearchValue = (item: Item) => unknown;
 
-function haystack(item: Item): string {
-  let text = haystacks.get(item);
+const stored: SearchValue = (item) => item.value;
+
+// The search text of an item, built once per stored object (lists keep item identity between fetches)
+// and per way of reading it. A private key's text is never in it, wherever it is stored (an SSL whose
+// cert also holds its key): a search must not tell whether a key starts with what was typed.
+const haystacks = new WeakMap<SearchValue, WeakMap<Item, string>>();
+
+function haystack(item: Item, read: SearchValue): string {
+  let texts = haystacks.get(read);
+  if (!texts) {
+    texts = new WeakMap();
+    haystacks.set(read, texts);
+  }
+  let text = texts.get(item);
   if (text === undefined) {
-    text = withoutPrivateKeys(`${item.id} ${JSON.stringify(item.value)}`, ' ').toLowerCase();
-    haystacks.set(item, text);
+    text = withoutPrivateKeys(`${item.id} ${JSON.stringify(read(item))}`, ' ').toLowerCase();
+    texts.set(item, text);
   }
   return text;
 }
@@ -39,19 +49,19 @@ export function terms(query: string): string[] {
  * True when every space-separated term of `query` appears, ignoring case, somewhere in the item:
  * its id or any key or value of the stored object (as JSON text). An empty query matches all.
  */
-export function matchesQuery(item: Item, query: string): boolean {
+export function matchesQuery(item: Item, query: string, read: SearchValue = stored): boolean {
   const words = terms(query);
   if (words.length === 0) return true;
-  const text = haystack(item);
+  const text = haystack(item, read);
   return words.every((word) => text.includes(word));
 }
 
-/** The items that match the query and, for each filter with something selected, one of its values. */
-export function applyFilters(items: Item[], query: string, filters: FilterDef[], selection: FilterSelection, ctx: Ctx): Item[] {
+/** The items that match the query (read through `read`) and, for each filter with something selected, one of its values. */
+export function applyFilters(items: Item[], query: string, filters: FilterDef[], selection: FilterSelection, ctx: Ctx, read: SearchValue = stored): Item[] {
   const active = filters.filter((f) => (selection[f.id]?.length ?? 0) > 0);
   if (terms(query).length === 0 && active.length === 0) return items;
   return items.filter(
-    (item) => matchesQuery(item, query) && active.every((f) => f.matches(item, selection[f.id] ?? [], ctx)),
+    (item) => matchesQuery(item, query, read) && active.every((f) => f.matches(item, selection[f.id] ?? [], ctx)),
   );
 }
 

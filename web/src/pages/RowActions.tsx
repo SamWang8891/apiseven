@@ -87,8 +87,12 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
   const def = registry[kind];
   const name = def.nameOf(item);
   const refs = referencesTo(kind, item.id, ctx);
-  const title =
-    name === item.id ? t('delete.titleUnnamed', { kind: def.singular, id: item.id }) : t('delete.title', { kind: def.singular, name, id: item.id });
+  // A kind whose delete is a reset (plugin metadata) says so.
+  const title = def.resets
+    ? t('delete.reset.title', { kind: def.singular, name })
+    : name === item.id
+      ? t('delete.titleUnnamed', { kind: def.singular, id: item.id })
+      : t('delete.title', { kind: def.singular, name, id: item.id });
 
   async function confirm() {
     setBusy(true);
@@ -96,7 +100,7 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
     const result = await write((client) => client.remove(kind, item.id, parent), {
       // A consumer's credentials go with it.
       invalidate: [{ kind, parent }, ...(kind === 'consumers' ? [{ kind: 'credentials' as const }] : [])],
-      success: t('delete.done', { name }),
+      success: t(def.resets ? 'delete.reset.done' : 'delete.done', { name }),
       silent: true,
     });
     setBusy(false);
@@ -114,7 +118,7 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
       danger
       busy={busy}
       title={title}
-      confirmLabel={t('delete.confirm', { kind: def.singular })}
+      confirmLabel={def.resets ? t('action.reset') : t('delete.confirm', { kind: def.singular })}
       onConfirm={() => void confirm()}
       onCancel={() => {
         setError(undefined);
@@ -122,7 +126,7 @@ export function DeleteResourceDialog({ open, kind, item, parent, ctx, onClose, o
       }}
       body={
         <div className="list-delete">
-          <p>{t('delete.body')}</p>
+          <p>{def.resets ? t('delete.reset.body', { name }) : t('delete.body')}</p>
           {refs.length > 0 && (
             <div className="list-refs">
               <p className="list-refs__warning">

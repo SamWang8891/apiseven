@@ -6,7 +6,11 @@
 //   GET returns them in clear), read from the schema the kind's scope uses (a consumer's and a
 //   credential's auth plugins: their consumer schema); every value of a plugin the list doesn't
 //   know (removed, or a custom one not loaded) or while the list loads: which are secret is unknown;
-// - plugin metadata: its plugin's metadata `encrypt_fields` (azure-functions' master_apikey);
+// - plugin metadata: its plugin's metadata `encrypt_fields` (azure-functions' master_apikey); every
+//   value but the id while the plugin's metadata schema is not known (the list loads, the plugin is
+//   not loaded or has none);
+// - a secret manager entry: its manager's credentials (secrets/schemas.ts SECRET_FIELDS: a vault
+//   token, AWS keys, a GCP private key); every value but the id for a manager it doesn't know;
 // - any `client_key` (an upstream's or an inline upstream's tls.client_key, which a GET returns as
 //   APISIX's AES ciphertext) is never shown, not even on "Show secrets";
 // - an SSL's private keys, `key` and each of `keys`: a GET never returns them (admin/resource.lua
@@ -17,6 +21,7 @@ import type { Kind, Obj, PluginInfo } from '../api/types';
 import { t } from '../i18n';
 import { holdsPrivateKey, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
+import { managerOf, SECRET_FIELDS } from '../resources/secrets/schemas';
 
 /** Keys whose value no view shows (see the head comment). */
 const NEVER_SHOWN = new Set(['client_key']);
@@ -98,7 +103,7 @@ export function maskConfig(conf: unknown): { value: unknown; redacted: boolean }
   return { value, redacted };
 }
 
-/** A plugin metadata with every value but its id masked (its plugin's secret fields not known yet). */
+/** A plugin metadata (or a secret manager entry) with every value but its id masked: which are secret is not known. */
 function maskMetadata(value: Obj): { value: unknown; redacted: boolean } {
   const { id, ...rest } = value;
   const masked = maskConfig(rest);
@@ -139,10 +144,16 @@ export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginI
     secrets ||= plugins.redacted;
   }
   if (kind === 'plugin_metadata' && typeof value.id === 'string') {
-    const encrypt = all ? encryptOf(all[value.id]?.metadata_schema) : undefined;
-    const meta = encrypt ? redactSecrets(masked, '', encrypt) : maskMetadata(masked);
+    const schema = all?.[value.id]?.metadata_schema;
+    const meta = schema ? redactSecrets(masked, '', encryptOf(schema)) : maskMetadata(masked);
     masked = meta.value as Obj;
     secrets ||= meta.redacted;
+  }
+  if (kind === 'secrets') {
+    const manager = typeof value.id === 'string' ? managerOf(value.id) : undefined;
+    const own = manager ? redactSecrets(masked, '', SECRET_FIELDS[manager]) : maskMetadata(masked);
+    masked = own.value as Obj;
+    secrets ||= own.redacted;
   }
   return secrets || never.redacted ? { value: masked, revealed, redacted: true, revealable: secrets } : { value, revealed: value, redacted: false, revealable: false };
 }

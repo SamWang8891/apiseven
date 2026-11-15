@@ -139,6 +139,17 @@ describe('fieldErrors', () => {
   });
 });
 
+describe('fieldErrors with luaTables (as APISIX validates: an empty table is a list and an object)', () => {
+  const schema = { type: 'object', properties: { list: { type: 'array', minItems: 0 }, map: { type: 'object' }, either: { type: ['object', 'array'] }, text: { type: 'string' } } };
+  it('takes an empty {} as a list and an empty [] as an object; refuses a non-empty one of the other type, and an empty table for text', () => {
+    expect(fieldErrors(schema, { list: {}, map: [] }, { luaTables: true })).toEqual([]);
+    expect(fieldErrors(schema, { list: {}, map: [] })?.map((e) => e.path)).toEqual(['list', 'map']);
+    expect(fieldErrors(schema, { list: { a: 1 }, map: ['x'] }, { luaTables: true })?.map((e) => e.path)).toEqual(['list', 'map']);
+    expect(fieldErrors(schema, { text: {} }, { luaTables: true })?.map((e) => e.path)).toEqual(['text']);
+    expect(fieldErrors(schema, [], { luaTables: true })).toEqual([]);
+  });
+});
+
 describe('specificErrors', () => {
   it('leaves errors outside any combinator alone', () => {
     const schema: Obj = { type: 'object', properties: { a: { type: 'string' } } };

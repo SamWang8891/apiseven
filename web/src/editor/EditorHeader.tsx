@@ -37,7 +37,10 @@ export interface EditorHeaderProps {
   onEdit: () => void;
   onSave: () => void;
   onDiscard: () => void;
-  onDuplicate: () => void;
+  /** Undefined for a kind without Duplicate (ResourceDef.noDuplicate). */
+  onDuplicate?: () => void;
+  /** The ⋯ menu's Delete, named for what it does (Reset, for plugin metadata). */
+  deleteLabel?: string;
   onViewJson: () => void;
   onDelete: () => void;
 }
@@ -182,10 +185,10 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
           <Menu
             trigger={<Button variant="ghost" icon={<Ellipsis size={16} />} aria-label={t('editor.more')} />}
             items={[
-              { id: 'duplicate', label: t('action.duplicate'), icon: <Copy size={14} />, onSelect: p.onDuplicate },
+              ...(p.onDuplicate ? [{ id: 'duplicate', label: t('action.duplicate'), icon: <Copy size={14} />, onSelect: p.onDuplicate }] : []),
               { id: 'json', label: t('action.viewJson'), icon: <Braces size={14} />, onSelect: p.onViewJson },
               { separator: true },
-              { id: 'delete', label: t('action.delete'), icon: <Trash2 size={14} />, danger: true, disabled: p.readOnly || p.saving, onSelect: p.onDelete },
+              { id: 'delete', label: p.deleteLabel ?? t('action.delete'), icon: <Trash2 size={14} />, danger: true, disabled: p.readOnly || p.saving, onSelect: p.onDelete },
             ]}
           />
         )}

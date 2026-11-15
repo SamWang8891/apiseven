@@ -3,6 +3,7 @@ import { Link, useLocation, useParams } from 'react-router';
 import { t } from '../i18n';
 import { EditorPage } from '../pages/EditorPage';
 import { ListPage } from '../pages/ListPage';
+import { registry } from '../resources/registry';
 import { kindFromSegment, pathFor } from './paths';
 
 export function NotFound() {
@@ -22,9 +23,12 @@ export function NotFound() {
   );
 }
 
+/** A kind's list: its own page when it has one (ResourceDef.ListComponent), else the generic one. */
 export function ListRoute() {
   const kind = kindFromSegment(useParams().kind);
-  return kind ? <ListPage key={kind} kind={kind} /> : <NotFound />;
+  if (!kind) return <NotFound />;
+  const Own = registry[kind].ListComponent;
+  return Own ? <Own key={kind} kind={kind} /> : <ListPage key={kind} kind={kind} />;
 }
 
 export function EditorRoute({ creating }: { creating?: boolean }) {

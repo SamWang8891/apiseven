@@ -4,6 +4,7 @@
 import { useState, type FC } from 'react';
 import { useAllPlugins, useItem } from '../api/hooks';
 import type { Item, Kind, Obj, Parent } from '../api/types';
+import { registry } from '../resources/registry';
 import { Editor } from './Editor';
 import { startOf, type EditorStart } from './start';
 import { EditorSkeleton, LoadErrorState, NotFoundState } from './states';
@@ -40,11 +41,22 @@ function NewEditor({ kind, parent, duplicateFrom, initial }: { kind: Kind; paren
   return <Editor kind={kind} parent={parent} start={start} copyOf={duplicateFrom} />;
 }
 
-/** Loads the object, then edits it; the loading, not-found and failed states in between. */
+/**
+ * Loads the object, then edits it; the loading, not-found and failed states in between. For a kind
+ * whose pages exist whether or not anything is stored (ResourceDef.createWhenMissing), nothing stored
+ * opens a new object under that id; once it is created (the query then has it), the stored one.
+ */
 function StoredEditor({ kind, id, parent }: { kind: Kind; id: string; parent?: Parent }) {
   const query = useItem(kind, id, parent);
-  if (query.data) return <Editor kind={kind} id={id} parent={parent} item={query.data} />;
+  if (query.data) return <Editor key="stored" kind={kind} id={id} parent={parent} item={query.data} />;
+  if (query.error?.status === 404 && registry[kind].createWhenMissing) return <MissingEditor kind={kind} id={id} parent={parent} />;
   if (query.error?.status === 404) return <NotFoundState kind={kind} id={id} parent={parent} />;
   if (query.error) return <LoadErrorState kind={kind} id={id} error={query.error} retrying={query.isFetching} onRetry={() => void query.refetch()} />;
   return <EditorSkeleton kind={kind} />;
+}
+
+/** A new object under the page's id, from the kind's blank; built once. */
+function MissingEditor({ kind, id, parent }: { kind: Kind; id: string; parent?: Parent }) {
+  const [start] = useState(() => startOf(kind, undefined, undefined, null));
+  return <Editor key="missing" kind={kind} id={id} parent={parent} start={start} />;
 }

@@ -86,17 +86,40 @@ describe('registry', () => {
     expect(registry.routes.groupings).toEqual([hostGrouping]);
   });
 
-  it('gives every plugin-bearing kind the Plugins tab and the plugin checks, and the others (but the kinds with their own tabs) no tabs', () => {
-    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups', 'ssls'].includes(k))) {
+  it('gives every kind a form of its own: at least one tab besides JSON, and its checks', () => {
+    for (const kind of KINDS) {
       const def = registry[kind];
-      if (scopeOfKind[kind]) {
-        expect(def.tabs.map((tab) => [tab.id, tab.label, tab.fields]), kind).toEqual([['plugins', t('pl.tab'), ['plugins']]]);
-        expect(typeof def.validate, kind).toBe('function');
-      } else {
-        expect(def.tabs, kind).toEqual([]);
-        expect(typeof def.validate, kind).toBe('undefined');
-      }
+      expect(def.tabs.length, kind).toBeGreaterThan(0);
+      expect(def.tabs.map((tab) => tab.id), kind).not.toContain('json');
+      expect(typeof def.validate, kind).toBe('function');
+      // Every plugin-bearing kind has a Plugins tab that owns `plugins`.
+      if (scopeOfKind[kind]) expect(def.tabs.find((tab) => tab.id === 'plugins')?.fields, kind).toContain('plugins');
     }
+  });
+
+  it('gives the Task 15 kinds their tabs, and the frame extension points only where they belong', () => {
+    const tabs = (kind: Kind) => registry[kind].tabs.map((tab) => [tab.id, tab.fields, tab.restFields ?? false]);
+    expect(tabs('global_rules')).toEqual([['plugins', ['plugins'], false]]);
+    expect(tabs('plugin_configs')).toEqual([
+      ['general', ['name', 'desc', 'labels'], false],
+      ['plugins', ['plugins'], false],
+      ['used_by', [], false],
+    ]);
+    expect(tabs('plugin_metadata')).toEqual([['config', [], true]]);
+    expect(tabs('protos')).toEqual([
+      ['general', ['name', 'desc', 'labels'], false],
+      ['content', ['content'], false],
+    ]);
+    expect(tabs('secrets')).toEqual([['config', [], true]]);
+    expect(KINDS.filter((kind) => registry[kind].NewId)).toEqual(['plugin_metadata', 'secrets']);
+    expect(KINDS.filter((kind) => registry[kind].ListComponent)).toEqual(['plugin_metadata']);
+    expect(KINDS.filter((kind) => registry[kind].createWhenMissing)).toEqual(['plugin_metadata']);
+    expect(KINDS.filter((kind) => registry[kind].noDuplicate)).toEqual(['plugin_metadata']);
+    expect(KINDS.filter((kind) => registry[kind].resets)).toEqual(['plugin_metadata']);
+    expect(KINDS.filter((kind) => registry[kind].masksSearch).sort()).toEqual(['global_rules', 'plugin_configs', 'plugin_metadata', 'secrets']);
+    expect(registry.secrets.idProblem?.('vault/a')).toBeUndefined();
+    expect(registry.secrets.idProblem?.('vault/a/b')).toBe(t('sc.id.slash', { id: 'a/b' }));
+    expect(registry.plugin_metadata.idProblem?.('http-logger')).toBeUndefined();
   });
 
   it('gives routes their own tabs, checks and prefill', () => {
@@ -221,14 +244,13 @@ describe('registry', () => {
     expect(def.validate?.({}, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['nodes']);
   });
 
-  it('starts every kind without columns of its own with an id + name column pair', () => {
-    for (const kind of KINDS.filter((k) => !['upstreams', 'routes', 'services', 'stream_routes', 'consumers', 'credentials', 'consumer_groups', 'ssls'].includes(k))) {
-      const def = registry[kind];
-      expect(def.columns.map((c) => [c.id, c.header, c.defaultVisible])).toEqual([
-        ['id', t('column.id'), true],
-        ['name', t('column.name'), true],
-      ]);
-      expect(def.columns[0]?.mono).toBe(true);
+  it('gives every kind list columns of its own, with an `updated` column wherever APISIX stamps update_time (all but plugin metadata)', () => {
+    for (const kind of KINDS) {
+      const ids = registry[kind].columns.map((c) => c.id);
+      expect(ids, kind).not.toEqual(['id', 'name']);
+      // admin/resource.lua 315–322: plugin metadata is written without inject_conf_with_prev_conf, so without timestamps.
+      if (kind === 'plugin_metadata') expect(ids, kind).not.toContain('updated');
+      else expect(registry[kind].columns.find((c) => c.id === 'updated')?.defaultVisible, kind).toBe(true);
     }
   });
 
@@ -240,7 +262,7 @@ describe('registry', () => {
   });
 
   it('fills the columns from the item', () => {
-    const [idCol, nameCol] = registry.protos.columns;
+    const [nameCol, idCol] = registry.protos.columns;
     const item = itemOf('s1', { name: 'web' });
     expect(idCol?.accessor(item, ctxOf())).toBe('s1');
     expect(nameCol?.accessor(item, ctxOf())).toBe('web');
@@ -257,7 +279,7 @@ describe('registry strings', () => {
     en['kind.routes.plural'] = 'Rutas';
     en['column.name'] = 'Nombre';
     expect(registry.routes.plural).toBe('Rutas');
-    expect(registry.protos.columns[1]?.header).toBe('Nombre');
+    expect(registry.protos.columns.find((c) => c.id === 'name')?.header).toBe('Nombre');
     expect(registry.services.columns.find((c) => c.id === 'name')?.header).toBe('Nombre');
     expect(registry.routes.columns.find((c) => c.id === 'name')?.header).toBe('Nombre');
   });

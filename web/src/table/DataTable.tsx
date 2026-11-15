@@ -1,4 +1,5 @@
 import { useMemo, useState, type ReactNode } from 'react';
+import { usePluginsIfLoaded } from '../api/hooks';
 import type { ApiError } from '../api/errors';
 import type { Item, Kind, Parent } from '../api/types';
 import { t } from '../i18n';
@@ -7,7 +8,8 @@ import { Button, ConfirmDialog, type MenuItem } from '../ui';
 import { ColumnsMenu } from './ColumnsMenu';
 import { withStatusColumn } from './columns';
 import { FilterChip } from './FilterChip';
-import { applyFilters, terms, type FilterDef } from './filter';
+import { redactObject } from '../plugins/secrets';
+import { applyFilters, terms, type FilterDef, type SearchValue } from './filter';
 import { Pager, SelectionBar } from './Footer';
 import { Grid } from './Grid';
 import { buildPage } from './rows';
@@ -85,7 +87,11 @@ export function DataTable(props: DataTableProps) {
   const [state, patch, reset] = useTableState(props.stateKey ?? kind, allColumns);
   const [view, setView] = useView(!embedded);
 
-  const filtered = useMemo(() => applyFilters(items, view.query, filters, view.selection, ctx), [items, view, filters, ctx]);
+  // A kind that holds secrets is searched as its locked views show it (masked), with the plugin list
+  // when a page has loaded it (without it, every plugin value is masked: nothing is found by one).
+  const plugins = usePluginsIfLoaded();
+  const read = useMemo<SearchValue | undefined>(() => (def.masksSearch ? (item) => redactObject(item.value, kind, plugins).value : undefined), [def, kind, plugins]);
+  const filtered = useMemo(() => applyFilters(items, view.query, filters, view.selection, ctx, read), [items, view, filters, ctx, read]);
   const sorted = useMemo(() => sortItems(filtered, state.sort, allColumns, ctx), [filtered, state.sort, allColumns, ctx]);
 
   // The page is in memory, and back to the first one whenever what is listed, or how, changes.

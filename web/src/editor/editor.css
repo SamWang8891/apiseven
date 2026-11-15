@@ -273,6 +273,11 @@
   margin-bottom: var(--s4);
 }
 
+/* A kind's own id control (ResourceDef.NewId), which may be two fields side by side. */
+.ed-newid--own {
+  max-width: 600px;
+}
+
 /* --- JSON tab ------------------------------------------------------------------------------ */
 
 .ed-json {

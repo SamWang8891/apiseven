@@ -31,3 +31,22 @@ describe('startOf: a copy of an SSL', () => {
     expect(startOf('ssls', undefined, undefined, null).copy).toBeUndefined();
   });
 });
+
+describe('startOf: a copy of a secret manager entry', () => {
+  it('keeps the manager (the ID field starts on "vault/") and the credentials, and notes which were copied', () => {
+    const start = startOf('secrets', itemOf('vault/v1', { uri: 'http://v', prefix: 'p', token: 'hvs', create_time: 1, update_time: 2 }), undefined, null);
+    expect(start.draft).toEqual({ uri: 'http://v', prefix: 'p', token: 'hvs' });
+    expect(start.newId).toBe('vault/');
+    expect(start.copy).toEqual({ removed: [], shared: [], credentials: { from: 'vault/v1', fields: ['token'] } });
+    const aws = startOf('secrets', itemOf('aws/a1', { access_key_id: 'A', secret_access_key: 'S' }), undefined, null);
+    expect(aws.copy?.credentials).toEqual({ from: 'aws/a1', fields: ['access_key_id', 'secret_access_key'] });
+    const gcp = startOf('secrets', itemOf('gcp/g1', { auth_config: { private_key: 'K' } }), undefined, null);
+    expect(gcp.copy?.credentials?.fields).toEqual(['auth_config.private_key']);
+  });
+
+  it('an entry of a manager APISIX lacks: no manager to start on, nothing named as copied', () => {
+    const start = startOf('secrets', itemOf('nope/x', { a: 1 }), undefined, null);
+    expect(start.newId).toBe('');
+    expect(start.copy?.credentials).toEqual({ from: 'nope/x', fields: [] });
+  });
+});

@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { sharedSignInFields, withoutSignInSecrets } from '../plugins/auth';
 import { registry } from '../resources/registry';
 import { servedToClients } from '../resources/resolve';
+import { managerOf, SECRET_FIELDS } from '../resources/secrets/schemas';
 import { sniNames } from '../resources/ssls/usage';
 import { holdsPrivateKey, withoutPrivateKeys } from '../schema/secrets';
 import type { CopyNotes } from './CopyNotice';
@@ -15,6 +16,20 @@ export interface EditorStart {
   baseline: Obj;
   draft: Obj;
   copy?: CopyNotes;
+  /** The ID field's first text (a copy of a secret starts on its manager: "vault/"). */
+  newId?: string;
+}
+
+/**
+ * A copy of a secret manager entry: the same manager, a new id, and the same credentials, which point
+ * the copy at the same account (a normal thing to want); the notice above the tabs says they were
+ * copied, and which. They stay masked in every view, as the original's.
+ */
+function secretCopy(sourceId: string, source: Obj, copy: Obj): EditorStart {
+  const manager = managerOf(sourceId);
+  const fields = manager ? SECRET_FIELDS[manager].filter((path) => path.split('.').reduce<unknown>((at, key) => (isObj(at) ? at[key] : undefined), copy) !== undefined) : [];
+  const credentials = { from: sourceId, fields };
+  return { baseline: source, draft: copy, newId: manager ? `${manager}/` : '', copy: { removed: [], shared: [], credentials } };
 }
 
 /**
@@ -54,6 +69,7 @@ export function startOf(kind: Kind, duplicateFrom: Item | undefined, initial: Ob
   if (kind === 'consumers') delete copy.username;
   if (typeof copy.name === 'string' && copy.name !== '') copy.name = t('editor.copyName', { name: copy.name });
   if (kind === 'ssls') return sslCopy(source, copy);
+  if (kind === 'secrets') return secretCopy(duplicateFrom.id, source, copy);
   // A copy of a consumer or credential gets no sign-in secret: a key belongs to one of them only.
   if ((kind === 'consumers' || kind === 'credentials') && isObj(copy.plugins)) {
     const { plugins: kept, removed } = withoutSignInSecrets(copy.plugins, plugins);
