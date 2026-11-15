@@ -13,6 +13,7 @@ import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
 import { useLatest } from '../../schema-form/context';
+import { FILE_DROP_ZONE } from '../../shell/fileDrops';
 import { Button, CodeEditor, Field, useEditingState, useLocked } from '../../ui';
 import type { TabProps } from '../registry';
 import { decodedSize, formatBytes, fromBase64, isDescriptorSet, readProtoFile } from './content';
@@ -55,10 +56,11 @@ export function ContentTab({ draft, setDraft, issues, id }: TabProps) {
       .catch(() => setFileProblem(t('pr.file.readFailed')));
   }
 
-  /** A file dropped on the field: the same as an upload while editing; locked, nothing. */
+  /** A file dropped on the field: the same as an upload while editing (a drop zone the window's guard leaves alone); locked, nothing. */
   const dropZone = locked
     ? {}
     : {
+        ...FILE_DROP_ZONE,
         onDragOver: (e: DragEvent) => {
           if (e.dataTransfer.types.includes('Files')) e.preventDefault();
         },

@@ -14,6 +14,7 @@
 import { Upload } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
+import { FILE_DROP_ZONE } from '../../shell/fileDrops';
 import { Button, Textarea, toast, useEditingState, useLocked, usePending } from '../../ui';
 
 /** certificate_scheme / private_key_schema maxLength (schema_def.lua 407–415). */
@@ -139,6 +140,8 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
   return (
     <div
       className={over ? 'ssl-pem ssl-pem--over' : 'ssl-pem'}
+      // A drop zone of its own: the window's guard for dropped files leaves it alone (shell/fileDrops.ts).
+      {...FILE_DROP_ZONE}
       onDragOver={(e) => {
         e.preventDefault();
         setOver(true);
