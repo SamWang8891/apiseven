@@ -1,5 +1,6 @@
 import { t } from '../i18n';
 import { ApiError } from './errors';
+import { isPageOrigin } from './origin';
 import { isObj } from './sanitize';
 import { idSegments, isSegment } from './segments';
 import type { Connection, Item, Kind, Obj, Parent, PluginInfo } from './types';
@@ -43,6 +44,8 @@ export class AdminClient {
   readonly conn: Connection;
   private readonly fetchImpl: typeof fetch;
   private readonly adminUrl: string;
+  /** apiseven's own server (same origin as the page): its proxy wants X-Apiseven-Request and the Basic-auth credentials. */
+  private readonly viaServer: boolean;
   /** Every plugin with its schemas, per subsystem ('http' | 'stream'), fetched once per client. */
   private readonly plugins = new Map<string, Promise<Record<string, PluginInfo>>>();
   /** Resource schemas by name ('upstream', 'route', …), fetched once per client. */
@@ -53,6 +56,7 @@ export class AdminClient {
     // Look the global up per call: an unbound reference to window.fetch throws "Illegal invocation".
     this.fetchImpl = fetchImpl ?? ((input, init) => fetch(input, init));
     this.adminUrl = `${conn.baseUrl.replace(/\/+$/, '')}/apisix/admin`;
+    this.viaServer = isPageOrigin(conn.baseUrl);
   }
 
   /** Every object of a kind, fetched page by page (page_size 500). */
@@ -206,6 +210,7 @@ export class AdminClient {
     const search = query && Object.keys(query).length > 0 ? `?${new URLSearchParams(query).toString()}` : '';
     const headers: Record<string, string> = {};
     if (this.conn.key) headers['X-API-KEY'] = this.conn.key;
+    if (this.viaServer) headers['X-Apiseven-Request'] = '1';
     if (body !== undefined) headers['Content-Type'] = 'application/json';
 
     let res: Response;
@@ -214,8 +219,8 @@ export class AdminClient {
       res = await this.fetchImpl(`${this.adminUrl}/${path}${search}`, {
         method,
         headers,
-        // The Admin API answers Access-Control-Allow-Origin: *, which browsers only honour without credentials.
-        credentials: 'omit',
+        // See isPageOrigin: credentials only for apiseven's server, never for APISIX's `*` CORS.
+        credentials: this.viaServer ? 'same-origin' : 'omit',
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       text = await res.text();

@@ -3,8 +3,12 @@
 
 # Dependencies and build output
 node_modules/
-dist/
-server/dist/
+web/dist/
+# make build: the server binary
+/bin/
+# The web build copied in for go:embed; .keep lets the server compile without one.
+server/dist/*
+!server/dist/.keep
 *.tsbuildinfo
 
 # Playwright output

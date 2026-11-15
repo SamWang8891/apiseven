@@ -175,6 +175,30 @@ describe('requests', () => {
     expect(calls.filter((c) => c.body !== undefined).map((c) => c.method)).toEqual(['POST', 'PUT', 'PATCH']);
   });
 
+  it("through apiseven's server (same origin as the page): X-Apiseven-Request and same-origin credentials on every request", async () => {
+    // A relative base URL, and the absolute one config.json's adminBase resolves to.
+    for (const baseUrl of ['', location.origin]) {
+      const { api, calls } = setup(respondForAll, { ...CONN, baseUrl });
+      await exercise(api);
+      await api.ping().catch(() => undefined);
+      expect(calls).toHaveLength(7);
+      for (const call of calls) {
+        expect(call.headers.get('X-Apiseven-Request')).toBe('1');
+        expect(call.credentials).toBe('same-origin');
+      }
+    }
+  });
+
+  it('straight to APISIX (another origin): neither the header nor credentials', async () => {
+    const { api, calls } = setup(respondForAll);
+    await exercise(api);
+    expect(calls).toHaveLength(6);
+    for (const call of calls) {
+      expect(call.headers.has('X-Apiseven-Request')).toBe(false);
+      expect(call.credentials).toBe('omit');
+    }
+  });
+
   it('encodes ids and parents in the path', async () => {
     const { api, calls } = setup((call) =>
       call.url.includes('page=') ? json({ total: 0, list: [] }) : json({ key: '/apisix/x/y', value: { id: 'y' } }),

@@ -1,0 +1,23 @@
+# Keep the build context to what the Dockerfile copies: web/ and server/.
+**/node_modules
+.git
+.gitignore
+.dockerignore
+.superpowers
+docs
+dev
+bin
+dist
+web/dist
+web/dist-single
+server/dist
+**/test-results
+**/playwright-report
+**/blob-report
+**/*.tsbuildinfo
+**/.DS_Store
+Dockerfile
+compose.yaml
+Makefile
+README.md
+NOTICE

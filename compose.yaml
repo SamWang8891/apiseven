@@ -1,0 +1,63 @@
+# apiseven in Docker: the web app and its Admin API proxy, on http://127.0.0.1:8080.
+#   docker build -t apiseven:local .     (or: make docker)
+#   docker compose up -d
+# APISIX itself is not here: point APISIX_ADMIN_URL at yours. For a local APISIX to try it with,
+# see dev/compose.yaml.
+name: apiseven
+
+services:
+  apiseven:
+    image: apiseven:local
+    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    ports:
+      # Loopback only. Publish it wider only with BASIC_AUTH_* set, or behind your own auth.
+      - "127.0.0.1:8080:8080"
+    environment:
+      # Required: the Admin API as this container reaches it. APISIX's allow_admin must include
+      # this container's address (or its network's subnet), and admin_listen must not be 127.0.0.1.
+      APISIX_ADMIN_URL: http://apisix:9180
+
+      # The key, mode 1: the browser asks for an admin key and the server passes it through
+      # (leave APISIX_ADMIN_KEY unset). A viewer key gives a read-only UI.
+      # The key, mode 2: the server holds the key and the browser asks for nothing. Then anyone
+      # who can open the page has full Admin API access: also set BASIC_AUTH_* below.
+      # APISIX_ADMIN_KEY: change-me
+      # APISIX_ADMIN_KEY_FILE: /run/secrets/apisix_admin_key   # wins over APISIX_ADMIN_KEY
+
+      # Optional HTTP Basic auth in front of everything but /healthz.
+      # BASIC_AUTH_USER: admin
+      # BASIC_AUTH_PASSWORD: change-me
+      # BASIC_AUTH_PASSWORD_FILE: /run/secrets/apiseven_password   # wins over BASIC_AUTH_PASSWORD
+
+      # Host names apiseven may be opened under, besides IP addresses and localhost (comma-separated,
+      # no ports; * turns the check off). Needed behind a reverse proxy without Basic auth, e.g.
+      # served as https://apisix-admin.example.com:
+      # ALLOWED_HOSTS: apisix-admin.example.com
+
+      # LISTEN: ":8080"
+    # secrets:
+    #   - apisix_admin_key
+    #   - apiseven_password
+    healthcheck:
+      test: ["CMD", "/apiseven", "-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      start_period: 5s
+      retries: 3
+    # To reach an APISIX started by another compose project, join its network (see `docker network ls`):
+    # networks:
+    #   - apisix
+
+# secrets:
+#   apisix_admin_key:
+#     file: ./secrets/apisix_admin_key.txt
+#   apiseven_password:
+#     file: ./secrets/apiseven_password.txt
+
+# networks:
+#   apisix:
+#     name: apisix_default   # the APISIX project's network
+#     external: true
