@@ -47,3 +47,25 @@ it('hosts: ["a"] reads as one host and is written back as host after an edit', (
   const values = readPair(loaded, 'host', 'hosts');
   expect(writePair(loaded, 'host', 'hosts', values)).toEqual({ host: 'a' });
 });
+
+// Final wave E4: `uri` is a string of 1–4096 characters, `uris` items any string (schema_def.lua 642–650).
+describe('one value the single key would refuse stays in the plural key', () => {
+  const long = `/${'a'.repeat(4096)}`;
+
+  it('a URI longer than 4096 characters, left alone by a removal, stays in uris', () => {
+    const loaded = { name: 'r', uris: ['/ordinary', long] };
+    expect(writePair(loaded, 'uri', 'uris', [long])).toEqual({ name: 'r', uris: [long] });
+  });
+
+  it('an empty URI stays in uris; one that fits goes to uri as before', () => {
+    expect(writePair({ uris: ['/a', ''] }, 'uri', 'uris', [''])).toEqual({ uris: [''] });
+    expect(writePair({ uris: ['/a', long] }, 'uri', 'uris', ['/a'])).toEqual({ uri: '/a' });
+    expect(writePair({ uris: ['/a', long] }, 'uri', 'uris', [`/${'a'.repeat(4095)}`])).toEqual({ uri: `/${'a'.repeat(4095)}` });
+  });
+
+  it('host, remote_addr and sni share one definition with their plural items: one value goes to the single key', () => {
+    expect(writePair({ hosts: ['a', ''] }, 'host', 'hosts', [''])).toEqual({ host: '' });
+    expect(writePair({ remote_addrs: ['10.0.0.1', 'x'] }, 'remote_addr', 'remote_addrs', ['x'])).toEqual({ remote_addr: 'x' });
+    expect(writePair({ snis: ['a.test', 'b.test'] }, 'sni', 'snis', ['b.test'])).toEqual({ sni: 'b.test' });
+  });
+});

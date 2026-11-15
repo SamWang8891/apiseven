@@ -333,6 +333,20 @@ describe('what the Matching tab shows is what gets saved', () => {
     expect(writesOf(admin)[0]?.body).toMatchObject({ name: 'shop-2', vars: {} });
   });
 
+  // Final wave E4: removing a URI never turns a value only `uris` can hold into `uri`.
+  it('removing a URI leaves a remaining one longer than 4096 characters in uris: nothing flagged, saved as uris', async () => {
+    const long = `/${'a'.repeat(4096)}`;
+    const { user, admin } = await openRoute({ ...SHOP, uri: undefined, uris: ['/ordinary', long] }, '#/routes/shop?tab=matching');
+    await settled();
+    await user.keyboard('e');
+    await user.click(main().getByRole('button', { name: t('ui.tags.remove', { tag: '/ordinary' }) }));
+    expect(tab(t('rt.tab.matching'))).toHaveAccessibleName(t('rt.tab.matching'));
+    saveKeys();
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.uris).toEqual([long]);
+    expect(writesOf(admin)[0]?.body).not.toHaveProperty('uri');
+  });
+
   it('a URI typed without Enter is saved; one without a leading / blocks Save, naming URIs', async () => {
     const { user, admin } = await openRoute(SHOP, '#/routes/shop?tab=matching');
     await settled();
