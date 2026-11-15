@@ -22,15 +22,18 @@ export interface Ctx {
    * exist, so an id that matches nothing in it is not yet a dangling reference.
    */
   loaded: Record<CtxList, boolean>;
+  /** Whether each list's read failed with nothing loaded before: what it would tell can't be known. */
+  failed: Record<CtxList, boolean>;
 }
 
 /** One shared empty list, so a list that has not loaded keeps the same identity across renders. */
 const NONE: Item[] = [];
 
-function useItems(kind: Kind): [Item[], boolean] {
+function useItems(kind: Kind): [Item[], boolean, boolean] {
   // Data stays while a refetch fails; a list that never loaded (loading, error) is empty.
-  const data = useList(kind).data;
-  return [data ?? NONE, data !== undefined];
+  const query = useList(kind);
+  const { data } = query;
+  return [data ?? NONE, data !== undefined, data === undefined && query.isError];
 }
 
 /**
@@ -39,19 +42,19 @@ function useItems(kind: Kind): [Item[], boolean] {
  * refetch brings the same data), so it can sit in dependency arrays and memoised table rows.
  */
 export function useCtx(): Ctx {
-  const [routes, routesLoaded] = useItems('routes');
-  const [streamRoutes, streamRoutesListed] = useItems('stream_routes');
+  const [routes, routesLoaded, routesFailed] = useItems('routes');
+  const [streamRoutes, streamRoutesListed, streamRoutesFailed] = useItems('stream_routes');
   // An APISIX without stream mode answers 4xx for stream routes (AdminClient.supports): it has none,
   // so the empty list is the whole truth and counts as loaded. (The sidebar asks the same, cached.)
   const streamOff = useSupports('stream_routes') === false;
   const streamRoutesLoaded = streamRoutesListed || streamOff;
-  const [services, servicesLoaded] = useItems('services');
-  const [upstreams, upstreamsLoaded] = useItems('upstreams');
-  const [ssls, sslsLoaded] = useItems('ssls');
-  const [pluginConfigs, pluginConfigsLoaded] = useItems('plugin_configs');
-  const [consumerGroups, consumerGroupsLoaded] = useItems('consumer_groups');
-  const [consumers, consumersLoaded] = useItems('consumers');
-  const [globalRules, globalRulesLoaded] = useItems('global_rules');
+  const [services, servicesLoaded, servicesFailed] = useItems('services');
+  const [upstreams, upstreamsLoaded, upstreamsFailed] = useItems('upstreams');
+  const [ssls, sslsLoaded, sslsFailed] = useItems('ssls');
+  const [pluginConfigs, pluginConfigsLoaded, pluginConfigsFailed] = useItems('plugin_configs');
+  const [consumerGroups, consumerGroupsLoaded, consumerGroupsFailed] = useItems('consumer_groups');
+  const [consumers, consumersLoaded, consumersFailed] = useItems('consumers');
+  const [globalRules, globalRulesLoaded, globalRulesFailed] = useItems('global_rules');
   const loaded = useMemo(
     () => ({
       routes: routesLoaded,
@@ -66,8 +69,22 @@ export function useCtx(): Ctx {
     }),
     [routesLoaded, streamRoutesLoaded, servicesLoaded, upstreamsLoaded, sslsLoaded, pluginConfigsLoaded, consumerGroupsLoaded, consumersLoaded, globalRulesLoaded],
   );
+  const failed = useMemo(
+    () => ({
+      routes: routesFailed,
+      streamRoutes: streamRoutesFailed && !streamOff,
+      services: servicesFailed,
+      upstreams: upstreamsFailed,
+      ssls: sslsFailed,
+      pluginConfigs: pluginConfigsFailed,
+      consumerGroups: consumerGroupsFailed,
+      consumers: consumersFailed,
+      globalRules: globalRulesFailed,
+    }),
+    [routesFailed, streamRoutesFailed, streamOff, servicesFailed, upstreamsFailed, sslsFailed, pluginConfigsFailed, consumerGroupsFailed, consumersFailed, globalRulesFailed],
+  );
   return useMemo(
-    () => ({ routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, globalRules, loaded }),
-    [routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, globalRules, loaded],
+    () => ({ routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, globalRules, loaded, failed }),
+    [routes, streamRoutes, services, upstreams, ssls, pluginConfigs, consumerGroups, consumers, globalRules, loaded, failed],
   );
 }

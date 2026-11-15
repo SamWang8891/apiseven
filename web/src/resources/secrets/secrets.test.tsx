@@ -11,6 +11,7 @@ import { t } from '../../i18n';
 import { MASK } from '../../schema/secrets';
 import { resetApp } from '../../test/app';
 import { main, openEditor, writesOf } from '../../test/editor';
+import { json } from '../../test/fakeAdmin';
 import { editableControls, renderSchemaForm } from '../../test/schemaForm';
 import { getToasts } from '../../ui/toast';
 import { MANAGERS, SCHEMAS } from './schemas';
@@ -32,6 +33,7 @@ const GCP: Obj = { id: 'gcp/g1', auth_config: { client_email: 'svc@p.iam', priva
 const GCP_FILE: Obj = { id: 'gcp/g2', auth_file: '/etc/gcp.json' };
 
 const open = (hash: string, stored: Obj[] = [VAULT, AWS]) => openEditor(hash, { objects: { secrets: stored } });
+const later = (body: () => Response) => new Promise<Response>((resolve) => setTimeout(() => resolve(body()), 60));
 const create = (user: UserEvent) => user.click(main().getByRole('button', { name: t('editor.create') }));
 const save = (user: UserEvent) => user.click(main().getByRole('button', { name: t('editor.save') }));
 
@@ -219,6 +221,51 @@ describe('a stored secret', () => {
     expect(((writesOf(admin)[1]?.body as Obj).auth_config as Obj).private_key).toBe('NEW-KEY');
   });
 
+  it("the reviewer's steps: Replace, type, a save APISIX refuses (late) leaves the box as it was; Keep then means the stored key, and Save sends it", async () => {
+    let refuse = true;
+    const { user, admin } = await openEditor('#/secrets/gcp%2Fg1', {
+      objects: { secrets: [GCP] },
+      replies: { 'secrets/gcp/g1': (req) => (req.method === 'PUT' && refuse ? later(() => json(400, { error_msg: 'invalid configuration: refused' })) : undefined) },
+    });
+    await main().findByRole('heading', { level: 1, name: 'gcp/g1' });
+    await settled();
+    await main().findByText('svc@p.iam');
+    await user.keyboard('e');
+    await user.click(await main().findByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
+    await user.type(main().getByRole('textbox', { name: 'private_key (required)' }), 'NEW');
+    await save(user);
+    expect(await main().findByRole('alert')).toHaveTextContent('invalid configuration: refused');
+    // Exactly as before Save: the Replace box, open, with what was typed.
+    expect(main().getByRole('textbox', { name: 'private_key (required)' })).toHaveValue('NEW');
+    expect(main().queryByText(t('sf.secret.stored'))).not.toBeInTheDocument();
+    refuse = false;
+    await user.click(main().getByRole('button', { name: t('sf.secret.keep') }));
+    expect(main().getByText(t('sf.secret.stored'))).toBeInTheDocument();
+    await user.type(main().getByRole('textbox', { name: 'project_id (required)' }), '2');
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(2));
+    expect(((writesOf(admin)[1]?.body as Obj).auth_config as Obj).private_key).toBe(GCP_KEY);
+    await main().findByRole('button', { name: t('editor.edit') });
+    expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
+  });
+
+  it('a revealed key stays revealed through a save APISIX refuses (late), and its box says what emptying it saves', async () => {
+    const { user } = await openEditor('#/secrets/gcp%2Fg1', {
+      objects: { secrets: [GCP] },
+      replies: { 'secrets/gcp/g1': (req) => (req.method === 'PUT' ? later(() => json(400, { error_msg: 'invalid configuration: refused' })) : undefined) },
+    });
+    await main().findByRole('heading', { level: 1, name: 'gcp/g1' });
+    await settled();
+    await main().findByText('svc@p.iam');
+    await user.keyboard('e');
+    await user.click(await main().findByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
+    await user.type(main().getByRole('textbox', { name: 'project_id (required)' }), '2');
+    await save(user);
+    expect(await main().findByRole('alert')).toHaveTextContent('invalid configuration: refused');
+    expect(main().getByRole('textbox', { name: 'private_key (required)' })).toHaveValue(GCP_KEY);
+    expect(main().getByText(t('sf.secret.emptyNone'))).toBeInTheDocument();
+  });
+
   it('an AWS entry masks its access key id too, locked and in the JSON tab', async () => {
     const { user } = await open('#/secrets/aws%2Fa1');
     await main().findByRole('heading', { level: 1, name: 'aws/a1' });
@@ -244,6 +291,30 @@ describe('a stored secret', () => {
     const copied = { ...VAULT };
     delete copied.id;
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'secrets/vault/v2', body: copied }]));
+  });
+});
+
+describe('a new GCP secret', () => {
+  it('whose Create APISIX refuses (late) keeps the key that was typed in its box, which says an empty box saves nothing', async () => {
+    const { user, admin } = await openEditor('#/secrets/new', {
+      objects: { secrets: [] },
+      replies: { 'secrets/gcp/g9': (req) => (req.method === 'PUT' ? later(() => json(400, { error_msg: 'invalid configuration: refused' })) : undefined) },
+    });
+    await pickManager(user, t('sc.manager.gcp'));
+    await user.type(idBox(), 'g9');
+    await settled();
+    await main().findByRole('textbox', { name: 'auth_file' });
+    if (!main().queryByRole('textbox', { name: /^client_email/ })) await user.click(main().getByRole('button', { name: /^auth_config/ }));
+    await user.type(await main().findByRole('textbox', { name: /^client_email/ }), 'svc@p.iam');
+    await user.type(main().getByRole('textbox', { name: /^project_id/ }), 'p9');
+    const box = main().getByRole('textbox', { name: /^private_key/ });
+    await user.type(box, 'TYPEDKEY');
+    await create(user);
+    expect(await main().findByRole('alert')).toHaveTextContent('invalid configuration: refused');
+    expect(writesOf(admin)).toHaveLength(1);
+    expect(main().getByRole('textbox', { name: /^private_key/ })).toHaveValue('TYPEDKEY');
+    expect(main().queryByText(t('sf.secret.stored'))).not.toBeInTheDocument();
+    expect(main().getAllByText(t('sf.secret.emptyNone')).length).toBeGreaterThan(0);
   });
 });
 

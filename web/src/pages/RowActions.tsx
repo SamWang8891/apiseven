@@ -9,7 +9,7 @@ import type { Ctx } from '../resources/ctx';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
 import { copiedWithout, redactObject } from '../plugins/secrets';
 import { registry } from '../resources/registry';
-import { protoUsers } from '../resources/protos/columns';
+import { listNames, protoUse } from '../resources/protos/columns';
 import { referencesTo, type Reference } from '../resources/resolve';
 import { pathFor } from '../router/paths';
 import { Button, CodeEditor, ConfirmDialog, Dialog, toast, useReveal } from '../ui';
@@ -100,8 +100,17 @@ function References({ kind, id, ctx }: { kind: Kind; id: string; ctx: Ctx }) {
     const refs = referencesTo(kind, id, ctx);
     return refs.length > 0 ? <RefList refs={refs} warning={t('delete.inUse')} /> : null;
   }
-  const refs = protoUsers(id, ctx);
-  if (!refs) return <p className="list-refs__warning">{t('delete.checking')}</p>;
+  const use = protoUse(id, ctx);
+  if ('failed' in use) {
+    return (
+      <p className="list-refs__warning">
+        <TriangleAlert size={14} aria-hidden="true" />
+        <span>{t('delete.uncheckable', { lists: listNames(use.failed) })}</span>
+      </p>
+    );
+  }
+  if ('loading' in use) return <p className="list-refs__warning">{t('delete.checking')}</p>;
+  const { refs } = use;
   const refuses = refs.filter((ref) => PROTO_BLOCKERS.has(ref.kind));
   const breaks = refs.filter((ref) => !PROTO_BLOCKERS.has(ref.kind));
   return (

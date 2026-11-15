@@ -6,7 +6,7 @@ import { fakeAdmin, json, type FakeAdminOptions } from '../test/fakeAdmin';
 import { getToasts } from '../ui/toast';
 import { AdminClient } from './client';
 import { ApiError } from './errors';
-import { ClientProvider, useList } from './hooks';
+import { ClientProvider, queryKeys, scopedKey, useList } from './hooks';
 import { resetReadOnlyKeys, useReadOnlyKey, useWrite } from './write';
 
 afterEach(resetReadOnlyKeys);
@@ -102,5 +102,35 @@ describe('useWrite', () => {
     // Another connection is not affected.
     const other = setup({}, { ...CONN, id: 'c2' });
     expect(other.result.current.readOnly).toBe(false);
+  });
+});
+
+describe('useWrite forget', () => {
+  it("drops the deleted object's cached item; deleting a consumer drops its credentials' too (APISIX removes them with it, admin/resource.lua 373–378)", async () => {
+    const admin = fakeAdmin({ objects: { consumers: [{ username: 'jo' }] } });
+    const client = new AdminClient(CONN, admin.fetch);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>
+        <ClientProvider client={client}>{children}</ClientProvider>
+      </QueryClientProvider>
+    );
+    const { result } = renderHook(() => useWrite(), { wrapper });
+    const key = (k: unknown[]) => scopedKey(CONN.id, k);
+    const cached = (k: unknown[]) => queryClient.getQueryData(key(k));
+    queryClient.setQueryData(key(queryKeys.item('consumers', 'jo')), { id: 'jo', value: { username: 'jo' } });
+    queryClient.setQueryData(key(queryKeys.item('credentials', 'c1', { consumer: 'jo' })), { id: 'c1', value: {} });
+    queryClient.setQueryData(key(queryKeys.list('credentials', { consumer: 'jo' })), [{ id: 'c1', value: {} }]);
+    queryClient.setQueryData(key(queryKeys.item('credentials', 'c1', { consumer: 'bob' })), { id: 'c1', value: {} });
+    queryClient.setQueryData(key(queryKeys.item('routes', 'jo')), { id: 'jo', value: {} });
+    await act(async () => {
+      await result.current((c) => c.remove('consumers', 'jo'), { forget: [{ kind: 'consumers', id: 'jo' }] });
+    });
+    expect(cached(queryKeys.item('consumers', 'jo'))).toBeUndefined();
+    expect(cached(queryKeys.item('credentials', 'c1', { consumer: 'jo' }))).toBeUndefined();
+    expect(cached(queryKeys.list('credentials', { consumer: 'jo' }))).toBeUndefined();
+    // Another consumer's credential and another kind's object of the same id stay.
+    expect(cached(queryKeys.item('credentials', 'c1', { consumer: 'bob' }))).toBeDefined();
+    expect(cached(queryKeys.item('routes', 'jo'))).toBeDefined();
   });
 });

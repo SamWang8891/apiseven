@@ -46,7 +46,8 @@ export interface WriteOptions {
   /**
    * Objects the write deleted: their cached item is dropped (before the reloads), so a page that opens
    * one again asks APISIX and says "not found" (or, for plugin metadata, opens the create form) rather
-   * than showing what was cached of it.
+   * than showing what was cached of it. A consumer's credentials go with it (APISIX deletes them with
+   * the consumer, admin/resource.lua 373–378): its credentials' cached items and list are dropped too.
    */
   forget?: { kind: Kind; id: string; parent?: Parent }[];
   /** Toasted after a success. */
@@ -83,7 +84,11 @@ export function useWrite(): <T>(action: (client: AdminClient) => Promise<T>, opt
         if (!opts.silent) toast.error(error.errorMsg ?? error.message);
         return { ok: false, error };
       }
-      for (const { kind, id, parent } of opts.forget ?? []) queryClient.removeQueries({ queryKey: scopedKey(client.conn.id, queryKeys.item(kind, id, parent)), exact: true });
+      for (const { kind, id, parent } of opts.forget ?? []) {
+        queryClient.removeQueries({ queryKey: scopedKey(client.conn.id, queryKeys.item(kind, id, parent)), exact: true });
+        // [credentials, <username>] is the prefix of that consumer's credential items and list (queryKeys).
+        if (kind === 'consumers') queryClient.removeQueries({ queryKey: scopedKey(client.conn.id, ['credentials', id]) });
+      }
       await Promise.all((opts.invalidate ?? []).map(({ kind, parent }) => invalidate(kind, parent)));
       if (opts.success) toast.success(opts.success);
       return { ok: true, value };

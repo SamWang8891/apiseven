@@ -1,23 +1,47 @@
 // The protos list columns: what a proto is, how big its definition is, and what uses it.
-import type { Item } from '../../api/types';
+import type { Item, Kind } from '../../api/types';
 import { t } from '../../i18n';
 import { IdCell, LabelChips, NameDescCell, UsedByCell } from '../cells';
-import type { Ctx } from '../ctx';
+import type { Ctx, CtxList } from '../ctx';
 import type { ColumnDef } from '../registry';
-import { labelPairs, nameOfValue, referencesTo } from '../resolve';
+import { labelPairs, nameOfValue, referencesTo, type Reference } from '../resolve';
 import { timeColumns } from '../timeColumns';
 import { contentBytes, formatBytes, isDescriptorSet } from './content';
 
+/** The lists a proto's users come from, and their kinds (for the names said when one failed). */
+const USER_LISTS: [CtxList, Kind][] = [
+  ['routes', 'routes'],
+  ['services', 'services'],
+  ['pluginConfigs', 'plugin_configs'],
+  ['consumers', 'consumers'],
+  ['consumerGroups', 'consumer_groups'],
+  ['globalRules', 'global_rules'],
+];
+
 /**
- * The objects whose grpc-transcode names the proto (referencesTo): routes and services, which
- * APISIX's delete check looks at (admin/proto.lua 61–101), and plugin configs, consumers, consumer
- * groups and global rules, which it does not, though they use it as well (deleting the proto breaks
- * them). Undefined until every one of those lists has loaded, so "unused" means none of them names it.
+ * What uses the proto: the objects whose grpc-transcode names it (referencesTo), once every list they
+ * come from has loaded: routes and services, which APISIX's delete check looks at (admin/proto.lua
+ * 61–101), and plugin configs, consumers, consumer groups and global rules, which it does not, though
+ * they use it as well (deleting the proto breaks them). So "unused" means none of them names it.
+ * `loading` until then; `failed` (with the lists' kinds) when one of them could not be read.
  */
-export function protoUsers(id: string, ctx: Ctx) {
-  const { routes, services, pluginConfigs, consumers, consumerGroups, globalRules } = ctx.loaded;
-  return routes && services && pluginConfigs && consumers && consumerGroups && globalRules ? referencesTo('protos', id, ctx) : undefined;
+export type ProtoUse = { refs: Reference[] } | { loading: true } | { failed: Kind[] };
+
+export function protoUse(id: string, ctx: Ctx): ProtoUse {
+  const failed = USER_LISTS.filter(([list]) => ctx.failed[list]).map(([, kind]) => kind);
+  if (failed.length > 0) return { failed };
+  if (USER_LISTS.every(([list]) => ctx.loaded[list])) return { refs: referencesTo('protos', id, ctx) };
+  return { loading: true };
 }
+
+/** The users once known; undefined while loading or when a list failed. */
+export function protoUsers(id: string, ctx: Ctx): Reference[] | undefined {
+  const use = protoUse(id, ctx);
+  return 'refs' in use ? use.refs : undefined;
+}
+
+/** The kinds' names, for "{lists} didn't load". */
+export const listNames = (kinds: Kind[]): string => kinds.map((kind) => t(`kind.${kind}.plural`)).join(', ');
 
 /** The content's size in bytes (UTF-8, as stored); undefined without content. */
 export const protoSize = (item: Item): number | undefined => (typeof item.value.content === 'string' ? contentBytes(item.value.content) : undefined);
@@ -69,8 +93,10 @@ export const protoColumns: ColumnDef[] = [
     },
     accessor: (item, ctx) => protoUsers(item.id, ctx)?.length,
     cell: (item, ctx) => {
-      const users = protoUsers(item.id, ctx);
-      return users ? <UsedByCell refs={users} /> : <span className="cell-muted">{t('picker.loading')}</span>;
+      const use = protoUse(item.id, ctx);
+      if ('refs' in use) return <UsedByCell refs={use.refs} />;
+      if ('failed' in use) return <span className="cell-muted">{t('pr.usedBy.failed', { lists: listNames(use.failed) })}</span>;
+      return <span className="cell-muted">{t('picker.loading')}</span>;
     },
     defaultVisible: true,
     width: 88,

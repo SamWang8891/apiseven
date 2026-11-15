@@ -30,7 +30,7 @@ describe('the consumers list', () => {
     expect(within(screen.getByRole('columnheader', { name: t('column.username') })).getByRole('button')).toBeInTheDocument();
   });
 
-  it("deleting a consumer also invalidates its credentials' query", async () => {
+  it("deleting a consumer also drops (or reloads) its credentials' query", async () => {
     const user = userEvent.setup();
     const { queryClient, admin } = renderWithProviders(<ListPage kind="consumers" />, { path: '/consumers', objects, credentials });
     const alice = (await screen.findByRole('link', { name: 'alice' })).closest('tr') as HTMLElement;
@@ -46,8 +46,10 @@ describe('the consumers list', () => {
     const paths = admin.requests.map((r) => `${r.method} ${r.url.pathname.replace(/^.*\/apisix\/admin\//, '')}`);
     const deleted = paths.indexOf('DELETE consumers/alice');
     expect(deleted).toBeGreaterThan(-1);
-    // Invalidated: fetched again while its row was still shown, or marked stale once it was gone.
+    // Never left as it was: dropped from the cache with the consumer (WriteOptions.forget, since fix
+    // round 2 of Task 15), fetched again while its row was still shown, or marked stale.
     const refetched = paths.slice(deleted + 1).includes('GET consumers/alice/credentials');
-    expect(refetched || queryClient.getQueryState(key)?.isInvalidated === true).toBe(true);
+    const state = queryClient.getQueryState(key);
+    expect(state === undefined || refetched || state.isInvalidated).toBe(true);
   });
 });

@@ -13,6 +13,7 @@ import { ctxOf, itemOf } from '../../test/ctx';
 import { main, openEditor, writesOf } from '../../test/editor';
 import { json } from '../../test/fakeAdmin';
 import { editableControls } from '../../test/schemaForm';
+import { renderWithProviders } from '../../test/providers';
 import { protoColumns } from './columns';
 import { decodedSize, formatBytes, isDescriptorSet, toBase64 } from './content';
 
@@ -203,6 +204,21 @@ describe('a proto', () => {
     expect(within(breaks).getByRole('link', { name: /all/ })).toHaveAttribute('href', '#/global_rules/all');
   });
 
+  it("Delete, when a list it needs failed to load: says the uses could not be checked, and which list; Delete still works", async () => {
+    const { user, admin } = await openEditor('#/protos/hello', {
+      objects: { protos: [HELLO], routes: [], services: [] },
+      replies: { global_rules: () => json(500, { error_msg: 'etcd down' }) },
+    });
+    await main().findByRole('heading', { level: 1, name: 'hello' });
+    await user.click(main().getByRole('button', { name: t('editor.more') }));
+    await user.click(await screen.findByRole('menuitem', { name: t('action.delete') }));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(await within(dialog).findByText(t('delete.uncheckable', { lists: t('kind.global_rules.plural') }))).toBeInTheDocument();
+    expect(within(dialog).queryByText(t('delete.checking'))).not.toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: t('delete.confirm', { kind: t('kind.protos.singular') }) }));
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'DELETE', path: 'protos/hello', body: undefined }]));
+  });
+
   it("Delete lists what uses it, and shows APISIX's refusal verbatim", async () => {
     const refusal = 'can not delete this proto, route [g1] is still using it now';
     const route: Obj = { id: 'g1', name: 'greeter', uri: '/g', plugins: { 'grpc-transcode': { proto_id: 'hello', service: 'hello.Greeter', method: 'SayHello' } } };
@@ -249,6 +265,13 @@ describe('the protos list columns', () => {
     expect(col('used_by').accessor(BIG, ctx)).toBe(1);
     expect(col('used_by').accessor(WIDE, ctx)).toBe(0);
     expect(col('used_by').accessor(SMALL, ctxOf({ ...ctx, loaded: { services: false } }))).toBeUndefined();
+  });
+
+  it('used by: a list that failed to load says so (which one), never "loading" for ever, and has no sort value', () => {
+    const ctx = ctxOf({ loaded: { globalRules: false, consumers: false }, failed: { globalRules: true } });
+    expect(col('used_by').accessor(SMALL, ctx)).toBeUndefined();
+    renderWithProviders(<div data-testid="cell">{col('used_by').cell?.(SMALL, ctx)}</div>, { counts: {} });
+    expect(screen.getByTestId('cell')).toHaveTextContent(t('pr.usedBy.failed', { lists: t('kind.global_rules.plural') }));
   });
 
   it('used by: a global rule whose grpc-transcode names it counts (APISIX deletes it anyway, and the rule breaks); nothing until the global rules have loaded', () => {

@@ -1,4 +1,4 @@
-import { Input, Select, Textarea, useLocked } from '../../ui';
+import { Input, Select, Textarea } from '../../ui';
 import type { StringNode } from '../analyze';
 import { useFieldError, useFieldId } from '../context';
 import { FieldLabel } from './chrome';
@@ -12,7 +12,6 @@ const SEARCHABLE = 8;
 
 /** Text: a select for an enum, a textarea for PEM/Lua/long text, a masked input for a secret. Empty text deletes the key. */
 export function StringField({ node, value, name, path, onChange, prop, required, ariaLabel }: FieldProps<StringNode>) {
-  const locked = useLocked();
   const id = useFieldId(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
@@ -34,12 +33,12 @@ export function StringField({ node, value, name, path, onChange, prop, required,
       />
     );
   }
-  // A multi-line secret (a PEM private key) is read masked; while editing, a stored one is not put on
-  // the page until revealed or replaced (SecretText).
-  if (node.multiline && node.secret && !locked) {
+  // A multi-line secret (a PEM private key): one component locked or not, so a save in flight keeps
+  // what it shows; a stored one is not put on the page until revealed or replaced (SecretText).
+  if (node.multiline && node.secret) {
     return <SecretText common={common} name={prop?.key ?? ariaLabel ?? ''} value={text} mono={node.mono} rows={node.mono ? 6 : 3} onText={emit} />;
   }
-  if (node.multiline && !(locked && node.secret)) {
+  if (node.multiline) {
     return <Textarea {...common} mono={node.mono} rows={node.mono ? 6 : 3} value={text} onChange={emit} />;
   }
   return <Input {...common} mono={node.mono} secret={node.secret} value={text} onChange={(e) => emit(e.target.value)} />;

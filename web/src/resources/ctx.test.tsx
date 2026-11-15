@@ -41,7 +41,7 @@ const COUNTS = {
 };
 
 function sizes(ctx: Ctx): Record<string, number> {
-  const lists = Object.entries(ctx).filter((entry): entry is [string, Item[]] => entry[0] !== 'loaded');
+  const lists = Object.entries(ctx).filter((entry): entry is [string, Item[]] => entry[0] !== 'loaded' && entry[0] !== 'failed');
   return Object.fromEntries(lists.map(([k, v]) => [k, v.length]));
 }
 
