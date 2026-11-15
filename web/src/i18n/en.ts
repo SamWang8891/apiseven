@@ -814,6 +814,7 @@ export const en: Record<string, string> = {
   'up.nodes.emptyNote': 'No nodes yet. APISIX stores an upstream without nodes, but requests to it fail until a node is added.',
   'up.nodes.mapNote': 'Stored as a map of address to weight. A priority other than 0, or two nodes kept at one address, stores the list as an array instead.',
   'up.nodes.dupOf': 'Same address as node {n}. Change it, or keep both.',
+  'up.nodes.hostHasPort': 'Holds a port ({port}): APISIX would look the whole text up as a host name. Leave the field to move the port to Port.',
   'up.nodes.keepBoth': 'Keep both',
   'up.nodes.keepBothN': 'Keep both nodes at this address (node {n})',
   'up.nodes.keepBothNew': 'Keep both nodes at this address (new node)',

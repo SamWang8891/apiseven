@@ -133,6 +133,55 @@ describe('the node list', () => {
   });
 });
 
+// Task 16b item 45: an address typed by hand is read as a pasted one is, once the field is left.
+describe('host:port typed by hand', () => {
+  it('into "Add a node" (an array): split into host and port on leaving the field', async () => {
+    const h = renderUpstream({ type: 'roundrobin', nodes: [] }, { section: 'nodes' });
+    await h.user.type(newHost(), '10.0.0.5:8080');
+    await h.user.tab();
+    expect(h.value().nodes).toEqual([{ host: '10.0.0.5', port: 8080, weight: 1 }]);
+    expect(host(1)).toHaveValue('10.0.0.5');
+    expect(port(1)).toHaveValue('8080');
+  });
+
+  it('into a host cell (an array): split, its port replaced, the rest of the node kept; a bracketed IPv6 address stays whole', async () => {
+    const h = renderUpstream({ nodes: [{ host: 'a', port: 80, weight: 3, metadata: { m: 1 } }] }, { section: 'nodes' });
+    await h.user.clear(host(1));
+    await h.user.type(host(1), '[[::1]:9000');
+    await h.user.tab();
+    expect(h.value().nodes).toEqual([{ host: '[::1]', port: 9000, weight: 3, metadata: { m: 1 } }]);
+    await h.user.clear(host(1));
+    await h.user.type(host(1), '[[::1]');
+    await h.user.tab();
+    expect(h.value().nodes).toEqual([{ host: '[::1]', port: 9000, weight: 3, metadata: { m: 1 } }]);
+    await h.user.clear(host(1));
+    await h.user.type(host(1), 'fe80::1');
+    await h.user.tab();
+    expect(h.value().nodes).toEqual([{ host: 'fe80::1', port: 9000, weight: 3, metadata: { m: 1 } }]);
+  });
+
+  it('into a host cell of a map: the entry gets that address, its weight kept, never a bracketed host', async () => {
+    const h = renderUpstream({ type: 'roundrobin', nodes: { 'a:80': 2, 'b:80': 1 } }, { section: 'nodes' });
+    await h.user.clear(host(1));
+    await h.user.type(host(1), '10.0.0.5:8080');
+    await h.user.tab();
+    expect(h.value().nodes).toEqual({ '10.0.0.5:8080': 2, 'b:80': 1 });
+    expect(host(1)).toHaveValue('10.0.0.5');
+    expect(port(1)).toHaveValue('8080');
+    await h.user.type(newHost(), '10.0.0.6:9090');
+    expect(h.held()).toEqual([t('up.pending.unsaved', { node: t('up.pending.node', { n: 3 }), addr: '10.0.0.6:9090' })]);
+    await h.user.tab();
+    expect(h.value().nodes).toEqual({ '10.0.0.5:8080': 2, 'b:80': 1, '10.0.0.6:9090': 1 });
+    expect(h.held()).toEqual([]);
+  });
+
+  it('a stored array node whose host holds a port is flagged on its host', () => {
+    renderUpstream({ nodes: [{ host: '10.0.0.5:8080', port: 80, weight: 1 }, { host: 'fe80::1', weight: 1 }] }, { section: 'nodes' });
+    expect(host(1)).toHaveAccessibleDescription(t('up.nodes.hostHasPort', { port: 8080 }));
+    expect(host(2)).not.toHaveAccessibleDescription(t('up.nodes.hostHasPort', { port: 8080 }));
+  });
+});
+
 describe('map-shaped nodes stay a map through edits', () => {
   const MAP = { type: 'roundrobin', nodes: { '10.0.0.1:80': 1, '10.0.0.2:80': 2 } };
 

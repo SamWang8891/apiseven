@@ -89,6 +89,20 @@ describe('the upstream editor', () => {
     expect(schemaErrors(upstreamSchema(), post?.body)).toEqual([]);
   });
 
+  // Task 16b item 42: a choice the draft can't express yet (nothing typed) is view state the page keeps.
+  it('a target or client-certificate choice made before typing anything survives a tab switch', async () => {
+    const { user } = await openEditor('#/upstreams/~new', { objects: { upstreams: [] } });
+    await main().findByRole('textbox', { name: t('up.general.name') });
+    await user.click(tab(t('up.section.nodes')));
+    await user.click(await main().findByRole('radio', { name: t('up.target.discovery') }));
+    await user.click(tab(t('up.section.tls')));
+    await user.click(await main().findByRole('radio', { name: t('up.tls.mode.inline') }));
+    await user.click(tab(t('up.section.nodes')));
+    expect(await main().findByRole('radio', { name: t('up.target.discovery') })).toBeChecked();
+    await user.click(tab(t('up.section.tls')));
+    expect(await main().findByRole('radio', { name: t('up.tls.mode.inline') })).toBeChecked();
+  });
+
   it('an upstream without nodes saves, as APISIX stores it; the Nodes tab says requests fail until one is added (Ruling 1)', async () => {
     const { user, admin } = await openEditor('#/upstreams/new?tab=nodes', { objects: { upstreams: [] } });
     expect(await main().findByText(t('up.nodes.emptyNote'))).toBeInTheDocument();

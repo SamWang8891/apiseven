@@ -15,7 +15,7 @@ import { scopeOfKind } from '../plugins/scope';
 import { registry, useCtx, type TabProps } from '../resources/registry';
 import { findInCtx } from '../resources/resolve';
 import { newPathFor, pathFor } from '../router/paths';
-import { heldField, LockProvider, PendingProvider, Tabs, toast } from '../ui';
+import { heldField, LockProvider, PendingProvider, Tabs, toast, ViewMemory } from '../ui';
 import { backOf, ownerPath } from './back';
 import { EditorDialogs } from './EditorDialogs';
 import { useDraft } from './draft';
@@ -383,9 +383,12 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
           />
         )}
         <LockProvider locked={!editable} session={session} busy={saving}>
-          <PendingProvider key={epoch} onChange={tabState.onPending}>
-            <Tabs tabs={tabs} active={active} onChange={tabState.chooseTab} />
-          </PendingProvider>
+          {/* The tabs' view state, kept for the page: a tab switch or Discard remounts them. */}
+          <ViewMemory>
+            <PendingProvider key={epoch} onChange={tabState.onPending}>
+              <Tabs tabs={tabs} active={active} onChange={tabState.chooseTab} />
+            </PendingProvider>
+          </ViewMemory>
         </LockProvider>
       </div>
 

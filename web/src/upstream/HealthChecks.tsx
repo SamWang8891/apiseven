@@ -24,6 +24,17 @@ function without(o: Obj, ...keys: string[]): Obj {
 }
 const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS', 'CONNECT', 'TRACE', 'PURGE'];
 
+/**
+ * What only an HTTP(S) check reads, by block: hidden for tcp, and removed from the block when its
+ * type becomes tcp (as `https_verify_certificate` when it becomes anything but https). APISIX hands
+ * `checks` to lua-resty-healthcheck as it is (healthcheck_manager.lua 100–103), whose tcp checks
+ * read none of these; none is required, and each has a default (schema_def.lua 150–298).
+ */
+const HTTP_ONLY: Record<'active' | 'passive', string[][]> = {
+  active: [['http_method'], ['http_path'], ['http_req_body'], ['req_headers'], ['https_verify_certificate'], ['healthy', 'http_statuses'], ['unhealthy', 'http_failures'], ['unhealthy', 'http_statuses']],
+  passive: [['healthy', 'http_statuses'], ['unhealthy', 'http_failures'], ['unhealthy', 'http_statuses']],
+};
+
 /** The probe's own keys in `checks.active` (the rest of the block is `healthy` / `unhealthy`). */
 const PROBE_KEYS = new Set(['type', 'http_method', 'http_path', 'host', 'port', 'timeout', 'concurrency', 'https_verify_certificate', 'http_req_body', 'req_headers']);
 
@@ -53,6 +64,12 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
     return {
       get: (...path: string[]) => getPath(conf, path),
       set: (path: string[], v: unknown) => onChange(setPath(value, ['checks'], { ...checks, [which]: setPath(conf, path, v) })),
+      /** The check's type, and what it no longer reads out of the block (HTTP_ONLY). */
+      setType: (type: string | undefined) => {
+        const hidden = type === 'tcp' ? HTTP_ONLY[which] : type !== 'https' && which === 'active' ? [['https_verify_certificate']] : [];
+        const next = hidden.reduce((at, path) => setPath(at, path, undefined), setPath(conf, ['type'], type));
+        onChange(setPath(value, ['checks'], { ...checks, [which]: next }));
+      },
       issue: (...path: string[]) => issueAt(issues, ['checks', which, ...path].join('.')),
     };
   };
@@ -86,7 +103,7 @@ export function HealthChecks({ value, onChange, issues }: SectionProps) {
       defaultLabel={byDefault('http')}
       choices={PROTOCOLS.map((p) => ({ value: p, label: p }))}
       error={b.issue('type')}
-      onChange={(v) => b.set(['type'], v)}
+      onChange={(v) => b.setType(v)}
     />
   );
 

@@ -19,12 +19,14 @@ import {
   addNodes,
   addrOf,
   canDuplicate,
+  committed,
   duplicateNode,
   isNodeList,
   keepBoth,
   NEW_WEIGHT,
   parseNodeList,
   pasteNodes,
+  portInHost,
   removeNode,
   rowsOf,
   setMapAddress,
@@ -75,7 +77,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   const otherOf = (i: number): number => {
     const h = held[idOf(i)];
     if (!h) return -1;
-    const key = addrOf(h.host, h.port);
+    const c = committed(h);
+    const key = addrOf(c.host, c.port);
     return rows.findIndex((row, j) => j !== i && (row.addr ?? addrOf(row.host ?? '', row.port)) === key);
   };
   // What the fields show but the upstream doesn't have yet: Save waits for it (usePending).
@@ -89,7 +92,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
       : heldRows
           .map(({ i, h }) => {
             const node = i === fresh ? t('up.pending.newNode') : t('up.pending.node', { n: i + 1 });
-            const addr = addrOf(h.host, h.port);
+            const c = committed(h);
+            const addr = addrOf(c.host, c.port);
             return otherOf(i) >= 0 ? t('up.pending.duplicate', { node, addr }) : t('up.pending.unsaved', { node, addr });
           })
           .join('; '),
@@ -201,6 +205,14 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     write(next);
   }
 
+  /** Leaving an array row's host typed with its port (`10.0.0.5:8080`): host and port apart, as a paste reads it. */
+  function splitHost(i: number) {
+    const host = rows[i]?.host;
+    const port = portInHost(host);
+    if (host === undefined || port === undefined) return;
+    write(setNodeField(setNodeField(value, i, 'host', committed({ host, port: undefined }).host), i, 'port', port));
+  }
+
   /** Text pasted into a host field that reads as addresses becomes nodes (at `index`, or added). */
   const paste = (index: number | undefined) => (e: ClipboardEvent<HTMLInputElement>) => {
     const text = e.clipboardData.getData('text');
@@ -219,6 +231,15 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     }
     if (result.up !== value) onChange(result.up);
     setSkipped(result.skipped);
+  };
+
+  /**
+   * An array node whose host holds a port: APISIX takes it (the host pattern allows ':' for IPv6)
+   * but looks the whole text up as a name, so it is flagged, not refused (schema_def.lua 57 host_def_pat, 346).
+   */
+  const hostPort = (i: number) => {
+    const port = map ? undefined : portInHost(rows[i]?.host);
+    return port === undefined ? undefined : t('up.nodes.hostHasPort', { port });
   };
 
   /** A held duplicate's message on the host field, and the button that keeps both. */
@@ -249,9 +270,9 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
           <HostInput
             aria-label={t('up.nodes.hostN', { n })}
             value={map ? address.host : (row.host ?? '')}
-            error={duplicateOf(i) ?? issue(i, 'host')}
+            error={duplicateOf(i) ?? issue(i, 'host') ?? hostPort(i)}
             onChange={(e) => (map ? editAddress(i, { host: e.target.value, port: address.port }) : onChange(setNodeField(value, i, 'host', e.target.value)))}
-            onBlur={() => map && settle(i)}
+            onBlur={() => (map ? settle(i) : splitHost(i))}
             onPaste={paste(i)}
           />
           {keepButton(i)}

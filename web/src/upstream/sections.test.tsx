@@ -1,6 +1,7 @@
 // The balancing, health, connection and TLS sections, each rendered as its standalone tab renders it.
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
+import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { ctxOf, itemOf } from '../test/ctx';
 import { renderUpstream } from '../test/upstream';
@@ -41,6 +42,35 @@ describe('load balancing', () => {
 });
 
 describe('health checks', () => {
+  // Task 16b item 45: what a type hides is not kept behind it (schema_def.lua 150-234: none is required, each has a default).
+  it('switching a check to tcp removes what only http(s) reads; to http, the https certificate check', async () => {
+    const h = renderUpstream(
+      {
+        checks: {
+          active: {
+            type: 'https', http_path: '/h', http_method: 'POST', http_req_body: 'x', req_headers: ['A: b'], https_verify_certificate: false, host: 'h.test',
+            healthy: { interval: 2, http_statuses: [200] }, unhealthy: { http_failures: 3, tcp_failures: 2, http_statuses: [500] },
+          },
+          passive: { healthy: { http_statuses: [200], successes: 3 }, unhealthy: { http_failures: 2, timeouts: 4, http_statuses: [503] } },
+        },
+      },
+      { section: 'health' },
+    );
+    const types = () => screen.getAllByRole('combobox', { name: new RegExp(`^${t('up.hc.type')}`) });
+    await h.user.click(types()[0] as HTMLElement);
+    await h.user.click(await screen.findByRole('option', { name: 'http' }));
+    expect((h.value().checks as Obj).active).toEqual({
+      type: 'http', http_path: '/h', http_method: 'POST', http_req_body: 'x', req_headers: ['A: b'], host: 'h.test',
+      healthy: { interval: 2, http_statuses: [200] }, unhealthy: { http_failures: 3, tcp_failures: 2, http_statuses: [500] },
+    });
+    await h.user.click(types()[0] as HTMLElement);
+    await h.user.click(await screen.findByRole('option', { name: 'tcp' }));
+    expect((h.value().checks as Obj).active).toEqual({ type: 'tcp', host: 'h.test', healthy: { interval: 2 }, unhealthy: { tcp_failures: 2 } });
+    await h.user.click(types()[1] as HTMLElement);
+    await h.user.click(await screen.findByRole('option', { name: 'tcp' }));
+    expect((h.value().checks as Obj).passive).toEqual({ type: 'tcp', healthy: { successes: 3 }, unhealthy: { timeouts: 4 } });
+  });
+
   it('turning active checks off removes checks.active, and checks once empty', async () => {
     const h = renderUpstream({ checks: { active: { http_path: '/health' } } }, { section: 'health' });
     expect(screen.getByRole('textbox', { name: t('up.hc.path') })).toHaveValue('/health');

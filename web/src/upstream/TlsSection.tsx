@@ -5,13 +5,12 @@
 // client_cert, apisix/upstream.lua 284–326; verify and ca_certs are read by set_upstream_ssl_opts
 // on the http path only): verification and CA certificates show only when stored, with a note.
 import { Plus, X } from 'lucide-react';
-import { useState } from 'react';
 import type { Obj } from '../api/types';
 import { removeAt, setPath, setPathRaw } from '../editor/draft';
 import { issueAt } from '../editor/issues';
 import { t } from '../i18n';
 import { ResourcePicker } from '../resources/ResourcePicker';
-import { Button, Field, Segmented, useLocked } from '../ui';
+import { Button, Field, Segmented, useLocked, useViewState } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import { ChoiceSelect, PemField, StreamNote } from './fields';
 import { useRowIds, withoutId } from './rowIds';
@@ -29,7 +28,8 @@ function modeOf(tls: Obj): Mode | undefined {
 export function TlsSection({ value, onChange, issues, ctx, subsystem, stored }: SectionProps) {
   const locked = useLocked();
   const tls = obj(value.tls);
-  const [chosen, setChosen] = useState<Mode>();
+  // A mode chosen before anything is typed is view state, kept for the page (a tab switch remounts this).
+  const [chosen, setChosen] = useViewState<Mode | undefined>('upstream.tls.mode', undefined);
   const mode = modeOf(tls) ?? chosen ?? 'none';
   const issue = (path: string) => issueAt(issues, `tls.${path}`);
   const set = (path: (string | number)[], v: unknown) => onChange(setPath(value, ['tls', ...path], v));
