@@ -43,6 +43,8 @@ export interface PemInputProps {
   onBlur?: () => void;
   /** The textarea, so the caller can tell whether it has focus when text arrives. */
   inputRef?: Ref<HTMLTextAreaElement>;
+  /** How many times the caller changed the text for the user (not the masking on leaving): a refused file's reason lasts until it moves on. */
+  changes: number;
   /**
    * Judges an uploaded or dropped file's text before anything changes (pemBox.ts rule 5): returns why
    * it is refused (shown at the field, before any other problem, until the box next changes), or
@@ -53,23 +55,24 @@ export interface PemInputProps {
   rows?: number;
 }
 
-export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, onFile, autoFocus, rows = 6 }: PemInputProps) {
+export function PemInput({ label, value, onChange, problem, help, error, onBlur, inputRef, changes, onFile, autoFocus, rows = 6 }: PemInputProps) {
   const locked = useLocked();
   usePending(locked || problem === undefined ? undefined : t('ui.pending.problem', { field: label, problem }));
   const fileRef = useRef<HTMLInputElement>(null);
   /** View state: a file is being dragged over the box. */
   const [over, setOver] = useState(false);
   /**
-   * Editing state: why the last file wasn't put in the box, and the text the box held then: the reason
-   * shows until the box next changes, however it changes (typed, or given its part of a split PEM).
+   * Editing state: why the last file wasn't put in the box, and the caller's count of changes then:
+   * the reason shows until the box next changes, however it changes (typed, or given its part of a
+   * split PEM), and not because it was left. Never the text itself, which may hold a key.
    */
-  const [refused, setRefused] = useEditingState<{ why: string; at: string } | undefined>(undefined);
-  const shownText = useRef(value);
+  const [refused, setRefused] = useEditingState<{ why: string; at: number } | undefined>(undefined);
+  const changesNow = useRef(changes);
   useLayoutEffect(() => {
-    shownText.current = value;
+    changesNow.current = changes;
   });
-  const setFileProblem = (why: string | undefined) => setRefused(why === undefined ? undefined : { why, at: shownText.current });
-  const fileProblem = refused && refused.at === value ? refused.why : undefined;
+  const setFileProblem = (why: string | undefined) => setRefused(why === undefined ? undefined : { why, at: changesNow.current });
+  const fileProblem = refused && refused.at === changes ? refused.why : undefined;
 
   const read = (file: File | undefined) => {
     if (!file) return;

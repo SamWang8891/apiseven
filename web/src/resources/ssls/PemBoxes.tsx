@@ -70,20 +70,24 @@ function SplitAction({ label, onUse }: { label: string; onUse: () => void }) {
 
 /**
  * A box's text (editing state), set in one place (rule 1): `show` sets what arrives (typed, pasted,
- * dropped, an accepted file, the initial text), as given while the textarea has focus and with its
- * key blocks masked at once otherwise; `leave` masks them when the textarea loses focus. Both go
- * through `shown`; nothing else sets the text.
+ * dropped, an accepted file, a split's part, the initial text), as given while the textarea has
+ * focus and with its key blocks masked at once otherwise; `leave` masks them when the textarea loses
+ * focus. Both go through `shown`; nothing else sets the text. `changes` counts what `show` set (the
+ * user's changes), not the masking on leaving: a refused file's reason lasts until the next one (rule
+ * 5, PemInput), and no copy of the text is kept for it.
  */
 function useBoxText(kind: BoxKind, initial: () => string) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useEditingState(() => shown(kind, initial(), false));
+  const [changes, setChanges] = useEditingState(0);
   const show = (next: string): string => {
     const out = shown(kind, next, ref.current !== null && ref.current === document.activeElement);
     setText(out);
+    setChanges((n) => n + 1);
     return out;
   };
   const leave = () => setText((current) => shown(kind, current, false));
-  return { ref, text, show, leave };
+  return { ref, text, changes, show, leave };
 }
 
 export interface CertBoxProps extends BoxProps {
@@ -119,6 +123,7 @@ export function CertBox({ label, help, error, value, onValue, hidden, details, k
         help={help}
         value={box.text}
         inputRef={box.ref}
+        changes={box.changes}
         problem={heldWhy('cert', box.text)}
         error={error}
         onChange={set}
@@ -234,6 +239,7 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
         help={help}
         value={box.text}
         inputRef={box.ref}
+        changes={box.changes}
         problem={heldWhy('key', box.text)}
         error={error}
         autoFocus={open}
