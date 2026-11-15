@@ -112,11 +112,11 @@ describe('for values that are not references, the errors are the same as without
     for (const key of props) for (const wrong of [12345, 'x', true, [], {}, [1, 'a'], { z: 1 }, -1]) yield { [key]: wrong };
   }
 
-  // As the editor checks plugins (luaTables off) and plugin metadata and secret managers (on): the
-  // luaTables filter is what lets a leaked wrapper error stand alone, so both runs are needed (R12.2).
+  // With the luaTables filter (as the editor checks plugins, plugin metadata and secret managers) and
+  // without it: the filter is what lets a leaked wrapper error stand alone, so both runs are needed (R12.2).
   it.each([
-    ['plugins', false],
-    ['metadata and secret managers (luaTables)', true],
+    ['without luaTables', false],
+    ['plugins, metadata and secret managers (luaTables)', true],
   ])('field errors, path and text, for each of them: %s', (_, luaTables) => {
     let compared = 0;
     let withErrors = 0;

@@ -82,12 +82,14 @@ function offMetaErrors(conf: Obj): { path: string; message: string }[] {
  * The schema's complaints about one plugin's config in `scope`, switched off or not
  * (schema/ajv fieldErrors: dotted paths, a missing required property at its own path). `_meta` is
  * checked only by a schema that declares it, so a schema that forbids extra properties (a consumer
- * schema, an older APISIX) never reports it.
+ * schema, an older APISIX) never reports it. An empty `[]` or `{}` passes as a list or an object
+ * (luaTables), as APISIX's validator takes it: APISIX stores and returns such a config (checked live,
+ * resources/emptyTables.live.test.ts), and it must not block a save.
  */
 export function configErrors(conf: unknown, info: PluginInfo, scope: Scope): { path: string; message: string }[] {
   const schema = schemaFor(info, scope);
   const value = isObj(conf) && !declaresMeta(schema) ? withoutMeta(conf) : conf;
-  return fieldErrors(schema, value) ?? [];
+  return fieldErrors(schema, value, { luaTables: true }) ?? [];
 }
 
 /**

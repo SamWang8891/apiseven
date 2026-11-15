@@ -69,6 +69,17 @@ describe('upstream columns', () => {
     expect(value('scheme', API)).toBe('https');
   });
 
+  // Task 16b item 69: until every list that can point at an upstream has loaded, the count is not known.
+  it.each(['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups'] as const)(
+    'used_by: "loading…" and no number while %s load',
+    (list) => {
+      const loading = { ...CTX, loaded: { ...CTX.loaded, [list]: false } };
+      expect(value('used_by', POOL, loading)).toBeUndefined();
+      expect(cell('used_by', POOL, loading)).toHaveTextContent(t('picker.loading'));
+      cleanup();
+    },
+  );
+
   it('used_by: how many objects point at the upstream, sortable as a number, the first in a tooltip', async () => {
     expect(value('used_by', POOL)).toBe(3);
     expect(value('used_by', API)).toBe(1);

@@ -14,6 +14,16 @@ describe('validatePlugins', () => {
     expect(validatePlugins({ 'limit-count': { count: 1, time_window: 60 }, 'key-auth': {}, cors: {} }, http, 'route')).toEqual([]);
   });
 
+  // Task 16b item 64: APISIX stores and returns `{}` where a list is expected and `[]` where an object is (checked live:
+  // resources/emptyTables.live.test.ts), as its validator takes an empty table for both: a stored config never blocks a save.
+  it('an empty table passes as a list or an object, as APISIX takes it; a non-empty one of the other type does not', () => {
+    expect(validatePlugins({ 'forward-auth': { uri: 'http://a.test', request_headers: {} }, 'file-logger': { path: 'logs/a.log', log_format: [] } }, http, 'route')).toEqual([]);
+    expect(validatePlugins({ 'forward-auth': { uri: 'http://a.test', request_headers: { a: 1 } }, 'file-logger': { path: 'logs/a.log', log_format: ['x'] } }, http, 'route').map((i) => `${i.plugin}.${i.path}`)).toEqual([
+      'forward-auth.request_headers',
+      'file-logger.log_format',
+    ]);
+  });
+
   it('flags a wrong type at the field', () => {
     expect(validatePlugins({ 'limit-count': { count: 1, time_window: 60, rejected_code: 'teapot' } }, http, 'route')).toEqual([
       { plugin: 'limit-count', path: 'rejected_code', message: 'must be integer' },

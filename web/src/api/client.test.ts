@@ -431,6 +431,25 @@ describe('supports', () => {
     const { api } = setup(() => json({ error_msg: 'failed to check token' }, 401));
     expect((await apiError(api.supports('routes'))).kind).toBe('auth');
   });
+
+  // Task 16b item 66: only APISIX's own answer for a missing resource or a disabled subsystem
+  // (admin/init.lua 191-199, 215-218) says "not supported"; any other refusal is not known, and asked again.
+  it.each([
+    ['a 404 of another kind', () => json({ error_msg: 'not found' }, 404)],
+    ['a 408', () => json({ error_msg: 'timeout' }, 408)],
+    ['a 429', () => json({ error_msg: 'too many requests' }, 429)],
+    ['a proxy page', () => new Response('<html>404 Not Found</html>', { status: 404, headers: { 'Content-Type': 'text/html' } })],
+    ['another 400', () => json({ error_msg: 'invalid request' }, 400)],
+  ])('%s is not an answer: it rethrows', async (_, respond) => {
+    const { api } = setup(respond);
+    await expect(api.supports('stream_routes')).rejects.toBeInstanceOf(ApiError);
+  });
+
+  it("is false only for APISIX's own answers: Unsupported resource type (any kind), stream mode disabled (stream routes)", async () => {
+    expect(await setup(() => json({ error_msg: 'Unsupported resource type: protos' }, 404)).api.supports('protos')).toBe(false);
+    expect(await setup(() => json({ error_msg: 'stream mode is disabled, can not add stream routes' }, 400)).api.supports('stream_routes')).toBe(false);
+    await expect(setup(() => json({ error_msg: 'stream mode is disabled, can not add stream routes' }, 400)).api.supports('routes')).rejects.toBeInstanceOf(ApiError);
+  });
 });
 
 describe('an id that is not one path segment is never sent (fix round 2, R4)', () => {

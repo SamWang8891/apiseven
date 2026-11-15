@@ -12,6 +12,7 @@ import { AdminClient } from '../api/client';
 import type { Kind, Obj } from '../api/types';
 import type { Issue } from '../editor/issues';
 import { ctxOf } from '../test/ctx';
+import { pluginIssues } from '../plugins/validate';
 import { upstreamIssues } from '../upstream/validate';
 import type { ValidateEnv } from './registry';
 import { routeIssues } from './routes/validate';
@@ -56,6 +57,14 @@ const CASES: [kind: Kind, body: Obj, issues: (d: Obj) => Issue[]][] = [
   ['stream_routes', { server_port: 9199, labels: ['a'] }, (d) => streamRouteIssues(d, check)],
 ];
 
+// Task 16b item 64: plugin configs with an empty table of the other type, checked as the editor checks
+// them (against this APISIX's own plugin schemas), and read back as stored.
+const PLUGIN_CASES: Obj[] = [
+  { 'forward-auth': { uri: 'http://a.test', request_headers: {} }, 'file-logger': { path: 'logs/zz.log', log_format: [] } },
+  { 'forward-auth': { uri: 'http://a.test', request_headers: { a: 1 } } },
+  { 'file-logger': { path: 'logs/zz.log', log_format: ['x'] } },
+];
+
 const PROTOCOLS: Obj[] = [
   { name: 'redis', conf: [], logger: {} },
   { name: 'redis', logger: [{ name: 'syslog', filter: {}, conf: [] }] },
@@ -72,6 +81,25 @@ describe.skipIf(env.APISIX_LIVE !== '1')('empty tables: the checks agree with a 
 
   it.each(CASES)('%s %j', async (kind, body, issues) => {
     expect(await stores(kind, body)).toBe(issues(body).length === 0);
+  });
+
+  it.each(PLUGIN_CASES)('route plugins %j: the editor check agrees; what is stored comes back as sent', async (plugins) => {
+    const all = await api.allPlugins();
+    const body = { uri: `/${tag}`, upstream: NODES, plugins };
+    const local = pluginIssues(body, { ...check, plugins: all }, 'route');
+    let stored: Obj | undefined;
+    try {
+      await api.replace('routes', tag, body);
+      stored = (await api.get('routes', tag)).value;
+      await api.remove('routes', tag);
+    } catch {
+      stored = undefined;
+    }
+    expect(stored !== undefined).toBe(local.length === 0);
+    if (stored) {
+      expect(stored.plugins).toEqual(plugins);
+      expect(pluginIssues(stored, { ...check, plugins: all }, 'route')).toEqual([]);
+    }
   });
 
   it.each(PROTOCOLS)('stream route protocol %j (the schema)', async (protocol) => {

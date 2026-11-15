@@ -43,6 +43,15 @@ describe('upstreamFilters', () => {
     expect(names({ health: ['active', 'both'] })).toEqual(['one', 'two']);
   });
 
+  // Task 16b item 69: an upstream is neither used nor unused until every list that can point at one has loaded.
+  it('unused: while a list that can point at an upstream loads, matches neither value', () => {
+    for (const list of ['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups'] as const) {
+      const loading = { ...CTX, loaded: { ...CTX.loaded, [list]: false } };
+      expect(applyFilters(UPSTREAMS, '', upstreamFilters, { unused: ['unused'] }, loading), list).toEqual([]);
+      expect(applyFilters(UPSTREAMS, '', upstreamFilters, { unused: ['used'] }, loading), list).toEqual([]);
+    }
+  });
+
   it('unused: nothing points at it', () => {
     expect(filter('unused').options(UPSTREAMS, CTX).map((o) => o.label)).toEqual([t('filter.unused.yes'), t('filter.unused.no')]);
     expect(names({ unused: ['unused'] })).toEqual(['two', 'three']);

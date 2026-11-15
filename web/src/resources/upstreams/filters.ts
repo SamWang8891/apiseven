@@ -3,8 +3,7 @@ import { t } from '../../i18n';
 import type { FilterDef } from '../../table/filter';
 import type { Option } from '../../ui';
 import { balancerLabel } from '../../upstream/meta';
-import { referencesTo } from '../resolve';
-import { healthLabel, healthOf, schemeOf, typeOf, type HealthState } from './columns';
+import { healthLabel, healthOf, schemeOf, typeOf, usedBy, type HealthState } from './columns';
 
 const collator = new Intl.Collator(undefined, { numeric: true });
 const byLabel = (a: Option, b: Option): number => collator.compare(a.label, b.label);
@@ -44,6 +43,10 @@ export const upstreamFilters: FilterDef[] = [
       { value: 'unused', label: t('filter.unused.yes') },
       { value: 'used', label: t('filter.unused.no') },
     ],
-    matches: (item, selected, ctx) => selected.includes(referencesTo('upstreams', item.id, ctx).length === 0 ? 'unused' : 'used'),
+    // Until every list that can point at an upstream has loaded, an upstream is neither (usedBy).
+    matches: (item, selected, ctx) => {
+      const refs = usedBy(item, ctx);
+      return refs !== undefined && selected.includes(refs.length === 0 ? 'unused' : 'used');
+    },
   },
 ];

@@ -92,6 +92,21 @@ describe('Sidebar', () => {
     expect(nav().getByRole('link', { name: /^Routes/ })).toBeInTheDocument();
   });
 
+  // Task 16b item 66: a refusal that is not APISIX's own "not here" leaves the kind shown, its count marked failed.
+  it('keeps a kind whose list answers 429 or a proxy page: not known is not "off"', async () => {
+    renderSidebar({
+      replies: {
+        stream_routes: () => json(429, { error_msg: 'too many requests' }),
+        protos: () => new Response('<html>404</html>', { status: 404, headers: { 'Content-Type': 'text/html' } }),
+      },
+    });
+    const stream = nav().getByRole('link', { name: new RegExp(`^${t('kind.stream_routes.plural')}`) });
+    await waitFor(() => expect(stream.querySelector('.shell-nav__count--error')).not.toBeNull());
+    await waitFor(() => expect(nav().getByRole('link', { name: /^Protos/ }).querySelector('.shell-nav__count--error')).not.toBeNull());
+    await waitFor(() => expect(nav().getByRole('link', { name: `${t('kind.routes.plural')} 10` })).toBeInTheDocument());
+    expect(nav().getByRole('link', { name: new RegExp(`^${t('kind.stream_routes.plural')}`) })).toBeInTheDocument();
+  });
+
   it('marks a count that failed, and keeps the rest', async () => {
     renderSidebar({ replies: { upstreams: html502 } });
     const upstreams = nav().getByRole('link', { name: /^Upstreams/ });

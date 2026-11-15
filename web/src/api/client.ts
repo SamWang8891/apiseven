@@ -164,8 +164,10 @@ export class AdminClient {
   }
 
   /**
-   * Whether this APISIX has the kind: false when its list endpoint answers 4xx (404 on versions
-   * without it, 400 for stream_routes when stream mode is off). Auth, network and 5xx failures reject.
+   * Whether this APISIX has the kind: false only on APISIX's own answer that it hasn't (admin/init.lua
+   * 191–199, 215–218): 404 "Unsupported resource type: …" on a version without the kind, 400 "stream
+   * mode is disabled…" for stream_routes when stream mode is off. Any other failure (another 4xx, a
+   * proxy's page, auth, network, 5xx) rejects: not known, and asked again.
    */
   async supports(kind: Kind): Promise<boolean> {
     // Credentials have no list of their own, but APISIX 3.11+ routes the bare /credentials path to
@@ -175,8 +177,11 @@ export class AdminClient {
       await this.request('GET', path, SMALL_PAGE);
       return true;
     } catch (err) {
-      const status = err instanceof ApiError && err.kind !== 'auth' ? err.status : undefined;
-      if (status !== undefined && status >= 400 && status < 500) return false;
+      if (err instanceof ApiError && err.kind === 'http') {
+        const message = err.errorMsg ?? '';
+        if (err.status === 404 && message.startsWith('Unsupported resource type')) return false;
+        if (err.status === 400 && kind === 'stream_routes' && message.startsWith('stream mode is disabled')) return false;
+      }
       throw err;
     }
   }

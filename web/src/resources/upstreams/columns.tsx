@@ -37,7 +37,15 @@ export function healthOf(up: Obj): HealthState {
 
 export const healthLabel = (state: HealthState): string => (state === 'off' ? t('ui.off') : t(`up.health.${state}`));
 
-const usedBy = (item: Item, ctx: Ctx) => referencesTo('upstreams', item.id, ctx);
+/**
+ * What points at the upstream (referencesTo: routes, services, stream routes, and a traffic-split rule
+ * in a plugin config, consumer or consumer group); undefined until every one of those lists has loaded
+ * (addendum rule 12; with stream mode off, the stream routes count as loaded).
+ */
+export function usedBy(item: Item, ctx: Ctx) {
+  const { routes, services, streamRoutes, pluginConfigs, consumers, consumerGroups } = ctx.loaded;
+  return routes && services && streamRoutes && pluginConfigs && consumers && consumerGroups ? referencesTo('upstreams', item.id, ctx) : undefined;
+}
 
 // Headers are getters, so they follow the language table at use (never spread a column). The
 // default columns, with the checkbox (34) and actions (40) columns, fit the 1010px a 1280px window
@@ -101,8 +109,11 @@ export const upstreamColumns: ColumnDef[] = [
     get header() {
       return t('column.used_by');
     },
-    accessor: (item, ctx) => usedBy(item, ctx).length,
-    cell: (item, ctx) => <UsedByCell refs={usedBy(item, ctx)} />,
+    accessor: (item, ctx) => usedBy(item, ctx)?.length,
+    cell: (item, ctx) => {
+      const refs = usedBy(item, ctx);
+      return refs ? <UsedByCell refs={refs} /> : <span className="cell-muted">{t('picker.loading')}</span>;
+    },
     defaultVisible: true,
     width: 90,
   },
