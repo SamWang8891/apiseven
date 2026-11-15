@@ -9,6 +9,7 @@ import {
   openTab,
   recordWrites,
   save,
+  sentWrites,
   setCode,
   storedRoute as stored_,
   t,
@@ -45,7 +46,7 @@ test('a host typed into Hosts without Enter is saved by Cmd/Ctrl-S', async ({ pa
   const writes = recordWrites(page);
   await page.keyboard.press('ControlOrMeta+s');
   await expect(page.getByRole('main').getByRole('button', { name: t('editor.edit'), exact: true })).toBeVisible();
-  expect(writes).toHaveLength(1);
+  expect(sentWrites(writes)).toHaveLength(1);
   expect(writes[0]!.body?.hosts).toEqual([host, `typed.${host}`]);
   expect((await admin.value(`routes/${id}`))?.hosts).toEqual([host, `typed.${host}`]);
 });
@@ -65,7 +66,7 @@ test('a host the check refuses holds the save: the toast names Hosts, nothing is
   await expect(refusal).toContainText(t('ui.toast.repeat', { count: 2 }));
   await expect(hosts).toHaveValue('not a host!');
   await expect(hosts).toHaveAttribute('aria-invalid', 'true');
-  expect(writes).toEqual([]);
+  expect(sentWrites(writes)).toEqual([]);
   expect(await admin.value(`routes/${id}`)).toEqual(stored);
 });
 
@@ -80,7 +81,7 @@ test('broken JSON in a plugin card refuses Save naming the plugin, keeps the car
   const writes = recordWrites(page);
   await page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true }).click();
   await expect(toast(page, /limit-count/)).toBeVisible();
-  expect(writes).toEqual([]);
+  expect(sentWrites(writes)).toEqual([]);
   // The card refuses to collapse while it holds the text.
   const head = card.getByRole('button', { name: /^limit-count\b/ }).first();
   await head.click();

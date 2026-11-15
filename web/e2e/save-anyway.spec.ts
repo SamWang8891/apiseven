@@ -1,6 +1,6 @@
 // Local checks are never a dead end (Task 16): a draft that only the checks in this browser refuse
 // can be sent with Save anyway, and APISIX's answer decides; never while a field holds input.
-import { Admin, echoRoute, expect, openEditor, openTab, recordWrites, t, test, toast, uid, unlock } from './fixtures';
+import { Admin, echoRoute, expect, openEditor, openTab, recordWrites, sentWrites, t, test, toast, uid, unlock } from './fixtures';
 
 const PREFIX = 'e2e-anyway-';
 
@@ -21,7 +21,7 @@ test('a route APISIX accepts but the local check refuses: Save refused, then Sav
   const writes = recordWrites(page);
   await main.getByRole('button', { name: t('editor.save'), exact: true }).click();
   await expect(toast(page, t('editor.fixAnyway', { fix: t('editor.fixOne') }))).toBeVisible();
-  expect(writes).toEqual([]);
+  expect(sentWrites(writes)).toEqual([]);
   const anyway = main.getByRole('button', { name: t('editor.anyway.action'), exact: true });
   await expect(anyway).toBeVisible();
   await expect(main.getByText(t('editor.anyway.title'))).toBeVisible();
@@ -34,7 +34,7 @@ test('a route APISIX accepts but the local check refuses: Save refused, then Sav
   await expect(anyway).toHaveCount(0);
   await page.keyboard.press('ControlOrMeta+s');
   await expect(toast(page, new RegExp(t('rt.match.hosts')))).toBeVisible();
-  expect(writes).toEqual([]);
+  expect(sentWrites(writes)).toEqual([]);
   await hosts.fill('');
   await main.getByRole('button', { name: t('editor.save'), exact: true }).click();
   await expect(anyway).toBeVisible();
@@ -44,6 +44,6 @@ test('a route APISIX accepts but the local check refuses: Save refused, then Sav
   await expect(confirm).toContainText('proxy-rewrite');
   await confirm.getByRole('button', { name: t('editor.anyway.confirm') }).click();
   await expect(main.getByRole('button', { name: t('editor.edit'), exact: true })).toBeVisible();
-  expect(writes).toHaveLength(1);
+  expect(sentWrites(writes)).toHaveLength(1);
   expect(await admin.value(`routes/${id}`)).toEqual({ ...stored, desc: 'sent with Save anyway' });
 });

@@ -2,7 +2,8 @@
 // TLS client key and a consumer's key are never in the page unless revealed, never come back after a
 // Save, and a save that does not touch them leaves them as they are. The SSL private key is in
 // ssl.spec.ts. No assertion here takes a secret as its argument: each checks only whether the page
-// (pageHolds: markup, form values, accessible text) holds it, so a failure never prints one.
+// (pageHolds: markup, form values, code editors' whole text, accessible text) holds it, so a failure
+// never prints one.
 import type { Locator, Page } from '@playwright/test';
 import { MASK_CHANGED } from '../src/plugins/secrets';
 import { MASK } from '../src/schema/secrets';
@@ -18,6 +19,7 @@ import {
   expectSameQuietly,
   gateway,
   gatewayAnswers,
+  holdsIn,
   jsonEditor,
   openCard,
   openEditor,
@@ -177,8 +179,9 @@ test.describe('a credential’s key', () => {
     const dialog = page.getByRole('dialog', { name: t('editor.conflict.title', { kind: CREDENTIAL, name: path.split('/').pop()! }) });
     await expect(dialog).toBeVisible();
     // Neither key is in the page; the changed one is marked as changed. (The editor behind the dialog
-    // holds mine in its form, so only the dialog's own text is checked for it.)
-    expect((await dialog.innerText()).includes(key), 'the dialog shows my key').toBe(false);
+    // holds mine in its form, so for mine only the dialog is checked: its markup and attributes, its
+    // code views' whole text, and its accessible tree.)
+    expect((await holdsIn(dialog)).includes(key), 'the dialog holds my key').toBe(false);
     expect(await holds(page, theirs), 'the page holds their key').toBe(false);
     await expect(dialog).toContainText(MASK_CHANGED);
     await dialog.getByRole('button', { name: SHOW_SECRETS }).click();

@@ -2,6 +2,7 @@ import type { Locator } from '@playwright/test';
 import {
   Admin,
   ECHO,
+  afterFrames,
   banner,
   create,
   choose,
@@ -20,6 +21,7 @@ import {
   operableControls,
   recordWrites,
   save,
+  sentWrites,
   setCode,
   storedRoute as stored_,
   t,
@@ -125,7 +127,7 @@ test.describe('edit, save, discard', () => {
     await expect(main.getByRole('button', { name: t('editor.edit'), exact: true })).toBeVisible();
     await expect(main.getByRole('tabpanel')).toContainText('as stored');
     await expect(main.getByRole('tabpanel')).not.toContainText('typed, then discarded');
-    expect(writes).toEqual([]);
+    expect(sentWrites(writes)).toEqual([]);
     expect(await admin.value(`routes/${id}`)).toEqual(stored);
   });
 
@@ -198,7 +200,11 @@ test.describe('the upstream a route proxies to', () => {
     await admin.put(`upstreams/${upstream}`, { name: upstream, ...echoUpstream() });
     // The service's own plugin rewrites the path, so its answer tells it apart from the upstream's.
     await admin.put(`services/${service}`, { name: service, upstream: echoUpstream(), plugins: { 'proxy-rewrite': { uri: '/health' } } });
-    const { id, host, stored } = await storedRoute(admin);
+    // The route's own inline upstream cannot answer (nothing listens on its port): 502 at the gateway,
+    // so the existing upstream's answer can only come from the switch.
+    const { id, host, stored } = await storedRoute(admin, { upstream: { type: 'roundrobin', nodes: [{ host: ECHO.host, port: 1, weight: 1 }] } });
+    const before = await gatewayAnswers(host, 502);
+    expect(before.text).not.toMatch(ECHO.body);
     await openEditor(page, `routes/${id}?tab=upstream`);
     await unlock(page);
     const panel = page.getByRole('main').getByRole('tabpanel');
@@ -219,8 +225,10 @@ test.describe('the upstream a route proxies to', () => {
     write = await save(page);
     expect(write.body?.service_id).toBe(service);
     expect(await admin.value(`routes/${id}`)).toEqual({ ...without(stored, 'upstream'), service_id: service });
+    // The upstream's answer (etcd's /version) is not the service's (its path rewritten to /health).
     reply = await eventually(() => gateway(ECHO.path, { host }), (r) => r.status === 200 && r.text.includes('"health"'));
     expect(reply.text).toContain('"health"');
+    expect(reply.text).not.toMatch(ECHO.body);
   });
 });
 
@@ -301,7 +309,7 @@ test.describe('when APISIX disagrees', () => {
     await expect(main.getByRole('button', { name: t('editor.edit'), exact: true })).toBeVisible();
     await expect(main.getByRole('tabpanel')).toContainText('theirs');
     await expect(main.getByRole('tabpanel')).not.toContainText('mine');
-    expect(writes).toEqual([]);
+    expect(sentWrites(writes)).toEqual([]);
     expect(await admin.value(`routes/${id}`)).toEqual({ ...stored, desc: 'theirs' });
   });
 
@@ -331,6 +339,41 @@ test.describe('APISIX’s own refusal', () => {
     await page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true }).click();
     await expect(banner(page, t('editor.rejected'))).toContainText("failed to validate the 'vars' expression: invalid operator 'bogus'");
     expect(await admin.value(`routes/${id}`)).toEqual(stored);
+  });
+
+  test('the header’s status switch, toggled and saved from the keyboard, keeps focus while the save is out and after APISIX refuses it', async ({ page, admin }) => {
+    const { id, stored } = await storedRoute(admin);
+    await openEditor(page, `routes/${id}?tab=json`);
+    await unlock(page);
+    await setCode(page, jsonEditor(page, ROUTE), JSON.stringify({ ...stored, vars: [['arg_x', 'bogus', '1']] }, null, 2));
+    // The PUT is held until released, so the switch can be looked at while the save is out.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route(`**/apisix/admin/routes/${id}`, async (r) => {
+      if (r.request().method() === 'PUT') await held;
+      await r.continue();
+    });
+    const toggle = page.getByRole('main').getByRole('switch', { name: t('table.status.toggle', { name: id }) });
+    await toggle.focus();
+    await page.keyboard.press('Space');
+    await expect(toggle).not.toBeChecked();
+    const writes = recordWrites(page);
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true })).toHaveAttribute('aria-busy', 'true');
+    await afterFrames(page);
+    await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveAttribute('aria-busy', 'true');
+    await expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Space');
+    release();
+    await expect(banner(page, t('editor.rejected'))).toBeVisible();
+    await expect(toggle).not.toHaveAttribute('aria-busy');
+    await expect(toggle).not.toBeChecked();
+    await afterFrames(page);
+    await expect(toggle).toBeFocused();
+    expect(sentWrites(writes)).toEqual([`PUT routes/${id}`]);
+    expect(await admin.value(`routes/${id}`)).toEqual(stored);
+    await page.unroute(`**/apisix/admin/routes/${id}`);
   });
 });
 

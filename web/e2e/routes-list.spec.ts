@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { ECHO, expect, openList, t, test, toast, uid, type Admin, type Json } from './fixtures';
+import { ECHO, afterFrames, expect, openList, recordWrites, sentWrites, t, test, toast, uid, type Admin, type Json } from './fixtures';
 
 const PREFIX = 'e2e-list-';
 
@@ -196,7 +196,7 @@ test.describe('search and filters', () => {
   });
 
   async function filterBy(page: Page, main: Locator, chip: string, option: string): Promise<void> {
-    await main.getByRole('button', { name: new RegExp(`^${chip} filter`) }).click();
+    await main.getByRole('button', { name: t('table.filter.label', { label: chip }), exact: true }).click();
     await page.getByRole('dialog', { name: chip }).getByRole('checkbox', { name: option, exact: true }).click();
     await page.keyboard.press('Escape');
   }
@@ -215,7 +215,7 @@ test.describe('search and filters', () => {
       const main = await openList(page, 'routes');
       await filterBy(page, main, t(chip), option);
       await expect.poll(async () => (await rowNames(main)).sort()).toEqual(expected);
-      await expect(main.getByRole('button', { name: new RegExp(`^${t(chip)} filter, 1 selected`) })).toBeVisible();
+      await expect(main.getByRole('button', { name: t('table.filter.labelCount', { label: t(chip), count: 1 }), exact: true })).toBeVisible();
       // The filter is in the URL, and survives a reload.
       await page.reload();
       await expect.poll(async () => (await rowNames(main)).sort()).toEqual(expected);
@@ -257,10 +257,43 @@ test.describe('writes from the list', () => {
     await toggle.click();
     await expect.poll(async () => (await admin.raw(`routes/${id}`))?.status).toBe(0);
     await expect(toggle).not.toBeChecked();
-    // While its write is out the switch is disabled; the click waits until it can be made.
+    // While its write is out the switch is aria-disabled; the click waits until it can be made.
     await toggle.click();
     await expect.poll(async () => (await admin.raw(`routes/${id}`))?.status).toBe(1);
     await expect(toggle).toBeChecked();
+    await admin.del(`routes/${id}`);
+  });
+
+  test('toggled from the keyboard, the switch keeps focus while its write is out and after; pressed again meanwhile, nothing is sent', async ({ page, admin }) => {
+    const id = `${PREFIX}status-key-${uid()}`;
+    await admin.put(`routes/${id}`, route('status-key.e2e.test'));
+    const main = await openList(page, 'routes');
+    const toggle = main.getByRole('switch', { name: t('table.status.toggle', { name: id }) });
+    await expect(toggle).toBeChecked();
+    // The PATCH is held until released, so the busy switch can be looked at.
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route(`**/apisix/admin/routes/${id}`, async (r) => {
+      if (r.request().method() === 'PATCH') await held;
+      await r.continue();
+    });
+    const writes = recordWrites(page);
+    await toggle.focus();
+    await page.keyboard.press('Space');
+    await expect(toggle).toHaveAttribute('aria-busy', 'true');
+    await afterFrames(page);
+    await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    await expect(toggle).not.toBeChecked();
+    await page.keyboard.press('Space');
+    release();
+    await expect(toggle).not.toHaveAttribute('aria-busy');
+    await expect(toggle).not.toBeChecked();
+    await afterFrames(page);
+    await expect(toggle).toBeFocused();
+    expect(sentWrites(writes)).toEqual([`PATCH routes/${id}`]);
+    expect((await admin.raw(`routes/${id}`))?.status).toBe(0);
+    await page.unroute(`**/apisix/admin/routes/${id}`);
     await admin.del(`routes/${id}`);
   });
 

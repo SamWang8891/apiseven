@@ -169,6 +169,14 @@ export async function goto(page: Page, path: string): Promise<Locator> {
  * Waits until nothing in <main> is still loading: the editor's skeleton and a lazily loaded tab body
  * are each a status with aria-busy while they load.
  */
+/**
+ * Waits two rendering updates: what the browser does at a rendering update (Chromium's focus fixup
+ * for a focused control that became disabled, for one) has then happened.
+ */
+export async function afterFrames(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+}
+
 export async function settled(page: Page): Promise<void> {
   await expect(page.getByRole('main').locator('[role="status"][aria-busy="true"]')).toHaveCount(0);
 }
@@ -280,6 +288,24 @@ export function recordWrites(page: Page): SentWrite[] {
   return writes;
 }
 
+/** Records every request the page sends to the Admin API from now on, reads included, as `METHOD path`. */
+export function recordRequests(page: Page): string[] {
+  const sent: string[] = [];
+  page.on('request', (req) => {
+    const match = ADMIN_PATH.exec(req.url());
+    if (match && req.method() !== 'OPTIONS') sent.push(`${req.method()} ${decodeURIComponent(match[1]!)}`);
+  });
+  return sent;
+}
+
+/**
+ * The writes by method and path only, for an assertion on them: a write's body may hold a secret (a
+ * credential's key, a Vault token), and an assertion prints what it was given when it fails.
+ */
+export function sentWrites(writes: SentWrite[]): string[] {
+  return writes.map((w) => `${w.method} ${w.path}`);
+}
+
 /** Waits for the next Admin API write the page sends, and its answer. */
 export async function nextWrite(page: Page, action: () => Promise<void>): Promise<SentWrite & { status: number }> {
   const response = page.waitForResponse((res) => asWrite(res.request()) !== undefined);
@@ -346,14 +372,32 @@ export function toast(page: Page, text: string | RegExp): Locator {
 }
 
 /**
- * Everything the page holds that a secret could hide in: its markup, the live value of every form
- * control (the markup does not carry what was typed), and the text of its accessibility tree.
+ * Everything an element holds that a secret could hide in: its markup, attributes included; the live
+ * value of every form control in it (the markup does not carry what was typed); the whole text of
+ * every code editor in it; and the text of its accessibility tree.
+ *
+ * A code editor (CodeMirror) renders only the lines near its viewport, so its markup can miss the
+ * rest: its whole document is read through the editor's own view, which CodeMirror links from its
+ * content element (`cmTile`, @codemirror/view 6.4x). If that link is not there, this fails rather
+ * than read part of the text.
  */
+export async function holdsIn(where: Locator): Promise<string> {
+  const [markup, values] = await where.evaluate((root) => {
+    const controls = [...root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')].map((el) => el.value);
+    type Linked = { cmTile?: { root?: { view?: { state: { doc: { toString(): string } } } } } };
+    const docs = [...root.querySelectorAll('[role="textbox"][aria-multiline="true"]')].map((el) => {
+      const view = (el as unknown as Linked).cmTile?.root?.view;
+      if (!view) throw new Error('a code editor whose whole text cannot be read (CodeMirror no longer links its view from the content element)');
+      return view.state.doc.toString();
+    });
+    return [root.outerHTML, [...controls, ...docs].join('\n')];
+  });
+  return [markup, values, await where.ariaSnapshot()].join('\n');
+}
+
+/** Everything the page holds (holdsIn), its head included. */
 export async function pageHolds(page: Page): Promise<string> {
-  const values = await page.evaluate(() =>
-    [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')].map((el) => el.value).join('\n'),
-  );
-  return [await page.content(), values, await page.locator('body').ariaSnapshot()].join('\n');
+  return [await page.content(), await holdsIn(page.locator('body'))].join('\n');
 }
 
 /**

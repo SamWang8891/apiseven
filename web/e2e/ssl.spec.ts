@@ -82,8 +82,9 @@ test('editing the SNIs sends a PATCH without the key, and the stored key still s
   await box.press('Enter');
   const write = await save(page);
   expect(write.method).toBe('PATCH');
-  expect(write.body).not.toHaveProperty('key');
-  expect(write.body).not.toHaveProperty('cert');
+  // Booleans: a failure must not print the body, which would then hold the key.
+  expect(write.body !== undefined && 'key' in write.body, 'the PATCH carries the key').toBe(false);
+  expect(write.body !== undefined && 'cert' in write.body, 'the PATCH carries the certificate').toBe(false);
   expect((await admin.value(`ssls/${id}`))?.snis).toEqual([sni, `alt.${sni}`]);
   // A handshake for the new SNI completes with the stored key.
   await servedFor(`alt.${sni}`, SNI);

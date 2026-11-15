@@ -17,12 +17,16 @@ import {
   openEditor,
   openNew,
   openTab,
+  recordRequests,
   recordWrites,
+  sentWrites,
+  settled,
   setCode,
   t,
   test,
   toast,
   uid,
+  type SentWrite,
 } from './fixtures';
 
 const PREFIX = 'e2e-new-';
@@ -32,11 +36,11 @@ test.afterAll(async () => {
 });
 
 /** Create is refused: the "Not created" banner links to the stored object, and nothing was written. */
-async function expectNotCreated(page: Page, kind: string, id: string, href: string, writes: unknown[]) {
+async function expectNotCreated(page: Page, kind: string, id: string, href: string, writes: SentWrite[]) {
   const notCreated = banner(page, t('editor.taken.title'));
   await expect(notCreated).toContainText(t('editor.taken.message', { kind, id }));
   await expect(notCreated.getByRole('link', { name: t('editor.taken.open', { kind, id }) })).toHaveAttribute('href', href);
-  expect(writes).toEqual([]);
+  expect(sentWrites(writes)).toEqual([]);
 }
 
 const USERNAME = new RegExp(`^${t('cs.general.username')}\\b`);
@@ -117,7 +121,9 @@ test.describe('a copy of a consumer with three auth plugins', () => {
     await openCard(page, 'key-auth');
     await openCard(page, 'basic-auth');
     const jwtCard = await openCard(page, 'jwt-auth');
-    await expect(jwtCard.getByRole('textbox', { name: /^secret\b/ })).toHaveValue('');
+    // A boolean: on a failure the copied secret is not printed.
+    const jwtSecret = jwtCard.getByRole('textbox', { name: /^secret\b/ });
+    await expect.poll(async () => (await jwtSecret.inputValue()) === '', { message: 'the copy’s jwt-auth secret is empty' }).toBe(true);
     await expectNotInPage(page, Object.values(secrets), 'the copy, Plugins with three cards open');
     await openTab(page, t('editor.json.tab'));
     await expectNotInPage(page, Object.values(secrets), 'the copy, JSON');
@@ -128,7 +134,7 @@ test.describe('a copy of a consumer with three auth plugins', () => {
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expect(toast(page, t('editor.fixMany', { count: 2 }))).toBeVisible();
-    expect(writes).toEqual([]);
+    expect(sentWrites(writes)).toEqual([]);
 
     await openTab(page, t('pl.tab'));
     const keyAuth = await openCard(page, 'key-auth');
@@ -165,12 +171,14 @@ test.describe('an empty id in a new object’s JSON', () => {
       const main = await goto(page, path);
       const body = kind === 'routes' ? { id: '', uri: ECHO.path, upstream: { nodes: [{ host: ECHO.host, port: ECHO.port, weight: 1 }] } } : { id: '', plugins: { 'request-id': {} } };
       await setCode(page, jsonEditor(page, label), JSON.stringify(body, null, 2));
-      const writes = recordWrites(page);
+      await settled(page);
+      // No request at all from Create on: no write, and no read for the id either.
+      const sent = recordRequests(page);
       await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
       // The frame's own refusal of the id (Task 16-2's segment rule; 16b may word the empty case anew).
       await expect(toast(page, t('editor.id.segment', { id: '' }))).toBeVisible();
       await expect(main.getByRole('button', { name: t('editor.anyway.action'), exact: true })).toHaveCount(0);
-      expect(writes).toEqual([]);
+      expect(sent).toEqual([]);
     });
   }
 });
@@ -183,7 +191,7 @@ test.describe('a new object before its first Save', () => {
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expect(main.getByRole('tab', { name: TO_FIX }).first()).toBeVisible();
-    expect(writes).toEqual([]);
+    expect(sentWrites(writes)).toEqual([]);
 
     main = await openNew(page, 'ssls/new');
     await expect(main.getByText(t('ssl.issue.certRequired'))).toHaveCount(0);
@@ -191,6 +199,6 @@ test.describe('a new object before its first Save', () => {
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expect(main.getByText(t('ssl.issue.certRequired')).first()).toBeVisible();
     await expect(main.getByRole('tab', { name: TO_FIX }).first()).toBeVisible();
-    expect(writes).toEqual([]);
+    expect(sentWrites(writes)).toEqual([]);
   });
 });

@@ -12,6 +12,7 @@ import {
   pluginCard,
   recordWrites,
   save,
+  sentWrites,
   t,
   tabNamed,
   test,
@@ -111,7 +112,7 @@ test('a missing required field blocks Save (nothing is sent), the toast counts t
   const writes = recordWrites(page);
   await page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true }).click();
   await expect(toast(page, t('editor.fixMany', { count: 2 }))).toBeVisible();
-  expect(writes).toEqual([]);
+  expect(sentWrites(writes)).toEqual([]);
   expect(await admin.value(`routes/${id}`)).toEqual(stored);
   // Filled in, the badge goes and the save goes through.
   await card.getByRole('textbox', { name: /^count\b/ }).fill('10');
@@ -133,7 +134,7 @@ test('key-auth on a consumer asks for its key (on a route it has none)', async (
   const writes = recordWrites(page);
   await page.getByRole('main').getByRole('button', { name: t('editor.save'), exact: true }).click();
   await expect(toast(page, t('editor.fixOne'))).toBeVisible();
-  expect(writes).toEqual([]);
+  expect(sentWrites(writes)).toEqual([]);
   await key.fill('e2e-consumer-key');
   await save(page);
   expectSameQuietly(((await admin.value(`consumers/${username}`))?.plugins as Record<string, unknown>)['key-auth'], { key: 'e2e-consumer-key' }, "the consumer's key-auth");

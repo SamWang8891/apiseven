@@ -12,6 +12,7 @@ import {
   operableControls,
   recordWrites,
   save,
+  sentWrites,
   settled,
   t,
   tabNamed,
@@ -100,7 +101,7 @@ test.describe('every editor opens locked', () => {
         await openEverything(main.getByRole('tabpanel'), check);
       }
       await expect(main.getByText(t('editor.locked'), { exact: true })).toBeVisible();
-      expect(writes).toEqual([]);
+      expect(sentWrites(writes)).toEqual([]);
     });
   }
 });
@@ -139,7 +140,7 @@ test.describe('tables inside an editor', () => {
       expect(items.filter((i) => [t('action.enable'), t('action.disable')].includes(i))).toEqual([]);
       await page.keyboard.press('Escape');
       await expect(menu).toBeHidden();
-      expect(writes).toEqual([]);
+      expect(sentWrites(writes)).toEqual([]);
     });
   }
 });
