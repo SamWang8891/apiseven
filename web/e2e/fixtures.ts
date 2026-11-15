@@ -363,3 +363,42 @@ export async function choose(page: Page, combobox: Locator, option: string | Reg
   await combobox.click();
   await page.getByRole('option', { name: option }).first().click();
 }
+
+// ---- Create, list, delete ------------------------------------------------------------------------
+
+/** A new object's ID field ("ID", or "ID (required)" for kinds that need one). */
+export function idField(page: Page): Locator {
+  return page.getByRole('main').getByRole('textbox', { name: /^ID( \(required\))?$/ });
+}
+
+/** Opens a new object's page (going through another page first, so no earlier draft is reused). */
+export async function openNew(page: Page, path: string): Promise<Locator> {
+  await page.goto('/#/routes');
+  await expect(page.getByRole('main')).toBeVisible();
+  const main = await goto(page, path);
+  await expect(main.getByRole('button', { name: t('editor.create'), exact: true })).toBeVisible();
+  await settled(page);
+  return main;
+}
+
+/** The editor's ⋯ menu → Delete → confirmed; waits for the page to leave the editor. */
+export async function deleteFromEditor(page: Page, kindSingular: string): Promise<void> {
+  const main = page.getByRole('main');
+  await main.getByRole('button', { name: t('editor.more') }).click();
+  await page.getByRole('menuitem', { name: t('action.delete') }).click();
+  const confirm = page.getByRole('alertdialog');
+  const write = nextWrite(page, () => confirm.getByRole('button', { name: t('delete.confirm', { kind: kindSingular }) }).click());
+  expect((await write).method).toBe('DELETE');
+  await expect(confirm).toBeHidden();
+}
+
+/** A list page shows (or no longer shows) the row linking to `name`. */
+export async function listShows(page: Page, kindPath: string, name: string, shown = true): Promise<void> {
+  const main = await goto(page, kindPath);
+  // Loaded: the table, or the empty state of a list with nothing in it.
+  await expect(main.getByRole('table').or(main.locator('.tbl-state')).first()).toBeVisible();
+  await expect(main.getByText(/^Loading /)).toHaveCount(0);
+  const link = main.getByRole('link', { name, exact: true });
+  if (shown) await expect(link).toBeVisible();
+  else await expect(link).toHaveCount(0);
+}
