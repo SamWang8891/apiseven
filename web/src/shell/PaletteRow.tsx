@@ -19,7 +19,7 @@ import {
   Waypoints,
   type LucideIcon,
 } from 'lucide-react';
-import type { PointerEvent, ReactNode } from 'react';
+import { memo, type PointerEvent, type ReactNode } from 'react';
 import type { Item, Kind } from '../api/types';
 import { t } from '../i18n';
 import { ExpiryBadge, expiryTone } from '../resources/expiry';
@@ -31,7 +31,8 @@ import { labelRanges, type FieldName, type Hit } from './search';
 
 export type Row =
   | { type: 'hit'; key: string; hit: Hit; item?: Item }
-  | { type: 'more'; key: string; kind: Kind; count: number; query: string }
+  /** "Show all N here": shows every hit of the kind in place; `next` is the first hit it reveals. */
+  | { type: 'more'; key: string; kind: Kind; count: number; next: string }
   | { type: 'action'; key: string; action: PaletteAction; query: string }
   | { type: 'note'; key: string; kind: Kind; state: 'loading' | 'failed'; error?: string };
 
@@ -124,7 +125,7 @@ function content(row: Row): ReactNode {
           <span className="cp-row__icon" aria-hidden="true">
             <ListFilter size={15} />
           </span>
-          <span className="cp-row__text cp-row__more">{t('palette.showAll', { count: row.count, plural: t(`kind.${row.kind}.plural`) })}</span>
+          <span className="cp-row__text cp-row__more">{t('palette.showAllHere', { count: row.count })}</span>
         </>
       );
     case 'action':
@@ -156,14 +157,16 @@ function content(row: Row): ReactNode {
 
 export interface PaletteRowProps {
   row: Row;
-  /** A choice's option id, whether it is the active one, and its handlers; a note has none of them. */
+  /** A choice's position, option id, whether it is the active one, and its handlers; a note has none of them. */
+  index?: number;
   id?: string;
   selected?: boolean;
-  onHover?: (e: PointerEvent) => void;
-  onChoose?: (newTab: boolean) => void;
+  onHover?: (index: number, e: PointerEvent) => void;
+  onChoose?: (index: number, newTab: boolean) => void;
 }
 
-export function PaletteRow({ row, id, selected = false, onHover, onChoose }: PaletteRowProps) {
+/** One row; drawn again only when its own props change (the handlers are stable). */
+export const PaletteRow = memo(function PaletteRow({ row, index = -1, id, selected = false, onHover, onChoose }: PaletteRowProps) {
   if (row.type === 'note') {
     return (
       <div className={`cp-row cp-row--note${row.state === 'failed' ? ' cp-row--failed' : ''}`} role="option" aria-selected={false} aria-disabled title={row.error}>
@@ -177,10 +180,10 @@ export function PaletteRow({ row, id, selected = false, onHover, onChoose }: Pal
       className="cp-row"
       role="option"
       aria-selected={selected}
-      onPointerMove={selected ? undefined : onHover}
-      onClick={(e) => onChoose?.(e.metaKey || e.ctrlKey)}
+      onPointerMove={selected ? undefined : (e) => onHover?.(index, e)}
+      onClick={(e) => onChoose?.(index, e.metaKey || e.ctrlKey)}
     >
       {content(row)}
     </div>
   );
-}
+});

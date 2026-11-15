@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { useLocation, useNavigate } from 'react-router';
 import { isObj } from '../api/sanitize';
 import { useConnections } from '../connection/store';
-import { usePaletteHotkey } from './usePaletteHotkey';
+import { overlayOpen, usePaletteHotkey } from './usePaletteHotkey';
 
 /** How the palette was left: 'dismiss' (Esc, a theme, a new tab) gives focus back; 'navigate' leaves it to the page opened. */
 export type PaletteExit = 'dismiss' | 'navigate';
@@ -29,7 +29,8 @@ export function usePalette(main: RefObject<HTMLElement | null>) {
   const after = useRef<'restore' | 'page' | undefined>(undefined);
 
   const show = useCallback(() => {
-    if (shown.current) return;
+    // Never over another overlay: it owns the keyboard, and a result chosen here would unmount it.
+    if (shown.current || overlayOpen()) return;
     shown.current = true;
     returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     after.current = undefined;
@@ -44,7 +45,8 @@ export function usePalette(main: RefObject<HTMLElement | null>) {
   }, []);
 
   const toggle = useCallback(() => (shown.current ? close('dismiss') : show()), [close, show]);
-  usePaletteHotkey(toggle, show);
+  const isOpen = useCallback(() => shown.current, []);
+  usePaletteHotkey(toggle, show, isOpen);
 
   // Closed without leaving: focus goes back where it was (the kit Dialog has no trigger to return to).
   useEffect(() => {

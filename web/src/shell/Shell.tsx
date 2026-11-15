@@ -1,5 +1,5 @@
 import { LockKeyhole } from 'lucide-react';
-import { Fragment, lazy, Suspense, useMemo, useRef, type ReactNode } from 'react';
+import { Fragment, useMemo, useRef, type ReactNode } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AdminClient } from '../api/client';
 import { ClientProvider } from '../api/hooks';
@@ -9,12 +9,14 @@ import { t } from '../i18n';
 import { kindFromSegment, pathFor } from '../router/paths';
 import { Toaster, TooltipProvider } from '../ui';
 import { Header, SearchTrigger } from './Header';
+import { lazyPalette } from './PaletteLoader';
 import { Sidebar } from './Sidebar';
 import { usePalette } from './usePalette';
 import './shell.css';
 
-// The palette and its search load on first open; the hotkey and the header button are all the entry holds.
-const CommandPalette = lazy(() => import('./CommandPalette'));
+// The palette and its search load on first open; the hotkey, the header button and the load boundary
+// are all the entry holds.
+const CommandPalette = lazyPalette(() => import('./CommandPalette'));
 
 /**
  * The frame of every page that talks to APISIX: sidebar, header, and the page in a scrolling main
@@ -54,11 +56,7 @@ function Body({ connId }: { connId: string }) {
           <Outlet />
         </main>
       </div>
-      {palette.open && (
-        <Suspense fallback={null}>
-          <CommandPalette onClose={palette.close} />
-        </Suspense>
-      )}
+      {palette.open && <CommandPalette onClose={palette.close} />}
     </>
   );
 }

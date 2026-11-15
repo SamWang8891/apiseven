@@ -77,7 +77,7 @@ describe('finding objects', () => {
     const { user } = await open('#/routes', { objects: { routes: ROUTES, consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'k-123' } } }] } });
     const dialog = await openPalette(user);
     await user.type(box(), 'k-123');
-    expect(await dialog.findByText(t('palette.noResults', { query: 'k-123' }))).toBeInTheDocument();
+    expect(await dialog.findByText(t('palette.noResults', { query: 'k-123' }), { selector: 'p' })).toBeInTheDocument();
     expect(dialog.queryAllByRole('option')).toEqual([]);
   });
 
@@ -90,19 +90,43 @@ describe('finding objects', () => {
     expect(within(dialog.getByRole('option', { name: /^old\.example\.com/ })).getByText(/^expired /)).toBeInTheDocument();
   });
 
-  it('shows at most 6 per kind; "Show all N in Routes" opens the list searched for the query', async () => {
-    const many: Obj[] = [...Array.from({ length: 8 }, (_, i) => ({ id: `a${i}`, name: `api-${i}`, uri: `/api/v1/r${i}` })), { id: 'x', name: 'other', uri: '/x' }];
-    const { user } = await open('#/upstreams', { objects: { routes: many } });
+  it('shows at most 6 per kind; "Show all N here" shows every hit in place, without leaving the page', async () => {
+    // Found by a label the list page's own search would not find as typed (it reads `"env":"prod"`).
+    const many: Obj[] = [...Array.from({ length: 8 }, (_, i) => ({ id: `a${i}`, name: `api-${i}`, uri: `/a${i}`, labels: { env: 'prod' } })), { id: 'x', name: 'other', uri: '/x' }];
+    const { user } = await open('#/upstreams', { objects: { routes: many, upstreams: [{ id: 'u1', name: 'prod-pool', nodes: [] }] } });
     const dialog = await openPalette(user);
-    await user.type(box(), '/api/v1');
+    await user.type(box(), 'env:prod');
     const group = await dialog.findByRole('group', { name: t('kind.routes.plural') });
     const options = within(group).getAllByRole('option');
     expect(options).toHaveLength(7);
-    expect(options.at(-1)).toHaveTextContent(t('palette.showAll', { count: 8, plural: t('kind.routes.plural') }));
-    await user.click(options.at(-1) as HTMLElement);
-    await waitFor(() => expect(window.location.hash).toBe('#/routes?q=%2Fapi%2Fv1'));
-    for (let i = 0; i < 8; i++) expect(await main().findByRole('link', { name: `api-${i}` })).toBeInTheDocument();
-    expect(main().queryByRole('link', { name: 'other' })).not.toBeInTheDocument();
+    const more = options.at(-1) as HTMLElement;
+    expect(more).toHaveTextContent(t('palette.showAllHere', { count: 8 }));
+    // By keyboard: the "Show all" row is the 7th choice.
+    for (let i = 0; i < 6; i++) await user.keyboard('{ArrowDown}');
+    expect(box()).toHaveAttribute('aria-activedescendant', more.id);
+    await user.keyboard('{Enter}');
+    const all = within(dialog.getByRole('group', { name: t('kind.routes.plural') })).getAllByRole('option');
+    expect(all.map((o) => /^api-\d/.exec(o.textContent ?? '')?.[0])).toEqual(Array.from({ length: 8 }, (_, i) => `api-${i}`));
+    expect(window.location.hash).toBe('#/upstreams');
+    // The first row that was hidden takes the place of "Show all", and the keys go on from there.
+    expect(box()).toHaveAttribute('aria-activedescendant', all[6]?.id);
+    expect(all[6]).toHaveAttribute('aria-selected', 'true');
+    await user.keyboard('{ArrowDown}');
+    expect(box()).toHaveAttribute('aria-activedescendant', all[7]?.id);
+    expect(dialog.getByRole('status')).toHaveTextContent(t('palette.count.other', { count: 8 }));
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('routes', 'a7')}`));
+  });
+
+  it('a click on "Show all N here" expands the group too', async () => {
+    const many: Obj[] = Array.from({ length: 7 }, (_, i) => ({ id: `a${i}`, name: `api-${i}`, uri: `/a${i}` }));
+    const { user } = await open('#/upstreams', { objects: { routes: many } });
+    const dialog = await openPalette(user);
+    await user.type(box(), 'api-');
+    await user.click(await dialog.findByRole('option', { name: t('palette.showAllHere', { count: 7 }) }));
+    expect(within(dialog.getByRole('group', { name: t('kind.routes.plural') })).getAllByRole('option')).toHaveLength(7);
+    expect(dialog.queryByRole('option', { name: t('palette.showAllHere', { count: 7 }) })).not.toBeInTheDocument();
+    expect(window.location.hash).toBe('#/upstreams');
   });
 
   it('a list still loading shows one muted row; a failed one says so; the others are still searched', async () => {
@@ -124,7 +148,10 @@ describe('finding objects', () => {
     // Nothing found is not stated as a fact while a list is missing.
     await user.clear(box());
     await user.type(box(), 'nothing-here');
-    expect(await dialog.findByText(t('palette.noResultsPartial', { query: 'nothing-here' }))).toBeInTheDocument();
+    expect(await dialog.findByText(t('palette.noResultsPartial', { query: 'nothing-here' }), { selector: 'p' })).toBeInTheDocument();
+    // …nor announced as one.
+    expect(dialog.getByRole('status')).toHaveTextContent(t('palette.noResultsPartial', { query: 'nothing-here' }));
+    expect(dialog.getByRole('status')).not.toHaveTextContent(t('palette.count.none'));
   });
 
   it('kinds this APISIX lacks are not searched or offered', async () => {

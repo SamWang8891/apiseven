@@ -2,7 +2,7 @@
 // None writes to APISIX: they navigate (through the router, so an editor's leave guard asks first),
 // switch the active connection after such a navigation, or set the theme.
 import { ArrowRight, Monitor, Moon, Plus, Server, Settings2, Sun } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import type { Kind } from '../api/types';
 import { useReadOnlyKey } from '../api/write';
@@ -48,7 +48,25 @@ export function usePaletteActions(kinds: Kind[], host: ActionHost): PaletteActio
   const { list, active, serverManaged } = useConnections();
   const [, setTheme] = useTheme();
   const { pathname } = useLocation();
+  // As the header's switcher: the same kind of page, as its list (an object id means nothing elsewhere).
+  // The switch itself happens once that navigation is through (usePalette), so an editor's leave guard asks first.
+  const listPath = pathFor(kindFromSegment(pathname.split('/')[1]) ?? 'routes');
+  // Built again only when what they depend on changes, so the rows that show them keep their identity.
+  return useMemo(() => buildActions({ kinds, host, readOnly, list, active, serverManaged, listPath, setTheme }), [kinds, host, readOnly, list, active, serverManaged, listPath, setTheme]);
+}
 
+interface ActionInputs {
+  kinds: Kind[];
+  host: ActionHost;
+  readOnly: boolean;
+  list: SavedConnection[];
+  active?: SavedConnection;
+  serverManaged: boolean;
+  listPath: string;
+  setTheme: (choice: ThemeChoice) => void;
+}
+
+function buildActions({ kinds, host, readOnly, list, active, serverManaged, listPath, setTheme }: ActionInputs): PaletteAction[] {
   const goTo = kinds.map((kind): PaletteAction => {
     const href = pathFor(kind);
     return {
@@ -77,9 +95,6 @@ export function usePaletteActions(kinds: Kind[], host: ActionHost): PaletteActio
         };
       });
 
-  // As the header's switcher: the same kind of page, as its list (an object id means nothing elsewhere).
-  // The switch itself happens once that navigation is through (usePalette), so an editor's leave guard asks first.
-  const listPath = pathFor(kindFromSegment(pathname.split('/')[1]) ?? 'routes');
   const connections = serverManaged
     ? []
     : [

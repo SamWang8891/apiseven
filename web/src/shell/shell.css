@@ -373,6 +373,12 @@
   outline: none;
 }
 
+/* main takes focus only as the starting point of the page the palette opened: no ring (the global
+   :focus-visible rule in base.css loads later and would draw one). */
+.shell-main:focus-visible {
+  outline: none;
+}
+
 .shell-page {
   padding: var(--s4) var(--s5) var(--s6);
 }

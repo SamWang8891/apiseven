@@ -1,10 +1,11 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { pathFor } from '../router/paths';
 import { DEV_CONN, renderApp, resetApp, saveConnections } from '../test/app';
+import type { FakeAdminOptions } from '../test/fakeAdmin';
 
 beforeAll(async () => {
   await import('./CommandPalette');
@@ -20,10 +21,10 @@ const ROUTES: Obj[] = [
 ];
 const UPSTREAMS: Obj[] = [{ id: 'u1', name: 'web-pool', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] }];
 
-async function open(hash = '#/routes') {
+async function open(hash = '#/routes', opts: FakeAdminOptions = {}) {
   saveConnections([DEV_CONN], DEV_CONN.id);
   const user = userEvent.setup();
-  const app = renderApp({ hash, counts: {}, objects: { routes: ROUTES, upstreams: UPSTREAMS } });
+  const app = renderApp({ hash, counts: {}, objects: { routes: ROUTES, upstreams: UPSTREAMS }, ...opts });
   await screen.findByRole('main');
   return { user, ...app };
 }
@@ -90,6 +91,56 @@ describe('opening and closing', () => {
     expect(dialog()).not.toBeInTheDocument();
   });
 
+  it('Ctrl-K also works where the K key types another letter (event.code KeyK), but not on a key that is another Latin letter', async () => {
+    await open();
+    fireEvent.keyDown(document.body, { key: 't', code: 'KeyK', ctrlKey: true });
+    expect(dialog()).not.toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: 'л', code: 'KeyK', ctrlKey: true });
+    expect(await screen.findByRole('dialog', { name: t('palette.title') })).toBeInTheDocument();
+  });
+
+  it('neither Ctrl-K nor "/" opens it over another dialog or a menu: an open overlay owns the keyboard', async () => {
+    // An editor page: "/" there opens the palette when nothing holds the keyboard.
+    const { user } = await open('#/upstreams/u1');
+    await screen.findByRole('heading', { level: 1, name: 'web-pool' });
+    // A menu first: "/" and Ctrl-K on a menu item do nothing.
+    await user.click(screen.getByRole('button', { name: t('editor.more') }));
+    await screen.findByRole('menu');
+    await user.keyboard('/');
+    await user.keyboard('{Control>}k{/Control}');
+    expect(dialog()).not.toBeInTheDocument();
+    await user.click(screen.getByRole('menuitem', { name: t('action.delete') }));
+    // Then the confirmation dialog (Delete), focus on its Cancel button.
+    const confirm = await screen.findByRole('alertdialog');
+    await user.keyboard('{Control>}k{/Control}');
+    await user.keyboard('/');
+    expect(dialog()).not.toBeInTheDocument();
+    // Focus away from the dialog (on the page body) changes nothing while it is open.
+    (document.activeElement as HTMLElement | null)?.blur();
+    fireEvent.keyDown(document.body, { key: 'k', code: 'KeyK', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: '/', code: 'Slash' });
+    expect(dialog()).not.toBeInTheDocument();
+    expect(confirm).toBeInTheDocument();
+    // Once it is gone, Ctrl-K opens the palette again.
+    await user.click(within(confirm).getByRole('button', { name: t('ui.cancel') }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
+    await openPalette(user);
+  });
+
+  it('the hints say what "/" does here: it opens the palette, except on a list, where it searches the list', async () => {
+    const { user } = await open('#/upstreams/u1');
+    await screen.findByRole('heading', { level: 1, name: 'web-pool' });
+    await openPalette(user);
+    const hints = () => document.querySelector('.cp-hints');
+    expect(hints()).toHaveTextContent(t('palette.hint.slash'));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
+    await user.click(within(screen.getByRole('navigation', { name: t('shell.nav') })).getByRole('link', { name: /^Upstreams/ }));
+    await screen.findByRole('searchbox', { name: t('table.search.label', { plural: t('kind.upstreams.plural') }) });
+    await openPalette(user);
+    expect(hints()).not.toHaveTextContent(t('palette.hint.slash'));
+  });
+
   it('the header button opens it and shows the shortcut', async () => {
     const { user } = await open();
     const button = screen.getByRole('button', { name: t('palette.open') });
@@ -149,6 +200,49 @@ describe('moving through the results', () => {
     expect(window.location.hash).toBe('#/routes');
   });
 
+  it('Ctrl-Enter is offered only on a row that opens a page; elsewhere it does nothing, and the hint says nothing about it', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} }));
+    const opened = vi.fn(() => null);
+    vi.stubGlobal('open', opened);
+    const { user } = await open();
+    await openPalette(user);
+    const hints = () => document.querySelector('.cp-hints');
+    // Go to Routes opens a page: the hint is there.
+    expect(active()).toHaveTextContent(t('palette.action.goTo', { plural: t('kind.routes.plural') }));
+    expect(hints()).toHaveTextContent(t('palette.hint.newTab'));
+    await user.type(box(), 'theme dark');
+    expect(active()).toHaveTextContent(t('palette.action.theme', { theme: t('theme.dark') }));
+    expect(hints()).not.toHaveTextContent(t('palette.hint.newTab'));
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    expect(opened).not.toHaveBeenCalled();
+    expect(document.documentElement.dataset.theme).not.toBe('dark');
+    expect(dialog()).toBeInTheDocument();
+    delete document.documentElement.dataset.theme;
+  });
+
+  it('the active row stays on its object when a list arrives later and rows appear above it', async () => {
+    let release = () => {};
+    const gate = new Promise<undefined>((resolve) => {
+      release = () => resolve(undefined);
+    });
+    const { user } = await open('#/upstreams', {
+      objects: { routes: ROUTES, upstreams: [...UPSTREAMS, { id: 'u2', name: 'web-pool-2', nodes: [] }] },
+      // The routes list (page_size 500) waits; the connection check and the support check do not.
+      replies: { routes: (req) => (req.url.searchParams.get('page_size') === '500' ? gate : undefined) },
+    });
+    await openPalette(user);
+    await user.type(box(), 'web');
+    await screen.findByRole('option', { name: /^web-pool-2/ });
+    expect(screen.getByRole('option', { name: t('palette.loading', { plural: t('kind.routes.plural') }) })).toBeInTheDocument();
+    await user.keyboard('{ArrowDown}');
+    expect(active()).toHaveTextContent(/^web-pool-2/);
+    release();
+    await screen.findByRole('option', { name: /^web-a/ });
+    expect(active()).toHaveTextContent(/^web-pool-2/);
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('upstreams', 'u2')}`));
+  });
+
   it('after Enter navigates, focus is on the page it opened', async () => {
     const { user } = await open();
     await openPalette(user);
@@ -186,7 +280,7 @@ describe('ARIA', () => {
     const { user } = await open();
     await openPalette(user);
     await user.type(box(), 'zzz-nothing');
-    expect(await screen.findByText(t('palette.noResults', { query: 'zzz-nothing' }))).toBeInTheDocument();
+    expect(await screen.findByText(t('palette.noResults', { query: 'zzz-nothing' }), { selector: 'p' })).toBeInTheDocument();
     expect(box()).toHaveAttribute('aria-expanded', 'false');
     expect(box()).not.toHaveAttribute('aria-activedescendant');
   });
