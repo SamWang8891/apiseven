@@ -328,3 +328,38 @@ export async function openCard(page: Page, name: string): Promise<Locator> {
   await expect(head).toHaveAttribute('aria-expanded', 'true');
   return card;
 }
+
+// ---- One field per tab ----------------------------------------------------------------------------
+
+export interface TabChange {
+  /** The tab's label. */
+  tab: string;
+  /** The top-level field the change is to land in. */
+  field: string;
+  /** The field's stored value afterwards (an asymmetric matcher works too). */
+  value: (before: Json) => unknown;
+  /** Makes the change inside the unlocked tab panel. */
+  change: (panel: Locator, page: Page) => Promise<void>;
+}
+
+/**
+ * Opens the editor locked on the tab (no controls), unlocks, makes the change, saves, and checks that
+ * the Admin API now holds exactly the stored object with that one field changed: every other field,
+ * unknown keys included, deep-equal to before.
+ */
+export async function changeOnTab(page: Page, admin: Admin, editor: string, api: string, change: TabChange): Promise<void> {
+  const before = await admin.must(api);
+  await openEditor(page, editor);
+  await openTab(page, change.tab);
+  expect(await operableControls(page), 'locked: no controls').toEqual([]);
+  await unlock(page);
+  await change.change(page.getByRole('main').getByRole('tabpanel'), page);
+  await save(page);
+  expect(await admin.value(api)).toEqual({ ...before, [change.field]: change.value(before) });
+}
+
+/** Picks an option of a kit Select or an object picker by its visible name. */
+export async function choose(page: Page, combobox: Locator, option: string | RegExp): Promise<void> {
+  await combobox.click();
+  await page.getByRole('option', { name: option }).first().click();
+}
