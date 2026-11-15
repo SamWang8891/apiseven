@@ -9,8 +9,8 @@ import { isSecretRef } from './validate';
 
 const CERT_LABEL = /-----BEGIN CERTIFICATE-----/;
 const KEY_LABEL = /-----BEGIN (?:RSA |EC |DSA )?PRIVATE KEY-----/;
-const KEY_END = /-----END (?:RSA |EC |DSA )?PRIVATE KEY-----/;
-const ENCRYPTED_KEY = /-----BEGIN ENCRYPTED PRIVATE KEY-----/;
+/** PKCS#8 encrypted, or a traditional (PKCS#1 / SEC1) key with a Proc-Type: 4,ENCRYPTED header. */
+const ENCRYPTED_KEY = /-----BEGIN ENCRYPTED PRIVATE KEY-----|Proc-Type:\s*4,ENCRYPTED/;
 
 /**
  * Why `text` can't be a certificate as typed, or undefined (also for nothing typed). Text that holds a
@@ -33,16 +33,6 @@ export function keyProblem(text: string): string | undefined {
   if (KEY_LABEL.test(text)) return undefined;
   return CERT_LABEL.test(text) ? t('ssl.pem.isCert') : t('ssl.pem.noKeyLabel');
 }
-
-/**
- * A private key whole enough to be taken: PEM with its BEGIN and END lines, or a $secret:// / $env://
- * reference. Nothing less is ever the entered key (fix round 2, S1).
- */
-export const wholeKey = (text: string): boolean => text.trim() !== '' && keyProblem(text) === undefined && (isSecretRef(text.trim()) || KEY_END.test(text));
-
-/** Why a key box's text is not taken: keyProblem, or a PEM key still without its END line. */
-export const keyBoxProblem = (text: string): string | undefined =>
-  keyProblem(text) ?? (text.trim() !== '' && !wholeKey(text) ? t('ssl.pem.incomplete') : undefined);
 
 /**
  * Why a typed SNI is refused: the schema's pattern (host_def_pat), or a wildcard that is not `*.`

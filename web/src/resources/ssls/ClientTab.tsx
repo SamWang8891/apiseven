@@ -13,7 +13,6 @@ import { Button, Field, NumberInput, Switch, TagInput, useEditingState, useLocke
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { TabProps } from '../registry';
 import { CertDetails } from './CertDetails';
-import { certProblem } from './pem';
 import { CertBox } from './PemBoxes';
 import { typeOf } from './usage';
 
@@ -21,27 +20,26 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
 const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []);
 
 /**
- * The CA as typed: emitted when it can be taken (a cleared box removes it); text with no PEM label, or
- * with a private key, holds Save. Locked: its details. A stored CA whose text also holds a private key
- * (stored by another tool) is never put in the box: it says so, with Replace CA for an empty box.
+ * The CA: a CertBox over `client.ca` (the rule in pemBox.ts). Locked: its details. A stored CA whose
+ * text also holds a private key (stored by another tool) is one the box cannot show: it is fixed for
+ * this editing session and shown as details, with a warning and Replace CA; replacing it opens an
+ * empty box, which keeps it while empty (and says so, with Keep the stored CA).
  */
 function CaField({ client, write, error }: { client: Obj; write: (ca: string | undefined) => void; error?: string }) {
   const locked = useLocked();
-  const keyInside = holdsPrivateKey(client.ca);
-  // Editing state: the text being typed (the draft keeps the last text that could be taken), and
-  // whether a stored CA that holds a key is being replaced.
-  const [text, setText] = useEditingState(keyInside ? '' : (str(client.ca) ?? ''));
+  // Editing state: the CA the box cannot show, as it was when editing began; whether it is being replaced.
+  const [hidden] = useEditingState(() => (holdsPrivateKey(client.ca) ? str(client.ca) : undefined));
   const [replacing, setReplacing] = useEditingState(false);
-  const warning = keyInside && (
-    <p className="ssl-warn" role="note">
-      {t('ssl.cert.holdsKey')}
-    </p>
-  );
-  if (locked || (keyInside && !replacing)) {
+  const shownAsDetails = locked || (hidden !== undefined && client.ca === hidden && !replacing);
+  if (shownAsDetails) {
     return (
       <div className="ssl-field">
         <span className="ssl-field__label">{t('ssl.client.ca')}</span>
-        {warning}
+        {holdsPrivateKey(client.ca) && (
+          <p className="ssl-warn" role="note">
+            {t('ssl.cert.holdsKey')}
+          </p>
+        )}
         <CertDetails pem={client.ca} />
         {error && <p className="ssl-issue">{error}</p>}
         {!locked && (
@@ -55,31 +53,16 @@ function CaField({ client, write, error }: { client: Obj; write: (ca: string | u
     );
   }
   return (
-    <>
-      <CertBox
-        label={t('ssl.client.ca')}
-        help={t('ssl.client.caHelp')}
-        value={text}
-        standing={keyInside ? undefined : str(client.ca)}
-        error={error}
-        onChange={(next) => {
-          setText(next);
-          if (next.trim() === '') {
-            // The stored CA that held a key stays until a new one is entered (said below).
-            if (!keyInside) write(undefined);
-          } else if (certProblem(next) === undefined) write(next);
-        }}
-      />
-      {keyInside && text === '' && (
-        <p className="ssl-keyline">
-          <span>{t('ssl.client.caStays')}</span>
-          <Button size="sm" variant="ghost" onClick={() => setReplacing(false)}>
-            {t('ssl.client.keepCa')}
-          </Button>
-        </p>
-      )}
-      {certProblem(text) === undefined && text.trim() !== '' && <CertDetails pem={text} />}
-    </>
+    <CertBox
+      label={t('ssl.client.ca')}
+      help={t('ssl.client.caHelp')}
+      value={str(client.ca)}
+      hidden={hidden}
+      details
+      error={error}
+      onValue={write}
+      keep={{ label: t('ssl.client.keepCa'), onKeep: () => setReplacing(false) }}
+    />
   );
 }
 

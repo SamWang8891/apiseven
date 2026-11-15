@@ -391,6 +391,71 @@ describe('creating an SSL', () => {
   });
 });
 
+describe('N1: text a box did not take is held through Save, never swapped for the old value', () => {
+  const saveKeys = () => fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+  const COMBINED = RSA_LEAF + SEED_KEY;
+  const heldToast = (field: string, problem: string, count = 1) =>
+    t('editor.fixHeld', { fix: count === 1 ? t('editor.fixOne') : t('editor.fixMany', { count }), message: t('ui.pending.problem', { field, problem }) });
+
+  async function newSsl(user: UserEvent) {
+    await settled();
+    await user.click(main().getByRole('textbox', { name: t('ssl.pem.cert') }));
+    await user.paste(SEED_CERT);
+    await user.click(main().getByRole('textbox', { name: t('ssl.pem.key') }));
+    await user.paste(SEED_KEY);
+    await user.click(tab(t('ssl.tab.snis')));
+    await settled();
+    await user.type(main().getByRole('textbox', { name: t('ssl.snis.label') }), 'tls.apiseven.test{Enter}');
+    await user.click(tab(t('ssl.tab.certificate')));
+    await settled();
+  }
+
+  it('a combined text pasted over a new SSL certificate, then Create: refused, no request, the toast names the field', async () => {
+    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    await newSsl(user);
+    const box = main().getByRole('textbox', { name: t('ssl.pem.cert') });
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(COMBINED);
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.pem.markerCert'))));
+    expect(writesOf(admin)).toEqual([]);
+    // Left by the click: the key block is a marker now, and the text is still held.
+    expect(box).toHaveValue(RSA_LEAF + `${t('ssl.pem.marker')}\n`);
+    expect(document.body.innerHTML).not.toContain(SEED_KEY_TEXT);
+  });
+
+  it('a combined text pasted over a stored CA, then Ctrl-S: refused, no request, the toast names the field', async () => {
+    const withCa = { ...STORED, client: { ca: SEED_CERT, depth: 1 } };
+    const { user, admin } = await openSsl('#/ssls/apiseven-test?tab=client', [withCa]);
+    await user.keyboard('e');
+    const depth = main().getByRole('spinbutton', { name: t('ssl.client.depth') });
+    await user.clear(depth);
+    await user.type(depth, '3');
+    const ca = main().getByRole('textbox', { name: t('ssl.client.ca') });
+    await user.click(ca);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(COMBINED);
+    saveKeys();
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.client.ca'), t('ssl.pem.markerCert'))));
+    expect(writesOf(admin)).toEqual([]);
+    expect(document.body.innerHTML).not.toContain(SEED_KEY_TEXT);
+  });
+
+  it.each([
+    ['an encrypted key', `-----BEGIN ENCRYPTED PRIVATE KEY-----\n${'E'.repeat(80)}\n-----END ENCRYPTED PRIVATE KEY-----\n`],
+    ['a key with a certificate', SEED_KEY + SEED_CERT],
+  ])('the key box: Replace key, %s pasted, then Create: refused, no request, the toast names the field', async (_, text) => {
+    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    await newSsl(user);
+    await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
+    await user.paste(text);
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.key'), t('ssl.pem.markerKey'))));
+    expect(writesOf(admin)).toEqual([]);
+  });
+});
+
 describe('a new SSL that is not a copy', () => {
   it('has no copy notice, and the key note is neutral', async () => {
     const { user } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });

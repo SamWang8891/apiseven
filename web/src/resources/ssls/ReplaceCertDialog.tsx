@@ -1,10 +1,10 @@
 // The dialog that takes a certificate and its private key: to replace the main pair, to add an extra
 // pair, or (`key`) to enter the key of an extra certificate again. Paste, upload or drop each (the
-// key leaves its box once taken, PemBoxes; a certificate box never keeps a private key). The
-// certificate's details show as soon as our reader can read it (a certificate it can't read is still
-// taken: APISIX parses it on save); text with no PEM label is refused as it is typed. Apply hands
-// over both texts; nothing of the dialog reaches the draft before that, and it is mounted only while
-// open, so every opening starts empty. APISIX doesn't check that a key belongs to its certificate
+// key leaves its box once taken; both boxes follow the rule in pemBox.ts, so text not taken holds
+// the dialog and Apply is off). The certificate's details show as soon as our reader can read it (a
+// certificate it can't read is still taken: APISIX parses it on save). Apply hands over both values;
+// nothing of the dialog reaches the draft before that, and it is mounted only while open, so every
+// opening starts empty. APISIX doesn't check that a key belongs to its certificate
 // (ssl.lua 131), and the dialog says so.
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
@@ -13,7 +13,6 @@ import { ExpiryBadge } from '../expiry';
 import { CertDetails, Row } from './CertDetails';
 import { parseCert } from './parseCert';
 import { CertBox, KeyBox } from './PemBoxes';
-import { certProblem, keyProblem } from './pem';
 import { isSecretRef } from './validate';
 
 export type PairMode = 'replace' | 'add' | 'key';
@@ -31,12 +30,6 @@ const TEXTS: Record<PairMode, { title: string; apply: string }> = {
   add: { title: 'ssl.addPair.title', apply: 'ssl.addPair.apply' },
   key: { title: 'ssl.enterKey.title', apply: 'ssl.enterKey.apply' },
 };
-
-/** What the new certificate's details look like while it is typed: none yet, refused (the field says why), or its details. */
-function NewCert({ text }: { text: string }) {
-  if (text.trim() === '' || certProblem(text) !== undefined) return null;
-  return <CertDetails pem={text} />;
-}
 
 /** The SANs of a certificate as a mono list, or a dash. */
 function Names({ pem }: { pem: string | undefined }) {
@@ -81,12 +74,12 @@ function Compare({ before, after }: { before: string | undefined; after: string 
 }
 
 export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCertDialogProps) {
-  // Editing state: what is typed here belongs to this opening (the dialog is mounted only while
-  // open) and to this editing session.
-  const [cert, setCert] = useEditingState(mode === 'key' ? (current ?? '') : '');
+  // Editing state: the certificate and key taken so far belong to this opening (the dialog is
+  // mounted only while open) and to this editing session.
+  const [cert, setCert] = useEditingState<string | undefined>(mode === 'key' ? current : undefined);
   const [key, setKey] = useEditingState<string | undefined>(undefined);
   const texts = TEXTS[mode];
-  const ready = cert.trim() !== '' && certProblem(cert) === undefined && key !== undefined && keyProblem(key) === undefined;
+  const ready = cert !== undefined && key !== undefined;
   return (
     <Dialog
       open
@@ -100,7 +93,7 @@ export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCe
             variant="primary"
             disabled={!ready || held.length > 0}
             onClick={() => {
-              if (key !== undefined) onApply({ cert, key });
+              if (cert !== undefined && key !== undefined) onApply({ cert, key });
               onClose();
             }}
           >
@@ -113,13 +106,10 @@ export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCe
         {mode === 'key' ? (
           <CertDetails pem={current} />
         ) : (
-          <>
-            <CertBox label={t('ssl.pem.cert')} help={t('ssl.pem.certHelp')} value={cert} onChange={setCert} />
-            <NewCert text={cert} />
-          </>
+          <CertBox label={t('ssl.pem.cert')} help={t('ssl.pem.certHelp')} value={cert} onValue={setCert} details />
         )}
-        {mode === 'replace' && <Compare before={current} after={cert} />}
-        <KeyBox label={t('ssl.pem.key')} help={t('ssl.pem.keyHelp')} value={key} onChange={setKey} />
+        {mode === 'replace' && cert !== undefined && <Compare before={current} after={cert} />}
+        <KeyBox label={t('ssl.pem.key')} help={t('ssl.pem.keyHelp')} value={key} onValue={setKey} />
         <p className="ed-note">{t('ssl.pair.unchecked')}</p>
       </div>
     </Dialog>

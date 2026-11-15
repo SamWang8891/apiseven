@@ -1,9 +1,10 @@
-// A PEM text box: paste, upload a file, or drop one on it. What it shows and what it takes are the
-// caller's (a dialog's own text, or a draft field); this box only says when the text can't be taken
-// (`problem`, from pem.ts), and while it says so it holds Save (usePending), names itself in the
-// message, and marks itself aria-invalid, as every field that holds input does. A file is checked
-// before it is read (at most 64 KiB, the schema's limit for a certificate or key) and after (text,
-// not DER or PKCS#12); a problem with it is said at the field, never with any of its content.
+// A PEM text box: paste, upload a file, or drop a file or text on it. What it shows and what it takes
+// are the caller's (PemBoxes, following pemBox.ts); this box says when the text is not taken
+// (`problem`), and while it says so it holds Save (usePending), names itself in the message, and
+// marks itself aria-invalid, as every field that holds input does. A file is checked before it is read
+// (at most 64 KiB, the schema's limit for a certificate or key) and after (text, not DER or PKCS#12),
+// then judged by the caller (`onFile`) before anything changes; why it was refused is said at the
+// field, before any other problem, never with any of its content. Dropped text is a paste.
 import { Upload } from 'lucide-react';
 import { useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { t } from '../../i18n';
@@ -38,8 +39,12 @@ export interface PemInputProps {
   /** A problem with the stored value (an issue), shown when the text itself has none. */
   error?: string;
   onBlur?: () => void;
-  /** Where the text of an uploaded or dropped file goes; default onChange. */
-  onFile?: (text: string) => void;
+  /**
+   * Judges an uploaded or dropped file's text before anything changes (pemBox.ts rule 5): returns why
+   * it is refused (shown at the field, before any other problem, until the box next changes), or
+   * undefined once the caller has put it in the box or taken it.
+   */
+  onFile: (text: string) => string | undefined;
   autoFocus?: boolean;
   rows?: number;
 }
@@ -50,27 +55,32 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
   const fileRef = useRef<HTMLInputElement>(null);
   /** View state: a file is being dragged over the box. */
   const [over, setOver] = useState(false);
-  /** Editing state: why the last file wasn't put in the box (until the next change). */
+  /** Editing state: why the last file wasn't put in the box (until the box next changes). */
   const [fileProblem, setFileProblem] = useEditingState<string | undefined>(undefined);
-  const arrived = onFile ?? onChange;
 
   const read = (file: File | undefined) => {
     if (!file) return;
-    setFileProblem(undefined);
     readPem(file)
-      .then((result) => ('text' in result ? arrived(result.text) : setFileProblem(result.problem)))
+      .then((result) => setFileProblem('text' in result ? onFile(result.text) : result.problem))
       .catch(() => {
         setFileProblem(t('ssl.pem.readFailed'));
         toast.error(t('ssl.pem.readFailed'));
       });
   };
+  const change = (text: string) => {
+    setFileProblem(undefined);
+    onChange(text);
+  };
   const drop = (e: DragEvent) => {
     e.preventDefault();
     setOver(false);
     const file = e.dataTransfer.files[0];
+    // Dropped plain text is a paste, not a file (rule 7).
     if (file) read(file);
-    else arrived(e.dataTransfer.getData('text/plain'));
+    else change(e.dataTransfer.getData('text/plain'));
   };
+  // Both the file's reason and the text's problem show, the file's first (rule 5).
+  const shown = [fileProblem, problem ?? error].filter((m): m is string => m !== undefined && m !== '');
 
   return (
     <div
@@ -85,15 +95,12 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
       <Textarea
         label={label}
         help={help}
-        error={fileProblem ?? problem ?? error}
+        error={shown.length > 0 ? shown.join(' ') : undefined}
         mono
         rows={rows}
         value={value}
         placeholder="-----BEGIN …-----"
-        onChange={(text) => {
-          setFileProblem(undefined);
-          onChange(text);
-        }}
+        onChange={change}
         onBlur={onBlur}
         autoFocus={autoFocus}
       />
