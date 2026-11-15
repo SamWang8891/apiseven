@@ -24,7 +24,7 @@ import { upstreamIssues } from '../upstream/validate';
 import { consumerColumns } from './consumers/columns';
 import { consumerFilters } from './consumers/filters';
 import { consumerTabs } from './consumers/tabs';
-import { consumerIssues } from './consumers/validate';
+import { consumerIssues, usernameProblem } from './consumers/validate';
 import { credentialColumns } from './credentials/columns';
 import { credentialTabs } from './credentials/tabs';
 import { credentialIssues } from './credentials/validate';
@@ -219,6 +219,8 @@ export interface ResourceDef {
    * cut), naming the field; Save is refused meanwhile and the message is its toast.
    */
   idProblem?(id: string): string | undefined;
+  /** Its ids hold one slash between two path segments (a secret: "<manager>/<id>"): each segment is checked, not the slash (editor/newId.ts). */
+  idWithSlash?: boolean;
   /** The kind has no Duplicate (one plugin metadata entry per plugin). */
   noDuplicate?: boolean;
   /** Deleting an object resets something rather than removing a thing of its own (plugin metadata): the actions and dialog say Reset. */
@@ -335,6 +337,11 @@ export const registry: Record<Kind, ResourceDef> = {
     validate: (draft, env) => consumerIssues(draft, env),
     idFromDraft: (draft) => (typeof draft.username === 'string' && draft.username !== '' ? draft.username : undefined),
     idField: 'username',
+    // The username is the id in the path: a missing or refused one is the frame's refusal (editor/newId.ts).
+    idProblem: (id) => {
+      const problem = usernameProblem(id);
+      return problem && t('cs.id.refused', { problem });
+    },
     // A group's "New consumer in this group" starts a consumer in it.
     prefill: ['group_id'],
     columns: consumerColumns,
@@ -383,6 +390,7 @@ export const registry: Record<Kind, ResourceDef> = {
     nameOf: (item) => item.id,
     NewId: NewSecretId,
     idProblem: secretIdProblem,
+    idWithSlash: true,
     masksSearch: true,
   }),
   global_rules: define('global_rules', {

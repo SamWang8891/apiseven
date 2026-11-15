@@ -130,8 +130,10 @@ describe('creating a consumer', () => {
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo e');
     fireEvent.keyDown(window, { key: 's', ctrlKey: true });
     expect(writesOf(admin)).toEqual([]);
-    expect(getToasts().at(-1)?.message).toBe(t('editor.fixAnyway', { fix: t('editor.fixOne') }));
+    // The username is the id in the path: the frame's refusal, named in the toast, with no Save anyway.
+    expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: t('cs.id.refused', { problem: t('cs.issue.usernamePattern') }) }));
     expect(main().getByRole('textbox', { name: /^Username/ })).toHaveAccessibleDescription(t('cs.issue.usernamePattern'));
+    expect(main().queryByRole('button', { name: t('editor.anyway.action') })).toBeNull();
   });
 
   it('from a group\'s "New consumer in this group": starts in that group', async () => {

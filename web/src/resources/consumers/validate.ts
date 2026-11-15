@@ -19,6 +19,15 @@ export const USERNAME = /^[a-zA-Z0-9_-]+$/;
 /** rule_name_def's maxLength (schema_def.lua 117–121), which the username takes. */
 export const USERNAME_MAX = 256;
 
+/**
+ * Why a username can't be a consumer's id (the consumer schema's pattern and length): the frame's
+ * id rule for consumers (ResourceDef.idProblem), as the username is the id in the path.
+ */
+export function usernameProblem(username: string): string | undefined {
+  if (!USERNAME.test(username)) return t('cs.issue.usernamePattern');
+  return username.length > USERNAME_MAX ? t('cs.issue.usernameLong') : undefined;
+}
+
 /** What id_schema takes (schema_def.lua 47–55): letters, digits, - _ . (1–64), or an integer ≥ 1. */
 export function isIdShape(v: unknown): boolean {
   if (typeof v === 'number') return Number.isInteger(v) && v >= 1;
@@ -33,8 +42,10 @@ export function consumerIssues(draft: Obj, env: ValidateEnv): Issue[] {
   // username: required (810), the pattern (797–800), at most 256 (rule_name_def 117–121).
   const { username } = draft;
   if (username === undefined || username === '') add('username', t('cs.issue.username'));
-  else if (typeof username !== 'string' || !USERNAME.test(username)) add('username', t('cs.issue.usernamePattern'));
-  else if (username.length > USERNAME_MAX) add('username', t('cs.issue.usernameLong'));
+  else {
+    const problem = typeof username === 'string' ? usernameProblem(username) : t('cs.issue.usernamePattern');
+    if (problem) add('username', problem);
+  }
 
   if (labelsRefused(draft.labels)) add('labels', t('rt.issue.labels'));
 

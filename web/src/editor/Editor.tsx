@@ -25,6 +25,7 @@ import { useHeaderStatus } from './headerStatus';
 import { idIssues, issuesByTab, pathOfError, tabOfIssue, type Issue } from './issues';
 import { JSON_TAB } from './json';
 import { JsonTab } from './JsonTab';
+import { newIdState } from './newId';
 import { NewIdField } from './NewIdField';
 import { saveResource } from './save';
 import { SaveAnywayNotice } from './SaveAnyway';
@@ -133,13 +134,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const listPath = back.to;
 
   // --- Issues ------------------------------------------------------------------------------------
-  const typedId = typeof draft.id === 'string' || typeof draft.id === 'number' ? String(draft.id) : undefined;
-  // A new object's id: the body field for kinds that have one (a consumer's username); else the one
-  // the page fixes, the ID field, or an id typed into the JSON (POST refuses an id in the body).
-  const createId = def.idFromDraft ? def.idFromDraft(draft) : (fixedId ?? (newId.trim() || typedId));
-  const idMissing = isNew && !def.idFromDraft && def.idMode !== 'optional' && createId === undefined;
-  // An id the kind can't take as it is (a secret's with a slash): named in the field and the toast.
-  const idRefused = isNew && createId !== undefined ? def.idProblem?.(createId) : undefined;
+  // A new object's id, and the frame's refusals of it (newId.ts), named in the field and the toast.
+  const { typedId, createId, missing: idMissing, refused: idRefused } = newIdState(def, draft, { isNew, fixedId, newId });
   const objectId = isNew ? createId : id;
   const env = useMemo(() => ({ isNew, ctx, plugins, streamPlugins, original, id: objectId }), [isNew, ctx, plugins, streamPlugins, original, objectId]);
   const checked = useMemo(() => def.validate?.(draft, env) ?? [], [def, draft, env]);
@@ -160,9 +156,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   // --- Tabs --------------------------------------------------------------------------------------
   const tabState = useActiveTab(tabIds, bodyRef);
   const { active, pending, goTab } = tabState;
-  const problems = issues.length + (idMissing || idRefused ? 1 : 0) + pending.length;
-  // A typed ID and input a field holds (JSON text that doesn't parse, …) are work to lose as well,
-  // though not in the draft.
+  // An id that is a body field (a username) counts once: as the kind's own issue there, if it has one.
+  const idCounted = (idMissing || idRefused !== undefined) && !(def.idField !== undefined && issues.some((issue) => issue.path === def.idField));
+  const problems = issues.length + (idCounted ? 1 : 0) + pending.length;
+  // A typed ID and input a field holds (JSON text that doesn't parse, …) are unsaved work too.
   const unsaved = dirty || (isNew && newId !== '') || pending.length > 0;
   // Leaving the page asks while there is unsaved work; a tab change through the URL (Back, a link
   // to ?tab=) asks, as a chosen tab does, while the active tab holds input. Either is judged once

@@ -19,6 +19,7 @@ export function secretIdProblem(id: string): string | undefined {
   // first path segment after the manager, so anything after a slash would be dropped.
   if (!isManager(manager)) return t('sc.id.noManager');
   if (name === '') return t('sc.id.empty');
+  if (name === '.' || name === '..') return t('editor.id.segment', { id });
   if (name.includes('/')) return t('sc.id.slash', { id: name });
   return undefined;
 }
