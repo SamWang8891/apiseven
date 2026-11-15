@@ -13,6 +13,9 @@
 //    ready, the dialog's result is the model's {cert, key} exactly, and a fresh dialog continues the
 //    sequence. (Saving outside a dialog goes through the real editor frame:
 //    pemBoxes.page.property.test.tsx.)
+// In a pair (a new SSL, the dialog) a combined text or file offers the split (Task 16 B23): the
+// action, when the model offers it, gives each part to its box, so the other field's value is
+// checked after every step too.
 // Every sequence runs to its end or its first failure; all failures are reported together.
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -38,12 +41,15 @@ const STORED: Obj = { id: 's1', snis: ['a.test'], cert: SEED_CERT };
 const caOf = (d: Obj) => (d.client as Obj | undefined)?.ca;
 const str = (v: unknown) => (typeof v === 'string' ? v : undefined);
 
-/** The pair dialog's other box, filled before the sequence starts, and what Apply must hand over. */
+/** The pair dialog's other box, filled before the sequence starts (its value is then taken). */
 interface DialogSide {
-  /** Fills the other box (its value is then taken). */
   fill: (dialog: HTMLElement) => void;
-  result: (value: string | undefined) => { cert: unknown; key: unknown };
+  /** What the other box holds once filled. */
+  other: string;
 }
+
+/** What Apply must hand over: this box's value and the other box's, as the model has them. */
+const resultOf = (m: Model) => (m.kind === 'cert' ? { cert: m.value, key: m.other } : { cert: m.other, key: m.value });
 
 type Mounted = { harness: ReturnType<typeof renderTab>; model: Model };
 
@@ -55,6 +61,8 @@ interface Place {
   setup: () => Mounted | Promise<Mounted>;
   /** The field's value in the draft (outside a dialog). */
   field?: (d: Obj) => unknown;
+  /** In a pair outside a dialog: the other field's value in the draft. */
+  other?: (d: Obj) => unknown;
   dialog?: DialogSide;
 }
 
@@ -76,28 +84,32 @@ const PLACES: Place[] = [
     kind: 'cert',
     label: () => t('ssl.pem.cert'),
     field: (d) => d.cert,
-    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1 }, sslIssues, { isNew: true }), model: newModel('cert', undefined, '') }),
+    other: (d) => d.key,
+    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1 }, sslIssues, { isNew: true }), model: newModel('cert', undefined, '', undefined, { other: undefined }) }),
   },
   {
     name: 'new SSL certificate over a draft one holding a key',
     kind: 'cert',
     label: () => t('ssl.pem.cert'),
     field: (d) => d.cert,
-    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1, cert: COMBINED }, sslIssues, { isNew: true }), model: newModel('cert', COMBINED, '', COMBINED) }),
+    other: (d) => d.key,
+    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1, cert: COMBINED }, sslIssues, { isNew: true }), model: newModel('cert', COMBINED, '', COMBINED, { other: undefined }) }),
   },
   {
     name: 'new SSL key, none entered',
     kind: 'key',
     label: () => t('ssl.pem.key'),
     field: (d) => d.key,
-    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1, cert: SEED_CERT }, sslIssues, { isNew: true }), model: newModel('key', undefined, '') }),
+    other: (d) => d.cert,
+    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1, cert: SEED_CERT }, sslIssues, { isNew: true }), model: newModel('key', undefined, '', undefined, { other: SEED_CERT }) }),
   },
   {
     name: 'new SSL key, one entered',
     kind: 'key',
     label: () => t('ssl.pem.key'),
     field: (d) => d.key,
-    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1, cert: SEED_CERT, key: SEED_KEY }, sslIssues, { isNew: true }), model: newModel('key', SEED_KEY, '') }),
+    other: (d) => d.cert,
+    setup: () => ({ harness: renderTab('ssls', CertificateTab, { status: 1, cert: SEED_CERT, key: SEED_KEY }, sslIssues, { isNew: true }), model: newModel('key', SEED_KEY, '', undefined, { other: SEED_CERT }) }),
   },
   {
     name: 'CA, none',
@@ -132,15 +144,15 @@ const PLACES: Place[] = [
     name: 'dialog certificate',
     kind: 'cert',
     label: () => t('ssl.pem.cert'),
-    dialog: { fill: (dialog) => fillBox(dialog, t('ssl.pem.key'), SEED_KEY), result: (cert) => ({ cert, key: SEED_KEY }) },
-    setup: () => ({ harness: renderTab('ssls', CertificateTab, STORED, sslIssues, { original: itemOf('s1', STORED) }), model: newModel('cert', undefined, '') }),
+    dialog: { fill: (dialog) => fillBox(dialog, t('ssl.pem.key'), SEED_KEY), other: SEED_KEY },
+    setup: () => ({ harness: renderTab('ssls', CertificateTab, STORED, sslIssues, { original: itemOf('s1', STORED) }), model: newModel('cert', undefined, '', undefined, { other: SEED_KEY }) }),
   },
   {
     name: 'dialog key',
     kind: 'key',
     label: () => t('ssl.pem.key'),
-    dialog: { fill: (dialog) => fillBox(dialog, t('ssl.pem.cert'), RSA_LEAF), result: (key) => ({ cert: RSA_LEAF, key }) },
-    setup: () => ({ harness: renderTab('ssls', CertificateTab, STORED, sslIssues, { original: itemOf('s1', STORED) }), model: newModel('key', undefined, '') }),
+    dialog: { fill: (dialog) => fillBox(dialog, t('ssl.pem.cert'), RSA_LEAF), other: RSA_LEAF },
+    setup: () => ({ harness: renderTab('ssls', CertificateTab, STORED, sslIssues, { original: itemOf('s1', STORED) }), model: newModel('key', undefined, '', undefined, { other: RSA_LEAF }) }),
   },
 ];
 
@@ -163,7 +175,7 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
           const run = new BoxRun(model, label, scope, harness.user, cov);
           const m = run.m;
           const apply = () => within(scope()).getByRole<HTMLButtonElement>('button', { name: t('ssl.replace.apply') });
-          const ready = () => m.value !== undefined && !held(m);
+          const ready = () => m.value !== undefined && m.other !== undefined && !held(m);
           const check = () => {
             run.check(where);
             if (side) {
@@ -172,6 +184,7 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
               const pending = harness.held().filter((message) => message.startsWith(`${label}: `));
               expect(pending.length > 0, `${where}: held`).toBe(held(m));
               expect(str(place.field?.(harness.value())), `${where}: the field's value`).toBe(m.value);
+              if (place.other) expect(str(place.other(harness.value())), `${where}: the other field's value`).toBe(m.other);
             }
           };
           check();
@@ -187,11 +200,12 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
                 await harness.user.click(apply());
                 run.leftByClick();
                 const draft = harness.value();
-                expect({ cert: draft.cert, key: draft.key }, `${where}: the dialog's result`).toEqual(side.result(m.value));
+                expect({ cert: draft.cert, key: draft.key }, `${where}: the dialog's result`).toEqual(resultOf(m));
                 cov.add('save: applied');
+                if (m.other !== side.other) cov.add('save: applied after a split');
                 // A fresh dialog, and the model as it starts, so the sequence goes on.
                 side.fill(await openDialog(harness));
-                Object.assign(m, newModel(place.kind, undefined, ''));
+                Object.assign(m, newModel(place.kind, undefined, '', undefined, { other: side.other }));
               }
               cov.add('save');
             } else if (await run.step(action, r)) cov.add(action);
@@ -205,13 +219,17 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
     // The coverage counters, on request: PEM_COVERAGE=1 npx vitest run src/resources/ssls/pemBoxes.property.test.tsx --silent=false
     if ((import.meta.env as Record<string, string | undefined>).PEM_COVERAGE === '1') console.info(`PEM boxes, tab level: ${JSON.stringify(cov.counts)}`);
     expect(failures).toEqual([]);
-    // Keep and Remove exist in the key places only, and save in the dialogs only.
-    const AT_LEAST: Record<string, number> = { keep: 20, remove: 8, save: 30, leave: 50 };
+    // Keep and Remove exist in the key places only, save in the dialogs only, and split where a combined text was given to a pair's box.
+    const AT_LEAST: Record<string, number> = { keep: 20, remove: 8, save: 30, leave: 50, split: 30 };
     for (const action of actionsFor('key', true)) expect(cov.get(action), action).toBeGreaterThan(AT_LEAST[action] ?? 150);
     for (const name of TEXT_NAMES) expect(cov.get(`text ${name}`), `text ${name}`).toBeGreaterThan(15);
     for (const name of FILE_NAMES) expect(cov.get(`file ${name}`), `file ${name}`).toBeGreaterThan(5);
     expect(cov.get('unfocused arrival of key material not taken')).toBeGreaterThan(100);
     expect(cov.get('save: applied')).toBeGreaterThan(8);
+    expect(cov.get('split from the cert box')).toBeGreaterThan(10);
+    expect(cov.get('split from the key box')).toBeGreaterThan(10);
+    expect(cov.get('split offered for a refused file')).toBeGreaterThan(5);
+    expect(cov.get('save: applied after a split')).toBeGreaterThan(0);
     for (const place of PLACES) expect(cov.get(`place ${place.name}`), place.name).toBe(SEEDS);
   }, 300_000);
 });

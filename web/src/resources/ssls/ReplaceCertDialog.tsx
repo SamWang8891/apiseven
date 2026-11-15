@@ -1,7 +1,7 @@
 // The dialog that takes a certificate and its private key: to replace the main pair, to add an extra
 // pair, or (`key`) to enter the key of an extra certificate again. Paste, upload or drop each (the
 // key leaves its box once taken; both boxes follow the rule in pemBox.ts, so text not taken holds
-// the dialog and Apply is off). The certificate's details show as soon as our reader can read it (a
+// the dialog and Apply is off; a combined PEM given to either box offers to split it between them). The certificate's details show as soon as our reader can read it (a
 // certificate it can't read is still taken: APISIX parses it on save). Apply hands over both values;
 // nothing of the dialog reaches the draft before that, and it is mounted only while open, so every
 // opening starts empty. APISIX doesn't check that a key belongs to its certificate
@@ -14,6 +14,7 @@ import { CertDetails, Row } from './CertDetails';
 import { parseCert } from './parseCert';
 import { useKeyVerdict } from './keyMatch';
 import { KeyMatchLine } from './KeyMatchLine';
+import { usePairLink } from './pairLink';
 import { CertBox, KeyBox } from './PemBoxes';
 import { isSecretRef } from './validate';
 
@@ -84,6 +85,9 @@ export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCe
   const ready = cert !== undefined && key !== undefined;
   // Whether the key belongs to the certificate: a warning at most, never a reason to turn Apply off.
   const verdict = useKeyVerdict(cert, key);
+  // The two boxes split a combined PEM between them; Enter key has no certificate box to give a part to.
+  const link = usePairLink(key !== undefined);
+  const pair = mode === 'key' ? undefined : link;
   return (
     <Dialog
       open
@@ -110,10 +114,10 @@ export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCe
         {mode === 'key' ? (
           <CertDetails pem={current} />
         ) : (
-          <CertBox label={t('ssl.pem.cert')} help={t('ssl.pem.certHelp')} value={cert} onValue={setCert} details />
+          <CertBox label={t('ssl.pem.cert')} help={t('ssl.pem.certHelp')} value={cert} onValue={setCert} details pair={pair} />
         )}
         {mode === 'replace' && cert !== undefined && <Compare before={current} after={cert} />}
-        <KeyBox label={t('ssl.pem.key')} help={t('ssl.pem.keyHelp')} value={key} onValue={setKey} />
+        <KeyBox label={t('ssl.pem.key')} help={t('ssl.pem.keyHelp')} value={key} onValue={setKey} pair={pair} />
         <KeyMatchLine verdict={verdict} />
       </div>
     </Dialog>

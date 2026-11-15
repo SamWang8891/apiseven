@@ -1,14 +1,16 @@
 // What the two PEM box property tests share (resources/ssls/pemBoxes.property.test.tsx, at tab level,
 // and pemBoxes.page.property.test.tsx, through the real editor frame): the texts and files, a
-// reference model of the rule (task-14 r3 "The rule for every PEM box" with the r4 amendments), the
-// actions a user takes on a box, a seeded generator of them, and the checks made after every step.
+// reference model of the rule (task-14 r3 "The rule for every PEM box" with the r4 amendments, and
+// Task 16 B23: a key taken from its first BEGIN line, a combined PEM split between a pair's boxes),
+// the actions a user takes on a box, a seeded generator of them, and the checks made after every step.
 // The model states the rule on its own; it imports nothing from the boxes' code.
 import { act, fireEvent, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { expect } from 'vitest';
 import { t } from '../i18n';
 import { RSA_LEAF } from './certs';
-import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY } from './pairs';
+import { RSA_CA } from './certs';
+import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY, RSA_PAIR } from './pairs';
 import type { prng } from './prng';
 import { SEED_CERT, SEED_KEY } from './sslSeed';
 
@@ -31,7 +33,10 @@ const likeRef = (s: string): boolean => s.startsWith('$secret://') || s.slice(0,
 /** 6″: one reference and nothing else: no white space, something after "://". */
 const isRef = (s: string): boolean => likeRef(s) && !/\s/.test(s) && s.length > s.indexOf('://') + 3;
 
-/** Whether a box of this kind takes `text` (6′, 6″; a marker line is never taken). */
+/**
+ * Whether a box of this kind takes `text` (6′, 6″; a marker line is never taken). A key may have
+ * anything before its first BEGIN line: it is taken from that line (`taken`, Task 16 B23).
+ */
 export function takes(kind: Kind, text: string): boolean {
   const s = text.trim();
   if (s === '' || text.includes('•')) return false;
@@ -44,10 +49,35 @@ export function takes(kind: Kind, text: string): boolean {
     block !== undefined &&
     /^-----BEGIN ((?:RSA |EC |DSA )?)PRIVATE KEY-----[\s\S]*-----END \1PRIVATE KEY-----$/.test(block) &&
     !/Proc-Type:\s*4,ENCRYPTED/.test(block) &&
-    !/-----BEGIN [A-Z0-9 ]*CERTIFICATE/.test(text) &&
-    // APISIX encrypts, and later decrypts, a key by whether its text starts with "---" (ssl.lua 89–104).
-    text.startsWith('---')
+    !/-----BEGIN [A-Z0-9 ]*CERTIFICATE/.test(text)
   );
+}
+
+/** The value a box takes from `text`: a key from its first BEGIN line (APISIX refuses anything before it, ssl.lua 89–104); anything else as it is. */
+export function taken(kind: Kind, text: string): string {
+  const at = text.indexOf('-----BEGIN');
+  return kind === 'key' && !isRef(text.trim()) && at > 0 ? text.slice(at) : text;
+}
+
+/** A key taken from `text` left out lines before its BEGIN line that were more than white space (the box says so). */
+const leftOutOf = (text: string): boolean => text.indexOf('-----BEGIN') > 0 && text.slice(0, text.indexOf('-----BEGIN')).trim() !== '';
+
+/** Task 16 B23: what a combined text splits into. */
+export interface Split {
+  certs: string;
+  key: string;
+}
+
+/**
+ * A text with certificate blocks and exactly one private-key block, whole, that a key box takes:
+ * the CERTIFICATE blocks in their order, one per line, and the key block alone. Else undefined.
+ */
+export function splitOf(text: string): Split | undefined {
+  const certs = text.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g) ?? [];
+  const keys = text.match(KEY_BLOCK) ?? [];
+  const key = keys[0] === undefined ? undefined : `${keys[0]}\n`;
+  if (certs.length === 0 || keys.length !== 1 || key === undefined || !takes('key', key)) return undefined;
+  return { certs: `${certs.join('\n')}\n`, key };
 }
 
 /** What the page should show and hold for one box (and the field behind it). */
@@ -65,9 +95,29 @@ export interface Model {
   stood: string | undefined | null;
   /** A certificate box: the value it stands over and cannot show. */
   hidden: string | undefined;
+  /** The box is one of a pair (a new SSL, the pair dialog): it offers to split a combined text. */
+  pair: boolean;
+  /** In a pair, the other box's value (a key for a certificate box, a certificate for a key box). */
+  other: string | undefined;
+  /** The split this box offers now, if any. */
+  offer: Split | undefined;
+  /** A key box closed over a key whose lines before its BEGIN line were left out says so. */
+  leftOut: boolean;
 }
 
-export const newModel = (kind: Kind, value: string | undefined, text: string, hidden?: string): Model => ({ kind, text, value, opened: false, focused: false, stood: null, hidden });
+export const newModel = (kind: Kind, value: string | undefined, text: string, hidden?: string, pair?: { other: string | undefined }): Model => ({
+  kind,
+  text,
+  value,
+  opened: false,
+  focused: false,
+  stood: null,
+  hidden,
+  pair: pair !== undefined,
+  other: pair?.other,
+  offer: undefined,
+  leftOut: false,
+});
 
 /** Whether the box (its textarea) is on the page: a key box is closed over a key taken, until Replace key or Remove. */
 export const present = (m: Model): boolean => m.kind === 'cert' || !(m.value !== undefined && !m.opened && m.text === '');
@@ -81,27 +131,56 @@ function close(m: Model): void {
   m.opened = false;
   m.stood = null;
   m.focused = false;
+  m.offer = undefined;
 }
 
 /** Text arrives in the box (typed, pasted, dropped, an accepted file) while it has focus or not (1′). */
 export function arrive(m: Model, next: string, focused: boolean): void {
-  const taken = takes(m.kind, next);
+  const isTaken = takes(m.kind, next);
+  // A pair's box offers to split what arrives when it holds a certificate and its key (B23).
+  m.offer = m.pair ? splitOf(next) : undefined;
   if (m.kind === 'key') {
     if (m.stood === null) m.stood = m.value;
-    // A whole key is taken and the box closes at once; a reference stays shown, as it may still be typed.
-    if (taken && !isRef(next.trim())) {
-      m.value = next;
+    // A whole key is taken (from its BEGIN line) and the box closes at once; a reference stays shown, as it may still be typed.
+    if (isTaken && !isRef(next.trim())) {
+      m.value = taken('key', next);
       close(m);
+      m.leftOut = leftOutOf(next);
       return;
     }
-    m.text = focused || taken ? next : masked(next);
-    m.value = taken ? next : m.stood;
+    m.leftOut = false;
+    m.text = focused || isTaken ? next : masked(next);
+    m.value = isTaken ? next : m.stood;
     return;
   }
-  m.text = focused || taken ? next : masked(next);
-  if (taken) m.value = next;
+  m.text = focused || isTaken ? next : masked(next);
+  if (isTaken) m.value = next;
   else if (next.trim() === '') m.value = m.hidden;
 }
+
+/** A file the box refused: the box and the value as they were; the split offer follows what the file held (B23). */
+export function refusedFile(m: Model, text: string): void {
+  m.offer = m.pair ? splitOf(text) : undefined;
+}
+
+/** The split action, pressed in this box (B23): its part arrives here, the other part in the other box. */
+export function split(m: Model): void {
+  const parts = m.offer;
+  if (!parts) return;
+  if (m.kind === 'cert') {
+    arrive(m, parts.certs, false);
+    m.other = parts.key;
+  } else {
+    arrive(m, parts.key, false);
+    m.other = parts.certs;
+  }
+  m.offer = undefined;
+}
+
+/** The split action's name in this box: it says when the key it gives replaces one (B23). */
+export const splitLabel = (m: Model): string =>
+  m.kind === 'cert' ? t(m.other !== undefined ? 'ssl.split.toKeyBoxReplace' : 'ssl.split.toKeyBox') : t(standing(m) !== undefined ? 'ssl.split.toCertBoxReplace' : 'ssl.split.toCertBox');
+const SPLIT_LABELS = ['ssl.split.toKeyBox', 'ssl.split.toKeyBoxReplace', 'ssl.split.toCertBox', 'ssl.split.toCertBoxReplace'];
 
 /** The box loses focus: key blocks in text not taken become markers; nothing opens or closes (rule 9). */
 export function leave(m: Model): void {
@@ -131,6 +210,10 @@ export const TEXTS: Record<string, string> = {
   junk: 'not PEM at all',
   combined: SEED_CERT + SEED_KEY,
   keyPlusCert: SEED_KEY + SEED_CERT,
+  commentFirst: `# my key\n${EC_PAIR.key}`,
+  // What `openssl pkcs12 -nodes` prints: Bag Attributes, the key, then the certificate and its chain.
+  p12: `${BAG_KEY}Bag Attributes\n    localKeyID: 01\nsubject=CN=rsa-extra.apiseven.test\n${RSA_PAIR.cert}${RSA_CA}`,
+  certThenEncrypted: SEED_CERT + ENCRYPTED,
   twoKeys: SEED_KEY + EC_PAIR.key,
   encrypted: ENCRYPTED,
   ref: '$secret://vault/1/ssl/pem',
@@ -148,6 +231,7 @@ export const FILES: Record<string, { file: () => File; text?: string }> = {
   bagKey: { file: () => new File([BAG_KEY], 'export.pem', { type: 'text/plain' }), text: BAG_KEY },
   combined: { file: () => new File([SEED_CERT + SEED_KEY], 'both.pem', { type: 'text/plain' }), text: SEED_CERT + SEED_KEY },
   keyPlusCert: { file: () => new File([SEED_KEY + SEED_CERT], 'both.pem', { type: 'text/plain' }), text: SEED_KEY + SEED_CERT },
+  p12: { file: () => new File([TEXTS.p12 as string], 'export.pem', { type: 'text/plain' }), text: TEXTS.p12 },
   ref: { file: () => new File(['$secret://vault/1/ssl/file'], 'ref.txt', { type: 'text/plain' }), text: '$secret://vault/1/ssl/file' },
   refThenKey: { file: () => new File([TEXTS.refThenKey as string], 'ref.pem', { type: 'text/plain' }), text: TEXTS.refThenKey },
   noLabel: { file: () => new File(['hello world'], 'notes.txt', { type: 'text/plain' }), text: 'hello world' },
@@ -161,9 +245,10 @@ export const FILE_NAMES = Object.keys(FILES);
  * What a user does to a box. Text arrives typed or pasted (focused), dropped on the box or on its
  * upload bar while it has no focus, or dropped on it while it has; a drop may carry nothing; a file
  * comes by a real click on Upload file; the box is emptied, left, returned to; a key box is kept
- * (Keep the entered key) or its key removed; and saving is asked for where the level has a save.
+ * (Keep the entered key) or its key removed; a combined text is split between a pair's boxes (B23);
+ * and saving is asked for where the level has a save.
  */
-export const ACTIONS = ['paste', 'dropBox', 'dropBar', 'dropFocused', 'dropNothing', 'upload', 'empty', 'leave', 'return', 'keep', 'remove', 'save'] as const;
+export const ACTIONS = ['paste', 'dropBox', 'dropBar', 'dropFocused', 'dropNothing', 'upload', 'empty', 'leave', 'return', 'keep', 'remove', 'split', 'save'] as const;
 export type Action = (typeof ACTIONS)[number];
 
 /** The actions a box of this kind offers; `save` only where the level has one. */
@@ -223,6 +308,7 @@ export class BoxRun {
     await this.user.click(this.button(t('ssl.key.replaceKey')) as HTMLButtonElement);
     this.m.opened = true;
     this.m.focused = true;
+    this.m.leftOut = false;
     return this.box() as HTMLTextAreaElement;
   }
 
@@ -266,13 +352,16 @@ export class BoxRun {
         return present(m) && standing(m) !== undefined;
       case 'remove':
         return !present(m);
+      case 'split':
+        return m.offer !== undefined;
       default:
         return true;
     }
   }
 
-  /** Picks the next action among those this box offers now. */
+  /** Picks the next action among those this box offers now; an offered split is made likelier, as the next text usually ends it. */
   next(r: ReturnType<typeof prng>, save: boolean): Action {
+    if (this.possible('split') && r.int(3) === 0) return 'split';
     return r.pick(actionsFor(this.m.kind, save).filter((a) => this.possible(a)));
   }
 
@@ -287,10 +376,11 @@ export class BoxRun {
         if (action === 'empty' && !this.box()) return false;
         const el = await this.ensureBox();
         if (!m.focused) this.focus(el);
-        // Select all, then the new text (or nothing).
+        // Select all, then the new text (or nothing). Emptying a box that is empty changes nothing.
+        const same = el.value === text;
         fireEvent.change(el, { target: { value: text } });
         if (name) this.cov.add(`text ${name}`);
-        this.arrived(text, true, action);
+        if (!same) this.arrived(text, true, action);
         return true;
       }
       case 'dropBox':
@@ -332,9 +422,13 @@ export class BoxRun {
         await this.user.upload(input, spec.file());
         await settle();
         this.cov.add(`file ${name}`);
-        // Judged before anything changes (rule 5): a refused file changes nothing.
+        // Judged before anything changes (rule 5): a refused file changes nothing, but what it held may be split (B23).
         if (spec.text !== undefined && takes(m.kind, spec.text)) this.arrived(spec.text, false, 'file');
-        else this.cov.add('file refused');
+        else {
+          this.cov.add('file refused');
+          if (spec.text !== undefined) refusedFile(m, spec.text);
+          if (m.offer) this.cov.add('split offered for a refused file');
+        }
         return true;
       }
       case 'leave': {
@@ -355,6 +449,7 @@ export class BoxRun {
         this.leftByClick();
         m.value = standing(m);
         close(m);
+        m.leftOut = false;
         return true;
       }
       case 'remove': {
@@ -362,6 +457,18 @@ export class BoxRun {
         if (!remove) return false;
         await this.user.click(remove);
         m.value = undefined;
+        m.leftOut = false;
+        return true;
+      }
+      case 'split': {
+        const action = this.button(splitLabel(m));
+        if (!action || !m.offer) return false;
+        this.cov.add(`split from the ${m.kind} box`);
+        await this.user.click(action);
+        // The click left the box (its key blocks became markers), then each part went to its box.
+        this.leftByClick();
+        m.focused = false;
+        split(m);
         return true;
       }
     }
@@ -369,6 +476,13 @@ export class BoxRun {
 
   /** The invariants every level checks after every step. */
   check(where: string): void {
+    this.checkBox(where);
+    // B23: the split is offered exactly when the model says, under its name, and nowhere else.
+    const offered = this.m.offer ? splitLabel(this.m) : undefined;
+    for (const key of SPLIT_LABELS) expect(this.button(t(key)) !== null, `${where}: the split action ${key}`).toBe(offered === t(key));
+  }
+
+  private checkBox(where: string): void {
     const m = this.m;
     // 1. No whole private-key block in the markup unless the textarea that holds it has focus.
     const active = document.activeElement;
@@ -394,6 +508,8 @@ export class BoxRun {
       // What the page says of the key (rules 3, 4): entered (closed), or what stays while held or empty.
       const quiet = present(m) && (held(m) || m.text.trim() === '');
       expect(shows('ssl.key.entered'), `${where}: "entered"`).toBe(!present(m));
+      // B23: a key taken from its BEGIN line says when what came before it was left out.
+      expect(shows('ssl.key.leftOut'), `${where}: the lines before the key were left out`).toBe(!present(m) && m.leftOut);
       expect(shows('ssl.key.stays'), `${where}: the key that stood stays`).toBe(quiet && m.value !== undefined);
       expect(shows('ssl.key.none'), `${where}: no key`).toBe(quiet && m.value === undefined);
     } else {

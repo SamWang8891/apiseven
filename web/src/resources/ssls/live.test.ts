@@ -14,7 +14,7 @@ import { saveResource, type SaveResult } from '../../editor/save';
 import { ctxOf } from '../../test/ctx';
 import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY, RSA_PAIR } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
-import { takes } from './pemBox';
+import { takenValue, takes } from './pemBox';
 import { sslIssues } from './validate';
 
 const env = import.meta.env as Record<string, string | undefined>;
@@ -158,7 +158,7 @@ describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => 
     }
   });
 
-  it('the key box takes what APISIX stores and serves (an EC PARAMETERS block first, a line after the key) and refuses what it refuses (Bag Attributes or a blank line first)', async () => {
+  it('the key box takes what APISIX stores and serves: an EC PARAMETERS block first, a line after the key, and (Task 16 B23) a key with Bag Attributes or a blank line first, taken from its BEGIN line', async () => {
     const tlsOpen = (await presented('apiseven.test')) === 'apiseven.test';
     // Taken by the key box, stored by APISIX, and presented for its SNI: OpenSSL skips what is not the key.
     for (const [name, key] of [
@@ -166,6 +166,7 @@ describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => 
       ['after', `${EC_PAIR.key}# rotated in November\n`],
     ] as const) {
       expect(takes('key', key), name).toBe(true);
+      expect(takenValue('key', key), name).toBe(key);
       const sni = `${tag}-${name}.live.test`;
       const draft: Obj = { status: 1, sni, cert: EC_PAIR.cert, key };
       expect(sslIssues(draft, { isNew: true, ctx: ctxOf() })).toEqual([]);
@@ -173,16 +174,23 @@ describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => 
       undo.push(() => api.remove('ssls', created.id));
       if (tlsOpen) expect(await until(sni, 'rotated.apiseven.test', ECDSA), name).toBe('rotated.apiseven.test');
     }
-    // Refused by the key box, and by APISIX: a key whose text does not start with "---" is taken for an
-    // encrypted one (aes_decrypt_pkey, ssl.lua 98–104), and its decryption fails.
-    for (const [name, key] of [
+    // Text before the first BEGIN line: as given, APISIX takes the key for an encrypted one (its text does
+    // not start with "---", aes_decrypt_pkey, ssl.lua 98–104) and refuses it; the box takes it from its
+    // BEGIN line instead, which APISIX stores and presents.
+    for (const [name, text] of [
       ['bag', BAG_KEY],
       ['blank', `\n${RSA_PAIR.key}`],
     ] as const) {
-      expect(takes('key', key), name).toBe(false);
-      const refused = await saveResource(api, { kind: 'ssls', isNew: true, draft: { status: 1, sni: `${tag}-${name}.live.test`, cert: RSA_PAIR.cert, key } });
+      const sni = `${tag}-${name}.live.test`;
+      const refused = await saveResource(api, { kind: 'ssls', isNew: true, draft: { status: 1, sni, cert: RSA_PAIR.cert, key: text } });
       if (refused.ok) undo.push(() => api.remove('ssls', refused.item.id));
       expect(!refused.ok && 'error' in refused && refused.error.errorMsg, name).toBe('failed to decrypt previous encrypted key');
+      expect(takes('key', text), name).toBe(true);
+      const key = takenValue('key', text);
+      expect(key, name).toBe(RSA_PAIR.key);
+      const created = saved(await saveResource(api, { kind: 'ssls', isNew: true, draft: { status: 1, sni, cert: RSA_PAIR.cert, key } }));
+      undo.push(() => api.remove('ssls', created.id));
+      if (tlsOpen) expect(await until(sni, 'rsa-extra.apiseven.test', RSA), name).toBe('rsa-extra.apiseven.test');
     }
   });
 });

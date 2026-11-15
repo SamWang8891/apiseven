@@ -16,12 +16,18 @@
 //     that value. An empty key box: the key that stood (or none). The box says which (kept).
 //  5. A file is judged before anything changes (fileRefusal); a refused one changes nothing, and its
 //     reason shows (first) until the box next changes (PemInput).
-//  6. A key box takes text with exactly one private-key block and no certificate block, unencrypted,
-//     starting with "---" as APISIX needs; what OpenSSL skips may come with it (an EC PARAMETERS
-//     block, lines after the key). A reference is taken, in any box, only as the whole text (takes).
+//  6. A key box takes text with exactly one private-key block and no certificate block, unencrypted;
+//     what OpenSSL skips may come with it (an EC PARAMETERS block, lines after the key). It takes it
+//     from its first "-----BEGIN" line (takenValue), as APISIX refuses a key with anything before it,
+//     and says when lines that were not white space were left out (leftOutBefore). A reference is
+//     taken, in any box, only as the whole text (takes).
 //  7. Dropped text is a paste, not a file; a drop with neither changes nothing (PemInput).
 //  8. The messages never contradict each other: why the text is held, and what is kept meanwhile.
 //  9. A box never opens or closes because focus moved (PemBoxes: Keep the entered key).
+// 10. A combined text (Task 16 B23): text or a file given to either box of a pair that holds
+//     certificate blocks and exactly one private-key block the key box would take (splitOf) offers
+//     one action; only that action puts the certificates in the certificate box and gives the key to
+//     the key box, each through its own path (so 1–9 hold for both). Not for the CA box.
 import { t } from '../../i18n';
 import { holdsPrivateKey, MASK } from '../../schema/secrets';
 import { certProblem, keyProblem } from './pem';
@@ -94,10 +100,8 @@ function keyWhy(text: string): string | undefined {
   const [block] = blocks;
   if (blocks.length > 1 || CERT_BLOCK.test(text)) return t('ssl.pem.notOneKey');
   if (block === undefined || !KEY_LABELS.has(block.label)) return t('ssl.pem.noKeyLabel');
-  if (!block.whole) return t('ssl.pem.incomplete');
-  // APISIX encrypts a key, and decrypts it before parsing, by whether its text starts with "---"
-  // (ssl.lua 89–104): anything before the first BEGIN line makes it refuse the key.
-  return text.startsWith('---') ? undefined : t('ssl.pem.keyNotFirst');
+  // What comes before the first BEGIN line is left out when it is taken (takenValue).
+  return block.whole ? undefined : t('ssl.pem.incomplete');
 }
 
 /** Why `text` is not taken by a box of this kind (rules 2, 6), or undefined: taken, or empty. */
@@ -113,6 +117,47 @@ export function heldWhy(kind: BoxKind, text: string): string | undefined {
 /** Whether a box of this kind takes `text` as the field's value. */
 export const takes = (kind: BoxKind, text: string): boolean => text.trim() !== '' && heldWhy(kind, text) === undefined;
 
+const FIRST_BEGIN = '-----BEGIN';
+
+/**
+ * The field's value when a box of this kind takes `text` (rule 6): a key from its first "-----BEGIN"
+ * line, since APISIX encrypts a key, and decrypts it before parsing, by whether its text starts with
+ * "---" (ssl.lua 89–104), so anything before that line (Bag Attributes, comments, white space) makes
+ * it refuse the key; a certificate or a reference as it is.
+ */
+export function takenValue(kind: BoxKind, text: string): string {
+  const at = text.indexOf(FIRST_BEGIN);
+  return kind === 'key' && at > 0 && !isReference(text) ? text.slice(at) : text;
+}
+
+/** Whether taking `text` as a key leaves out lines before its first "-----BEGIN" line that are more than white space. */
+export function leftOutBefore(text: string): boolean {
+  const at = text.indexOf(FIRST_BEGIN);
+  return at > 0 && text.slice(0, at).trim() !== '';
+}
+
+/** What a combined text splits into: the certificate blocks in their order, and the one key block. */
+export interface SplitParts {
+  certs: string;
+  key: string;
+}
+
+const CERT_BLOCKS = /-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g;
+
+/**
+ * Rule 10: a text holding certificate blocks and exactly one private-key block, whole, that a key
+ * box would take: the certificates (each block as it is, in their order, one per line) and the key
+ * block alone. Undefined for anything else (no certificate, two keys, a half key, an encrypted one).
+ */
+export function splitOf(text: string): SplitParts | undefined {
+  const certs = text.match(CERT_BLOCKS) ?? [];
+  const blocks = keyBlocks(text);
+  const [block] = blocks;
+  if (certs.length === 0 || blocks.length !== 1 || !block?.whole) return undefined;
+  const key = `${text.slice(block.start, block.end)}\n`;
+  return takes('key', key) ? { certs: `${certs.join('\n')}\n`, key } : undefined;
+}
+
 /**
  * What a box shows when its text becomes `text` (rule 1): the text itself while the box has focus,
  * or when it is taken; otherwise its private-key blocks are marker lines. Every way of setting a
@@ -121,13 +166,13 @@ export const takes = (kind: BoxKind, text: string): boolean => text.trim() !== '
 export const shown = (kind: BoxKind, text: string, focused: boolean): string => (focused || takes(kind, text) ? text : masked(text));
 
 /**
- * The value after the text changes to `text` (rules 3, 4): the text when it is taken; for an empty
+ * The value after the text changes to `text` (rules 3, 4): what it takes (takenValue); for an empty
  * box, none (a certificate box) or what stood (a key box), unless the box stands over a value it
  * cannot show (`hidden`), which an empty certificate box keeps; while held, `held` (what it was
  * before the hold began).
  */
 export function valueAfter(kind: BoxKind, text: string, a: { held: string | undefined; stood: string | undefined; hidden: string | undefined }): string | undefined {
-  if (takes(kind, text)) return text;
+  if (takes(kind, text)) return takenValue(kind, text);
   if (text.trim() === '') return kind === 'key' ? a.stood : a.hidden;
   return a.held;
 }

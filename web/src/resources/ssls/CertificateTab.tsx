@@ -2,10 +2,13 @@
 // certificate's details and "Private key: stored in APISIX, not shown" (a GET never returns it);
 // Replace certificate (editing only) takes a new pair through ReplaceCertDialog and puts both in the
 // draft; the save is a PATCH of the pair (editor/save.ts), which keeps the stored extra keys. A new
-// SSL takes the pair here, inline. A private key is never shown once taken: not here (KeyBox), not
+// SSL takes the pair here, inline (a combined PEM given to either box offers to split it: PemBoxes).
+// A private key is never shown once taken: not here (KeyBox), not
 // in the JSON tab (a note stands for it), and after a save the draft holds none again (the item is
 // read back with GET). A stored certificate whose text also holds a key says so. Additional pairs:
 // ExtraPairs.
+import { useLayoutEffect, useRef } from 'react';
+import type { Obj } from '../../api/types';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -16,6 +19,7 @@ import { CertDetails, Row } from './CertDetails';
 import { useKeyVerdict } from './keyMatch';
 import { KeyMatchLine } from './KeyMatchLine';
 import { ExtraPairs } from './ExtraPairs';
+import { usePairLink, type PairLink } from './pairLink';
 import { CertBox, KeyBox } from './PemBoxes';
 import { ReplaceCertDialog } from './ReplaceCertDialog';
 import { typeOf } from './usage';
@@ -27,20 +31,27 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : und
  * certificate that holds a private key (typed into the JSON tab) is one the box cannot show: it is
  * fixed for this editing session, and an empty box keeps it.
  */
-function CertField({ draft, setDraft, error }: { draft: TabProps['draft']; setDraft: TabProps['setDraft']; error?: string }) {
+function CertField({ draft, write, error, pair }: { draft: Obj; write: (cert: string | undefined) => void; error?: string; pair: PairLink }) {
   // Editing state: the draft certificate the box cannot show, as it was when editing began.
   const [hidden] = useEditingState(() => (holdsPrivateKey(draft.cert) ? str(draft.cert) : undefined));
-  return (
-    <CertBox
-      label={t('ssl.pem.cert')}
-      help={t('ssl.pem.certHelp')}
-      value={str(draft.cert)}
-      hidden={hidden}
-      details
-      error={error}
-      onValue={(cert) => setDraft(setPath(draft, ['cert'], cert))}
-    />
-  );
+  return <CertBox label={t('ssl.pem.cert')} help={t('ssl.pem.certHelp')} value={str(draft.cert)} hidden={hidden} details error={error} onValue={write} pair={pair} />;
+}
+
+/**
+ * A new SSL's two fields, written so that both may change in one event (the split of a combined
+ * PEM gives the certificate box and the key box their parts one after the other): each write builds
+ * on the draft the one before it made.
+ */
+function useNewPair(draft: Obj, setDraft: TabProps['setDraft']) {
+  const latest = useRef(draft);
+  useLayoutEffect(() => {
+    latest.current = draft;
+  });
+  return (field: 'cert' | 'key') => (value: string | undefined) => {
+    const next = setPath(latest.current, [field], value);
+    latest.current = next;
+    setDraft(next);
+  };
 }
 
 export function CertificateTab({ draft, setDraft, isNew, issues, original }: TabProps) {
@@ -50,6 +61,8 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
   const certs = Array.isArray(draft.certs) ? draft.certs : [];
   const client = typeOf(draft) === 'client';
   const keyError = issueAt(issues, 'key');
+  const write = useNewPair(draft, setDraft);
+  const pair = usePairLink(draft.key !== undefined);
   // Whether the pair's key (a new SSL's, or one entered with Replace) belongs to its certificate:
   // a warning at most, never a reason to refuse Create or Save.
   const verdict = useKeyVerdict(str(draft.cert), str(draft.key));
@@ -59,14 +72,8 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
         {isNew ? (
           <>
             {draft.cert !== undefined && draft.key === undefined && <p className="ed-note">{t('ssl.key.needed')}</p>}
-            <CertField draft={draft} setDraft={setDraft} error={issueAt(issues, 'cert')} />
-            <KeyBox
-              label={t('ssl.pem.key')}
-              help={t('ssl.pem.keyHelp')}
-              error={keyError}
-              value={str(draft.key)}
-              onValue={(key) => setDraft(key === undefined ? setPath(draft, ['key'], undefined) : { ...draft, key })}
-            />
+            <CertField draft={draft} write={write('cert')} error={issueAt(issues, 'cert')} pair={pair} />
+            <KeyBox label={t('ssl.pem.key')} help={t('ssl.pem.keyHelp')} error={keyError} value={str(draft.key)} onValue={write('key')} pair={pair} />
             <KeyMatchLine verdict={verdict} />
           </>
         ) : (

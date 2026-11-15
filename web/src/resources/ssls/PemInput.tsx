@@ -8,7 +8,7 @@
 // neither a file nor text changes nothing. A drop gives the box no focus, which is why the caller
 // decides what the box shows from whether its textarea (`inputRef`) has focus, not from focus events.
 import { Upload } from 'lucide-react';
-import { useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
+import { useLayoutEffect, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
 import { Button, Textarea, toast, useEditingState, useLocked, usePending } from '../../ui';
 
@@ -59,8 +59,17 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
   const fileRef = useRef<HTMLInputElement>(null);
   /** View state: a file is being dragged over the box. */
   const [over, setOver] = useState(false);
-  /** Editing state: why the last file wasn't put in the box (until the box next changes). */
-  const [fileProblem, setFileProblem] = useEditingState<string | undefined>(undefined);
+  /**
+   * Editing state: why the last file wasn't put in the box, and the text the box held then: the reason
+   * shows until the box next changes, however it changes (typed, or given its part of a split PEM).
+   */
+  const [refused, setRefused] = useEditingState<{ why: string; at: string } | undefined>(undefined);
+  const shownText = useRef(value);
+  useLayoutEffect(() => {
+    shownText.current = value;
+  });
+  const setFileProblem = (why: string | undefined) => setRefused(why === undefined ? undefined : { why, at: shownText.current });
+  const fileProblem = refused && refused.at === value ? refused.why : undefined;
 
   const read = (file: File | undefined) => {
     if (!file) return;
@@ -72,7 +81,7 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
       });
   };
   const change = (text: string) => {
-    setFileProblem(undefined);
+    setRefused(undefined);
     onChange(text);
   };
   const drop = (e: DragEvent) => {

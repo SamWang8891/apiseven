@@ -8,7 +8,7 @@ import { t } from '../../i18n';
 import { EC_IPV6, FAR, RSA_LEAF, V1 } from '../../test/certs';
 import { ctxOf, itemOf } from '../../test/ctx';
 import { editableControls } from '../../test/schemaForm';
-import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY } from '../../test/pairs';
+import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY, RSA_PAIR } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
 import { renderTab } from '../../test/tab';
 import { getToasts } from '../../ui/toast';
@@ -696,20 +696,25 @@ describe('fix round 4: what a box takes, what it masks, and when it opens or clo
     await waitFor(() => expect(value().key).toBe(EC_PARAMS_KEY));
   });
 
-  it('O6: text before the first -----BEGIN line (Bag Attributes, a comment, a blank line) is refused, as APISIX refuses it; typed or as a file', async () => {
-    const { user, container, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
-    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
-    for (const text of [BAG_KEY, `# my key\n${SEED_KEY}`, `\n${SEED_KEY}`]) {
-      await paste(user, key, text);
-      expect(held()).toEqual(keyHeld(t('ssl.pem.keyNotFirst')));
-      expect(value()).not.toHaveProperty('key');
+  it('O6, as Task 16 B23 changed it: text before the first -----BEGIN line (Bag Attributes, a comment, a blank line) is left out and the key taken from that line; typed or as a file', async () => {
+    for (const [text, key] of [
+      [BAG_KEY, RSA_PAIR.key],
+      [`# my key\n${SEED_KEY}`, SEED_KEY],
+      [`\n${SEED_KEY}`, SEED_KEY],
+    ] as const) {
+      const { user, value, held, unmount } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+      await paste(user, screen.getByRole('textbox', { name: t('ssl.pem.key') }), text);
+      expect(held()).toEqual([]);
+      expect(value().key).toBe(key);
+      expect(screen.getByText(t('ssl.key.entered'))).toBeInTheDocument();
+      // Said only when what was left out was more than white space.
+      expect(screen.queryByText(t('ssl.key.leftOut')) !== null).toBe(text.trimStart() !== key);
+      unmount();
     }
-    await user.clear(key);
+    const { user, container, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
     await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[1] as HTMLInputElement, new File([BAG_KEY], 'tls.pem', { type: 'text/plain' }));
-    // The file's reason first (the key is still required, which the field says after it).
-    await waitFor(() => expect(said(key)?.startsWith(t('ssl.pem.fileRefused', { problem: t('ssl.pem.keyNotFirst') }))).toBe(true));
-    expect(key).toHaveValue('');
-    expect(value()).not.toHaveProperty('key');
+    await waitFor(() => expect(value().key).toBe(RSA_PAIR.key));
+    expect(screen.getByText(t('ssl.key.leftOut'))).toBeInTheDocument();
   });
 
   it('6″: a reference is taken only as the whole text, in a key box and in a certificate box', async () => {

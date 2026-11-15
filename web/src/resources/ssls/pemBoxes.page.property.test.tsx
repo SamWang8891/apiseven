@@ -13,7 +13,8 @@
 // Two actions only the frame has (fix round 3 of Task 15): a remount (switch to another tab and back:
 // the box's component state is lost, and what it shows must follow from the draft), and a save
 // APISIX refuses late (a delayed 400: the fields are locked meanwhile, then editable again), each
-// followed by the same checks.
+// followed by the same checks. In a new SSL's pair a combined text offers the split (Task 16 B23):
+// a request then carries both parts, each where the model put it.
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -93,8 +94,8 @@ interface Place {
   kind: Kind;
   label: () => string;
   setup: () => Promise<{ app: App; model: Model }>;
-  /** Asserts that the write carries `value` for this field. */
-  sent: (write: { method: string; body?: Obj }, value: string | undefined) => void;
+  /** Asserts that the write carries the model's value for this field (and, in a pair, the other field's). */
+  sent: (write: { method: string; body?: Obj }, m: Model) => void;
   /** The tab the box is on (a remount switches away from it and back). */
   tab: () => string;
   /**
@@ -110,15 +111,17 @@ const certTab = () => t('ssl.tab.certificate');
 const clientTab = () => t('ssl.tab.client');
 const holdsKey = (v: string | undefined) => v !== undefined && /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(v);
 
-const posted = (field: 'cert' | 'key') => (write: { method: string; body?: Obj }, value: string | undefined) => {
+/** A new SSL's POST: this box's value and the other box's of the pair. */
+const posted = (field: 'cert' | 'key') => (write: { method: string; body?: Obj }, m: Model) => {
   expect(write.method, 'a POST').toBe('POST');
-  expect(write.body?.[field], `the ${field} sent`).toBe(value);
+  expect(write.body?.[field], `the ${field} sent`).toBe(m.value);
+  expect(write.body?.[field === 'cert' ? 'key' : 'cert'], 'the other field sent').toBe(m.other);
 };
 /** A PATCH sends the CA only when it changed: unsent, it stays `stored`. */
-const patchedCa = (stored: string | undefined) => (write: { method: string; body?: Obj }, value: string | undefined) => {
+const patchedCa = (stored: string | undefined) => (write: { method: string; body?: Obj }, m: Model) => {
   expect(write.method, 'a PATCH').toBe('PATCH');
   const sent = (write.body?.client as Obj | undefined)?.ca;
-  expect(sent === undefined ? stored : sent, 'the CA after the save').toBe(value);
+  expect(sent === undefined ? stored : sent, 'the CA after the save').toBe(m.value);
 };
 
 const PLACES: Place[] = [
@@ -126,7 +129,7 @@ const PLACES: Place[] = [
     name: 'new SSL certificate',
     kind: 'cert',
     label: () => t('ssl.pem.cert'),
-    setup: async () => ({ app: await newSsl({ key: SEED_KEY }), model: newModel('cert', undefined, '') }),
+    setup: async () => ({ app: await newSsl({ key: SEED_KEY }), model: newModel('cert', undefined, '', undefined, { other: SEED_KEY }) }),
     sent: posted('cert'),
     tab: certTab,
     hiddenAfterRemount: (m) => (holdsKey(m.value) ? m.value : undefined),
@@ -145,7 +148,7 @@ const PLACES: Place[] = [
       await app.user.paste(JSON.stringify({ status: 1, sni: 'p.apiseven.test', cert: COMBINED, key: SEED_KEY }));
       await app.user.click(tab(t('ssl.tab.certificate')));
       await settled();
-      return { app, model: newModel('cert', COMBINED, '', COMBINED) };
+      return { app, model: newModel('cert', COMBINED, '', COMBINED, { other: SEED_KEY }) };
     },
     sent: posted('cert'),
     tab: certTab,
@@ -155,7 +158,7 @@ const PLACES: Place[] = [
     name: 'new SSL key, none entered',
     kind: 'key',
     label: () => t('ssl.pem.key'),
-    setup: async () => ({ app: await newSsl({ cert: SEED_CERT }), model: newModel('key', undefined, '') }),
+    setup: async () => ({ app: await newSsl({ cert: SEED_CERT }), model: newModel('key', undefined, '', undefined, { other: SEED_CERT }) }),
     sent: posted('key'),
     tab: certTab,
   },
@@ -163,7 +166,7 @@ const PLACES: Place[] = [
     name: 'new SSL key, one entered',
     kind: 'key',
     label: () => t('ssl.pem.key'),
-    setup: async () => ({ app: await newSsl({ cert: SEED_CERT, key: EC_PAIR.key }), model: newModel('key', EC_PAIR.key, '') }),
+    setup: async () => ({ app: await newSsl({ cert: SEED_CERT, key: EC_PAIR.key }), model: newModel('key', EC_PAIR.key, '', undefined, { other: SEED_CERT }) }),
     sent: posted('key'),
     tab: certTab,
   },
@@ -208,6 +211,9 @@ function remounted(m: Model, place: Place): void {
   m.focused = false;
   m.opened = false;
   m.stood = null;
+  // Session flags go with the box: an offered split, the "left out" line.
+  m.offer = undefined;
+  m.leftOut = false;
   if (m.kind === 'key') {
     m.text = '';
     return;
@@ -236,6 +242,7 @@ describe('every PEM box follows one rule through the real editor frame (property
           const { user, admin } = app;
           const run = new BoxRun(model, label, () => screen.getByRole('main'), user, cov);
           const m = run.m;
+          const initialOther = m.other;
           m.focused = document.activeElement !== null && document.activeElement === run.box();
           run.check(where);
           cov.add(`place ${place.name}`);
@@ -270,7 +277,9 @@ describe('every PEM box follows one rule through the real editor frame (property
               run.check(where);
               continue;
             }
-            const action = run.next(r, true);
+            // A save is likelier once a split gave the other box its part, so the request is checked to carry both.
+            const splitDone = m.pair && m.other !== initialOther;
+            const action = splitDone && wouldSend(place, m) && r.int(2) === 0 ? 'save' : run.next(r, true);
             where = `step ${step} (${action})`;
             if (action !== 'save') {
               if (await run.step(action, r)) cov.add(action);
@@ -301,7 +310,8 @@ describe('every PEM box follows one rule through the real editor frame (property
               cov.add('save: refused, an issue');
             } else {
               await waitFor(() => expect(writesOf(admin).length, `${where}: a request`).toBe(writes + 1));
-              place.sent(writesOf(admin).at(-1) as { method: string; body?: Obj }, m.value);
+              place.sent(writesOf(admin).at(-1) as { method: string; body?: Obj }, m);
+              if (m.pair && m.other !== initialOther) cov.add('save: sent after a split');
               cov.add('save: sent');
               break;
             }
@@ -329,5 +339,7 @@ describe('every PEM box follows one rule through the real editor frame (property
     expect(cov.get('refusedSave')).toBeGreaterThan(10);
     expect(cov.get('refusedSave: a value taken over one the box cannot show')).toBeGreaterThan(2);
     expect(cov.get('unfocused arrival of key material not taken')).toBeGreaterThan(20);
+    expect(cov.get('split from the cert box') + cov.get('split from the key box')).toBeGreaterThan(8);
+    expect(cov.get('save: sent after a split')).toBeGreaterThan(2);
   }, 300_000);
 });
