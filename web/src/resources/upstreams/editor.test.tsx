@@ -187,9 +187,10 @@ describe('the upstream editor', () => {
     });
 
     // Fix round 2, R1.3: a row held for a clash that another row's edit resolved stays flagged while it is held.
-    it('row 3 held as a duplicate of row 1; row 1 renamed resolves it: row 3 stays flagged, a refused Save focuses it, leaving it adds it', async () => {
+    // Fix round 3: leaving it writes nothing; Enter adds it.
+    it('row 3 held as a duplicate of row 1; row 1 renamed resolves it: row 3 stays flagged, a refused Save focuses it, Tab writes nothing, Enter adds it', async () => {
       const MAPPED = { ...POOL, nodes: { 'a:80': 1, 'b:80': 1, 'c:80': 1 } };
-      const { user } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [MAPPED] } });
+      const { user, admin } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [MAPPED] } });
       await main().findByRole('heading', { level: 1, name: 'web-pool' });
       await user.keyboard('e');
       await user.clear(await waitFor(() => hostN(3)));
@@ -201,9 +202,14 @@ describe('the upstream editor', () => {
       await user.click(main().getByRole('button', { name: t('editor.save') }));
       expect(hostN(3)).toHaveFocus();
       await user.tab();
+      expect(hostN(3)).toHaveAttribute('aria-invalid', 'true');
+      expect(hostN(3)).toHaveValue('a');
+      await user.click(hostN(3));
+      await user.keyboard('{Enter}');
       expect(hostN(3)).not.toHaveAttribute('aria-invalid');
       await user.click(main().getByRole('button', { name: t('editor.save') }));
-      await waitFor(async () => expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument());
+      await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+      expect(writesOf(admin)[0]?.body?.nodes).toEqual({ 'z:80': 1, 'b:80': 1, 'a:80': 1 });
     });
 
     it('a stored host holding a port: click in, Tab out: nothing changes, the page is not unsaved', async () => {
@@ -358,11 +364,20 @@ describe('fields holding input that is not in the draft', () => {
     expect(writesOf(admin)[0]?.body?.nodes).toEqual({ 'b.example:80': 1, 'b.example2:80': 1 });
   });
 
-  it('Cmd/Ctrl-S writes an all-digit host still held in its field', async () => {
+  // Fix round 3: the save gesture's blur writes nothing; the held host is named, and Enter takes it.
+  it('Cmd/Ctrl-S with an all-digit host held in "Add a node": no request, the toast names it; Enter, then Cmd/Ctrl-S, sends it', async () => {
     const { user, admin } = await openEditor('#/upstreams/m1?tab=nodes', { objects: { upstreams: [{ ...MAP, nodes: { 'a.example': 1 } }] } });
     await main().findByRole('heading', { level: 1, name: 'map-pool' });
     await user.keyboard('e');
-    await user.type(await main().findByRole('textbox', { name: t('up.nodes.new') }), '42');
+    const field = await main().findByRole('textbox', { name: t('up.nodes.new') });
+    await user.type(field, '42');
+    await user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => expect(getToasts().at(-1)?.message).toContain(t('up.pending.unsaved', { node: t('up.pending.newNode'), addr: '42' })));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(writesOf(admin)).toEqual([]);
+    expect(field).toHaveValue('42');
+    await user.click(field);
+    await user.keyboard('{Enter}');
     await user.keyboard('{Control>}s{/Control}');
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body?.nodes).toEqual({ 'a.example': 1, 42: 1 });

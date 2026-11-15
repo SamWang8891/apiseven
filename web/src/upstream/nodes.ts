@@ -83,8 +83,8 @@ export interface Address {
 
 /**
  * An address with the port its host holds moved to its port, as a paste reads it (parseAddr):
- * `10.0.0.5:8080`, `[::1]:9000`. Only on the user's explicit action (Enter in "Add a node", "Move
- * <port> to Port"), never on leaving a field. Anything else is left as it is.
+ * `10.0.0.5:8080`, `[::1]:9000`. Only on the user's explicit commit (Enter, "Move <port> to Port", a
+ * paste), never on leaving a field. Anything else is left as it is.
  */
 export function committed(address: Address): Address {
   const parsed = parseAddr(address.host);
@@ -111,10 +111,9 @@ export const strayColon = (host: string): boolean => host.includes(':') && !isIp
 
 /**
  * What became of an address edit on a map: done, or refused because another entry (`other`) has
- * that address, or held: an all-digit host without a port while it is typed ('digits', until
- * commitDigits when the field is left: JavaScript would move the entry to the top of the map,
- * integer-like keys first), or a host with a stray colon ('colon': no map key can hold it; held until
- * the user changes it or moves its port, never ended by leaving the field).
+ * that address, or held: an all-digit host without a port ('digits', until an explicit commit passes
+ * commitDigits: JavaScript would move the entry to the top of the map, integer-like keys first), or a
+ * host with a stray colon ('colon': no map key can hold it). Leaving a field ends neither.
  */
 export type AddressEdit = { ok: true; up: Obj } | { ok: false; reason: 'digits' | 'colon' } | { ok: false; reason: 'duplicate'; other: number };
 

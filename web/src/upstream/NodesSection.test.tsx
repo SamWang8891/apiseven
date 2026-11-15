@@ -303,24 +303,38 @@ describe('map-shaped nodes stay a map through edits', () => {
     expect(allMaps(h.changes)).toBe(true);
   });
 
-  it('holds an all-digit host in its field while typing, and commits it on blur', async () => {
+  // Fix round 3: leaving a field writes nothing; an all-digit host stays held, as typed and flagged, until Enter takes it.
+  it('holds an all-digit host as typed and flagged; Tab writes nothing; Enter takes it as the host name, in one change', async () => {
     const h = renderUpstream({ nodes: { 'a.example': 1, 'b.example': 2 } }, { section: 'nodes' });
     await h.user.clear(host(2));
     await h.user.type(host(2), '10');
     expect(host(2)).toHaveValue('10');
+    expect(host(2)).toHaveAccessibleDescription(t('up.nodes.digitsHeld'));
     expect(h.value().nodes).toEqual({ 'a.example': 1, '': 2 });
     await h.user.tab();
-    // Committed, not dropped (JavaScript lists the all-digit key first).
+    expect(host(2)).toHaveValue('10');
+    expect(host(2)).toHaveAttribute('aria-invalid', 'true');
+    expect(h.value().nodes).toEqual({ 'a.example': 1, '': 2 });
+    await h.user.click(host(2));
+    const before = h.changes.mock.calls.length;
+    await h.user.keyboard('{Enter}');
+    expect(h.changes.mock.calls.length).toBe(before + 1);
+    // Taken, not dropped (JavaScript lists the all-digit key first).
     expect(h.value().nodes).toEqual({ 'a.example': 1, 10: 2 });
     expect(host(1)).toHaveValue('10');
     expect(allMaps(h.changes)).toBe(true);
   });
 
-  it('commits an all-digit host typed as a new node on blur', async () => {
+  it('an all-digit host typed as a new node is held and flagged; Tab adds nothing; Enter adds it', async () => {
     const h = renderUpstream({ nodes: { 'a.example': 1 } }, { section: 'nodes' });
     await h.user.type(newHost(), '42');
-    expect(h.value().nodes).toEqual({ 'a.example': 1 });
+    expect(newHost()).toHaveAccessibleDescription(t('up.nodes.digitsHeld'));
     await h.user.tab();
+    expect(h.value().nodes).toEqual({ 'a.example': 1 });
+    expect(newHost()).toHaveValue('42');
+    expect(newHost()).toHaveAttribute('aria-invalid', 'true');
+    await h.user.click(newHost());
+    await h.user.keyboard('{Enter}');
     expect(h.value().nodes).toEqual({ 'a.example': 1, 42: 1 });
   });
 
@@ -371,12 +385,17 @@ describe('map-shaped nodes stay a map through edits', () => {
     expect(screen.getByRole('button', { name: t('up.nodes.duplicateN', { n: 1 }) })).toBeDisabled();
   });
 
-  it('a paste adds the new addresses and names the ones already in the list', async () => {
+  // Fix round 3: a paste does what Enter does: the first address, one the list has, is held in the field as pasted.
+  it('a paste into "Add a node": the first address goes as Enter puts it (one the list has is held there, as pasted); the rest are added, those the list has named', async () => {
     const h = renderUpstream(MAP, { section: 'nodes' });
     await h.user.click(newHost());
-    await h.user.paste('10.0.0.1:80\n10.0.0.3:80');
+    const before = h.changes.mock.calls.length;
+    await h.user.paste('10.0.0.1:80\n10.0.0.3:80\n10.0.0.2:80');
+    expect(h.changes.mock.calls.length).toBe(before + 1);
     expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.2:80': 2, '10.0.0.3:80': 1 });
-    expect(screen.getByText(t('up.nodes.skipped', { list: '10.0.0.1:80' }))).toBeInTheDocument();
+    expect(newHost()).toHaveValue('10.0.0.1:80');
+    expect(newHost()).toHaveAccessibleDescription(t('up.nodes.dupOf', { n: 1 }));
+    expect(screen.getByText(t('up.nodes.skipped', { list: '10.0.0.2:80' }))).toBeInTheDocument();
   });
 });
 
