@@ -245,6 +245,39 @@ describe('an inline upstream emptied of its nodes (Ruling 1)', () => {
   });
 });
 
+// Final wave E2: an overview link changes only `tab`; the Duplicate source and the prefill stay.
+describe("the overview's links keep the page's other search parameters", () => {
+  const overviewLink = (name: string) => within(main().getByRole('region', { name: t('rt.overview') })).getByRole('link', { name });
+
+  it('on a Duplicate page: the copy stays, no leave question, the tab changes', async () => {
+    const { user, admin } = await openEditor('#/routes/~new?from=api-v1', { objects: objects([API_V1]), replies: pluginReplies() });
+    await main().findByRole('button', { name: t('editor.create') });
+    await settled();
+    const name = main().getByRole('textbox', { name: t('rt.general.name') });
+    await user.clear(name);
+    await user.type(name, 'api-v1-copy');
+    expect(overviewLink(t('rt.tab.matching'))).toHaveAttribute('href', '#/routes/~new?from=api-v1&tab=matching');
+    await user.click(overviewLink(t('rt.tab.matching')));
+    expect(await main().findByRole('tab', { name: new RegExp(`^${t('rt.tab.matching')}`), selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(new URLSearchParams(window.location.hash.split('?')[1]).get('from')).toBe('api-v1');
+    // Still the copy, with the name typed.
+    await user.click(main().getByRole('tab', { name: new RegExp(`^${t('rt.tab.general')}`) }));
+    expect(await main().findByRole('textbox', { name: t('rt.general.name') })).toHaveValue('api-v1-copy');
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('on a prefilled create page: service_id stays in the address', async () => {
+    const { user } = await openEditor('#/routes/~new?service_id=web', { objects: objects([]), replies: pluginReplies() });
+    await main().findByRole('button', { name: t('editor.create') });
+    await settled();
+    expect(overviewLink(t('rt.tab.upstream'))).toHaveAttribute('href', '#/routes/~new?service_id=web&tab=upstream');
+    await user.click(overviewLink(t('rt.tab.upstream')));
+    expect(await main().findByRole('tab', { name: new RegExp(`^${t('rt.tab.upstream')}`), selected: true })).toBeInTheDocument();
+    expect(new URLSearchParams(window.location.hash.split('?')[1]).get('service_id')).toBe('web');
+  });
+});
+
 describe('the create page copies the prefill params into the new route', () => {
   it('service_id and plugin_config_id; a param the kind does not list is ignored', async () => {
     const { user, admin } = await openEditor('#/routes/new?service_id=web&plugin_config_id=common-headers&name=nope&tab=upstream', { objects: objects([]), replies: pluginReplies() });

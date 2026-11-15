@@ -2,7 +2,7 @@
 // as a two-column list of facts (the service and stream route editors; the route and upstream
 // editors have their own, with the same classes). Locked, it is the object's spec sheet.
 import { Fragment, useId, type ReactNode } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import './resources.css';
 
 /** Mono values joined by commas, as one run of text that wraps between values, never inside one that fits a line. */
@@ -32,6 +32,21 @@ export function Parts({ parts }: { parts: ReactNode[] }) {
   );
 }
 
+/**
+ * A link to another tab of this page: only `tab` changes, every other search parameter (a Duplicate
+ * page's `from`, a create page's prefill) stays, so following it never leaves the page.
+ */
+export function TabLink({ tab, children }: { tab: string; children: ReactNode }) {
+  const [params] = useSearchParams();
+  const next = new URLSearchParams(params);
+  next.set('tab', tab);
+  return (
+    <Link className="res-overview__link" to={`?${next.toString()}`} replace>
+      {children}
+    </Link>
+  );
+}
+
 export interface OverviewRow {
   /** The tab the row's name links to. */
   tab: string;
@@ -50,9 +65,7 @@ export function Overview({ title, rows }: { title: string; rows: OverviewRow[] }
         {rows.map((row) => (
           <div key={row.tab} className="res-overview__row">
             <dt>
-              <Link className="res-overview__link" to={`?tab=${row.tab}`} replace>
-                {row.label}
-              </Link>
+              <TabLink tab={row.tab}>{row.label}</TabLink>
             </dt>
             <dd>{row.value}</dd>
           </div>

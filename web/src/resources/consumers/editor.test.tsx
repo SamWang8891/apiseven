@@ -240,6 +240,25 @@ describe('Duplicate', () => {
   });
 });
 
+// Final wave E2: the overview's link changes only `tab`, so a Duplicate page stays the copy.
+describe("Duplicate: the overview's link keeps the copy", () => {
+  it('Plugins from the overview: no leave question, `from` stays, the username typed is kept', async () => {
+    const { user, admin } = await openEditor('#/consumers/~new?from=jo', { objects: { consumers: [JO], consumer_groups: GROUPS }, credentials: CREDENTIALS, replies: pluginReplies() });
+    await main().findByRole('button', { name: t('editor.create') });
+    await settled();
+    await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo2');
+    const link = within(main().getByRole('region', { name: t('cs.overview') })).getByRole('link', { name: t('pl.tab') });
+    expect(link).toHaveAttribute('href', '#/consumers/~new?from=jo&tab=plugins');
+    await user.click(link);
+    expect(await main().findByRole('tab', { name: /^Plugins/, selected: true })).toBeInTheDocument();
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(new URLSearchParams(window.location.hash.split('?')[1]).get('from')).toBe('jo');
+    await user.click(main().getByRole('tab', { name: new RegExp(`^${t('cs.tab.general')}`) }));
+    expect(await main().findByRole('textbox', { name: /^Username/ })).toHaveValue('jo2');
+    expect(writesOf(admin)).toEqual([]);
+  });
+});
+
 describe('Duplicate on a cold cache (the plugin list not loaded yet when the copy opens)', () => {
   const SOURCE: Obj = { username: 'src', plugins: { 'my-auth': { key: 'SEKRET-1' }, 'key-auth': { key: 'K-9' }, 'limit-count': { count: 1, time_window: 1 } } };
   const myAuth = { schema: { type: 'object' }, type: 'auth', consumer_schema: { type: 'object' } };

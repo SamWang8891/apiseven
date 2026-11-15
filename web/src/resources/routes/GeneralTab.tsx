@@ -2,7 +2,6 @@
 // glance: one line per other tab (what it matches, where it goes, its plugins, the rest), each
 // linking to that tab. Locked, this is the spec sheet of the route.
 import { useId, type ReactNode } from 'react';
-import { Link } from 'react-router';
 import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
 import { setPath } from '../../editor/draft';
@@ -12,6 +11,7 @@ import { Field, Input, KeyValueInput, NumberInput, useLocked } from '../../ui';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { Ctx } from '../ctx';
 import type { TabProps } from '../registry';
+import { TabLink } from '../Overview';
 import { effectivePlugins, routeHosts, routeScript } from '../resolve';
 import { inheritLoading } from './inherit';
 import { readPair } from './pairs';
@@ -126,9 +126,7 @@ function Overview({ draft, ctx }: { draft: Obj; ctx: Ctx }) {
         {rows.map(([tab, label, value]) => (
           <div key={tab} className="res-overview__row">
             <dt>
-              <Link className="res-overview__link" to={`?tab=${tab}`} replace>
-                {label}
-              </Link>
+              <TabLink tab={tab}>{label}</TabLink>
             </dt>
             <dd>{value}</dd>
           </div>
