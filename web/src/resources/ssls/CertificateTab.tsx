@@ -13,6 +13,8 @@ import { holdsPrivateKey } from '../../schema/secrets';
 import { Button, useEditingState, useLocked } from '../../ui';
 import type { TabProps } from '../registry';
 import { CertDetails, Row } from './CertDetails';
+import { useKeyVerdict } from './keyMatch';
+import { KeyMatchLine } from './KeyMatchLine';
 import { ExtraPairs } from './ExtraPairs';
 import { CertBox, KeyBox } from './PemBoxes';
 import { ReplaceCertDialog } from './ReplaceCertDialog';
@@ -48,6 +50,9 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
   const certs = Array.isArray(draft.certs) ? draft.certs : [];
   const client = typeOf(draft) === 'client';
   const keyError = issueAt(issues, 'key');
+  // Whether the pair's key (a new SSL's, or one entered with Replace) belongs to its certificate:
+  // a warning at most, never a reason to refuse Create or Save.
+  const verdict = useKeyVerdict(str(draft.cert), str(draft.key));
   return (
     <div className="ed-stack ssl-tab">
       <section className="ssl-main" aria-label={t('ssl.cert.region')}>
@@ -62,7 +67,7 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
               value={str(draft.key)}
               onValue={(key) => setDraft(key === undefined ? setPath(draft, ['key'], undefined) : { ...draft, key })}
             />
-            <p className="ed-note">{t('ssl.pair.unchecked')}</p>
+            <KeyMatchLine verdict={verdict} />
           </>
         ) : (
           <>
@@ -77,6 +82,7 @@ export function CertificateTab({ draft, setDraft, isNew, issues, original }: Tab
               <Row term={t('ssl.key.label')}>{draft.key === undefined ? t('ssl.key.stored') : t('ssl.key.replaced')}</Row>
             </dl>
             {keyError && <p className="ssl-issue">{keyError}</p>}
+            {draft.key !== undefined && verdict !== undefined && <KeyMatchLine verdict={verdict} />}
             {!locked && (
               <span>
                 <Button onClick={() => setReplacing(true)}>{t('ssl.replace')}</Button>

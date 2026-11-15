@@ -5,13 +5,15 @@
 // certificate it can't read is still taken: APISIX parses it on save). Apply hands over both values;
 // nothing of the dialog reaches the draft before that, and it is mounted only while open, so every
 // opening starts empty. APISIX doesn't check that a key belongs to its certificate
-// (ssl.lua 131), and the dialog says so.
+// (ssl.lua 131): the dialog checks it (keyMatch.ts) and says what it found, without turning Apply off.
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { Button, Dialog, useEditingState } from '../../ui';
 import { ExpiryBadge } from '../expiry';
 import { CertDetails, Row } from './CertDetails';
 import { parseCert } from './parseCert';
+import { useKeyVerdict } from './keyMatch';
+import { KeyMatchLine } from './KeyMatchLine';
 import { CertBox, KeyBox } from './PemBoxes';
 import { isSecretRef } from './validate';
 
@@ -80,6 +82,8 @@ export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCe
   const [key, setKey] = useEditingState<string | undefined>(undefined);
   const texts = TEXTS[mode];
   const ready = cert !== undefined && key !== undefined;
+  // Whether the key belongs to the certificate: a warning at most, never a reason to turn Apply off.
+  const verdict = useKeyVerdict(cert, key);
   return (
     <Dialog
       open
@@ -110,7 +114,7 @@ export function ReplaceCertDialog({ mode, current, onClose, onApply }: ReplaceCe
         )}
         {mode === 'replace' && cert !== undefined && <Compare before={current} after={cert} />}
         <KeyBox label={t('ssl.pem.key')} help={t('ssl.pem.keyHelp')} value={key} onValue={setKey} />
-        <p className="ed-note">{t('ssl.pair.unchecked')}</p>
+        <KeyMatchLine verdict={verdict} />
       </div>
     </Dialog>
   );

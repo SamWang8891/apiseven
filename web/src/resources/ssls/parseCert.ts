@@ -1,5 +1,8 @@
-// X.509 certificate details from PEM, with a minimal DER reader: pure, synchronous, no dependencies.
-// It reads what the dashboard shows (names, SANs, validity, serial) and verifies nothing.
+// X.509 certificate details from PEM, with a minimal DER reader (der.ts): pure, synchronous, no
+// dependencies. It reads what the dashboard shows (names, SANs, validity, serial, the public key a
+// private key is compared with) and verifies nothing.
+import { BOOLEAN, bytesOf, children, fail, hex, INTEGER, Malformed, OCTET_STRING, OID, oid, ofTag, readNode, SEQUENCE, SET, type Node } from './der';
+import { spkiPublicKey } from './publicKey';
 
 export interface CertInfo {
   subject: string;
@@ -13,28 +16,10 @@ export interface CertInfo {
   notAfter: number;
   /** Uppercase hex, without DER's sign byte (as `openssl x509 -serial` prints it). */
   serial: string;
+  /** Its public key as publicKey.ts writes one (keyMatch compares it); undefined for a kind not compared (DSA, RSA-PSS…). */
+  publicKey: string | undefined;
 }
 
-/** Any malformed or out-of-bounds read; parseCert turns it into undefined. */
-class Malformed extends Error {}
-
-function fail(): never {
-  throw new Malformed();
-}
-
-/** A DER element: its tag and the bounds of its contents in `der`. */
-interface Node {
-  tag: number;
-  start: number;
-  end: number;
-}
-
-const SEQUENCE = 0x30;
-const SET = 0x31;
-const INTEGER = 0x02;
-const OID = 0x06;
-const OCTET_STRING = 0x04;
-const BOOLEAN = 0x01;
 const UTC_TIME = 0x17;
 const GENERALIZED_TIME = 0x18;
 const VERSION = 0xa0; // [0] EXPLICIT
@@ -42,79 +27,10 @@ const EXTENSIONS = 0xa3; // [3] EXPLICIT
 const DNS_NAME = 0x82; // [2] IMPLICIT IA5String
 const IP_ADDRESS = 0x87; // [7] IMPLICIT OCTET STRING
 
-function byte(der: Uint8Array, at: number, limit: number): number {
-  const value = at < limit ? der[at] : undefined;
-  return value ?? fail();
-}
-
-/** Reads the element at `at`, which must end by `limit`. Definite lengths only. */
-function readNode(der: Uint8Array, at: number, limit: number): Node {
-  const tag = byte(der, at, limit);
-  // High tag numbers (0x1f) never occur in the parts of a certificate read here.
-  if ((tag & 0x1f) === 0x1f) fail();
-  let length = byte(der, at + 1, limit);
-  let start = at + 2;
-  if (length & 0x80) {
-    const count = length & 0x7f;
-    // 0 is the indefinite form, which DER forbids; more than 4 bytes cannot fit any real certificate.
-    if (count === 0 || count > 4) fail();
-    length = 0;
-    for (let i = 0; i < count; i++) length = length * 256 + byte(der, start + i, limit);
-    start += count;
-  }
-  const end = start + length;
-  if (end > limit) fail();
-  return { tag, start, end };
-}
-
-function ofTag(node: Node | undefined, tag: number): Node {
-  return node?.tag === tag ? node : fail();
-}
-
-function children(der: Uint8Array, parent: Node): Node[] {
-  const out: Node[] = [];
-  for (let at = parent.start; at < parent.end; ) {
-    const node = readNode(der, at, parent.end);
-    out.push(node);
-    at = node.end;
-  }
-  return out;
-}
-
-const bytesOf = (der: Uint8Array, node: Node): Uint8Array => der.subarray(node.start, node.end);
-
 function latin1(bytes: Uint8Array): string {
   let out = '';
   for (const b of bytes) out += String.fromCharCode(b);
   return out;
-}
-
-function hex(bytes: Uint8Array): string {
-  let out = '';
-  for (const b of bytes) out += b.toString(16).padStart(2, '0');
-  return out.toUpperCase();
-}
-
-function oid(bytes: Uint8Array): string {
-  const arcs: number[] = [];
-  let value = 0;
-  for (const [i, b] of bytes.entries()) {
-    value = value * 128 + (b & 0x7f);
-    if (value > Number.MAX_SAFE_INTEGER) fail();
-    if (b & 0x80) {
-      if (i === bytes.length - 1) fail();
-      continue;
-    }
-    if (arcs.length === 0) {
-      // The first subidentifier packs the first two arcs: 40 * first + second.
-      const first = Math.min(2, Math.floor(value / 40));
-      arcs.push(first, value - 40 * first);
-    } else {
-      arcs.push(value);
-    }
-    value = 0;
-  }
-  return arcs.length > 0 ? arcs.join('.') : fail();
 }
 
 const utf8 = new TextDecoder();
@@ -218,6 +134,16 @@ function subjectAltNames(der: Uint8Array, extensions: Node | undefined): { sans:
   return none;
 }
 
+/** The certificate's public key; a key it can't read leaves the rest of the certificate readable. */
+function publicKeyOf(der: Uint8Array, spki: Node): string | undefined {
+  try {
+    return spkiPublicKey(der, spki);
+  } catch (err) {
+    if (err instanceof Malformed) return undefined;
+    throw err;
+  }
+}
+
 function parseDer(der: Uint8Array): CertInfo {
   const certificate = ofTag(readNode(der, 0, der.length), SEQUENCE);
   if (certificate.end !== der.length) fail();
@@ -237,6 +163,7 @@ function parseDer(der: Uint8Array): CertInfo {
 
   const { sans, dns } = subjectAltNames(der, optional.find((node) => node.tag === EXTENSIONS));
   return {
+    publicKey: publicKeyOf(der, publicKey ?? fail()),
     subject: name(der, subjectNode ?? fail()),
     issuer: name(der, issuerNode ?? fail()),
     sans,

@@ -8,12 +8,14 @@
 // - CertBox: a certificate or a CA. It owns its text; `value` and `onValue` are the field's.
 // - KeyBox: a private key. A whole key is taken at once and leaves the page: one line then reads
 //   "Private key entered, not shown", with Replace key and Remove. A box opened over a key stays
-//   open until a whole key is taken or Keep the entered key closes it.
+//   open until a whole key is taken or Keep the entered key closes it. A key taken is handed to
+//   keyMatch.learnKey, which keeps only its public part, for the pair's check.
 import { useRef, type ReactNode } from 'react';
 import { t } from '../../i18n';
 import { Button, Field, useEditingState, useLocked } from '../../ui';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
 import { CertDetails } from './CertDetails';
+import { learnKey } from './keyMatch';
 import { fileRefusal, heldWhy, isReference, kept, shown, takes, valueAfter, type BoxKind } from './pemBox';
 import { PemInput } from './PemInput';
 
@@ -112,7 +114,9 @@ export function KeyBox({ label, help, error, value, onValue }: BoxProps & { valu
   };
   const set = (next: string) => {
     // A whole key is taken and leaves the page at once; a reference stays, as it may still be typed.
+    // Its public part is derived meanwhile, for the pair's check (keyMatch.ts); taking never waits.
     if (takes('key', next) && !isReference(next)) {
+      void learnKey(next);
       if (next !== value) onValue(next);
       close();
       return;
