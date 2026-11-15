@@ -55,3 +55,28 @@ describe('hunks', () => {
     expect(out).toHaveLength(7);
   });
 });
+
+// Final wave C3: a legal route can hold 140,000 short labels (no entry-count limit, under the 1.5 MiB
+// request limit); spreading that many unchanged lines into push() overflowed the call stack.
+describe('a large object', () => {
+  const labels = Object.fromEntries(Array.from({ length: 140_000 }, (_, i) => [`k${i}`, 'v']));
+  // Keys sorted, as the dialog shows them (editor/json.ts canonical): `host` comes before the labels.
+  const text = (host: string) => JSON.stringify({ host, id: 'r1', labels, uri: '/' }, null, 2);
+
+  it('diffs without overflowing the stack, the unchanged lines folded around the change', () => {
+    const lines = lineDiff(text('a.example'), text('b.example'));
+    expect(lines.filter((l) => l.op !== 'same').map((l) => `${l.op}:${l.text}`)).toEqual(['del:  "host": "a.example",', 'add:  "host": "b.example",']);
+    const out = hunks(lines);
+    expect(out.length).toBeLessThan(12);
+    expect(out.find((h) => h.op === 'skip')).toEqual({ op: 'skip', count: 140_002 });
+  });
+
+  it('a change at each end (the middle too big to align) is all removed then all added, without overflowing', () => {
+    const before = JSON.stringify({ a: 1, labels, z: 1 }, null, 2);
+    const after = JSON.stringify({ a: 2, labels, z: 2 }, null, 2);
+    const lines = lineDiff(before, after);
+    // "a", the labels' 140,002 lines (opening and closing included) and "z", on each side.
+    expect(lines.filter((l) => l.op === 'del')).toHaveLength(140_004);
+    expect(lines.filter((l) => l.op === 'add')).toHaveLength(140_004);
+  });
+});

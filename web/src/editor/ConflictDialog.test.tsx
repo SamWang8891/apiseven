@@ -33,6 +33,19 @@ describe('ConflictDialog', () => {
     expect(dialog.querySelectorAll('ins, del')).toHaveLength(0);
   });
 
+  // Final wave C3: 140,000 short labels are a legal route (no entry-count limit, under the 1.5 MiB
+  // request limit); the dialog still opens with its choices, the unchanged lines folded.
+  it('a route with 140,000 labels: the change is shown, the rest folded, and the choices offered', () => {
+    const labels = Object.fromEntries(Array.from({ length: 140_000 }, (_, i) => [`k${i}`, 'v']));
+    const dialog = show({ id: 'r1', host: 'a.example', labels, uri: '/' }, { id: 'r1', host: 'b.example', labels, uri: '/' });
+    expect(marked(dialog, 'del')).toEqual(['"host": "a.example",']);
+    expect(marked(dialog, 'ins')).toEqual(['"host": "b.example",']);
+    expect(dialog.querySelectorAll('.ed-diff__line').length).toBeLessThan(20);
+    for (const name of [t('editor.conflict.overwrite'), t('editor.conflict.reload'), t('ui.cancel')]) {
+      expect(within(dialog).getAllByRole('button', { name }).length).toBeGreaterThan(0);
+    }
+  });
+
   it('offers overwrite, reload and cancel', () => {
     const dialog = show({ a: 1 }, { a: 2 });
     for (const name of [t('editor.conflict.overwrite'), t('editor.conflict.reload'), t('ui.cancel')]) {
