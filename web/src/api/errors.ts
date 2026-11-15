@@ -27,14 +27,17 @@ export class ApiError extends Error {
   readonly errorMsg?: string;
   /** Set when apiseven's own server made this answer, not APISIX. */
   readonly refusal?: Refusal;
+  /** Set on a parse error whose answer is in the Admin API's v2 format (`admin_api_version` is not v3). */
+  readonly v2Format?: boolean;
 
-  constructor(kind: ApiErrorKind, message: string, opts: { status?: number; errorMsg?: string; refusal?: Refusal; cause?: unknown } = {}) {
+  constructor(kind: ApiErrorKind, message: string, opts: { status?: number; errorMsg?: string; refusal?: Refusal; v2Format?: boolean; cause?: unknown } = {}) {
     super(message, { cause: opts.cause });
     this.name = 'ApiError';
     this.kind = kind;
     this.status = opts.status;
     this.errorMsg = opts.errorMsg;
     this.refusal = opts.refusal;
+    this.v2Format = opts.v2Format;
   }
 }
 

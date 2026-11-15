@@ -112,6 +112,7 @@ function SubmitError({ error, baseUrl }: { error: ApiError; baseUrl: string }) {
         />
       );
     default:
+      if (error.v2Format) return <Alert title={t('connect.adminApiV2')} hints={[t('connect.adminApiV2Hint')]} />;
       // A parse error without a status was a 200 whose body wasn't a list.
       return <Alert title={t('connect.notAdmin', { status: `HTTP ${error.status ?? 200}` })} detail={error.errorMsg} />;
   }

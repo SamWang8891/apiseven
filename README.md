@@ -109,6 +109,7 @@ deployment:
       - name: viewer
         key: 9b27e04d5c13f8a6b0e49d72c5f18a3e
         role: viewer
+    admin_api_version: v3       # the default; apiseven needs it (see Supported APISIX versions)
 ```
 
 Restart APISIX after changing `config.yaml`. The keys above are examples: make your own.
@@ -352,6 +353,17 @@ the client's data.
 Developed and tested against APISIX 3.20 with the etcd-backed Admin API (the `traditional`
 deployment role). Older 3.x releases should mostly work: resource types an APISIX does not have
 are detected and hidden. APISIX 2.x and the standalone (YAML) mode are not supported.
+
+apiseven needs the Admin API's v3 format, which is APISIX 3.20's default:
+`deployment.admin.admin_api_version: v3`. With any other value (such as `v2`), APISIX answers in
+the old format, with each object wrapped in `node` and a list in `node.nodes`. apiseven cannot
+read that: the Connect page says "APISIX answered in the Admin API's v2 format", and the other pages
+name the setting. Set it to `v3`, or remove the line, then restart APISIX. APISIX names the format
+it uses in the `X-API-VERSION` header of each answer:
+
+```sh
+curl -si -H 'X-API-KEY: <admin key>' http://127.0.0.1:9180/apisix/admin/routes | grep -i '^x-api-version'
+```
 
 ## Status
 

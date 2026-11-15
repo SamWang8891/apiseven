@@ -475,6 +475,9 @@ export const en: Record<string, string> = {
   'api.server.signIn': 'Sign in again: reload the page',
   'api.server.upstream': "APISIX can't be reached from the apiseven server",
 
+  // An Admin API answer in the v2 format (api/client.ts notAdminApi)
+  'api.adminApiV2': "APISIX answers in the Admin API's v2 format; apiseven needs deployment.admin.admin_api_version: v3",
+
   // Shown in the shell once a write is refused for the key's role (web/src/api/write.ts)
   'unreachable.title': 'Can’t reach the Admin API at',
   'unreachable.body': '{error}. What this page shows may be out of date.',
@@ -512,6 +515,9 @@ export const en: Record<string, string> = {
   'connect.networkHint':
     "Usually this browser's address is not in APISIX's allow_admin list, or enable_admin_cors is off in its config.yaml.",
   'connect.notAdmin': "This doesn't look like an APISIX Admin API ({status}).",
+  'connect.adminApiV2': "APISIX answered in the Admin API's v2 format, which apiseven does not read.",
+  'connect.adminApiV2Hint':
+    "apiseven needs the v3 format, APISIX's default: in APISIX's config.yaml, set deployment.admin.admin_api_version to v3 (or remove that line), then restart APISIX.",
   'connect.reason.auth': 'The Admin API rejected the saved key.',
   'connect.other': 'Use another connection',
   'connect.back': 'Back to {name}',

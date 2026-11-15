@@ -294,14 +294,14 @@ function itemPath(kind: Kind, id: string, parent?: Parent): string {
 function parseList(kind: Kind, body: unknown): Page {
   const list = isObj(body) ? body.list : undefined;
   const entries: unknown[] | undefined = Array.isArray(list) ? list : isObj(list) ? Object.values(list) : undefined;
-  if (!isObj(body) || !entries) throw notAdminApi();
+  if (!isObj(body) || !entries) throw notAdminApi(undefined, body);
   const items = entries.map((entry) => toItem(kind, entry));
   return { total: typeof body.total === 'number' ? body.total : items.length, items };
 }
 
 /** Reads `{key, value, createdIndex?, modifiedIndex?}`, the shape of list entries and single-object bodies. */
 function toItem(kind: Kind, body: unknown): Item {
-  if (!isObj(body) || typeof body.key !== 'string' || !isObj(body.value)) throw notAdminApi();
+  if (!isObj(body) || typeof body.key !== 'string' || !isObj(body.value)) throw notAdminApi(undefined, body);
   const item: Item = { id: itemId(kind, body.key, body.value), value: body.value };
   if (typeof body.createdIndex === 'number') item.createdIndex = body.createdIndex;
   if (typeof body.modifiedIndex === 'number') item.modifiedIndex = body.modifiedIndex;
@@ -355,7 +355,18 @@ function httpMessage(status: number, errorMsg?: string): string {
   return errorMsg ? `HTTP ${status}: ${errorMsg}` : `HTTP ${status}`;
 }
 
-function notAdminApi(status?: number): ApiError {
+function notAdminApi(status?: number, body?: unknown): ApiError {
+  if (isV2Format(body)) return new ApiError('parse', t('api.adminApiV2'), { status, v2Format: true });
   const message = 'not an APISIX Admin API response';
   return new ApiError('parse', status === undefined ? message : `HTTP ${status}: ${message}`, { status });
+}
+
+/**
+ * An answer in the Admin API's v2 format, which APISIX 3.x sends when `deployment.admin.admin_api_version`
+ * is not `v3` (apisix/admin/v3_adapter.lua, enable_v3 and filter): the object, or etcd's directory node
+ * with the list in `node.nodes`, stays wrapped in `node` (apisix/core/etcd.lua, get_format), where v3
+ * answers `{key, value}` or `{total, list}` and never has a top-level `node`.
+ */
+function isV2Format(body: unknown): boolean {
+  return isObj(body) && isObj(body.node) && typeof body.node.key === 'string';
 }
