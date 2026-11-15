@@ -4,6 +4,9 @@
 # Dependencies and build output
 node_modules/
 web/dist/
+web/dist-single/
+# make static: the single file and the zip of web/dist
+/dist/
 # make build: the server binary
 /bin/
 # The web build copied in for go:embed; .keep lets the server compile without one.

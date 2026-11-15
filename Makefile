@@ -1,5 +1,5 @@
 # Thin wrappers; each target says what it runs.
-.PHONY: dev-up dev-down seed web check test build docker
+.PHONY: dev-up dev-down seed web check test build docker single static
 
 # The local APISIX + etcd for development (dev/compose.yaml), and its sample data.
 dev-up:
@@ -32,3 +32,15 @@ build:
 
 docker:
 	docker build -t apiseven:local .
+
+# The single-file export: dist/apiseven.html, which runs opened straight from disk.
+single:
+	cd web && npm run build:single
+	mkdir -p dist
+	cp web/dist-single/apiseven.html dist/apiseven.html
+
+# Both static exports: dist/apiseven.html and dist/apiseven-static.zip (web/dist, for any file server).
+static: single
+	cd web && npm run build
+	rm -f dist/apiseven-static.zip
+	cd web/dist && zip -qrX ../../dist/apiseven-static.zip .
