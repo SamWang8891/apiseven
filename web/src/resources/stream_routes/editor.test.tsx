@@ -44,7 +44,8 @@ const ETCD: Obj = {
   remote_addr: '127.0.0.0/8',
   snis: ['a.example', 'b.example'],
   plugins: { 'limit-conn': { conn: 100, burst: 50, default_conn_delay: 0.1, key: 'remote_addr' } },
-  upstream: { type: 'roundrobin', nodes: [{ host: 'etcd', port: 2379, weight: 1 }] },
+  // pass_host and keepalive_pool have no effect on a stream upstream; they are kept as stored (Ruling 2).
+  upstream: { type: 'roundrobin', nodes: [{ host: 'etcd', port: 2379, weight: 1 }], pass_host: 'node', keepalive_pool: { size: 8 } },
   protocol: { name: 'redis', conf: { faults: [] } },
   x_future: { kept: true },
   create_time: 1700000000,
@@ -99,6 +100,26 @@ describe('the stream route editor', () => {
     const offered = within(picker).getAllByRole('option').map((o) => o.getAttribute('data-plugin'));
     expect(offered.sort()).toEqual(Object.keys(pluginFixture().stream).sort());
     expect(within(picker).queryByRole('option', { name: /^cors\b/ })).not.toBeInTheDocument();
+  });
+});
+
+describe('the inline upstream in the stream subsystem (Ruling 2)', () => {
+  it('stored http-only settings show with a note, locked and editing; an unrelated save keeps them', async () => {
+    const { user, admin } = await openStream(ETCD, '#/stream_routes/etcd-tcp?tab=upstream');
+    await settled();
+    expect(main().getAllByText(t('up.stream.noEffect'))).toHaveLength(2);
+    await user.keyboard('e');
+    expect(main().getAllByText(t('up.stream.noEffect'))).toHaveLength(2);
+    // Only the L4 schemes, tcp by default.
+    await user.click(main().getByRole('combobox', { name: t('up.conn.scheme') }));
+    const offered = within(await screen.findByRole('listbox')).getAllByRole('option').map((o) => o.textContent);
+    expect(offered).toEqual([t('up.default', { value: 'tcp' }), 'tcp', 'tls', 'udp']);
+    await user.keyboard('{Escape}');
+    await user.click(tab(t('sr.tab.general')));
+    await user.type(main().getByRole('textbox', { name: t('sr.general.desc') }), '!');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.upstream).toEqual(ETCD.upstream);
   });
 });
 

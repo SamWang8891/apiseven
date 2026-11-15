@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import type { Obj } from '../api/types';
 import type { Issue } from '../editor/issues';
 import type { Ctx } from '../resources/ctx';
+import type { Subsystem } from '../resources/resolve';
 import { BalancingSection } from './BalancingSection';
 import { ConnectionSection } from './ConnectionSection';
 import type { SectionProps } from './values';
@@ -21,7 +22,7 @@ export interface UpstreamSection {
   fields: string[];
   /** One line about its values, shown while collapsed and in the locked overview, e.g. `2 nodes: a:80, b:80`. */
   summary(value: Obj): string;
-  render(p: { value: Obj; onChange: (v: Obj) => void; issues: Issue[]; ctx: Ctx }): ReactNode;
+  render(p: { value: Obj; onChange: (v: Obj) => void; issues: Issue[]; ctx: Ctx; subsystem?: Subsystem }): ReactNode;
 }
 
 const bodies: Record<SectionId, (p: SectionProps) => ReactNode> = {

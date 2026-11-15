@@ -2,7 +2,6 @@
 // (what it matches, where its connections go, its plugins and the rest), each line linking to its
 // tab. Locked, this is the stream route's spec sheet.
 import type { ReactNode } from 'react';
-import { useAllPlugins } from '../../api/hooks';
 import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
 import { setPath } from '../../editor/draft';
@@ -12,10 +11,9 @@ import { Input, KeyValueInput, useLocked } from '../../ui';
 import type { Ctx } from '../ctx';
 import { Mono, Overview, Parts } from '../Overview';
 import type { TabProps } from '../registry';
-import { effectivePlugins } from '../resolve';
 import { inheritLoading } from '../routes/inherit';
 import { targetOf } from '../upstreamSource';
-import { snisOf } from './columns';
+import { snisOf, streamPluginsOf } from './columns';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 
@@ -45,25 +43,22 @@ function matching(draft: Obj): ReactNode {
 }
 
 function upstream(draft: Obj, ctx: Ctx): ReactNode {
-  const target = targetOf(draft, ctx);
+  const target = targetOf(draft, ctx, 'stream');
   const label = target.viaService !== undefined ? `${target.label} ${t('rt.up.viaService', { name: target.viaService })}` : target.label;
   return <Parts parts={[label, ...(target.nodes.length > 0 ? [<Mono key="nodes" values={target.nodes} />] : [])]} />;
 }
 
 /**
- * The route's own plugins, then the service's it doesn't override (merge_service_stream_route,
- * apisix/plugin.lua) — of those, only the ones the stream subsystem has: plugin.stream_filter runs
- * nothing else, so a service's http plugins don't run here. Until the service and the stream plugin
- * set have loaded, the inherited part says so.
+ * The route's own plugins, then the service's it doesn't override that can run on a stream route
+ * (streamPluginsOf, as the list's column). Until the service has loaded, the inherited part says so.
  */
-function plugins(draft: Obj, ctx: Ctx, stream: Record<string, unknown> | undefined): ReactNode {
+function plugins(draft: Obj, ctx: Ctx): ReactNode {
   const label = (p: { name: string; disabled: boolean }) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name);
-  const all = effectivePlugins(draft, ctx);
+  const all = streamPluginsOf(draft, ctx);
   const own = all.filter((p) => p.from === 'route').map(label);
-  const fromService = all.filter((p) => p.from === 'service');
   const ownPart = own.length > 0 ? [<Mono key="own" values={own} />] : [];
-  if (inheritLoading(draft, ctx).service || (fromService.length > 0 && stream === undefined)) return <Parts parts={[...ownPart, t('rt.overview.inheritedLoading')]} />;
-  const inherited = fromService.filter((p) => stream?.[p.name] !== undefined).map(label);
+  if (inheritLoading(draft, ctx).service) return <Parts parts={[...ownPart, t('rt.overview.inheritedLoading')]} />;
+  const inherited = all.filter((p) => p.from === 'service').map(label);
   const parts = [
     ...ownPart,
     ...(inherited.length > 0 ? [<span key="inherited"><Mono values={inherited} /> {t('rt.overview.viaService')}</span>] : []),
@@ -80,8 +75,6 @@ function advanced(draft: Obj): ReactNode {
 
 export function GeneralTab({ draft, setDraft, issues, ctx }: TabProps) {
   const locked = useLocked();
-  // The editor asked for it already (the plugin checks): the query cache answers.
-  const stream = useAllPlugins('stream').data;
   // Labels with a value that isn't text can't be edited here; they are kept as they are.
   const labels = isObj(draft.labels) ? draft.labels : {};
   const textLabels = Object.fromEntries(Object.entries(labels).filter((e): e is [string, string] => typeof e[1] === 'string'));
@@ -107,7 +100,7 @@ export function GeneralTab({ draft, setDraft, issues, ctx }: TabProps) {
         rows={[
           { tab: 'matching', label: t('sr.tab.matching'), value: matching(draft) },
           { tab: 'upstream', label: t('rt.tab.upstream'), value: upstream(draft, ctx) },
-          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft, ctx, stream) },
+          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft, ctx) },
           { tab: 'advanced', label: t('sr.tab.advanced'), value: advanced(draft) },
         ]}
       />

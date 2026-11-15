@@ -141,6 +141,20 @@ describe('the route editor', () => {
   });
 });
 
+describe('an inline upstream emptied of its nodes (Ruling 1)', () => {
+  it('is saved as APISIX stores it: the route has an upstream, with an empty node list', async () => {
+    const { user, admin } = await openEditor('#/routes/new?tab=upstream', { objects: objects([]), replies: pluginReplies() });
+    await settled();
+    await user.click(main().getByRole('textbox', { name: t('up.nodes.new') }));
+    await user.paste('10.0.0.5:8080');
+    await user.click(main().getByRole('button', { name: t('up.nodes.removeN', { n: 1 }) }));
+    expect(main().getByText(t('up.nodes.emptyNote'))).toBeInTheDocument();
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toEqual({ uri: '/*', status: 1, upstream: { nodes: [] } });
+  });
+});
+
 describe('the create page copies the prefill params into the new route', () => {
   it('service_id and plugin_config_id; a param the kind does not list is ignored', async () => {
     const { user, admin } = await openEditor('#/routes/new?service_id=web&plugin_config_id=common-headers&name=nope&tab=upstream', { objects: objects([]), replies: pluginReplies() });

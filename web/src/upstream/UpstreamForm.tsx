@@ -1,5 +1,5 @@
 // The upstream form for editors that hold an upstream inline (a route's, a service's, a stream
-// route's `upstream`). `sections`: each section a collapsible Section showing its one-line summary
+// route's `upstream`; the latter with subsystem 'stream'). `sections`: each section a collapsible Section showing its one-line summary
 // while collapsed; Nodes starts open, the others when they hold a value or a problem. `tabs`: the
 // sections as an inner tab strip. Issues have paths relative to the upstream (`nodes.0.host`);
 // those no section owns (the upstream as a whole) show above the sections. A section whose field
@@ -9,6 +9,7 @@ import type { Obj } from '../api/types';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
+import type { Subsystem } from '../resources/resolve';
 import { Section } from '../resources/Section';
 import { PendingScope, Tabs, useHeld } from '../ui';
 import { DEFAULT_TYPE } from './meta';
@@ -22,6 +23,8 @@ export interface UpstreamFormProps {
   issues?: Issue[];
   ctx: Ctx;
   layout: 'tabs' | 'sections';
+  /** The subsystem the upstream serves: 'stream' for a stream route's (see SectionProps); default http. */
+  subsystem?: Subsystem;
 }
 
 const NONE: Issue[] = [];
@@ -49,7 +52,7 @@ function Stray({ issues }: { issues: Issue[] }) {
   );
 }
 
-export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = NONE, ctx, layout }) => {
+export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = NONE, ctx, layout, subsystem }) => {
   const [active, setActive] = useState<string>(upstreamSections[0]?.id ?? 'nodes');
   const held = useHeld();
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -69,7 +72,7 @@ export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = 
             id: s.id,
             label: s.label,
             badge: ownIssues(s).length,
-            content: s.id === active ? <PendingScope onChange={held.track}>{s.render({ value, onChange, issues: ownIssues(s), ctx })}</PendingScope> : null,
+            content: s.id === active ? <PendingScope onChange={held.track}>{s.render({ value, onChange, issues: ownIssues(s), ctx, subsystem })}</PendingScope> : null,
           }))}
         />
       </div>
@@ -84,7 +87,7 @@ export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = 
           const own = ownIssues(s);
           return (
             <Section key={s.id} title={s.label} summary={s.summary(value)} issues={own.length} defaultOpen={s.id === 'nodes' || holdsValue(s, value) || own.length > 0}>
-              {s.render({ value, onChange, issues: own, ctx })}
+              {s.render({ value, onChange, issues: own, ctx, subsystem })}
             </Section>
           );
         })}

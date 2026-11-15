@@ -1,15 +1,21 @@
-// What APISIX 3.20 refuses in an upstream, checked in the browser so Save can say where: the
-// `upstream` schema in apisix/schema_def.lua (nodes, timeout, tls dependencies, health checker
-// ranges, warm_up_conf) and check_upstream_conf / check_warm_up_conf in apisix/upstream.lua (chash
-// key, pass_host rewrite, map ports, ws + ca_certs). Pure; used by the Upstream editor's `validate`
-// and, with a path prefix, by editors that hold an upstream inline. A stream route's inline upstream
-// is checked by the schema alone (apisix/admin/stream_routes.lua never calls check_upstream_conf):
-// `{ checkConf: false }` keeps only what the schema refuses.
+// What APISIX 3.20 refuses in an upstream, checked in the browser so Save can say where, and nothing
+// stricter (addendum rule 10: these issues block Save on the whole draft, the JSON tab's too). Two
+// sources, each check citing its line (apisix/schema_def.lua, apisix/upstream.lua):
+// - the `upstream` schema (schema_def.lua 459–602): nodes, timeout, tls dependencies, health checker
+//   ranges, warm_up_conf, labels — what every kind refuses;
+// - check_upstream_conf (upstream.lua 622–740, with check_schema 534–541 and check_warm_up_conf
+//   575–618): the chash key, map ports, an unbracketed IPv6 node host, pass_host rewrite, ws + CA,
+//   slow start's fit — what admin/upstreams.lua 32, admin/routes.lua 70–76 and admin/services.lua
+//   40–46 run, and admin/stream_routes.lua doesn't (`{ checkConf: false }`: the schema only).
+// An empty node list is not among them (APISIX stores it; requests fail until a node is added): the
+// nodes section says so, without blocking. Pure; used by the Upstream editor's `validate` and, with a
+// path prefix, by editors that hold an upstream inline.
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { getPath } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
+import { isIPv6 } from '../resources/ip';
 import { parseAddr } from './nodes';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
@@ -26,7 +32,7 @@ interface NumberRule {
   max?: number;
 }
 
-/** Numeric fields and their schema bounds, checked when set. */
+/** Numeric fields and their schema bounds, checked when set (schema_def.lua 149–311, 417–455, 473–527). */
 const NUMBERS: [path: string, rule: NumberRule][] = [
   ['retries', { whole: true, min: 0 }],
   ['retry_timeout', { min: 0 }],
@@ -53,7 +59,7 @@ const NUMBERS: [path: string, rule: NumberRule][] = [
   ['warm_up_conf.startup_grace_period_seconds', { whole: true, min: 0 }],
 ];
 
-/** Status lists: integers from 200 to 599. */
+/** Status lists: at least one integer from 200 to 599 (schema_def.lua 177–187, 200–210, 255–267, 279–289). */
 const STATUS_LISTS = ['checks.active.healthy.http_statuses', 'checks.active.unhealthy.http_statuses', 'checks.passive.healthy.http_statuses', 'checks.passive.unhealthy.http_statuses'];
 
 function numberIssue(value: unknown, { whole, min, max }: NumberRule): string | undefined {
@@ -70,59 +76,74 @@ type Add = (path: string, message: string) => void;
 
 export interface UpstreamCheckOptions {
   /**
-   * Also what check_upstream_conf / check_warm_up_conf refuse beyond the schema (apisix/upstream.lua:
-   * the chash key, pass_host rewrite, map ports, ws + ca_certs, slow start's fit), and an empty node
-   * list. Default true; false for an upstream APISIX checks by the schema only.
+   * Also what check_upstream_conf refuses beyond the schema (apisix/upstream.lua: the chash key,
+   * map ports, an unbracketed IPv6 node host, pass_host rewrite, ws + ca_certs, slow start's fit).
+   * Default true; false for an upstream APISIX checks by the schema only (a stream route's).
    */
   checkConf?: boolean;
 }
 
-/** Nodes or discovery (APISIX's oneOf), then each node. `conf`: the checks beyond the schema too. */
+/** Nodes or discovery, then each node. `conf`: check_upstream_conf's checks too. */
 function checkTarget(up: Obj, add: Add, conf: boolean): void {
-  const discovery = up.discovery_type !== undefined || up.service_name !== undefined;
+  const hasType = up.discovery_type !== undefined;
+  const hasName = up.service_name !== undefined;
+  // The schema's oneOf (schema_def.lua 597–600): `nodes`, or both `service_name` and `discovery_type`.
   if (up.nodes === undefined) {
-    if (!discovery) add('nodes', t('up.issue.noTarget'));
-    if (discovery && !str(up.discovery_type)) add('discovery_type', t('up.issue.discoveryType'));
-    if (discovery && !str(up.service_name)) add('service_name', t('up.issue.serviceName'));
+    if (!hasType && !hasName) add('nodes', t('up.issue.noTarget'));
+    if ((hasType || hasName) && !hasType) add('discovery_type', t('up.issue.discoveryType'));
+    // service_name: 1–256 characters (591–595); an empty discovery_type is still a string (558–561).
+    if ((hasType || hasName) && !str(up.service_name)) add('service_name', t('up.issue.serviceName'));
     return;
   }
-  if (str(up.discovery_type) && str(up.service_name)) add('nodes', t('up.issue.both'));
+  // nodes with both discovery keys matches both branches of the oneOf.
+  if (hasType && hasName) add('nodes', t('up.issue.both'));
   const nodes = up.nodes;
   if (Array.isArray(nodes)) {
-    if (conf && nodes.length === 0) add('nodes', t('up.issue.noNodes'));
+    // nodes_schema's array (341–369): objects with host (host_def) and weight, port 1–65535, whole numbers.
     nodes.forEach((node, i) => {
       const n = obj(node);
-      if (!str(n.host)) add(`nodes.${i}.host`, t('up.issue.host'));
+      const host = str(n.host);
+      if (host === undefined) add(`nodes.${i}.host`, t('up.issue.host'));
+      // check_schema (upstream.lua 535–539): an IPv6 host goes in brackets.
+      else if (conf && !host.startsWith('[') && isIPv6(host)) add(`nodes.${i}.host`, t('up.issue.ipv6Brackets', { host }));
       if (n.port !== undefined && !(isWhole(n.port) && n.port >= 1 && n.port <= 65535)) add(`nodes.${i}.port`, t('up.issue.port'));
       if (n.weight === undefined) add(`nodes.${i}.weight`, t('up.issue.weightMissing'));
       else if (!(isWhole(n.weight) && n.weight >= 0)) add(`nodes.${i}.weight`, t('up.issue.weight'));
       if (n.priority !== undefined && !isWhole(n.priority)) add(`nodes.${i}.priority`, t('up.issue.priority'));
     });
   } else if (isObj(nodes)) {
-    // A map entry's problems sit on its row, as the table shows it (in key order).
-    const entries = Object.entries(nodes);
-    if (conf && entries.length === 0) add('nodes', t('up.issue.noNodes'));
-    entries.forEach(([addr, weight], i) => {
-      const { host, port } = parseAddr(addr);
-      // The schema takes any key (patternProperties ".*"); check_upstream_conf parses its port.
-      if (conf && host === '') add(`nodes.${i}.host`, t('up.issue.host'));
+    // A map entry's problems sit on its row, as the table shows it (in key order). The schema takes
+    // any key (patternProperties ".*", 332–339) and a weight that is a whole number ≥ 0.
+    Object.entries(nodes).forEach(([addr, weight], i) => {
+      // check_upstream_conf (upstream.lua 634–644): a port in the key is 1–65535.
+      const { port } = parseAddr(addr);
       if (conf && port !== undefined && (port < 1 || port > 65535)) add(`nodes.${i}.port`, t('up.issue.port'));
       if (weight === null || weight === undefined) add(`nodes.${i}.weight`, t('up.issue.weightMissing'));
       else if (!(isWhole(weight) && weight >= 0)) add(`nodes.${i}.weight`, t('up.issue.weight'));
     });
-  } else add('nodes', t('up.issue.noNodes'));
+  } else add('nodes', t('up.issue.nodesType'));
 }
 
+/** check_upstream_conf (upstream.lua 719–738): chash needs a key (unless on the consumer) that fits what it hashes on. */
 function checkHashKey(up: Obj, add: Add): void {
   if (up.type !== 'chash') return;
+  // hash_on defaults to vars (schema_def.lua 534–544; the schema check fills defaults first).
   const on = str(up.hash_on) ?? 'vars';
   if (on === 'consumer') return;
-  const key = str(up.key);
-  if (key === undefined) add('key', t('up.issue.key'));
-  else if (on === 'vars' && !HASH_VARS.test(key)) add('key', t('up.issue.keyVars'));
+  // "missing key" (723–725) is about presence: an empty key goes on to the patterns.
+  if (up.key === undefined) {
+    add('key', t('up.issue.key'));
+    return;
+  }
+  // A key that isn't text is refused by the schema (545–548); its JSON then fails the patterns too.
+  const key = typeof up.key === 'string' ? up.key : JSON.stringify(up.key);
+  // upstream_hash_vars_schema / upstream_hash_header_schema (schema_def.lua 605–619);
+  // vars_combinations takes any text (622–624).
+  if (on === 'vars' && !HASH_VARS.test(key)) add('key', t('up.issue.keyVars'));
   else if ((on === 'header' || on === 'cookie') && !HASH_NAME.test(key)) add('key', t('up.issue.keyName'));
 }
 
+/** timeout_def (schema_def.lua 130–139): all three, each above 0. */
 function checkTimeout(up: Obj, add: Add): void {
   if (up.timeout === undefined) return;
   const timeout = obj(up.timeout);
@@ -133,6 +154,7 @@ function checkTimeout(up: Obj, add: Add): void {
   }
 }
 
+/** tls (schema_def.lua 482–507): a cert with its key and not beside client_cert_id; CA entries; ws + CA (upstream.lua 694–698). */
 function checkTls(up: Obj, add: Add, conf: boolean): void {
   const tls = obj(up.tls);
   const cert = tls.client_cert !== undefined;
@@ -144,6 +166,7 @@ function checkTls(up: Obj, add: Add, conf: boolean): void {
   if (Array.isArray(tls.ca_certs)) tls.ca_certs.forEach((pem, i) => !str(pem) && add(`tls.ca_certs.${i}`, t('up.issue.pem')));
 }
 
+/** health_checker (schema_def.lua 315–325): active checks, with or without passive ones. */
 function checkChecks(up: Obj, add: Add): void {
   if (up.checks === undefined) return;
   const checks = obj(up.checks);
@@ -152,6 +175,7 @@ function checkChecks(up: Obj, add: Add): void {
   else add('checks', t('up.issue.checksActive'));
 }
 
+/** warm_up_conf: its required fields (schema_def.lua 453); with `conf`, check_warm_up_conf (upstream.lua 585–618). */
 function checkWarmUp(up: Obj, add: Add, conf: boolean): void {
   if (up.warm_up_conf === undefined) return;
   const warm = obj(up.warm_up_conf);
@@ -178,6 +202,7 @@ export function upstreamIssues(up: Obj, pathPrefix?: string, { checkConf = true 
   checkTarget(up, add, checkConf);
   if (checkConf) checkHashKey(up, add);
   checkTimeout(up, add);
+  // check_upstream_conf (upstream.lua 685–690), http only, which the Admin API always is.
   if (checkConf && up.pass_host === 'rewrite' && !str(up.upstream_host)) add('upstream_host', t('up.issue.upstreamHost'));
   checkTls(up, add, checkConf);
   checkChecks(up, add);
@@ -191,6 +216,7 @@ export function upstreamIssues(up: Obj, pathPrefix?: string, { checkConf = true 
     if (list !== undefined && !(Array.isArray(list) && list.length > 0 && list.every((s) => isWhole(s) && s >= 200 && s <= 599))) add(path, t('up.issue.statuses'));
   }
   checkWarmUp(up, add, checkConf);
+  // labels_def (schema_def.lua 108–115, 466).
   if (up.labels !== undefined && !(isObj(up.labels) && Object.values(up.labels).every((v) => typeof v === 'string' && /^\S+$/.test(v) && v.length <= 256))) {
     add('labels', t('up.issue.labels'));
   }

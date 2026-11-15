@@ -15,6 +15,7 @@ import { UpstreamForm } from '../upstream/UpstreamForm';
 import { Button, ConfirmDialog, Field, PendingScope, Segmented, useEditingState, useLocked } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import type { Ctx } from './ctx';
+import type { Subsystem } from './resolve';
 import { ResourcePicker } from './ResourcePicker';
 import { isEmptyUpstream, sourceOf, targetOf, withSource, type UpstreamSource } from './upstreamSource';
 import './resources.css';
@@ -44,9 +45,9 @@ function noneTexts(allowService: boolean, kind: Kind | undefined): { note: strin
 }
 
 /** What the object's requests go to, as APISIX resolves it: a name, where it comes from, and the nodes in mono. */
-function Resolves({ draft, ctx, none }: { draft: Obj; ctx: Ctx; none: { resolves: string; broken: boolean } }) {
+function Resolves({ draft, ctx, none, subsystem }: { draft: Obj; ctx: Ctx; none: { resolves: string; broken: boolean }; subsystem: Subsystem }) {
   const id = useId();
-  const target = targetOf(draft, ctx);
+  const target = targetOf(draft, ctx, subsystem);
   const label = target.none ? none.resolves : target.label;
   const broken = target.none ? none.broken : target.broken;
   return (
@@ -76,6 +77,8 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
   const sourced = allowService ? draft : { ...draft, service_id: undefined };
   const derived = sourceOf(sourced);
   const none = noneTexts(allowService, kind);
+  // A stream route reads a service's upstream, and its own inline one, in the stream subsystem's way.
+  const subsystem: Subsystem = kind === 'stream_routes' ? 'stream' : 'http';
   // A choice the draft can't say yet (Existing before one is picked, Inline before a node is typed)
   // belongs to this editing session: it starts over on Save and Discard, and the locked view never
   // shows it, so the spec sheet always says what the draft proxies to.
@@ -151,7 +154,7 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
           />
         )}
         {source === 'none' && !locked && <p className="res-source__note">{none.note}</p>}
-        <Resolves draft={sourced} ctx={ctx} none={none} />
+        <Resolves draft={sourced} ctx={ctx} none={none} subsystem={subsystem} />
       </div>
 
       {source === 'existing' && (
@@ -188,6 +191,7 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
               onChange={(up: Obj) => setDraft(setPathRaw(draft, ['upstream'], up))}
               issues={withinPath(issues, 'upstream')}
               ctx={ctx}
+              subsystem={subsystem}
             />
           </PendingScope>
         </div>

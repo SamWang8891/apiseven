@@ -146,26 +146,39 @@ function summarise(upstream: Obj, name: string | undefined): { label: string; no
   return { label: name ?? discoveryOf(upstream) ?? fromNodes, nodes };
 }
 
-function ownUpstream(obj: Obj, ctx: Ctx): UpstreamSummary | undefined {
-  // With both set, APISIX proxies to upstream_id and ignores the inline upstream (handle_upstream in apisix/init.lua).
+/** The subsystem a route runs in: http (routes) or stream (stream routes); they read a service's upstream differently. */
+export type Subsystem = 'http' | 'stream';
+
+/**
+ * An object's own upstream: by default upstream_id over the inline one (with both set, APISIX
+ * proxies to upstream_id: handle_upstream in apisix/init.lua 724–733, stream_preread_phase 1894);
+ * `inlineFirst` the other way round, as the stream subsystem reads a service's (see upstreamSummary).
+ */
+export function ownUpstream(obj: Obj, ctx: Ctx, inlineFirst = false): UpstreamSummary | undefined {
+  const inline: UpstreamSummary | undefined = isObj(obj.upstream) ? { ...summarise(obj.upstream, undefined), source: 'inline' } : undefined;
+  if (inlineFirst && inline) return inline;
   const upstreamId = idOf(obj.upstream_id);
   if (upstreamId !== undefined) {
     const upstream = find(ctx.upstreams, upstreamId);
     if (!upstream) return { label: t('ui.empty'), nodes: [], source: 'missing', refId: upstreamId };
     return { ...summarise(upstream.value, nonEmpty(upstream.value.name)), source: 'upstream', refId: upstreamId };
   }
-  return isObj(obj.upstream) ? { ...summarise(obj.upstream, undefined), source: 'inline' } : undefined;
+  return inline;
 }
 
 /**
  * Where a route, stream route or service proxies to: its own upstream_id or inline upstream, else
- * (routes and stream routes) its service's (merge_service_route in apisix/plugin.lua).
+ * (routes and stream routes) its service's. A service with both is read per subsystem: a route
+ * (http) takes its upstream_id (merge_service_route keeps both, and handle_upstream reads
+ * upstream_id first: apisix/plugin.lua 705–731, init.lua 724–733); a stream route its inline
+ * upstream (merge_service_stream_route copies it when the route has none, plugin.lua 793–799, and
+ * stream_preread_phase reads upstream_id only without one, init.lua 1922–1934).
  */
-export function upstreamSummary(obj: Obj, ctx: Ctx): UpstreamSummary {
+export function upstreamSummary(obj: Obj, ctx: Ctx, subsystem: Subsystem = 'http'): UpstreamSummary {
   const own = ownUpstream(obj, ctx);
   if (own) return own;
   const service = find(ctx.services, idOf(obj.service_id));
-  const inherited = service && ownUpstream(service.value, ctx);
+  const inherited = service && ownUpstream(service.value, ctx, subsystem === 'stream');
   if (!service || !inherited) return { label: t('ui.empty'), nodes: [], source: 'none' };
   // The service's upstream_id points nowhere: APISIX answers 502, so report the missing upstream.
   if (inherited.source === 'missing') return inherited;

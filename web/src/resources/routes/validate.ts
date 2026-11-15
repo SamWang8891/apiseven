@@ -16,6 +16,7 @@ import { upstreamIssues } from '../../upstream/validate';
 import type { ValidateEnv } from '../registry';
 import { resolveRef, type CtxKind } from '../resolve';
 import type { CtxList } from '../ctx';
+import { IPV4, IPV4_CIDR, isIPv6 } from '../ip';
 import { readPair } from './pairs';
 
 /** The methods a route can match, in the schema's order (method_schema in schema_def.lua). */
@@ -23,30 +24,9 @@ export const METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTION
 
 // host_def_pat in schema_def.lua: `*`, or an optional leading `*` and host characters.
 const HOST = /^\*$|^\*?[0-9a-zA-Z\-._[\]:]+$/;
-const OCTET = '(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])';
-const IPV4 = new RegExp(`^${OCTET}(\\.${OCTET}){3}$`);
-const GROUP = /^[0-9a-fA-F]{1,4}$/;
-// ip_def's CIDR patterns, as schema_def.lua writes them: an IPv4 prefix of 0–32 without leading zeros,
-// and a loose IPv6 form (the source says so) with any 1–3 digit prefix.
-const IPV4_CIDR = new RegExp(`^${OCTET}(\\.${OCTET}){3}/([12]?[0-9]|3[0-2])$`);
+// ip_def's IPv6/CIDR pattern, as schema_def.lua writes it: a loose IPv6 form (the source says so)
+// with any 1–3 digit prefix. Its IPv4 forms are ../ip's.
 const IPV6_CIDR = /^([a-fA-F0-9]{0,4}:){1,8}(:[a-fA-F0-9]{0,4}){0,8}([a-fA-F0-9]{0,4})?\/[0-9]{1,3}$/;
-
-/** What inet_pton(AF_INET6) takes, as APISIX's jsonschema checks the `ipv6` format. */
-export function isIPv6(text: string): boolean {
-  let s = text;
-  // A trailing IPv4 (::ffff:10.0.0.1) stands for the last two groups.
-  if (s.includes('.')) {
-    const at = s.lastIndexOf(':');
-    if (at < 0 || !IPV4.test(s.slice(at + 1))) return false;
-    s = `${s.slice(0, at + 1)}0:0`;
-  }
-  const halves = s.split('::');
-  if (halves.length > 2) return false;
-  const groups = (part: string | undefined) => (part === undefined || part === '' ? [] : part.split(':'));
-  const all = [...groups(halves[0]), ...groups(halves[1])];
-  if (!all.every((g) => GROUP.test(g))) return false;
-  return halves.length === 2 ? all.length <= 7 : all.length === 8;
-}
 
 /** remote_addr_def exactly: format ipv4 or ipv6 (inet_pton in APISIX), or one of ip_def's CIDR patterns. */
 export function schemaAddress(text: string): boolean {

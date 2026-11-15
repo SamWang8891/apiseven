@@ -72,3 +72,9 @@ export function balancerLabel(type: string): string {
 
 /** `scheme` when unset (schema default). */
 export const DEFAULT_SCHEME = 'http';
+
+/** The schemes of an L4 (stream) upstream (schema_def.lua 549–557: "For L4 proxy, it can be one of tcp/tls/udp"). */
+export const STREAM_SCHEMES = ['tcp', 'tls', 'udp'];
+
+/** What an unset (or `http`) scheme is for a stream upstream: filter_upstream makes it tcp (apisix/upstream.lua 763–766). */
+export const DEFAULT_STREAM_SCHEME = 'tcp';

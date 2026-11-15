@@ -72,9 +72,9 @@ export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx
   return target && (target.item ? (nameOfValue(target.item.value) ?? target.id) : target.id);
 }
 
-/** The plugins that run, each saying where an inherited one comes from (routes and stream routes). */
-export function pluginChips(route: Obj, ctx: Ctx): PluginChip[] {
-  return effectivePlugins(route, ctx).map(({ name, from, disabled }): PluginChip => {
+/** The plugins that run (those `keep` takes, by default all), each saying where an inherited one comes from. */
+export function pluginChips(route: Obj, ctx: Ctx, keep: (name: string) => boolean = () => true): PluginChip[] {
+  return effectivePlugins(route, ctx).filter((p) => keep(p.name)).map(({ name, from, disabled }): PluginChip => {
     if (from === 'service') return { name, disabled, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
     if (from === 'plugin_config') {
       return { name, disabled, from: t('cell.plugin.fromPluginConfig', { name: refName('plugin_configs', route.plugin_config_id, ctx) ?? '' }) };

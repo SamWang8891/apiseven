@@ -570,6 +570,8 @@ export const en: Record<string, string> = {
   'up.nodes.standbyTitle': 'Gets requests only while every node of a higher priority is down',
   'up.nodes.shareTitle': '{share} of requests, by weight',
   'up.nodes.help': 'Requests go to the nodes of the highest priority, split by weight; nodes of a lower priority stand by. A port left empty follows the scheme (80 or 443).',
+  'up.stream.noEffect': 'No effect on stream routes: APISIX ignores this setting there. It is kept as stored until you remove it.',
+  'up.nodes.emptyNote': 'No nodes yet. APISIX stores an upstream without nodes, but requests to it fail until a node is added.',
   'up.nodes.mapNote': 'Stored as a map of address to weight. A priority other than 0, or two nodes kept at one address, stores the list as an array instead.',
   'up.nodes.dupOf': 'Same address as node {n}. Change it, or keep both.',
   'up.nodes.keepBoth': 'Keep both',
@@ -731,7 +733,8 @@ export const en: Record<string, string> = {
   'up.sum.caMany': '{count} CA certificates',
 
   'up.issue.noTarget': 'Add a node, or set up service discovery.',
-  'up.issue.noNodes': 'Add at least one node.',
+  'up.issue.nodesType': 'Nodes must be a list of nodes or a map of address to weight.',
+  'up.issue.ipv6Brackets': 'Write the IPv6 address in brackets: [{host}].',
   'up.issue.both': 'Use nodes or service discovery, not both.',
   'up.issue.discoveryType': 'Enter the discovery type.',
   'up.issue.serviceName': 'Enter the service name.',

@@ -108,6 +108,8 @@ describe('streamRouteIssues', () => {
   it('the inline upstream is checked by the schema only: check_conf never calls check_upstream_conf', () => {
     expect(issues({ upstream: { type: 'chash', nodes: [{ host: 'a', port: 1, weight: 1 }] } })).toEqual([]);
     expect(issues({ upstream: { nodes: [] } })).toEqual([]);
+    expect(issues({ upstream: { nodes: {} } })).toEqual([]);
+    expect(issues({ upstream: { nodes: [{ host: '::1', port: 1, weight: 1 }] } })).toEqual([]);
     expect(paths({ upstream: { nodes: [{ host: 'a', port: 0, weight: 1 }] } })).toEqual(['upstream.nodes.0.port']);
   });
 

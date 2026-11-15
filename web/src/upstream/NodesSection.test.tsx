@@ -13,6 +13,32 @@ const weight = (n: number) => screen.getByRole('spinbutton', { name: t('up.nodes
 /** Every value the form emitted had its nodes as a map. */
 const allMaps = (changes: { mock: { calls: [Obj][] } }) => changes.mock.calls.every(([v]) => isObj(v.nodes));
 
+describe('an empty node list (Ruling 1: APISIX stores it, so it is a note, not an issue)', () => {
+  const note = () => screen.queryByText(t('up.nodes.emptyNote'));
+
+  it.each([
+    ['an empty list', { type: 'roundrobin', nodes: [] }],
+    ['an empty map', { nodes: {} }],
+  ])('%s: a warning note, editing and locked', (_, up) => {
+    const h = renderUpstream(up, { section: 'nodes' });
+    expect(note()).toBeInTheDocument();
+    expect(note()).toHaveClass('up-warn');
+    h.update({ locked: true });
+    expect(note()).toBeInTheDocument();
+  });
+
+  it('no note once a node is there, with service discovery, or with no node list at all', async () => {
+    const h = renderUpstream({ nodes: [] }, { section: 'nodes' });
+    await h.user.type(newHost(), 'web.internal');
+    expect(note()).not.toBeInTheDocument();
+    h.unmount();
+    renderUpstream({ discovery_type: 'consul', service_name: 'web' }, { section: 'nodes' }).unmount();
+    expect(note()).not.toBeInTheDocument();
+    renderUpstream({}, { section: 'nodes' });
+    expect(note()).not.toBeInTheDocument();
+  });
+});
+
 describe('the node list', () => {
   it('keeps a loaded map shape when a node is added', async () => {
     const h = renderUpstream({ type: 'roundrobin', nodes: { '10.0.0.1:80': 1, '10.0.0.2:80': 2 } }, { section: 'nodes' });

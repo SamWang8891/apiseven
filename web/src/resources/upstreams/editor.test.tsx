@@ -89,6 +89,19 @@ describe('the upstream editor', () => {
     expect(schemaErrors(upstreamSchema(), post?.body)).toEqual([]);
   });
 
+  it('an upstream without nodes saves, as APISIX stores it; the Nodes tab says requests fail until one is added (Ruling 1)', async () => {
+    const { user, admin } = await openEditor('#/upstreams/new?tab=nodes', { objects: { upstreams: [] } });
+    expect(await main().findByText(t('up.nodes.emptyNote'))).toBeInTheDocument();
+    expect(tab(t('up.section.nodes'))).toHaveAccessibleName(t('up.section.nodes'));
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]).toEqual({ method: 'POST', path: 'upstreams', body: { type: 'roundrobin', nodes: [] } });
+    // Locked after the create (it opens on General), the Nodes tab still says so.
+    await main().findByText(t('editor.locked'));
+    await user.click(tab(t('up.section.nodes')));
+    expect(await main().findByText(t('up.nodes.emptyNote'))).toBeInTheDocument();
+  });
+
   it('blocks Save on a problem and badges its tab', async () => {
     const { user, admin } = await openEditor('#/upstreams/web-pool', { objects: { upstreams: [{ ...POOL, type: 'chash' }] } });
     await main().findByRole('heading', { level: 1, name: 'web-pool' });

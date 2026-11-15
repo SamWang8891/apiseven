@@ -5,6 +5,7 @@ import { getPath, setPath, type Path } from '../editor/draft';
 import { issueAt, type Issue } from '../editor/issues';
 import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
+import type { Subsystem } from '../resources/resolve';
 import { parseCert } from '../resources/ssls/parseCert';
 
 /** What every section gets: the whole upstream, the way to replace it, its issues (paths relative to the upstream). */
@@ -13,6 +14,11 @@ export interface SectionProps {
   onChange: (v: Obj) => void;
   issues: Issue[];
   ctx: Ctx;
+  /**
+   * The subsystem the upstream serves: http (default) or stream (a stream route's). In stream, the
+   * sections offer only what applies to L4; a setting that doesn't but is stored shows with a note.
+   */
+  subsystem?: Subsystem;
 }
 
 export const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);

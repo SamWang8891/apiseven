@@ -4,7 +4,7 @@ import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import type { Ctx } from './ctx';
-import { upstreamSummary } from './resolve';
+import { ownUpstream, upstreamSummary, type Subsystem } from './resolve';
 
 export type UpstreamSource = 'service' | 'existing' | 'inline' | 'none';
 
@@ -52,13 +52,16 @@ export interface Target {
   none?: true;
 }
 
-/** Where the object's requests go, as APISIX resolves it (upstreamSummary), naming an inherited upstream rather than its service. */
-export function targetOf(draft: Obj, ctx: Ctx): Target {
+/**
+ * Where the object's requests go, as APISIX resolves it in `subsystem` (upstreamSummary), naming an
+ * inherited upstream rather than its service.
+ */
+export function targetOf(draft: Obj, ctx: Ctx, subsystem: Subsystem = 'http'): Target {
   // A list that hasn't loaded yet can't tell a missing object from one not seen yet.
   const own = hasId(draft.upstream_id) || isObj(draft.upstream);
   const waiting = hasId(draft.upstream_id) ? !ctx.loaded.upstreams : !own && hasId(draft.service_id) && !(ctx.loaded.services && ctx.loaded.upstreams);
   if (waiting) return { label: t('picker.loading'), nodes: [], broken: false };
-  const summary = upstreamSummary(draft, ctx);
+  const summary = upstreamSummary(draft, ctx, subsystem);
   switch (summary.source) {
     case 'none':
       return { label: t('rt.up.resolvesNone'), nodes: [], broken: true, none: true };
@@ -70,7 +73,7 @@ export function targetOf(draft: Obj, ctx: Ctx): Target {
       return { label: summary.label, nodes: summary.nodes, broken: false };
     case 'service': {
       const service = ctx.services.find((item) => String(item.id) === summary.refId);
-      const own = service ? upstreamSummary({ ...service.value, service_id: undefined }, ctx) : undefined;
+      const own = service ? ownUpstream(service.value, ctx, subsystem === 'stream') : undefined;
       const label = own?.source === 'upstream' ? own.label : t('rt.up.serviceInline');
       return { label, viaService: summary.label, nodes: summary.nodes, broken: false };
     }

@@ -9,7 +9,7 @@ import { Segmented, useLocked } from '../ui';
 import { Discovery } from './Discovery';
 import { IssueLine } from './fields';
 import type { SectionProps } from './values';
-import { usesDiscovery } from './nodes';
+import { rowsOf, usesDiscovery } from './nodes';
 import { NodesTable } from './NodesTable';
 
 type Mode = 'nodes' | 'discovery';
@@ -21,6 +21,10 @@ export function NodesSection(p: SectionProps) {
   const [chosen, setChosen] = useState<Mode>();
   const neither = value.nodes === undefined && !usesDiscovery(value);
   const mode: Mode = usesDiscovery(value) ? 'discovery' : neither ? (chosen ?? 'nodes') : 'nodes';
+  // APISIX stores an upstream whose node list is empty (only its schema and check_upstream_conf
+  // could refuse it, and neither does), so it is not an issue; but nothing answers until a node is
+  // added, which is worth saying, locked or not.
+  const noNodes = mode === 'nodes' && value.nodes !== undefined && rowsOf(value.nodes).length === 0;
 
   function switchTo(next: string) {
     if (next === mode) return;
@@ -47,6 +51,7 @@ export function NodesSection(p: SectionProps) {
         />
       )}
       {mode === 'nodes' ? <NodesTable {...p} /> : <Discovery {...p} />}
+      {noNodes && <p className="up-warn">{t('up.nodes.emptyNote')}</p>}
       {issues
         .filter((issue) => issue.path === 'nodes')
         .map((issue) => (

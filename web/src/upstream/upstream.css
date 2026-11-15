@@ -13,6 +13,8 @@
  *   .up-row3            three fields to a row (connect / send / read)
  *   .up-pem             PEM text with its Upload (and Remove) controls
  *   .up-help / .up-issue / .up-alert   help under a part, a problem with a part, problems with the whole
+ *   .up-warn            a consequence worth knowing that blocks nothing (no nodes; a setting with no
+ *                       effect on a stream route): body text beside a warning rule
  */
 
 .up {
@@ -33,6 +35,25 @@
   color: var(--text-2);
   font-size: 12px;
   line-height: 16px;
+}
+
+/* A field with a note under it (a stream upstream's setting that has no effect there). */
+.up-noted {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.up-warn {
+  margin: 0;
+  padding: 6px 10px;
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--bg-sunken);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .up-issue {

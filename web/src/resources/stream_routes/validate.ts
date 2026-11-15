@@ -13,7 +13,8 @@ import { pluginIssues } from '../../plugins/validate';
 import { upstreamIssues } from '../../upstream/validate';
 import type { ValidateEnv } from '../registry';
 import { resolveRef } from '../resolve';
-import { hostProblem, isIPv6, labelsRefused, schemaAddress } from '../routes/validate';
+import { isIPv6 } from '../ip';
+import { hostProblem, labelsRefused, schemaAddress } from '../routes/validate';
 
 type Add = (path: string, message: string) => void;
 

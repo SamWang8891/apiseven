@@ -14,13 +14,29 @@ describe('upstreamIssues', () => {
     expect(upstreamIssues({ discovery_type: 'consul', service_name: 'web' })).toEqual([]);
   });
 
-  it('needs nodes or service discovery, not both', () => {
+  it('needs nodes or service discovery, not both (the schema\'s oneOf, schema_def.lua 597–600)', () => {
     expect(messageAt({}, 'nodes')).toBe(t('up.issue.noTarget'));
-    expect(messageAt({ nodes: [] }, 'nodes')).toBe(t('up.issue.noNodes'));
-    expect(messageAt({ nodes: {} }, 'nodes')).toBe(t('up.issue.noNodes'));
     expect(messageAt({ ...NODES, discovery_type: 'dns', service_name: 'x' }, 'nodes')).toBe(t('up.issue.both'));
+    // Both keys present is both, whatever their values (APISIX: "matches both schemas 1 and 2").
+    expect(messageAt({ ...NODES, discovery_type: '', service_name: 'x' }, 'nodes')).toBe(t('up.issue.both'));
     expect(paths({ discovery_type: 'dns' })).toEqual(['service_name']);
     expect(paths({ service_name: 'web' })).toEqual(['discovery_type']);
+    expect(paths({ discovery_type: 'dns', service_name: '' })).toEqual(['service_name']);
+    expect(messageAt({ nodes: 'x' }, 'nodes')).toBe(t('up.issue.nodesType'));
+  });
+
+  it('an empty node list, an empty map key and an empty discovery type are what APISIX stores (Ruling 1)', () => {
+    expect(upstreamIssues({ nodes: [] })).toEqual([]);
+    expect(upstreamIssues({ nodes: {} })).toEqual([]);
+    expect(upstreamIssues({ type: 'roundrobin', nodes: [] })).toEqual([]);
+    expect(upstreamIssues({ nodes: { ':80': 1, '': 1 } })).toEqual([]);
+    expect(upstreamIssues({ discovery_type: '', service_name: 'web' })).toEqual([]);
+  });
+
+  it('an array node\'s IPv6 host needs brackets (check_schema, upstream.lua 534–539)', () => {
+    expect(upstreamIssues({ nodes: [{ host: '::1', port: 80, weight: 1 }] })).toEqual([{ path: 'nodes.0.host', message: t('up.issue.ipv6Brackets', { host: '::1' }) }]);
+    expect(upstreamIssues({ nodes: [{ host: '[::1]', port: 80, weight: 1 }] })).toEqual([]);
+    expect(upstreamIssues({ nodes: [{ host: 'api:8080', port: 80, weight: 1 }] })).toEqual([]);
   });
 
   it('checks each node: host, port 1–65535, weight ≥ 0, whole numbers', () => {
@@ -36,13 +52,11 @@ describe('upstreamIssues', () => {
     ]);
   });
 
-  it('checks each map entry on its row: an empty host, the port, the weight', () => {
+  it('checks each map entry on its row: the port (check_upstream_conf), the weight (the schema)', () => {
     expect(upstreamIssues({ nodes: { ':80': 1, 'a:99999': 1, 'b:80': -2, 'c:80': null, '': 1 } })).toEqual([
-      { path: 'nodes.0.host', message: t('up.issue.host') },
       { path: 'nodes.1.port', message: t('up.issue.port') },
       { path: 'nodes.2.weight', message: t('up.issue.weight') },
       { path: 'nodes.3.weight', message: t('up.issue.weightMissing') },
-      { path: 'nodes.4.host', message: t('up.issue.host') },
     ]);
   });
 
@@ -54,6 +68,10 @@ describe('upstreamIssues', () => {
     expect(messageAt({ ...NODES, type: 'chash', key: 'http_x' }, 'key')).toBe(t('up.issue.keyVars'));
     expect(messageAt({ ...NODES, type: 'chash', hash_on: 'header', key: 'X User' }, 'key')).toBe(t('up.issue.keyName'));
     expect(paths({ ...NODES, type: 'chash', hash_on: 'vars_combinations', key: '$remote_addr$uri' })).toEqual([]);
+    // A key that is there but empty: "missing key" only checks presence; the patterns refuse it, vars_combinations takes any text.
+    expect(messageAt({ ...NODES, type: 'chash', key: '' }, 'key')).toBe(t('up.issue.keyVars'));
+    expect(messageAt({ ...NODES, type: 'chash', hash_on: 'cookie', key: '' }, 'key')).toBe(t('up.issue.keyName'));
+    expect(paths({ ...NODES, type: 'chash', hash_on: 'vars_combinations', key: '' })).toEqual([]);
   });
 
   it('needs all three timeouts, each above 0', () => {
@@ -138,7 +156,11 @@ describe('upstreamIssues, schema only (a stream route\'s inline upstream)', () =
   it('the default still checks what check_upstream_conf adds', () => {
     expect(paths({ ...NODES, type: 'chash' })).toEqual(['key']);
     expect(paths({ nodes: { '127.0.0.1:70000': 1 } })).toEqual(['nodes.0.port']);
-    expect(paths({ nodes: [] })).toEqual(['nodes']);
+    expect(paths({ nodes: [{ host: '::1', port: 1, weight: 1 }] })).toEqual(['nodes.0.host']);
+  });
+
+  it('the schema only takes an unbracketed IPv6 host (check_schema is check_upstream_conf\'s)', () => {
+    expect(schemaOnly({ nodes: [{ host: '::1', port: 1, weight: 1 }] })).toEqual([]);
   });
 });
 

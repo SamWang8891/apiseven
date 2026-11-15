@@ -75,6 +75,14 @@ describe('stream route columns', () => {
     expect(cell('plugins', TLS)).toHaveTextContent(t('cell.plugin.fromService', { name: 'web' }));
   });
 
+  it('plugins: a service\'s http plugins are not listed or sorted on, they can\'t run on a stream route (Ruling 3)', () => {
+    const ctx = ctxOf({ ...CTX, services: [itemOf('web', { name: 'web', plugins: { 'limit-count': {}, 'limit-conn': {}, 'my-custom': {} } })] });
+    expect(value('plugins', TLS, ctx)).toEqual(['limit-conn', 'my-custom']);
+    const shown = cell('plugins', TLS, ctx);
+    expect(shown).toHaveTextContent('limit-conn');
+    expect(shown).not.toHaveTextContent('limit-count');
+  });
+
   it('the optional columns: id, description, service, labels', () => {
     expect(value('id', ETCD)).toBe('etcd-tcp');
     expect(value('desc', ETCD)).toBe('TCP 9100 to etcd');

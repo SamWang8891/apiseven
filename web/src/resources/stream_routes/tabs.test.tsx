@@ -196,7 +196,7 @@ describe('General', () => {
     expect(h.value()).toEqual({ name: 'etcd-tcp', desc: 'To etcd' });
   });
 
-  it('the overview: what it matches, where it goes, its plugins (and the service\'s), the rest', async () => {
+  it('the overview: what it matches, where it goes, its plugins (and the service\'s), the rest', () => {
     tab(GeneralTab, FULL, { locked: true });
     const overview = screen.getByRole('region', { name: t('sr.overview') });
     expect(overview).toHaveTextContent('127.0.0.1:9100');
@@ -204,18 +204,17 @@ describe('General', () => {
     expect(overview).toHaveTextContent('a.example, *.b.example');
     expect(overview).toHaveTextContent('web-pool');
     expect(overview).toHaveTextContent('limit-conn');
-    await waitFor(() => expect(overview).toHaveTextContent('ip-restriction'));
+    expect(overview).toHaveTextContent('ip-restriction');
     expect(overview).toHaveTextContent('redis');
     expect(within(overview).getByRole('link', { name: t('sr.tab.matching') })).toHaveAttribute('href', '/?tab=matching');
   });
 
-  it('the overview lists only the service plugins that run in the stream subsystem (plugin.stream_filter)', async () => {
-    const ctx = ctxOf({ ...CTX, services: [itemOf('web', { name: 'web', plugins: { gzip: {}, 'ip-restriction': { whitelist: ['10.0.0.0/8'] } } })] });
-    tab(GeneralTab, { service_id: 'web', plugins: { 'limit-conn': {} } }, { locked: true, ctx });
+  it('the overview lists only the service plugins that can run on a stream route, as the list does (plugin.stream_filter; Ruling 3)', () => {
+    const ctx = ctxOf({ ...CTX, services: [itemOf('web', { name: 'web', plugins: { 'limit-count': {}, 'limit-conn': {} } })] });
+    tab(GeneralTab, { service_id: 'web', plugins: { 'ip-restriction': {} } }, { locked: true, ctx });
     const overview = screen.getByRole('region', { name: t('sr.overview') });
-    // The stream set arrives from the Admin API: until then, the inherited ones are "loading".
-    await waitFor(() => expect(overview).toHaveTextContent(`limit-connip-restriction ${t('rt.overview.viaService')}`));
-    expect(overview).not.toHaveTextContent('gzip');
+    expect(overview).toHaveTextContent(`ip-restrictionlimit-conn ${t('rt.overview.viaService')}`);
+    expect(overview).not.toHaveTextContent('limit-count');
   });
 
   it('the overview of a bare stream route, and while the service is loading', () => {

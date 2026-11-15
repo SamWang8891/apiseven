@@ -9,6 +9,7 @@ import { vi, type Mock } from 'vitest';
 import type { Obj } from '../api/types';
 import type { Issue } from '../editor/issues';
 import type { Ctx } from '../resources/ctx';
+import type { Subsystem } from '../resources/resolve';
 import type { SectionId } from '../upstream/meta';
 import { upstreamSections } from '../upstream/sections';
 import { UpstreamForm } from '../upstream/UpstreamForm';
@@ -22,6 +23,8 @@ export interface UpstreamOptions {
   locked?: boolean;
   ctx?: Ctx;
   issues?: Issue[];
+  /** The subsystem the upstream serves; default http. */
+  subsystem?: Subsystem;
 }
 
 export interface UpstreamHarness extends RenderResult {
@@ -56,9 +59,9 @@ export function renderUpstream(initial: Obj, opts: UpstreamOptions = {}): Upstre
           <PendingProvider onChange={onPending}>
             <LockProvider locked={locked ?? false}>
               {section ? (
-                section.render({ value, onChange, issues: issues ?? [], ctx })
+                section.render({ value, onChange, issues: issues ?? [], ctx, subsystem: opts.subsystem })
               ) : (
-                <UpstreamForm value={value} onChange={onChange} issues={issues} ctx={ctx} layout={opts.layout ?? 'sections'} />
+                <UpstreamForm value={value} onChange={onChange} issues={issues} ctx={ctx} layout={opts.layout ?? 'sections'} subsystem={opts.subsystem} />
               )}
             </LockProvider>
           </PendingProvider>

@@ -158,6 +158,11 @@ export function Group({ title, three, children, after }: { title: string; three?
   );
 }
 
+/** Under a setting a stream upstream has stored but APISIX ignores there: shown locked and editing, blocks nothing. */
+export function StreamNote() {
+  return <p className="up-warn">{t('up.stream.noEffect')}</p>;
+}
+
 /** A titled block with its on/off switch beside the title (active checks, slow start); help is for editing only. */
 export function SwitchBlock({ title, checked, disabled, onToggle, help, children }: { title: string; checked: boolean; disabled?: boolean; onToggle: (on: boolean) => void; help: string; children: ReactNode }) {
   const id = useId();

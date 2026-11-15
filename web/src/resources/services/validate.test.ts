@@ -53,6 +53,11 @@ describe('serviceIssues', () => {
     expect(issues({ upstream_id: 'u9' }, { ...env, ctx: ctxOf({ loaded: { upstreams: false } }) })).toEqual([]);
   });
 
+  it('an inline upstream with an empty node list is what APISIX stores: no issue (Ruling 1)', () => {
+    expect(issues({ upstream: { nodes: [] } })).toEqual([]);
+    expect(issues({ upstream: { nodes: {} } })).toEqual([]);
+  });
+
   it('an inline upstream is checked with check_upstream_conf too, its paths under upstream', () => {
     expect(paths({ upstream: { nodes: [{ port: 80, weight: 1 }], type: 'chash' } })).toEqual(['upstream.nodes.0.host', 'upstream.key']);
     expect(paths({ upstream: { nodes: [{ host: 'a', port: 80, weight: 1 }], pass_host: 'rewrite' } })).toEqual(['upstream.upstream_host']);

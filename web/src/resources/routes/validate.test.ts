@@ -167,6 +167,11 @@ describe('routeIssues', () => {
     expect([...issuesByTab(found, TABS, 'json').keys()]).toEqual(['upstream']);
   });
 
+  it('an inline upstream with an empty node list is what APISIX stores, and counts as something to do (Ruling 1)', () => {
+    expect(routeIssues({ uri: '/a', upstream: { nodes: [] } }, withCtx)).toEqual([]);
+    expect(routeIssues({ uri: '/a', upstream: { nodes: {} } }, withCtx)).toEqual([]);
+  });
+
   it('attributes plugin issues to the Plugins tab', () => {
     const plugins = pluginFixture().http;
     const draft = { uri: '/a', plugins: { 'limit-count': { count: 'x' } } };

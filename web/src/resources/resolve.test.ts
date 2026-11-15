@@ -47,6 +47,25 @@ describe('routeHosts', () => {
   });
 });
 
+describe('upstreamSummary: a service with both upstream_id and an inline upstream (Ruling 4)', () => {
+  const ctx = ctxOf({
+    upstreams: [itemOf('u1', { name: 'pool', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] })],
+    services: [itemOf('s1', { name: 'both', upstream_id: 'u1', upstream: { nodes: [{ host: '10.0.9.9', port: 3000, weight: 1 }] } })],
+  });
+
+  it('a route (http) takes its upstream_id: handle_upstream reads it first (apisix/init.lua 724–733)', () => {
+    expect(upstreamSummary({ service_id: 's1' }, ctx)).toEqual({ label: 'both', nodes: ['10.0.0.1:80'], source: 'service', refId: 's1' });
+  });
+
+  it('a stream route takes its inline upstream (merge_service_stream_route, plugin.lua 793–799; init.lua 1922–1934)', () => {
+    expect(upstreamSummary({ service_id: 's1' }, ctx, 'stream')).toEqual({ label: 'both', nodes: ['10.0.9.9:3000'], source: 'service', refId: 's1' });
+  });
+
+  it('either way, the object\'s own upstream_id wins over the service (init.lua 724 and 1894)', () => {
+    expect(upstreamSummary({ service_id: 's1', upstream_id: 'u1' }, ctx, 'stream').source).toBe('upstream');
+  });
+});
+
 describe('upstreamSummary', () => {
   const pool = itemOf('web-pool', {
     name: 'web-pool',

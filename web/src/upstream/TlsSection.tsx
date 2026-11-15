@@ -1,7 +1,9 @@
 // TLS towards the nodes: whether to verify their certificate, which CA certificates to trust, and
 // the client certificate APISIX presents (mTLS): none, a PEM pair pasted or uploaded here, or a
 // stored SSL object of type client. Choosing one removes the other's fields, as APISIX allows only
-// one of them.
+// one of them. For a stream upstream only the client certificate applies (set_stream_upstream_
+// client_cert, apisix/upstream.lua 284–326; verify and ca_certs are read by set_upstream_ssl_opts
+// on the http path only): verification and CA certificates show only when stored, with a note.
 import { Plus, X } from 'lucide-react';
 import { useState } from 'react';
 import type { Obj } from '../api/types';
@@ -11,7 +13,7 @@ import { t } from '../i18n';
 import { ResourcePicker } from '../resources/ResourcePicker';
 import { Button, Field, Segmented, useLocked } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
-import { ChoiceSelect, PemField } from './fields';
+import { ChoiceSelect, PemField, StreamNote } from './fields';
 import { useRowIds, withoutId } from './rowIds';
 import { obj, str, type SectionProps } from './values';
 
@@ -24,7 +26,7 @@ function modeOf(tls: Obj): Mode | undefined {
   return undefined;
 }
 
-export function TlsSection({ value, onChange, issues, ctx }: SectionProps) {
+export function TlsSection({ value, onChange, issues, ctx, subsystem }: SectionProps) {
   const locked = useLocked();
   const tls = obj(value.tls);
   const [chosen, setChosen] = useState<Mode>();
@@ -36,6 +38,9 @@ export function TlsSection({ value, onChange, issues, ctx }: SectionProps) {
   const cas: unknown[] = Array.isArray(tls.ca_certs) ? tls.ca_certs : [];
   // One id per CA row, following it through removals (an added row gets a new one at the end).
   const [caIds, setCaIds] = useRowIds(cas.length);
+  const stream = subsystem === 'stream';
+  const showVerify = !stream || tls.verify !== undefined;
+  const showCas = !stream || tls.ca_certs !== undefined;
 
   function switchTo(next: string) {
     if (next === mode) return;
@@ -46,20 +51,25 @@ export function TlsSection({ value, onChange, issues, ctx }: SectionProps) {
 
   return (
     <div className="ed-stack">
-      <div className="ed-grid">
-        {/* `verify` unset means the gateway's own setting, so it is a three-way choice. */}
-        <ChoiceSelect
-          label={t('up.tls.verify')}
-          value={verify}
-          defaultLabel={t('up.tls.verifyDefault')}
-          choices={[
-            { value: 'true', label: t('up.tls.verifyOn') },
-            { value: 'false', label: t('up.tls.verifyOff') },
-          ]}
-          error={issue('verify')}
-          onChange={(v) => set(['verify'], v === undefined ? undefined : v === 'true')}
-        />
-      </div>
+      {showVerify && (
+        <div className="ed-grid">
+          {/* `verify` unset means the gateway's own setting, so it is a three-way choice. */}
+          <div className="up-noted">
+            <ChoiceSelect
+              label={t('up.tls.verify')}
+              value={verify}
+              defaultLabel={t('up.tls.verifyDefault')}
+              choices={[
+                { value: 'true', label: t('up.tls.verifyOn') },
+                { value: 'false', label: t('up.tls.verifyOff') },
+              ]}
+              error={issue('verify')}
+              onChange={(v) => set(['verify'], v === undefined ? undefined : v === 'true')}
+            />
+            {stream && <StreamNote />}
+          </div>
+        </div>
+      )}
 
       <Segmented
         label={t('up.tls.mode')}
@@ -93,47 +103,50 @@ export function TlsSection({ value, onChange, issues, ctx }: SectionProps) {
         </div>
       )}
 
-      <Field
-        label={t('up.tls.ca')}
-        help={locked ? undefined : t('up.tls.caHelp')}
-        error={issue('ca_certs')}
-        action={
-          locked ? undefined : (
-            <Button variant="ghost" size="sm" icon={<Plus size={13} />} onClick={() => onChange(setPathRaw(value, ['tls', 'ca_certs'], [...cas, '']))}>
-              {t('up.tls.addCa')}
-            </Button>
-          )
-        }
-      >
-        {cas.length === 0 ? (
-          locked && <ReadOnlyValue>{t('up.default', { value: t('up.tls.caDefault') })}</ReadOnlyValue>
-        ) : (
-          <div className="up-cas">
-            {cas.map((pem, i) => (
-              <PemField
-                key={caIds[i] ?? i}
-                label={t('up.tls.caN', { n: i + 1 })}
-                value={str(pem)}
-                error={issue(`ca_certs.${i}`)}
-                // An emptied entry stays (as '') until removed, so the list keeps its rows.
-                onChange={(v) => onChange(setPathRaw(value, ['tls', 'ca_certs', i], v ?? ''))}
-                extra={
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    icon={<X size={14} />}
-                    aria-label={t('up.tls.removeCa', { n: i + 1 })}
-                    onClick={() => {
-                      setCaIds((prev) => withoutId(prev, i));
-                      onChange(removeAt(value, ['tls', 'ca_certs'], i));
-                    }}
-                  />
-                }
-              />
-            ))}
-          </div>
-        )}
-      </Field>
+      {showCas && (
+        <Field
+          label={t('up.tls.ca')}
+          help={locked ? undefined : t('up.tls.caHelp')}
+          error={issue('ca_certs')}
+          action={
+            locked ? undefined : (
+              <Button variant="ghost" size="sm" icon={<Plus size={13} />} onClick={() => onChange(setPathRaw(value, ['tls', 'ca_certs'], [...cas, '']))}>
+                {t('up.tls.addCa')}
+              </Button>
+            )
+          }
+        >
+          {cas.length === 0 ? (
+            locked && <ReadOnlyValue>{t('up.default', { value: t('up.tls.caDefault') })}</ReadOnlyValue>
+          ) : (
+            <div className="up-cas">
+              {cas.map((pem, i) => (
+                <PemField
+                  key={caIds[i] ?? i}
+                  label={t('up.tls.caN', { n: i + 1 })}
+                  value={str(pem)}
+                  error={issue(`ca_certs.${i}`)}
+                  // An emptied entry stays (as '') until removed, so the list keeps its rows.
+                  onChange={(v) => onChange(setPathRaw(value, ['tls', 'ca_certs', i], v ?? ''))}
+                  extra={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      icon={<X size={14} />}
+                      aria-label={t('up.tls.removeCa', { n: i + 1 })}
+                      onClick={() => {
+                        setCaIds((prev) => withoutId(prev, i));
+                        onChange(removeAt(value, ['tls', 'ca_certs'], i));
+                      }}
+                    />
+                  }
+                />
+              ))}
+            </div>
+          )}
+          {stream && <StreamNote />}
+        </Field>
+      )}
     </div>
   );
 }

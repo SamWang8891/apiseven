@@ -1,18 +1,25 @@
 // How a node is picked: the algorithm; for consistent hashing, what is hashed; for round robin,
 // slow start (warm_up_conf), which ramps a node APISIX sees for the first time up to its weight.
 // Leaving chash removes hash_on and key; slow start on or off adds or removes its block.
+// For a stream upstream: hashing on vars or vars_combinations only (header, cookie and consumer read
+// http variables or consumers, which a stream connection has none of, so chash falls back to
+// remote_addr: apisix/balancer/chash.lua 33–60), and no slow start (its shared dict exists only in
+// the http block, cli/ngx_tpl.lua 420; upstream.lua 570–575) — unless stored, then with a note.
 import { useId } from 'react';
 import type { Obj } from '../api/types';
 import { setPath, setPathRaw } from '../editor/draft';
 import { t } from '../i18n';
 import { useLocked } from '../ui';
-import { ChoiceSelect, IssueLine, NumberField, SwitchBlock, TextField } from './fields';
+import { ChoiceSelect, IssueLine, NumberField, StreamNote, SwitchBlock, TextField } from './fields';
 import { bind, byDefault, num, obj, str, type SectionProps } from './values';
 import { BALANCERS, balancerLabel, DEFAULT_TYPE } from './meta';
 
 const HASH_ON = ['vars', 'header', 'cookie', 'consumer', 'vars_combinations'];
+const STREAM_HASH_ON = ['vars', 'vars_combinations'];
 /** The variables upstream_hash_vars_schema allows (besides arg_<name>). */
 const HASH_VARS = ['uri', 'server_name', 'server_addr', 'request_uri', 'remote_port', 'remote_addr', 'query_string', 'host', 'hostname', 'mqtt_client_id'];
+/** Those a stream connection has (the others are http request variables). */
+const STREAM_HASH_VARS = ['remote_addr', 'remote_port', 'server_addr', 'hostname', 'mqtt_client_id'];
 
 function SlowStart({ value, onChange, issues }: Pick<SectionProps, 'value' | 'onChange' | 'issues'>) {
   const warm = obj(value.warm_up_conf);
@@ -39,6 +46,8 @@ export function BalancingSection(p: SectionProps) {
   const effective = type ?? DEFAULT_TYPE;
   const hashOn = str(value.hash_on) ?? 'vars';
   const warmOn = value.warm_up_conf !== undefined;
+  const stream = p.subsystem === 'stream';
+  const hashChoices = stream ? STREAM_HASH_ON : HASH_ON;
 
   function setType(next: string | undefined) {
     let up: Obj = setPath(value, ['type'], next);
@@ -61,15 +70,18 @@ export function BalancingSection(p: SectionProps) {
       </div>
       {effective === 'chash' && (
         <div className="ed-grid">
-          <ChoiceSelect
-            label={t('up.balance.hashOn')}
-            mono
-            value={str(value.hash_on)}
-            defaultLabel={byDefault('vars')}
-            choices={HASH_ON.map((on) => ({ value: on, label: on }))}
-            error={issue('hash_on')}
-            onChange={(v) => set(['hash_on'], v)}
-          />
+          <div className="up-noted">
+            <ChoiceSelect
+              label={t('up.balance.hashOn')}
+              mono
+              value={str(value.hash_on)}
+              defaultLabel={byDefault('vars')}
+              choices={hashChoices.map((on) => ({ value: on, label: on }))}
+              error={issue('hash_on')}
+              onChange={(v) => set(['hash_on'], v)}
+            />
+            {stream && !STREAM_HASH_ON.includes(hashOn) && <StreamNote />}
+          </div>
           {hashOn === 'consumer' ? (
             !locked && <p className="ed-note up-aside">{t('up.balance.keyHelp.consumer')}</p>
           ) : (
@@ -87,7 +99,7 @@ export function BalancingSection(p: SectionProps) {
               />
               {!locked && hashOn === 'vars' && (
                 <datalist id={varsList}>
-                  {HASH_VARS.map((v) => (
+                  {(stream ? STREAM_HASH_VARS : HASH_VARS).map((v) => (
                     <option key={v} value={v} />
                   ))}
                 </datalist>
@@ -96,13 +108,14 @@ export function BalancingSection(p: SectionProps) {
           )}
         </div>
       )}
-      {(effective === 'roundrobin' || warmOn) && (
+      {((effective === 'roundrobin' && !stream) || warmOn) && (
         <SwitchBlock
           title={t('up.warm.title')}
           help={t('up.warm.help')}
           checked={warmOn}
           onToggle={(on) => onChange(on ? setPathRaw(value, ['warm_up_conf'], {}) : setPath(value, ['warm_up_conf'], undefined))}
         >
+          {stream && <StreamNote />}
           <IssueLine message={issue('warm_up_conf')} />
           {warmOn && <SlowStart value={value} onChange={onChange} issues={issues} />}
         </SwitchBlock>

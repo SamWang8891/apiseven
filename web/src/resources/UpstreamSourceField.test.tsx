@@ -102,6 +102,28 @@ describe('allowService={false} (a service)', () => {
   });
 });
 
+describe('"Resolves to" follows the subsystem (Ruling 4): a service with both an upstream_id and an inline upstream', () => {
+  const both = ctxOf({
+    upstreams: [itemOf('u1', { name: 'web-pool', nodes: [{ host: '10.0.0.11', port: 8080, weight: 1 }] })],
+    services: [itemOf('s1', { name: 'both', upstream_id: 'u1', upstream: { nodes: [{ host: '10.0.9.9', port: 3000, weight: 1 }] } })],
+  });
+  function RouteSource(p: TabProps) {
+    return <UpstreamSourceField draft={p.draft} setDraft={p.setDraft} ctx={p.ctx} issues={p.issues} isNew={p.isNew} kind={p.kind} allowService />;
+  }
+
+  it('a route resolves to its upstream_id (http)', () => {
+    renderTab('routes', RouteSource, { uri: '/x', service_id: 's1' }, inlineIssues, { ctx: both, locked: true });
+    const line = screen.getByRole('group', { name: t('rt.up.resolves') });
+    expect(line).toHaveTextContent(`web-pool${t('rt.up.viaService', { name: 'both' })}10.0.0.11:8080`);
+  });
+
+  it('a stream route resolves to its inline upstream', () => {
+    renderTab('stream_routes', StreamSource, { server_port: 9100, service_id: 's1' }, inlineIssues, { ctx: both, locked: true });
+    const line = screen.getByRole('group', { name: t('rt.up.resolves') });
+    expect(line).toHaveTextContent(`${t('rt.up.serviceInline')}${t('rt.up.viaService', { name: 'both' })}10.0.9.9:3000`);
+  });
+});
+
 describe('a stream route (allowService, kind stream_routes)', () => {
   it('offers the service\'s upstream, and says what having none means for a stream route', () => {
     renderTab('stream_routes', StreamSource, { server_port: 9100 }, inlineIssues, { ctx: CTX });

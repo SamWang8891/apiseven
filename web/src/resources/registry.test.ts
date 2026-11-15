@@ -157,7 +157,9 @@ describe('registry', () => {
     const def = registry.upstreams;
     expect(def.tabs.map((tab) => tab.id)).toEqual(['general', 'nodes', 'balancing', 'health', 'connection', 'tls']);
     expect(def.columns[0]?.id).toBe('name');
-    expect(def.validate?.({ nodes: [] }, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['nodes']);
+    // APISIX stores an upstream with an empty node list (Ruling 1); one with no node list nor discovery it refuses.
+    expect(def.validate?.({ nodes: [] }, { isNew: true, ctx: ctxOf() })).toEqual([]);
+    expect(def.validate?.({}, { isNew: true, ctx: ctxOf() }).map((i) => i.path)).toEqual(['nodes']);
   });
 
   it('starts every kind without columns of its own with an id + name column pair', () => {
