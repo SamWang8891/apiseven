@@ -103,6 +103,23 @@ describe('the upstream editor', () => {
     expect(await main().findByRole('radio', { name: t('up.tls.mode.inline') })).toBeChecked();
   });
 
+  // Task 16b item 50: sections opened or closed on a tab are as the user left them after a tab switch.
+  it('health-check sections opened or closed come back so after a tab switch', async () => {
+    const { user } = await openEditor('#/upstreams/web-pool?tab=health', { objects: { upstreams: [{ ...POOL, checks: { active: { http_path: '/h' } } }] } });
+    await main().findByRole('heading', { level: 1, name: 'web-pool' });
+    await user.keyboard('e');
+    const toggle = async (name: string) => main().findByRole('button', { name: new RegExp(`^${name}`) });
+    await user.click(await toggle(t('up.hc.probe')));
+    await user.click(await toggle(t('up.hc.healthy')));
+    expect(await toggle(t('up.hc.probe'))).toHaveAttribute('aria-expanded', 'false');
+    expect(await toggle(t('up.hc.healthy'))).toHaveAttribute('aria-expanded', 'true');
+    await user.click(tab(t('up.section.nodes')));
+    await user.click(tab(t('up.section.health')));
+    expect(await toggle(t('up.hc.probe'))).toHaveAttribute('aria-expanded', 'false');
+    expect(await toggle(t('up.hc.healthy'))).toHaveAttribute('aria-expanded', 'true');
+    expect(await toggle(t('up.hc.unhealthy'))).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('an upstream without nodes saves, as APISIX stores it; the Nodes tab says requests fail until one is added (Ruling 1)', async () => {
     const { user, admin } = await openEditor('#/upstreams/new?tab=nodes', { objects: { upstreams: [] } });
     expect(await main().findByText(t('up.nodes.emptyNote'))).toBeInTheDocument();

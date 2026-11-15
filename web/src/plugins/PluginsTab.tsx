@@ -14,7 +14,7 @@ import { t } from '../i18n';
 import type { TabProps } from '../resources/registry';
 import { useLatest } from '../schema-form/context';
 import { ErrorLine } from '../schema-form/fields/chrome';
-import { Button, useLocked } from '../ui';
+import { Button, useLocked, useViewState } from '../ui';
 import { inheritLoading } from '../resources/routes/inherit';
 import { asStreamRoute } from '../resources/resolve';
 import { consumerGroupLoading, consumerInheritedPlugins, inheritedPlugins, streamInheritedPlugins } from './inherited';
@@ -71,7 +71,8 @@ export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues
     return { perPlugin: per, stray: issues.filter((issue) => !placed.has(issue)) };
   }, [names, issues]);
 
-  const [open, setOpen] = useState<ReadonlySet<string>>(new Set());
+  // Which cards are open is kept for the page (a tab switch remounts this tab).
+  const [open, setOpen] = useViewState<ReadonlySet<string>>('plugins.open', () => new Set());
   const [picking, setPicking] = useState(false);
   /** A card to bring into view once rendered (and focus, for one just added); a new object each time. */
   const [reveal, setReveal] = useState<{ name: string; focus: boolean }>();
@@ -127,7 +128,7 @@ export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues
         if (!next.delete(name)) next.add(name);
         return next;
       }),
-    [],
+    [setOpen],
   );
   const refs = useCallback((name: string, el: HTMLDivElement | null) => {
     if (el) cards.current.set(name, el);

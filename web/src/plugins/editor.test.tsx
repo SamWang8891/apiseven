@@ -373,6 +373,26 @@ describe("held JSON text in a card is never replaced by the card's other control
   });
 });
 
+// Task 16b item 50: what is open, and which view a card shows, is kept for the page through tab switches.
+describe('view state survives a tab switch', () => {
+  it('an open card, its JSON view and an open section come back as they were', async () => {
+    const { user, card } = await editRoute({ 'limit-count': { count: 2, time_window: 60 }, cors: {} }, 'limit-count');
+    await user.click(within(card).getByRole('button', { name: t('pl.card.json') }));
+    expect(within(card).getByRole('button', { name: t('pl.card.json') })).toHaveAttribute('aria-pressed', 'true');
+    await user.click(tab(/^Matching/));
+    await user.click(await main().findByRole('button', { name: t('rt.match.filter') }));
+    expect(main().getByRole('button', { name: t('rt.match.filter') })).toHaveAttribute('aria-expanded', 'true');
+    await user.click(tab(/^General/));
+    await user.click(tab(/^Plugins/));
+    const again = await main().findByRole('group', { name: 'limit-count' });
+    expect(within(again).getByRole('button', { name: 'limit-count' })).toHaveAttribute('aria-expanded', 'true');
+    expect(within(again).getByRole('button', { name: t('pl.card.json') })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(main().getByRole('group', { name: 'cors' })).getByRole('button', { name: 'cors' })).toHaveAttribute('aria-expanded', 'false');
+    await user.click(tab(/^Matching/));
+    expect(await main().findByRole('button', { name: t('rt.match.filter') })).toHaveAttribute('aria-expanded', 'true');
+  });
+});
+
 describe('editing state ends with Save', () => {
   it('a secret revealed in a plugin form is masked in the locked view after Save, and on the next Edit', async () => {
     const { user, admin } = await openEditor('#/consumers/jo?tab=plugins', { objects: { consumers: [{ username: 'jo', plugins: { 'key-auth': { key: 'secret-one' } } }] }, replies: pluginReplies() });

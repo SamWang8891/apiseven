@@ -16,18 +16,19 @@ export const ViewMemory: FC<{ children: ReactNode }> = ({ children }) => {
  * useState for view state that a remount must not reset: what was set is remembered under `key`
  * (unique on the page) and is where the state starts when the component mounts again; until then it
  * starts from `initial`. Only what is set is remembered, so an `initial` that depends on the moment
- * (a section open because it has problems) is worked out afresh.
+ * (a section open because it has problems) is worked out afresh. No `key`: plain state.
  */
 // eslint-disable-next-line react-refresh/only-export-components -- the hook belongs beside its provider, as useLocked does
-export function useViewState<T>(key: string, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
-  const memory = use(ViewMemoryContext);
-  const [state, setState] = useState<T>(() => (memory?.has(key) ? (memory.get(key) as T) : typeof initial === 'function' ? (initial as () => T)() : initial));
+export function useViewState<T>(key: string | undefined, initial: T | (() => T)): [T, Dispatch<SetStateAction<T>>] {
+  const page = use(ViewMemoryContext);
+  const memory = key === undefined ? null : page;
+  const [state, setState] = useState<T>(() => (key !== undefined && memory?.has(key) ? (memory.get(key) as T) : typeof initial === 'function' ? (initial as () => T)() : initial));
   const set = useCallback<Dispatch<SetStateAction<T>>>(
     (next) =>
       setState((prev) => {
         const value = typeof next === 'function' ? (next as (p: T) => T)(prev) : next;
         // Idempotent, so a second call of this updater (StrictMode) changes nothing.
-        memory?.set(key, value);
+        if (key !== undefined) memory?.set(key, value);
         return value;
       }),
     [memory, key],

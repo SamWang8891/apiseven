@@ -11,7 +11,7 @@ import { withinPath, type Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { ErrorLine } from '../schema-form/fields/chrome';
 import { SchemaForm } from '../schema-form/SchemaForm';
-import { Button, LockProvider, PendingScope, Switch, useHeld, useLocked, type PendingEntry } from '../ui';
+import { Button, LockProvider, PendingScope, Switch, useHeld, useLocked, useViewState, type PendingEntry } from '../ui';
 import { catalog } from './catalog';
 import { ConfigJson } from './ConfigJson';
 import { MetaForm } from './MetaForm';
@@ -200,9 +200,10 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
   onJsonHeld: (held: boolean) => void;
 }) {
   const locked = useLocked();
-  const [view, setView] = useState<'form' | 'json'>('form');
+  // Both kept for the page (a tab switch remounts the card).
+  const [view, setView] = useViewState<'form' | 'json'>(`plugins.${name}.view`, 'form');
   // Open from the start when it holds a problem (a card opens itself when Save finds one).
-  const [metaOpen, setMetaOpen] = useState(() => issues.some((issue) => isMetaPath(issue.path)));
+  const [metaOpen, setMetaOpen] = useViewState(`plugins.${name}.meta`, () => issues.some((issue) => isMetaPath(issue.path)));
   const ids = useId();
   const viewHeld = useHeld();
   const viewRef = useRef<HTMLDivElement>(null);

@@ -2,11 +2,12 @@
 // field set). Collapsed, its header says in one line what it holds; a count of problems shows
 // beside the title, and the section opens when one appears inside it. The body is not mounted while
 // collapsed, so it holds nothing that matters: the values live in the draft, and a section whose
-// field holds input it has not emitted (usePending) does not collapse (useHeld).
+// field holds input it has not emitted (usePending) does not collapse (useHeld). Opened or closed by
+// the user, it stays so for the editor page (ui/ViewMemory: a tab switch remounts it), by its title.
 import { ChevronRight } from 'lucide-react';
 import { useId, useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
-import { Badge, PendingScope, useHeld } from '../ui';
+import { Badge, PendingScope, useHeld, useViewState } from '../ui';
 import './resources.css';
 
 export interface SectionProps {
@@ -21,7 +22,7 @@ export interface SectionProps {
 
 export function Section({ title, summary, issues = 0, defaultOpen = false, children }: SectionProps) {
   const id = useId();
-  const [open, setOpen] = useState(defaultOpen || issues > 0);
+  const [open, setOpen] = useViewState(typeof title === 'string' ? `section:${title}` : undefined, defaultOpen || issues > 0);
   const [seen, setSeen] = useState(issues);
   const held = useHeld();
   const bodyRef = useRef<HTMLDivElement>(null);
