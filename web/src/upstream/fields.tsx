@@ -219,8 +219,11 @@ function UploadButton({ label, onText }: { label: string; onText: (text: string)
 
 /**
  * PEM text: pasted, or read from a file. Locked, a certificate that parses reads as its subject and
- * expiry. A `secret` (a private key) is never shown once set: it reads "set, not shown" with a
- * Replace (APISIX hands back only its encrypted form anyway); an empty replacement keeps it.
+ * expiry. A `secret` (a private key) is never shown once set: it reads "set, not shown" (the stored
+ * key) or "a new key was entered, not shown", with Replace (APISIX hands back only its encrypted form
+ * anyway). `stored` is the key as the editor last loaded it (from the frame, never what the field saw
+ * when it mounted, so a tab switch changes nothing): an empty replacement keeps it, and "Keep the
+ * stored key" puts it back; with no stored key neither exists, and an empty box means no key.
  */
 export function PemField({
   label,
@@ -230,6 +233,7 @@ export function PemField({
   error,
   help,
   extra,
+  stored,
 }: {
   label: string;
   value: string | undefined;
@@ -239,13 +243,25 @@ export function PemField({
   help?: ReactNode;
   /** More controls beside Upload (e.g. Remove). */
   extra?: ReactNode;
+  /** For a `secret`: its value as stored (the frame's); undefined when none is stored. */
+  stored?: string;
 }) {
   const locked = useLocked();
-  /**
-   * While replacing a stored secret: the value it had, kept until something else is typed. It ends
-   * with the editing session (Save, Discard): the next Edit starts from the stored-key view again.
-   */
-  const [replacing, setReplacing] = useEditingState<string | undefined>(undefined);
+  /** Session flag: the box was opened with Replace (it ends with the editing session, and on a remount). */
+  const [replacing, setReplacing] = useEditingState(false);
+  // Keep the stored key: wherever a new key stands, or a replacement box is open over the stored one.
+  const keep = secret && stored !== undefined && (value !== stored || replacing) && (
+    <Button
+      size="sm"
+      variant="ghost"
+      onClick={() => {
+        onChange(stored);
+        setReplacing(false);
+      }}
+    >
+      {t('up.tls.keepKey')}
+    </Button>
+  );
   const parsed = secret ? undefined : certLine(value);
   const upload = <UploadButton label={label} onText={(text) => onChange(text.trim() === '' ? undefined : text)} />;
 
@@ -263,16 +279,24 @@ export function PemField({
     );
   }
 
-  if (secret && value && replacing === undefined) {
+  if (secret && value && !replacing) {
     return (
       <Field label={label} help={help} error={error}>
         <span className="up-pem__stored">
-          <span>{t('up.tls.keyStored')}</span>
-          <Button size="sm" onClick={() => setReplacing(value)}>
+          <span>{value === stored ? t('up.tls.keyStored') : t('up.tls.keyEntered')}</span>
+          <Button
+            size="sm"
+            onClick={() => {
+              setReplacing(true);
+              // An empty replacement means the stored key (or none): rule 3 of a secret field.
+              if (value !== stored) onChange(stored);
+            }}
+          >
             {t('up.tls.replaceKey')}
           </Button>
           {upload}
           {extra}
+          {keep}
         </span>
       </Field>
     );
@@ -286,25 +310,15 @@ export function PemField({
         error={error}
         mono
         rows={4}
-        value={value === undefined || value === replacing ? '' : value}
+        value={value === undefined || (replacing && value === stored) ? '' : value}
         placeholder="-----BEGIN …-----"
-        onChange={(text) => onChange(text === '' ? replacing : text)}
+        onChange={(text) => onChange(text === '' ? (replacing ? stored : undefined) : text)}
       />
+      {secret && replacing && <p className="up-help">{stored !== undefined ? t('up.tls.emptyStored') : t('up.tls.emptyNone')}</p>}
       <span className="up-pem__bar">
         {upload}
         {extra}
-        {replacing !== undefined && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              onChange(replacing);
-              setReplacing(undefined);
-            }}
-          >
-            {t('up.tls.keepKey')}
-          </Button>
-        )}
+        {replacing && keep}
       </span>
     </div>
   );

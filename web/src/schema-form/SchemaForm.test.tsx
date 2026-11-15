@@ -1,13 +1,8 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { useEffect, useState } from 'react';
+import { act, fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
-import { t } from '../i18n';
 import { everySchema, schemaOf } from '../test/pluginFixture';
 import { editableControls, renderSchemaForm } from '../test/schemaForm';
-import { LockProvider } from '../ui';
-import { SchemaForm } from './SchemaForm';
 
 /** Fires one change on the first control that takes it (expanding a group when nothing is open). */
 function changeOneField(container: HTMLElement, emitted: () => number): boolean {
@@ -504,122 +499,5 @@ describe('SchemaForm: hostile schemas', () => {
     ['enum: {}', { type: 'object', properties: { a: { enum: {} } } }],
   ])('%s renders without throwing', (_name, schema) => {
     expect(() => renderSchemaForm(schema as Obj, { a: 1 })).not.toThrow();
-  });
-});
-
-describe('a stored multi-line secret while editing (StringField)', () => {
-  const schema = { type: 'object', properties: { private_key: { type: 'string' }, note: { type: 'string' } } };
-  const KEY = '-----BEGIN PRIVATE KEY-----\nSTOREDKEY\n-----END PRIVATE KEY-----\n';
-
-  it('is not on the page until revealed; Show puts it in a box, Hide takes it away', async () => {
-    const { user, container } = renderSchemaForm(schema, { private_key: KEY });
-    expect(container.innerHTML).not.toContain('STOREDKEY');
-    expect(screen.getByText(t('sf.secret.stored'))).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
-    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue(KEY);
-    await user.click(screen.getByRole('button', { name: t('sf.secret.hide', { name: 'private_key' }) }));
-    expect(container.innerHTML).not.toContain('STOREDKEY');
-  });
-
-  it('Replace: an empty box; typing emits the new text, emptying it puts the stored value back, Keep closes it; leaving it changes nothing', async () => {
-    const { user, value } = renderSchemaForm(schema, { private_key: KEY });
-    await user.click(screen.getByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
-    const box = screen.getByRole('textbox', { name: 'private_key' });
-    expect(box).toHaveValue('');
-    await user.type(box, 'NEW');
-    expect(value()).toEqual({ private_key: 'NEW' });
-    await user.tab();
-    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue('NEW');
-    await user.clear(screen.getByRole('textbox', { name: 'private_key' }));
-    expect(value()).toEqual({ private_key: KEY });
-    await user.click(screen.getByRole('button', { name: t('sf.secret.keep') }));
-    expect(screen.queryByRole('textbox', { name: 'private_key' })).not.toBeInTheDocument();
-    expect(value()).toEqual({ private_key: KEY });
-  });
-
-  it('a value typed into an empty field stays in its box (it is never swapped for the masked view while editing)', async () => {
-    const { user, value } = renderSchemaForm(schema, {});
-    await user.type(screen.getByRole('textbox', { name: 'private_key' }), 'K1');
-    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue('K1');
-    expect(value()).toEqual({ private_key: 'K1' });
-  });
-
-  it('locked: masked with a reveal, as before', () => {
-    const { container } = renderSchemaForm(schema, { private_key: KEY }, { locked: true });
-    expect(container.innerHTML).not.toContain('STOREDKEY');
-  });
-});
-
-describe('a multi-line secret through a save in flight (locked in the same editing session)', () => {
-  const schema = { type: 'object', properties: { private_key: { type: 'string' } } };
-  const KEY = 'STORED-KEY-TEXT';
-
-  /** A SchemaForm under a lock with an editing session, as the editor provides it: `saving` locks without ending the session. */
-  function renderSession(initial: Obj) {
-    const control: { set?: (s: { locked: boolean; session: number }) => void } = {};
-    let current: unknown = initial;
-    function Harness() {
-      const [state, setState] = useState({ locked: false, session: 0 });
-      const [value, setValue] = useState<unknown>(initial);
-      useEffect(() => {
-        control.set = setState;
-      }, []);
-      return (
-        <LockProvider locked={state.locked} session={state.session}>
-          <SchemaForm
-            schema={schema}
-            value={value}
-            onChange={(next) => {
-              current = next;
-              setValue(next);
-            }}
-          />
-        </LockProvider>
-      );
-    }
-    const result = render(<Harness />);
-    return {
-      ...result,
-      user: userEvent.setup(),
-      value: () => current,
-      saving: (on: boolean) => act(() => control.set?.({ locked: on, session: 0 })),
-      saved: () => act(() => control.set?.({ locked: true, session: 1 })),
-    };
-  }
-
-  it('Replace with text typed: the save in flight shows it read-only, a refusal gives the box back as it was, Keep means the value from the start', async () => {
-    const h = renderSession({ private_key: KEY });
-    await h.user.click(screen.getByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
-    await h.user.type(screen.getByRole('textbox', { name: 'private_key' }), 'NEW');
-    h.saving(true);
-    expect(screen.queryByRole('textbox', { name: 'private_key' })).not.toBeInTheDocument();
-    expect(screen.getByText('NEW')).toBeInTheDocument();
-    h.saving(false);
-    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue('NEW');
-    expect(screen.getByText(t('sf.secret.kept'))).toBeInTheDocument();
-    await h.user.click(screen.getByRole('button', { name: t('sf.secret.keep') }));
-    expect(h.value()).toEqual({ private_key: KEY });
-  });
-
-  it('a field empty when editing began keeps its typed text through a refused save; an accepted save ends the session: masked', async () => {
-    const h = renderSession({});
-    await h.user.type(screen.getByRole('textbox', { name: 'private_key' }), 'MINE');
-    h.saving(true);
-    h.saving(false);
-    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue('MINE');
-    expect(screen.getByText(t('sf.secret.emptyNone'))).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: t('sf.secret.keep') })).not.toBeInTheDocument();
-    h.saved();
-    expect(h.container.innerHTML).not.toContain('MINE');
-  });
-
-  it('a revealed value stays revealed through a refused save, and is masked after an accepted one', async () => {
-    const h = renderSession({ private_key: KEY });
-    await h.user.click(screen.getByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
-    h.saving(true);
-    h.saving(false);
-    expect(screen.getByRole('textbox', { name: 'private_key' })).toHaveValue(KEY);
-    h.saved();
-    expect(h.container.innerHTML).not.toContain(KEY);
   });
 });

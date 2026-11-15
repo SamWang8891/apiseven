@@ -31,11 +31,17 @@ export interface SchemaFormProps {
   idPrefix?: string;
   /** What messages about held input start with (a plugin's name), before the field's dotted path. */
   name?: string;
+  /**
+   * The stored counterpart of `value` as the editor last loaded it from APISIX (a plugin's stored
+   * config, a stored entry without its id); undefined for a new object or a part not stored. A secret
+   * field reads "the stored value" at its own path here, never from what it saw when it mounted.
+   */
+  baseline?: unknown;
 }
 
 const NO_ERRORS: FormError[] = [];
 
-export const SchemaForm: FC<SchemaFormProps> = ({ schema, value, onChange, encryptFields, errors = NO_ERRORS, idPrefix, name }) => {
+export const SchemaForm: FC<SchemaFormProps> = ({ schema, value, onChange, encryptFields, errors = NO_ERRORS, idPrefix, name, baseline }) => {
   const encryptKey = (encryptFields ?? []).join('\n');
   const node = useMemo(() => analyze(schema, { encryptFields: encryptKey === '' ? [] : encryptKey.split('\n') }), [schema, encryptKey]);
   const generated = useId().replace(/[^\w-]/g, '');
@@ -50,7 +56,7 @@ export const SchemaForm: FC<SchemaFormProps> = ({ schema, value, onChange, encry
     const own: unknown[] = Array.isArray(schema.encrypt_fields) ? (schema.encrypt_fields as unknown[]) : [];
     return [...new Set([...own, ...encryptKey.split('\n')])].filter((p): p is string => typeof p === 'string' && p !== '');
   }, [schema, encryptKey]);
-  const context = useMemo(() => ({ prefix, name, encrypt, errors: stable }), [prefix, name, encrypt, stable]);
+  const context = useMemo(() => ({ prefix, name, encrypt, errors: stable, baseline }), [prefix, name, encrypt, stable, baseline]);
 
   const latestRef = useLatest(onChange);
   const emit = useCallback((_: Key, v: unknown) => latestRef.current(v), [latestRef]);

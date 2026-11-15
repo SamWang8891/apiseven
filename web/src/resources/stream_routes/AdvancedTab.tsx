@@ -30,7 +30,7 @@ function withParts(protocol: Obj, parts: unknown): Obj {
   return next;
 }
 
-function Protocol({ draft, setDraft, issues, ctx }: Pick<TabProps, 'draft' | 'setDraft' | 'issues' | 'ctx'>) {
+function Protocol({ draft, setDraft, issues, ctx, original }: Pick<TabProps, 'draft' | 'setDraft' | 'issues' | 'ctx' | 'original'>) {
   const locked = useLocked();
   const protocol = isObj(draft.protocol) ? draft.protocol : {};
   const ownId = idOf(draft.id);
@@ -70,6 +70,8 @@ function Protocol({ draft, setDraft, issues, ctx }: Pick<TabProps, 'draft' | 'se
         schema={parts}
         name="protocol"
         value={{ conf: protocol.conf, logger: protocol.logger }}
+        // What APISIX has for the same parts, for a secret field's "stored value".
+        baseline={isObj(original?.value.protocol) ? { conf: original.value.protocol.conf, logger: original.value.protocol.logger } : undefined}
         errors={partIssues}
         onChange={(v) => setDraft(setPath(draft, ['protocol'], withParts(protocol, v)))}
       />
@@ -108,7 +110,7 @@ export function AdvancedTab({ draft, setDraft, issues, ctx, original }: TabProps
             issues={protocolIssues.length}
             defaultOpen={draft.protocol !== undefined}
           >
-            <Protocol draft={draft} setDraft={setDraft} issues={issues} ctx={ctx} />
+            <Protocol draft={draft} setDraft={setDraft} issues={issues} ctx={ctx} original={original} />
           </Section>
         </div>
       )}

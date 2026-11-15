@@ -1,5 +1,5 @@
 // The UI kit. Pages build from these; see Gallery.tsx (#/__kit in dev) for every component in its states.
-export { LockProvider, useEditingState, useLocked, useReveal } from './LockContext';
+export { LockProvider, useBusy, useEditingState, useLocked, useReveal } from './LockContext';
 export { PendingProvider, PendingScope, useHeld, usePending, type Held, type PendingEntry } from './PendingContext';
 export { Field, type FieldProps } from './Field';
 export { Input, type InputProps } from './Input';

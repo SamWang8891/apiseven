@@ -521,6 +521,12 @@
   align-self: stretch;
 }
 
+.sf-secret__tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s1);
+}
+
 .sf-secret__set {
   display: flex;
   flex-wrap: wrap;

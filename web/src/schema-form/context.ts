@@ -11,9 +11,27 @@ export interface FormContextValue {
   encrypt: string[];
   /** Messages by the dotted path of the rendered field that shows them ('' = the form as a whole). */
   errors: Map<string, string[]>;
+  /**
+   * The stored counterpart of the form's value, as the editor last loaded it from APISIX (SchemaForm's
+   * `baseline`); undefined for a new object, or a part the stored object does not have.
+   */
+  baseline?: unknown;
 }
 
 export const FormContext = createContext<FormContextValue>({ prefix: 'sf', encrypt: [], errors: new Map() });
+
+/** The stored value at the field's dotted `path` (array indices as numbers), from the form's baseline. */
+export function useStoredAt(path: string): unknown {
+  const { baseline } = use(FormContext);
+  if (path === '') return baseline;
+  let at: unknown = baseline;
+  for (const key of path.split('.')) {
+    if (Array.isArray(at)) at = at[Number(key)];
+    else if (at !== null && typeof at === 'object') at = (at as Record<string, unknown>)[key];
+    else return undefined;
+  }
+  return at;
+}
 
 /** The secret paths of the form (see FormContextValue.encrypt). */
 export function useEncryptPaths(): string[] {

@@ -10,6 +10,10 @@
 // - else the request carries exactly the model's value (POST of a new SSL; PATCH of a stored one,
 //   where a CA left as stored is not sent). A save that goes out ends the sequence.
 // Every sequence runs to its end or its first failure; all failures are reported together.
+// Two actions only the frame has (fix round 3 of Task 15): a remount (switch to another tab and back:
+// the box's component state is lost, and what it shows must follow from the draft), and a save
+// APISIX refuses late (a delayed 400: the fields are locked meanwhile, then editable again), each
+// followed by the same checks.
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -20,7 +24,8 @@ import { resetApp } from '../../test/app';
 import { RSA_LEAF } from '../../test/certs';
 import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import { EC_PAIR } from '../../test/pairs';
-import { BoxRun, Coverage, actionsFor, firstFailure, held, newModel, type Kind, type Model } from '../../test/pemBoxRun';
+import { BoxRun, Coverage, actionsFor, firstFailure, held, newModel, takes, type Kind, type Model } from '../../test/pemBoxRun';
+import { json, type FakeRequest } from '../../test/fakeAdmin';
 import { prng } from '../../test/prng';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
 import { getToasts } from '../../ui/toast';
@@ -32,6 +37,12 @@ beforeAll(async () => {
 });
 
 const COMBINED = SEED_CERT + SEED_KEY;
+/** While on, every write is answered late with APISIX's refusal (the refused-save action). */
+const refusing = { on: false };
+const REFUSAL = 'refused late by the test';
+const refuse = (req: FakeRequest) =>
+  refusing.on && req.method !== 'GET' ? new Promise<Response>((done) => setTimeout(() => done(json(400, { error_msg: REFUSAL })), 60)) : undefined;
+const REPLIES = { ssls: refuse, 'ssls/apiseven-test': refuse };
 const STORED: Obj = { id: 'apiseven-test', type: 'server', snis: ['apiseven.test'], cert: SEED_CERT, key: SEED_KEY };
 const NONE = { ssls: [], routes: [], services: [] };
 const tab = (label: string) => main().getByRole('tab', { name: new RegExp(`^${label}`) });
@@ -49,7 +60,7 @@ async function fill(user: UserEvent, label: string, text: string) {
 
 /** A new SSL with an SNI, back on the Certificate tab, its certificate and key as given. */
 async function newSsl(pair: { cert?: string; key?: string }) {
-  const app = await openEditor('#/ssls/new?tab=snis', { objects: NONE });
+  const app = await openEditor('#/ssls/new?tab=snis', { objects: NONE, replies: REPLIES });
   await settled();
   await app.user.type(main().getByRole('textbox', { name: t('ssl.snis.label') }), 'p.apiseven.test{Enter}');
   await app.user.click(tab(t('ssl.tab.certificate')));
@@ -62,7 +73,7 @@ async function newSsl(pair: { cert?: string; key?: string }) {
 /** A stored SSL with this client CA, being edited on Client mTLS with its depth changed (so a save always writes). */
 async function storedCa(ca: string | undefined) {
   const stored = ca === undefined ? STORED : { ...STORED, client: { ca, depth: 1 } };
-  const app = await openEditor('#/ssls/apiseven-test?tab=client', { objects: { ...NONE, ssls: [stored] } });
+  const app = await openEditor('#/ssls/apiseven-test?tab=client', { objects: { ...NONE, ssls: [stored] }, replies: REPLIES });
   await main().findByRole('heading', { level: 1 });
   await settled();
   await app.user.keyboard('e');
@@ -84,7 +95,20 @@ interface Place {
   setup: () => Promise<{ app: App; model: Model }>;
   /** Asserts that the write carries `value` for this field. */
   sent: (write: { method: string; body?: Obj }, value: string | undefined) => void;
+  /** The tab the box is on (a remount switches away from it and back). */
+  tab: () => string;
+  /**
+   * A certificate box's value it cannot show, after a remount: the stored CA holding a key (from the
+   * frame), or for a new SSL a draft certificate holding one (fixed when the box mounts); none else.
+   */
+  hiddenAfterRemount?: (m: Model) => string | undefined;
+  /** After a remount, with the value it cannot show in the draft, the box is reopened as the setup did (Replace CA). */
+  reopen?: (app: App) => Promise<void>;
 }
+
+const certTab = () => t('ssl.tab.certificate');
+const clientTab = () => t('ssl.tab.client');
+const holdsKey = (v: string | undefined) => v !== undefined && /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/.test(v);
 
 const posted = (field: 'cert' | 'key') => (write: { method: string; body?: Obj }, value: string | undefined) => {
   expect(write.method, 'a POST').toBe('POST');
@@ -104,13 +128,15 @@ const PLACES: Place[] = [
     label: () => t('ssl.pem.cert'),
     setup: async () => ({ app: await newSsl({ key: SEED_KEY }), model: newModel('cert', undefined, '') }),
     sent: posted('cert'),
+    tab: certTab,
+    hiddenAfterRemount: (m) => (holdsKey(m.value) ? m.value : undefined),
   },
   {
     name: 'new SSL certificate over a draft one holding a key (from the JSON tab)',
     kind: 'cert',
     label: () => t('ssl.pem.cert'),
     setup: async () => {
-      const app = await openEditor('#/ssls/new', { objects: NONE });
+      const app = await openEditor('#/ssls/new', { objects: NONE, replies: REPLIES });
       await settled();
       await app.user.click(tab(t('editor.json.tab')));
       const box = await jsonEditor(t('kind.ssls.singular'));
@@ -122,6 +148,8 @@ const PLACES: Place[] = [
       return { app, model: newModel('cert', COMBINED, '', COMBINED) };
     },
     sent: posted('cert'),
+    tab: certTab,
+    hiddenAfterRemount: (m) => (holdsKey(m.value) ? m.value : undefined),
   },
   {
     name: 'new SSL key, none entered',
@@ -129,6 +157,7 @@ const PLACES: Place[] = [
     label: () => t('ssl.pem.key'),
     setup: async () => ({ app: await newSsl({ cert: SEED_CERT }), model: newModel('key', undefined, '') }),
     sent: posted('key'),
+    tab: certTab,
   },
   {
     name: 'new SSL key, one entered',
@@ -136,6 +165,7 @@ const PLACES: Place[] = [
     label: () => t('ssl.pem.key'),
     setup: async () => ({ app: await newSsl({ cert: SEED_CERT, key: EC_PAIR.key }), model: newModel('key', EC_PAIR.key, '') }),
     sent: posted('key'),
+    tab: certTab,
   },
   {
     name: 'CA, none',
@@ -143,6 +173,7 @@ const PLACES: Place[] = [
     label: () => t('ssl.client.ca'),
     setup: async () => ({ app: await storedCa(undefined), model: newModel('cert', undefined, '') }),
     sent: patchedCa(undefined),
+    tab: clientTab,
   },
   {
     name: 'CA, stored',
@@ -150,6 +181,7 @@ const PLACES: Place[] = [
     label: () => t('ssl.client.ca'),
     setup: async () => ({ app: await storedCa(SEED_CERT), model: newModel('cert', SEED_CERT, SEED_CERT) }),
     sent: patchedCa(SEED_CERT),
+    tab: clientTab,
   },
   {
     name: 'CA, stored holding a key',
@@ -161,12 +193,31 @@ const PLACES: Place[] = [
       return { app, model: newModel('cert', COMBINED, '', COMBINED) };
     },
     sent: patchedCa(COMBINED),
+    tab: clientTab,
+    hiddenAfterRemount: () => COMBINED,
+    reopen: async (app) => app.user.click(main().getByRole('button', { name: t('ssl.client.replaceCa') })),
   },
 ];
 
 /** The schema's own refusal of a value the box took or kept: missing, or shorter than its minimum (a reference is exempt). */
 const schemaRefuses = (kind: Kind, value: string | undefined) =>
   value === undefined || (!/^(?:\$secret:\/\/|\$env:\/\/)/i.test(value) && value.length < (kind === 'cert' ? 128 : 64));
+
+/** A remount (the tab switched away and back): the box's own state is lost; it shows what the draft holds. */
+function remounted(m: Model, place: Place): void {
+  m.focused = false;
+  m.opened = false;
+  m.stood = null;
+  if (m.kind === 'key') {
+    m.text = '';
+    return;
+  }
+  m.hidden = place.hiddenAfterRemount?.(m);
+  m.text = m.value === undefined || m.value === m.hidden ? '' : m.value;
+}
+
+/** What a save would do with the box as the model has it: go out (true), or be refused before any request. */
+const wouldSend = (place: Place, m: Model): boolean => !held(m) && !schemaRefuses(place.kind, m.value) && (m.text.trim() === '' || takes(m.kind, m.text));
 
 describe('every PEM box follows one rule through the real editor frame (property, seeded, page level)', () => {
   const SEEDS = 6;
@@ -189,6 +240,36 @@ describe('every PEM box follows one rule through the real editor frame (property
           run.check(where);
           cov.add(`place ${place.name}`);
           for (let step = 0; step < STEPS; step++) {
+            // The frame's own actions, now and then: a remount, a save APISIX refuses late.
+            // A save is likelier once the box has taken a value over one it cannot show (A1's case).
+            const frame = m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden ? r.int(3) : r.int(5);
+            if (frame === 0 && !held(m)) {
+              where = `step ${step} (remount)`;
+              await user.click(tab(t('ssl.tab.general')));
+              await user.click(tab(place.tab()));
+              await settled();
+              remounted(m, place);
+              if (place.reopen && m.value !== undefined && m.value === m.hidden) await place.reopen(app);
+              cov.add('remount');
+              run.check(where);
+              continue;
+            }
+            if (frame === 1 && wouldSend(place, m)) {
+              where = `step ${step} (a save refused late)`;
+              const writes = writesOf(admin).length;
+              refusing.on = true;
+              fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+              run.leftByClick();
+              await waitFor(() => expect(writesOf(admin).length, `${where}: a request`).toBe(writes + 1));
+              expect((await screen.findAllByText(REFUSAL)).length, `${where}: APISIX's refusal shown`).toBeGreaterThan(0);
+              refusing.on = false;
+              const box = run.box();
+              m.focused = box !== null && document.activeElement === box;
+              cov.add('refusedSave');
+              if (m.hidden !== undefined && m.value !== undefined && m.value !== m.hidden) cov.add('refusedSave: a value taken over one the box cannot show');
+              run.check(where);
+              continue;
+            }
             const action = run.next(r, true);
             where = `step ${step} (${action})`;
             if (action !== 'save') {
@@ -231,6 +312,7 @@ describe('every PEM box follows one rule through the real editor frame (property
           }
         });
         if (failure) failures.push(`${place.name}, seed ${seed}, ${where}: ${failure.replace(`${where}: `, '')}`);
+        refusing.on = false;
         cleanup();
         resetApp();
         resetReadOnlyKeys();
@@ -243,6 +325,9 @@ describe('every PEM box follows one rule through the real editor frame (property
     for (const action of actionsFor('cert', true)) expect(cov.get(action), action).toBeGreaterThan(8);
     expect(cov.get('save: refused, held')).toBeGreaterThan(5);
     expect(cov.get('save: sent')).toBeGreaterThan(5);
+    expect(cov.get('remount')).toBeGreaterThan(20);
+    expect(cov.get('refusedSave')).toBeGreaterThan(10);
+    expect(cov.get('refusedSave: a value taken over one the box cannot show')).toBeGreaterThan(2);
     expect(cov.get('unfocused arrival of key material not taken')).toBeGreaterThan(20);
   }, 300_000);
 });

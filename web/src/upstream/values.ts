@@ -19,6 +19,11 @@ export interface SectionProps {
    * sections offer only what applies to L4; a setting that doesn't but is stored shows with a note.
    */
   subsystem?: Subsystem;
+  /**
+   * The upstream as the editor last loaded it from APISIX (undefined for a new one): what "the stored
+   * key" of the TLS client key field is, never what the field saw when it mounted.
+   */
+  stored?: Obj;
 }
 
 export const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);

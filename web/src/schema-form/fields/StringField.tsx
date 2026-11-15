@@ -1,6 +1,6 @@
 import { Input, Select, Textarea } from '../../ui';
 import type { StringNode } from '../analyze';
-import { useFieldError, useFieldId } from '../context';
+import { useFieldError, useFieldId, useStoredAt } from '../context';
 import { FieldLabel } from './chrome';
 import { SecretText } from './SecretText';
 import { useFieldHelp } from './help';
@@ -13,6 +13,7 @@ const SEARCHABLE = 8;
 /** Text: a select for an enum, a textarea for PEM/Lua/long text, a masked input for a secret. Empty text deletes the key. */
 export function StringField({ node, value, name, path, onChange, prop, required, ariaLabel }: FieldProps<StringNode>) {
   const id = useFieldId(path);
+  const stored = useStoredAt(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
   const label = prop ? <FieldLabel name={prop.key} title={prop.title} /> : undefined;
@@ -36,7 +37,17 @@ export function StringField({ node, value, name, path, onChange, prop, required,
   // A multi-line secret (a PEM private key): one component locked or not, so a save in flight keeps
   // what it shows; a stored one is not put on the page until revealed or replaced (SecretText).
   if (node.multiline && node.secret) {
-    return <SecretText common={common} name={prop?.key ?? ariaLabel ?? ''} value={text} mono={node.mono} rows={node.mono ? 6 : 3} onText={emit} />;
+    return (
+      <SecretText
+        common={common}
+        name={prop?.key ?? ariaLabel ?? ''}
+        value={text}
+        stored={typeof stored === 'string' && stored !== '' ? stored : undefined}
+        mono={node.mono}
+        rows={node.mono ? 6 : 3}
+        onText={emit}
+      />
+    );
   }
   if (node.multiline) {
     return <Textarea {...common} mono={node.mono} rows={node.mono ? 6 : 3} value={text} onChange={emit} />;

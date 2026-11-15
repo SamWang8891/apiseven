@@ -25,6 +25,8 @@ export interface UpstreamFormProps {
   layout: 'tabs' | 'sections';
   /** The subsystem the upstream serves: 'stream' for a stream route's (see SectionProps); default http. */
   subsystem?: Subsystem;
+  /** The upstream as stored (SectionProps.stored); undefined for a new one. */
+  stored?: Obj;
 }
 
 const NONE: Issue[] = [];
@@ -52,7 +54,7 @@ function Stray({ issues }: { issues: Issue[] }) {
   );
 }
 
-export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = NONE, ctx, layout, subsystem }) => {
+export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = NONE, ctx, layout, subsystem, stored }) => {
   const [active, setActive] = useState<string>(upstreamSections[0]?.id ?? 'nodes');
   const held = useHeld();
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -72,7 +74,7 @@ export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = 
             id: s.id,
             label: s.label,
             badge: ownIssues(s).length,
-            content: s.id === active ? <PendingScope onChange={held.track}>{s.render({ value, onChange, issues: ownIssues(s), ctx, subsystem })}</PendingScope> : null,
+            content: s.id === active ? <PendingScope onChange={held.track}>{s.render({ value, onChange, issues: ownIssues(s), ctx, subsystem, stored })}</PendingScope> : null,
           }))}
         />
       </div>
@@ -87,7 +89,7 @@ export const UpstreamForm: FC<UpstreamFormProps> = ({ value, onChange, issues = 
           const own = ownIssues(s);
           return (
             <Section key={s.id} title={s.label} summary={s.summary(value)} issues={own.length} defaultOpen={s.id === 'nodes' || holdsValue(s, value) || own.length > 0}>
-              {s.render({ value, onChange, issues: own, ctx, subsystem })}
+              {s.render({ value, onChange, issues: own, ctx, subsystem, stored })}
             </Section>
           );
         })}

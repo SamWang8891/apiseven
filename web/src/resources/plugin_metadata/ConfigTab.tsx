@@ -9,7 +9,7 @@ import type { TabProps } from '../registry';
 import { withId, withoutId } from '../withoutId';
 import '../resources.css';
 
-export function ConfigTab({ draft, setDraft, issues, id, isNew }: TabProps) {
+export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabProps) {
   const plugins = useAllPlugins();
   if (id === undefined || id === '') return <p className="res-callout">{t('pm.config.choose')}</p>;
   if (plugins.isError) return <p className="res-callout">{t('pm.config.failed', { error: plugins.error.message })}</p>;
@@ -21,7 +21,15 @@ export function ConfigTab({ draft, setDraft, issues, id, isNew }: TabProps) {
   return (
     <div className="ed-stack">
       <p className="res-note">{isNew ? t('pm.config.notSet', { name: id }) : t('pm.config.help', { name: id })}</p>
-      <SchemaForm schema={schema} value={withoutId(draft)} onChange={(next) => setDraft(withId(draft, next))} errors={issues} idPrefix={`meta-${id}`} name={id} />
+      <SchemaForm
+        schema={schema}
+        value={withoutId(draft)}
+        onChange={(next) => setDraft(withId(draft, next))}
+        errors={issues}
+        idPrefix={`meta-${id}`}
+        name={id}
+        baseline={original && withoutId(original.value)}
+      />
     </div>
   );
 }

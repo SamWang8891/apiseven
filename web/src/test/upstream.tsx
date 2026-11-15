@@ -25,6 +25,8 @@ export interface UpstreamOptions {
   issues?: Issue[];
   /** The subsystem the upstream serves; default http. */
   subsystem?: Subsystem;
+  /** The upstream as stored (SectionProps.stored); default: `initial`, as if loaded. */
+  stored?: Obj;
 }
 
 export interface UpstreamHarness extends RenderResult {
@@ -59,9 +61,9 @@ export function renderUpstream(initial: Obj, opts: UpstreamOptions = {}): Upstre
           <PendingProvider onChange={onPending}>
             <LockProvider locked={locked ?? false}>
               {section ? (
-                section.render({ value, onChange, issues: issues ?? [], ctx, subsystem: opts.subsystem })
+                section.render({ value, onChange, issues: issues ?? [], ctx, subsystem: opts.subsystem, stored: opts.stored ?? initial })
               ) : (
-                <UpstreamForm value={value} onChange={onChange} issues={issues} ctx={ctx} layout={opts.layout ?? 'sections'} subsystem={opts.subsystem} />
+                <UpstreamForm value={value} onChange={onChange} issues={issues} ctx={ctx} layout={opts.layout ?? 'sections'} subsystem={opts.subsystem} stored={opts.stored ?? initial} />
               )}
             </LockProvider>
           </PendingProvider>

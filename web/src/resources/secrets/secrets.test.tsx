@@ -179,12 +179,16 @@ describe('a stored secret', () => {
     await main().findByRole('textbox', { name: 'client_email (required)' });
     expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
     expect(main().getByText(t('sf.secret.stored'))).toBeInTheDocument();
-    // Replace: an empty box; while it is empty the stored key stays.
+    // Replace: an empty box; while it is empty the stored key stays, and the box says so.
     await user.click(main().getByRole('button', { name: t('sf.secret.replace', { name: 'private_key' }) }));
     const box = main().getByRole('textbox', { name: 'private_key (required)' });
     expect(box).toHaveValue('');
+    expect(main().getByText(t('sf.secret.emptyStored'))).toBeInTheDocument();
     expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
+    // Typed, then Keep the stored value: back to "Set, not shown".
+    await user.type(box, 'X');
     await user.click(main().getByRole('button', { name: t('sf.secret.keep') }));
+    expect(main().getByText(t('sf.secret.stored'))).toBeInTheDocument();
     // Reveal: the key in a box; a save sends it back unchanged; then it is masked again.
     await user.click(main().getByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
     expect(main().getByRole('textbox', { name: 'private_key (required)' })).toHaveValue(GCP_KEY);
@@ -263,7 +267,7 @@ describe('a stored secret', () => {
     await save(user);
     expect(await main().findByRole('alert')).toHaveTextContent('invalid configuration: refused');
     expect(main().getByRole('textbox', { name: 'private_key (required)' })).toHaveValue(GCP_KEY);
-    expect(main().getByText(t('sf.secret.emptyNone'))).toBeInTheDocument();
+    expect(main().getByText(t('sf.secret.emptyStored'))).toBeInTheDocument();
   });
 
   it('an AWS entry masks its access key id too, locked and in the JSON tab', async () => {

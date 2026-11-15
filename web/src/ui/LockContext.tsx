@@ -4,6 +4,8 @@ interface Lock {
   locked: boolean;
   /** Changes each time editing ends (see LockProvider's `session`); undefined when the owner has none. */
   session?: number;
+  /** Locked only because a save is in flight: still the editing session, inert meanwhile. */
+  busy?: boolean;
 }
 
 const LockContext = createContext<Lock>({ locked: false });
@@ -15,11 +17,21 @@ const LockContext = createContext<Lock>({ locked: false });
  * is not the end of one (a save in flight) leaves it alone. A provider inside another one, without a
  * session of its own, is part of the outer one's.
  */
-export const LockProvider: FC<{ locked: boolean; session?: number; children: ReactNode }> = ({ locked, session, children }) => {
-  const outer = use(LockContext).session;
-  const value = useMemo(() => ({ locked, session: session ?? outer }), [locked, session, outer]);
+export const LockProvider: FC<{ locked: boolean; session?: number; busy?: boolean; children: ReactNode }> = ({ locked, session, busy, children }) => {
+  const outer = use(LockContext);
+  const value = useMemo(() => ({ locked, session: session ?? outer.session, busy: busy ?? outer.busy }), [locked, session, busy, outer.session, outer.busy]);
   return <LockContext value={value}>{children}</LockContext>;
 };
+
+/**
+ * True while the lock is only a save in flight (the editor's `busy`): a field that shows something
+ * of its own editing session keeps showing it then, inert, rather than its locked view.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- a hook of the lock, beside it
+export function useBusy(): boolean {
+  const { locked, busy } = use(LockContext);
+  return locked && busy === true;
+}
 
 /** True inside a locked LockProvider; false outside any provider. */
 // eslint-disable-next-line react-refresh/only-export-components -- the pinned API puts the hook beside its provider

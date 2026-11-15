@@ -15,7 +15,7 @@ import './routes.css';
 
 const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String(v) : typeof v === 'string' && v !== '' ? v : undefined);
 
-export function RoutePluginsTab({ draft, setDraft, issues, ctx, saveAttempts }: TabProps) {
+export function RoutePluginsTab({ draft, setDraft, issues, ctx, saveAttempts, original }: TabProps) {
   const locked = useLocked();
   const configId = idOf(draft.plugin_config_id);
   const waiting = inheritLoading(draft, ctx);
@@ -44,6 +44,7 @@ export function RoutePluginsTab({ draft, setDraft, issues, ctx, saveAttempts }: 
         issues={issuesUnder(issues, 'plugins')}
         saveAttempts={saveAttempts}
         inherited={inheritedPlugins(draft, ctx)}
+        stored={isObj(original?.value.plugins) ? original.value.plugins : undefined}
       />
       {(waiting.service || waiting.pluginConfig) && <p className="rt-note">{t('rt.pl.inheritedLoading')}</p>}
     </div>

@@ -1,29 +1,41 @@
-// A multi-line secret (a PEM private key, a service account key: StringField), locked or not. A value
-// the field had when the editing session began is not put on the page: the field says it is set, and
-// offers Show (a box with the value) and Replace (an empty box; what is typed is the value, and while
-// it is empty the value is the one the field had when editing began, which Keep goes back to). An
-// untouched save sends the value back as it was. A field that was empty when editing began is the
-// user's own text: its box stays, and emptying it means no value. Every keystroke is the value;
-// nothing is held, and leaving a box changes nothing (addendum 20).
-// It stays mounted whether locked or not, and its state is the editing session's (useEditingState):
-// a save in flight locks the fields but is not the end of a session, so what the field shows then is
-// what it showed before Save, read-only; after a refused save it is exactly as it was; after an
-// accepted one (a new session) it is "Set, not shown" again. The locked view of a stored value is
-// the kit's masked input.
-import { Eye, EyeOff, Replace } from 'lucide-react';
+// A multi-line secret in a form (a PEM private key, a service account key: StringField), following
+// the rule for a secret field (Task 15, fix round 3):
+// 1. `stored` is the field's value in the object as the editor last loaded it (SchemaForm's baseline,
+//    read at the field's path: useStoredAt), never what this component saw when it mounted.
+// 2. What it shows is a function of (stored, value, the session's flags, locked) only, so it is the
+//    same after a tab switch, a Form / JSON toggle, a collapse, a late refused save or a refresh:
+//    - not editing (locked, no save in flight): the kit's masked input, with its reveal; never text;
+//    - an open box (typed in this session, or revealed), or no stored value and no value: the box;
+//    - value === stored: "Set, not shown", with Show and Replace;
+//    - value !== stored and not empty: "A new value was entered, not shown", with Show, Replace and,
+//      only when stored exists, "Keep the stored value";
+//    - no value where one is stored (removed elsewhere, the JSON tab): says Save removes it, with
+//      Replace and "Keep the stored value".
+//    A save in flight (useBusy) shows what was shown before Save, inert (no actions, the box read-only).
+// 3. "Keep the stored value" sets the value to stored (and closes an open box), and exists only when
+//    stored exists (where another value stands, or a box is open over the stored one). An empty
+//    box means stored stays when stored exists, and no value otherwise; the words under the box say
+//    which, from the same two facts.
+// 4. Every keystroke is the value; nothing is held; leaving the box changes nothing (addendum 20).
+// The session's flags (useEditingState: the box's text, revealed) start over with each editing
+// session and are lost on a remount; nothing shown depends on their surviving one.
+import { Eye, EyeOff, Replace, Undo2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
-import { Button, Field, Input, Textarea, useEditingState, useLocked } from '../../ui';
+import { Button, Field, Input, Textarea, useBusy, useEditingState, useLocked } from '../../ui';
 
 export interface SecretTextProps {
   /** The field's common props, as StringField builds them. */
   common: { id: string; label?: ReactNode; help?: ReactNode; error?: string; required?: boolean; placeholder?: string; 'aria-label'?: string };
   /** The property's name, for the buttons' accessible names. */
   name: string;
+  /** The value in the draft ('' for none). */
   value: string;
+  /** The value as stored in APISIX (the form's baseline at this path); undefined for none. */
+  stored: string | undefined;
   mono: boolean;
   rows: number;
-  /** The next text ('' clears the field). */
+  /** The next value ('' clears the field). */
   onText: (text: string) => void;
 }
 
@@ -36,77 +48,91 @@ const helpWith = (help: ReactNode, empty: string): ReactNode => (
   </>
 );
 
-export function SecretText({ common, name, value, mono, rows, onText }: SecretTextProps) {
+export function SecretText({ common, name, value, stored, mono, rows, onText }: SecretTextProps) {
   const locked = useLocked();
-  /** Editing state: the value when the editing session began (what Keep and an empty Replace box mean). */
-  const [initial] = useEditingState(() => value);
-  /** The field was empty when editing began: its box is the user's own text, and stays. */
-  const open = initial === '';
-  /** Editing state: the value is shown (until Hide or the end of the session). */
+  const busy = useBusy();
+  /** Session flag: the text typed in the open box this session (undefined: no box opened by typing or Replace). */
+  const [boxText, setBoxText] = useEditingState<string | undefined>(undefined);
+  /** Session flag: the value is shown. */
   const [revealed, setRevealed] = useEditingState(false);
-  /** Editing state: a replacement in progress, the text typed so far. */
-  const [replacing, setReplacing] = useEditingState<string | undefined>(undefined);
-  const box = (text: string, onChange: (text: string) => void, empty: string) => (
-    <div className="sf-secret__box">
-      <Textarea {...common} mono={mono} rows={rows} value={text} help={locked ? undefined : helpWith(common.help, empty)} onChange={onChange} />
-    </div>
+
+  // Not editing: the masked input of the locked view (its own reveal), whatever a refresh brought.
+  if (locked && !busy) return <Input {...common} mono={mono} secret value={value} />;
+
+  const acting = !locked;
+  const has = value !== '';
+  /** What an empty box writes: the stored value when there is one, else none (rule 3). */
+  const emptied = stored ?? '';
+  const emptyWords = stored !== undefined ? t('sf.secret.emptyStored') : t('sf.secret.emptyNone');
+  const type = (text: string) => {
+    setBoxText(text);
+    onText(text === '' ? emptied : text);
+  };
+  // Keep the stored value: wherever another value stands, or a box is open over the stored one.
+  const keep = acting && stored !== undefined && (value !== stored || boxText !== undefined) && (
+    <Button
+      size="sm"
+      variant="ghost"
+      icon={<Undo2 size={13} />}
+      onClick={() => {
+        setBoxText(undefined);
+        setRevealed(false);
+        onText(stored);
+      }}
+    >
+      {t('sf.secret.keep')}
+    </Button>
   );
 
-  if (replacing !== undefined) {
+  // A box: typed in this session, revealed, or nothing to keep and nothing entered.
+  if (boxText !== undefined || (revealed && has) || (!has && stored === undefined)) {
+    const text = boxText ?? (revealed ? value : '');
     return (
       <div className="sf-secret">
-        {box(
-          replacing,
-          (text) => {
-            setReplacing(text);
-            onText(text === '' ? initial : text);
-          },
-          t('sf.secret.kept'),
-        )}
-        {!locked && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              setReplacing(undefined);
-              onText(initial);
-            }}
-          >
-            {t('sf.secret.keep')}
-          </Button>
+        <div className="sf-secret__box">
+          <Textarea {...common} mono={mono} rows={rows} value={text} help={acting ? helpWith(common.help, emptyWords) : undefined} onChange={type} />
+        </div>
+        {(keep || (acting && revealed && boxText === undefined)) && (
+          <span className="sf-secret__tools">
+            {acting && revealed && boxText === undefined && (
+              <Button size="sm" variant="ghost" icon={<EyeOff size={13} />} aria-label={t('sf.secret.hide', { name })} onClick={() => setRevealed(false)}>
+                {t('sf.secret.hideShort')}
+              </Button>
+            )}
+            {keep}
+          </span>
         )}
       </div>
     );
   }
 
-  // The box, while editing (and, read-only, while a save of it is in flight): the value is revealed,
-  // or the field was empty when editing began, or is empty now.
-  const showBox = locked ? revealed || (open && value !== '') : revealed || open || value === '';
-  if (showBox) {
-    return (
-      <div className="sf-secret">
-        {box(value, onText, t('sf.secret.emptyNone'))}
-        {!open && !locked && value !== '' && (
-          <Button size="sm" variant="ghost" icon={<EyeOff size={13} />} aria-label={t('sf.secret.hide', { name })} onClick={() => setRevealed(false)}>
-            {t('sf.secret.hideShort')}
-          </Button>
-        )}
-      </div>
-    );
-  }
-
-  if (locked) return <Input {...common} mono={mono} secret value={value} />;
-
+  // A value not shown: the stored one, a new one, or none where one is stored.
+  const words = !has ? t('sf.secret.removed') : value === stored ? t('sf.secret.stored') : t('sf.secret.entered');
   return (
     <Field label={common.label} help={common.help} error={common.error} required={common.required}>
       <div className="sf-secret__set">
-        <span className="sf-secret__stored">{t('sf.secret.stored')}</span>
-        <Button size="sm" variant="ghost" icon={<Eye size={13} />} aria-label={t('sf.secret.show', { name })} onClick={() => setRevealed(true)}>
-          {t('sf.secret.showShort')}
-        </Button>
-        <Button size="sm" variant="ghost" icon={<Replace size={13} />} aria-label={t('sf.secret.replace', { name })} onClick={() => setReplacing('')}>
-          {t('sf.secret.replaceShort')}
-        </Button>
+        <span className="sf-secret__stored">{words}</span>
+        {acting && has && (
+          <Button size="sm" variant="ghost" icon={<Eye size={13} />} aria-label={t('sf.secret.show', { name })} onClick={() => setRevealed(true)}>
+            {t('sf.secret.showShort')}
+          </Button>
+        )}
+        {acting && (
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<Replace size={13} />}
+            aria-label={t('sf.secret.replace', { name })}
+            onClick={() => {
+              setRevealed(false);
+              setBoxText('');
+              if (value !== emptied) onText(emptied);
+            }}
+          >
+            {t('sf.secret.replaceShort')}
+          </Button>
+        )}
+        {keep}
       </div>
     </Field>
   );

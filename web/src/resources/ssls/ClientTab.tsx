@@ -21,14 +21,15 @@ const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is
 
 /**
  * The CA: a CertBox over `client.ca` (the rule in pemBox.ts). Locked: its details. A stored CA whose
- * text also holds a private key (stored by another tool) is one the box cannot show: it is fixed for
- * this editing session and shown as details, with a warning and Replace CA; replacing it opens an
- * empty box, which keeps it while empty (and says so, with Keep the stored CA).
+ * text also holds a private key (stored by another tool) is one the box cannot show: it is taken from
+ * the object as the editor last loaded it (`stored`, never what was seen at mount) and shown as
+ * details, with a warning and Replace CA; replacing it opens an empty box, which keeps it while empty
+ * (and says so, with Keep the stored CA). A CA taken over it is shown in the box, after a remount too.
  */
-function CaField({ client, write, error }: { client: Obj; write: (ca: string | undefined) => void; error?: string }) {
+function CaField({ client, stored, write, error }: { client: Obj; stored: unknown; write: (ca: string | undefined) => void; error?: string }) {
   const locked = useLocked();
-  // Editing state: the CA the box cannot show, as it was when editing began; whether it is being replaced.
-  const [hidden] = useEditingState(() => (holdsPrivateKey(client.ca) ? str(client.ca) : undefined));
+  // The stored CA the box cannot show (it holds a key), from the frame; editing state: being replaced.
+  const hidden = holdsPrivateKey(stored) ? str(stored) : undefined;
   const [replacing, setReplacing] = useEditingState(false);
   const shownAsDetails = locked || (hidden !== undefined && client.ca === hidden && !replacing);
   if (shownAsDetails) {
@@ -66,7 +67,7 @@ function CaField({ client, write, error }: { client: Obj; write: (ca: string | u
   );
 }
 
-export function ClientTab({ draft, setDraft, issues }: TabProps) {
+export function ClientTab({ draft, setDraft, issues, original }: TabProps) {
   const locked = useLocked();
   const on = draft.client !== undefined;
   const client = isObj(draft.client) ? draft.client : {};
@@ -84,7 +85,7 @@ export function ClientTab({ draft, setDraft, issues }: TabProps) {
       {on && (
         <div className="ed-grid">
           <div className="ed-wide">
-            <CaField client={client} write={(ca) => set('ca', ca)} error={issueAt(issues, 'client.ca')} />
+            <CaField client={client} stored={isObj(original?.value.client) ? original.value.client.ca : undefined} write={(ca) => set('ca', ca)} error={issueAt(issues, 'client.ca')} />
           </div>
           {locked && client.depth === undefined ? (
             <Field label={t('ssl.client.depth')}>

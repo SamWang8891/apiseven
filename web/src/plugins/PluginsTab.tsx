@@ -48,12 +48,14 @@ export interface PluginsTabProps {
   inherited?: InheritedPlugin[];
   /** Blocked Save attempts since editing began: each one opens the cards that have issues. */
   saveAttempts?: number;
+  /** The plugins as the editor last loaded them from APISIX (TabProps.original); undefined for a new object. */
+  stored?: Record<string, unknown>;
 }
 
 const NO_ISSUES: Issue[] = [];
 const byName = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
-export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues = NO_ISSUES, inherited, saveAttempts = 0 }) => {
+export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues = NO_ISSUES, inherited, saveAttempts = 0, stored }) => {
   const locked = useLocked();
   const query = useAllPlugins(subsystemOf(scope));
   const all = query.data;
@@ -171,6 +173,7 @@ export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues
               key={name}
               name={name}
               conf={value?.[name]}
+              stored={stored?.[name]}
               info={all?.[name]}
               list={list}
               scope={scope}
@@ -241,7 +244,7 @@ function inheritance(scope: Scope, draft: Obj, ctx: TabProps['ctx'], all: Record
  * the object it inherits from is still loading. A consumer group that holds an auth plugin is told
  * that APISIX never runs it from there (plugins/auth.ts); APISIX stores it, so Save is not refused.
  */
-export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, scope }: TabProps & { scope: Scope }) {
+export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, scope, original }: TabProps & { scope: Scope }) {
   const value = isObj(draft.plugins) ? (draft.plugins as Record<string, Obj>) : undefined;
   const all = useAllPlugins(subsystemOf(scope)).data;
   const { inherited, waiting } = inheritance(scope, draft, ctx, all);
@@ -256,6 +259,7 @@ export function DraftPluginsTab({ draft, setDraft, issues, ctx, saveAttempts, sc
         issues={issues}
         inherited={inherited}
         saveAttempts={saveAttempts}
+        stored={isObj(original?.value.plugins) ? original.value.plugins : undefined}
       />
       {waiting && <p className="pl-note">{waiting}</p>}
       {groupAuth.length > 0 && (

@@ -26,7 +26,7 @@ function modeOf(tls: Obj): Mode | undefined {
   return undefined;
 }
 
-export function TlsSection({ value, onChange, issues, ctx, subsystem }: SectionProps) {
+export function TlsSection({ value, onChange, issues, ctx, subsystem, stored }: SectionProps) {
   const locked = useLocked();
   const tls = obj(value.tls);
   const [chosen, setChosen] = useState<Mode>();
@@ -84,7 +84,14 @@ export function TlsSection({ value, onChange, issues, ctx, subsystem }: SectionP
       {mode === 'inline' && (
         <div className="ed-grid up-indent">
           <PemField label={t('up.tls.cert')} value={str(tls.client_cert)} error={issue('client_cert')} onChange={(v) => set(['client_cert'], v)} />
-          <PemField label={t('up.tls.key')} secret value={str(tls.client_key)} error={issue('client_key')} onChange={(v) => set(['client_key'], v)} />
+          <PemField
+            label={t('up.tls.key')}
+            secret
+            value={str(tls.client_key)}
+            stored={str(obj(stored?.tls).client_key)}
+            error={issue('client_key')}
+            onChange={(v) => set(['client_key'], v)}
+          />
         </div>
       )}
       {mode === 'ssl' && (

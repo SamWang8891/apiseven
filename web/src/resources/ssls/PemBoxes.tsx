@@ -56,8 +56,9 @@ export interface CertBoxProps extends BoxProps {
 
 /** A certificate box: the text is its own (editing state); the field's value follows the rule (valueAfter). */
 export function CertBox({ label, help, error, value, onValue, hidden, details, keep }: CertBoxProps) {
-  // It starts as the value, or empty over one it cannot show.
-  const box = useBoxText('cert', () => (hidden !== undefined ? '' : (value ?? '')));
+  // It starts as the value whenever that can be shown: empty only while the value is the one it
+  // cannot show (after a remount too: a certificate taken over it is shown).
+  const box = useBoxText('cert', () => (value === undefined || value === hidden ? '' : value));
   const set = (next: string) => {
     const v = valueAfter('cert', box.show(next), { held: value, stood: undefined, hidden });
     if (v !== value) onValue(v);

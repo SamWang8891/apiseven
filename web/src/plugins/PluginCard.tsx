@@ -26,6 +26,8 @@ export interface PluginCardProps {
   name: string;
   /** The plugin's config as stored (normally an object; anything else is shown and kept as JSON). */
   conf: unknown;
+  /** Its config in the object as the editor last loaded it from APISIX (undefined: new here): what "the stored value" of a secret field is. */
+  stored?: unknown;
   /** The plugin as this APISIX publishes it; undefined while the list loads, or when it is not loaded there. */
   info: PluginInfo | undefined;
   /** The plugin list: once 'loaded', a missing `info` means the plugin is not loaded on this APISIX. */
@@ -60,7 +62,7 @@ const sameCard = (a: PluginCardProps, b: PluginCardProps): boolean =>
   Object.keys(a).length === Object.keys(b).length &&
   JSON.stringify(a.issues) === JSON.stringify(b.issues);
 
-export const PluginCard = memo(function PluginCard({ name, conf, info, list, scope, issues, open, onToggle, onChange: emit, onRemove, cardRef }: PluginCardProps) {
+export const PluginCard = memo(function PluginCard({ name, conf, stored, info, list, scope, issues, open, onToggle, onChange: emit, onRemove, cardRef }: PluginCardProps) {
   const locked = useLocked();
   const onChange = useCallback((next: unknown) => emit(name, next), [emit, name]);
   const ref = useCallback((el: HTMLDivElement | null) => cardRef?.(name, el), [cardRef, name]);
@@ -150,6 +152,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
             <CardBody
               name={name}
               conf={conf}
+              stored={stored}
               info={info}
               list={list}
               schema={schema}
@@ -170,9 +173,10 @@ export const PluginCard = memo(function PluginCard({ name, conf, info, list, sco
   );
 }, sameCard);
 
-function CardBody({ name, conf, info, list, schema, encrypt, issues, note, danger, runNote, switchless, unchecked, onChange, onJsonHeld }: {
+function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, note, danger, runNote, switchless, unchecked, onChange, onJsonHeld }: {
   name: string;
   conf: unknown;
+  stored: unknown;
   info: PluginInfo | undefined;
   list: PluginCardProps['list'];
   schema: Obj | undefined;
@@ -234,6 +238,7 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, note, dange
   const fieldIssues = useMemo(() => issues.filter((issue) => issue.path !== '' && !isMetaPath(issue.path)), [issues]);
   const formSchema = useMemo(() => (schema ? formSchemaOf(schema) : undefined), [schema]);
   const formValue = useMemo(() => (config ? withoutMeta(config) : conf), [config, conf]);
+  const baseline = useMemo(() => (isObj(stored) ? withoutMeta(stored) : undefined), [stored]);
   const metaKeys = Object.keys(meta ?? {});
 
   return (
@@ -287,6 +292,7 @@ function CardBody({ name, conf, info, list, schema, encrypt, issues, note, dange
               errors={fieldIssues}
               idPrefix={`pl-${name}`}
               name={name}
+              baseline={baseline}
             />
           ) : (
             <>

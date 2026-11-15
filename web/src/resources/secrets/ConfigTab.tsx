@@ -49,7 +49,7 @@ function Reference({ manager, name }: { manager: Manager; name: string }) {
   );
 }
 
-export function ConfigTab({ draft, setDraft, issues, id, isNew }: TabProps) {
+export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabProps) {
   const manager = managerOf(id);
   const { manager: named, name } = splitSecretId(id);
   if (!manager) return <p className="res-callout">{named === '' ? t('sc.config.choose') : t('sc.config.unknown', { manager: named })}</p>;
@@ -68,6 +68,7 @@ export function ConfigTab({ draft, setDraft, issues, id, isNew }: TabProps) {
         errors={issues}
         idPrefix={`secret-${manager}`}
         name={manager}
+        baseline={original && withoutId(original.value)}
       />
       <Reference manager={manager} name={name} />
     </div>

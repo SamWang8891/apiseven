@@ -7,7 +7,7 @@
 // of its own (`allowService={false}`): it offers Existing and Inline only, and may have neither.
 import { useId, useState, type FC } from 'react';
 import { isObj } from '../api/sanitize';
-import type { Kind, Obj } from '../api/types';
+import type { Item, Kind, Obj } from '../api/types';
 import { setPath, setPathRaw } from '../editor/draft';
 import { issueAt, withinPath, type Issue } from '../editor/issues';
 import { t } from '../i18n';
@@ -33,6 +33,8 @@ export interface UpstreamSourceFieldProps {
   isNew?: boolean;
   /** Whose upstream this is, for the wording of what having none means; default a route's. */
   kind?: Kind;
+  /** The object as the editor last loaded it (TabProps.original): its inline upstream is "the stored" one. */
+  original?: Item;
 }
 
 interface Texts {
@@ -101,7 +103,7 @@ function Resolves({ draft, ctx, none, subsystem }: { draft: Obj; ctx: Ctx; none:
   );
 }
 
-export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDraft, ctx, issues, allowService, isNew = false, kind }) => {
+export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDraft, ctx, issues, allowService, isNew = false, kind, original }) => {
   const locked = useLocked();
   const serviceId = allowService ? idOf(draft.service_id) : undefined;
   // A service's own `service_id` (only possible through the JSON, and refused by APISIX) is no source.
@@ -223,6 +225,7 @@ export const UpstreamSourceField: FC<UpstreamSourceFieldProps> = ({ draft, setDr
               issues={withinPath(issues, 'upstream')}
               ctx={ctx}
               subsystem={subsystem}
+              stored={isObj(original?.value.upstream) ? original.value.upstream : undefined}
             />
           </PendingScope>
         </div>

@@ -5,6 +5,6 @@
 import type { TabProps } from '../registry';
 import { UpstreamSourceField } from '../UpstreamSourceField';
 
-export function UpstreamTab({ draft, setDraft, ctx, issues, isNew, kind }: TabProps) {
-  return <UpstreamSourceField draft={draft} setDraft={setDraft} ctx={ctx} issues={issues} isNew={isNew} kind={kind} allowService />;
+export function UpstreamTab({ draft, setDraft, ctx, issues, isNew, kind, original }: TabProps) {
+  return <UpstreamSourceField draft={draft} setDraft={setDraft} ctx={ctx} issues={issues} isNew={isNew} kind={kind} original={original} allowService />;
 }

@@ -5,7 +5,7 @@ import type { SectionId } from './meta';
 import { upstreamSections } from './sections';
 import './upstream.css';
 
-export function SectionTab({ section, draft, setDraft, issues, ctx }: TabProps & { section: SectionId }) {
+export function SectionTab({ section, draft, setDraft, issues, ctx, original }: TabProps & { section: SectionId }) {
   const s = upstreamSections.find((candidate) => candidate.id === section);
-  return <div className="up up--tab">{s?.render({ value: draft, onChange: setDraft, issues, ctx })}</div>;
+  return <div className="up up--tab">{s?.render({ value: draft, onChange: setDraft, issues, ctx, stored: original?.value })}</div>;
 }

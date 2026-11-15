@@ -358,7 +358,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
             taken={createId !== undefined && failure?.taken === createId ? createId : createId !== undefined ? findInCtx(kind, createId, ctx)?.id : undefined}
           />
         )}
-        <LockProvider locked={!editable} session={session}>
+        <LockProvider locked={!editable} session={session} busy={saving}>
           <PendingProvider key={epoch} onChange={tabState.onPending}>
             <Tabs tabs={tabs} active={active} onChange={tabState.chooseTab} />
           </PendingProvider>
