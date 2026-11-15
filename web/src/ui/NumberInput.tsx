@@ -1,5 +1,6 @@
 import { useState, type ComponentProps, type KeyboardEvent } from 'react';
 import { t } from '../i18n';
+import { DECIMAL_TEXT, exactly } from './decimal';
 import { Field, type FieldProps } from './Field';
 import { nameOfField, useFieldIds } from './fieldIds';
 import { useLocked } from './LockContext';
@@ -28,31 +29,16 @@ export type NumberInputProps = Omit<
 type Problem = 'invalid' | 'whole' | 'inexact';
 type Parsed = { ok: true; value: number | undefined } | { ok: false; message: string; problem: Problem };
 
-const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
-const DECIMAL = /^([+-]?)(\d*)\.?(\d*)(?:e([+-]?\d+))?$/i;
-
-/**
- * The number a decimal text denotes, written one way: its significant digits and a power of ten
- * ("1.50", "15e-1" and "1.5" are all "15e-1"). Two texts are the same number when these match.
- */
-function decimalOf(text: string): string {
-  const [, sign = '', int = '', frac = '', exp = '0'] = DECIMAL.exec(text) ?? [];
-  const all = (int + frac).replace(/^0+/, '');
-  if (all === '') return '0';
-  const digits = all.replace(/0+$/, '');
-  return `${sign === '-' ? '-' : ''}${digits}e${Number(exp) - frac.length + (all.length - digits.length)}`;
-}
-
 function parse(text: string, integer: boolean | undefined): Parsed {
   const s = text.trim();
   if (s === '') return { ok: true, value: undefined };
   const n = Number(s);
-  if (!NUMBER.test(s) || !Number.isFinite(n)) return { ok: false, message: t('ui.number.invalid'), problem: 'invalid' };
+  if (!DECIMAL_TEXT.test(s) || !Number.isFinite(n)) return { ok: false, message: t('ui.number.invalid'), problem: 'invalid' };
   if (integer && !Number.isInteger(n)) return { ok: false, message: t('ui.number.integer'), problem: 'whole' };
   // The number emitted must be the one shown, not a rounded one (more digits than a double keeps,
   // e.g. most integers past 2^53). Text that reads back as the same number is emitted: "1.50", "1e3",
   // ".5", and big integers a double holds exactly (2^53, 1e19).
-  if (decimalOf(s) !== decimalOf(String(n))) return { ok: false, message: t('ui.number.inexact'), problem: 'inexact' };
+  if (!exactly(s, n)) return { ok: false, message: t('ui.number.inexact'), problem: 'inexact' };
   return { ok: true, value: n };
 }
 

@@ -4,6 +4,7 @@
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { schemaGaps, validatorFor } from '../schema/ajv';
+import { DECIMAL_TEXT, exactly } from '../ui/decimal';
 import { isObj } from '../schema/refs';
 import { ANY_SCHEMA, jsonType, type MapNode, type Node, type ObjectNode, type ObjectPart, type Prop, type VariantNode } from './analyze';
 
@@ -43,15 +44,21 @@ export function blankOf(node: Node): unknown {
   }
 }
 
-const NUMERIC = /^[+-]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i;
+/** Numeric text a double would round (ui/decimal.ts): held where it is typed, never sent (final wave D4). */
+export const INEXACT: unique symbol = Symbol('inexact');
 
-/** Text typed where a number or text goes: a number when it reads as one (whole, if `integer`), else the text; '' is undefined. */
-export function parseNumberOrText(text: string, integer: boolean): number | string | undefined {
+/**
+ * Text typed where a number or text goes (a number-or-text field, a numeric tag): a number when it
+ * reads as one (whole, if `integer`) that a double holds exactly; INEXACT when it reads as one a
+ * double would round; else the text; '' is undefined.
+ */
+export function parseNumberOrText(text: string, integer: boolean): number | string | undefined | typeof INEXACT {
   if (text === '') return undefined;
   const s = text.trim();
-  if (!NUMERIC.test(s)) return text;
+  if (!DECIMAL_TEXT.test(s)) return text;
   const n = Number(s);
-  return Number.isFinite(n) && (!integer || Number.isInteger(n)) ? n : text;
+  if (!Number.isFinite(n) || (integer && !Number.isInteger(n))) return text;
+  return exactly(s, n) ? n : INEXACT;
 }
 
 // --- Fit -------------------------------------------------------------------------------------

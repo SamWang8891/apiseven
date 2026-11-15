@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { changeTo, reactProps } from '../test/reactProps';
+import { schemaOf } from '../test/pluginFixture';
 import { renderSchemaForm } from '../test/schemaForm';
 import { PendingProvider, type PendingEntry } from '../ui';
 import { SchemaForm } from './SchemaForm';
@@ -369,5 +370,45 @@ describe('map rows equal their value after an outside change too (fix round 3)',
     expect(key(1)).toHaveValue('');
     expect(key(2)).toHaveValue('c');
     expect(form.value()).toEqual({ limits: { a: 1, c: 2 } });
+  });
+});
+
+// Final wave D4: a number the browser cannot hold exactly (more digits than a double keeps) is held,
+// as the kit NumberInput holds it, wherever the schema form parses one: what a field shows is what is sent.
+describe('numbers a double would round are held, never sent rounded', () => {
+  const BIG = '9007199254740993';
+
+  it('limit-count.count (a number or text, 3.20): the digits stay, held and flagged, and the rounded number is never emitted', async () => {
+    const form = renderSchemaForm(schemaOf('limit-count'), { count: 5, time_window: 60 }, { name: 'limit-count' });
+    const count = screen.getByRole('textbox', { name: /^count/ });
+    await form.user.clear(count);
+    await form.user.type(count, BIG);
+    await form.user.tab();
+    expect(count).toHaveValue(BIG);
+    expect(count).toHaveAttribute('aria-invalid', 'true');
+    expect(form.held()).toEqual([t('ui.pending.inexact', { field: 'limit-count.count', text: BIG })]);
+    expect(form.changes.mock.calls.some(([v]) => (v as Obj).count === 9007199254740992)).toBe(false);
+    // Fixed, what shows is what is emitted.
+    await form.user.type(count, '{Backspace}1');
+    expect(form.held()).toEqual([]);
+    expect(form.value()).toEqual({ count: 9007199254740991, time_window: 60 });
+  });
+
+  it('a numeric tag (integer items, and number-or-text items) is refused with the reason, and nothing rounded is added', async () => {
+    const schema: Obj = {
+      type: 'object',
+      properties: {
+        statuses: { type: 'array', items: { type: 'integer' } },
+        limits: { type: 'array', items: { oneOf: [{ type: 'integer' }, { type: 'string' }] } },
+      },
+    };
+    const form = renderSchemaForm(schema, {});
+    for (const name of ['statuses', 'limits']) {
+      const box = screen.getByRole('textbox', { name: new RegExp(`^${name}`) });
+      await form.user.type(box, BIG);
+      await form.user.tab();
+      expect(form.held()).toContainEqual(t('ui.pending.tag', { field: name, text: BIG, reason: t('ui.number.inexact') }));
+    }
+    expect(form.changes).not.toHaveBeenCalled();
   });
 });

@@ -3,7 +3,7 @@ import { TagInput } from '../../ui';
 import { testPattern } from '../../schema/refs';
 import type { ArrayNode, Node } from '../analyze';
 import { useFieldError, useFieldId, useFieldName } from '../context';
-import { parseNumberOrText } from '../model';
+import { INEXACT, parseNumberOrText } from '../model';
 import { FieldLabel } from './chrome';
 import { useFieldHelp } from './help';
 import { placeholderOf } from './hints';
@@ -13,6 +13,8 @@ const tagOf = (v: unknown): string => (typeof v === 'string' ? v : (JSON.stringi
 
 /** Why a typed item is refused, if it is. */
 function refusal(item: Node, tag: string): string | undefined {
+  // Digits a double would round are refused (ui/decimal.ts): the tag would not be the number sent.
+  if (item.kind === 'number' && parseNumberOrText(tag, item.integer) === INEXACT) return t('ui.number.inexact');
   if (item.kind === 'number' && !item.orText) {
     const parsed = parseNumberOrText(tag, item.integer);
     if (typeof parsed !== 'number') return item.integer ? t('ui.number.integer') : t('sf.number.invalid');
@@ -25,9 +27,12 @@ function refusal(item: Node, tag: string): string | undefined {
   return undefined;
 }
 
-/** The item a tag stands for, typed as the schema wants it. */
+/** The item a tag stands for, typed as the schema wants it (a tag refusal() let through: never inexact). */
 function itemOf(item: Node, tag: string): unknown {
-  if (item.kind === 'number') return parseNumberOrText(tag, item.integer);
+  if (item.kind === 'number') {
+    const parsed = parseNumberOrText(tag, item.integer);
+    return parsed === INEXACT ? tag : parsed;
+  }
   if (item.kind === 'enum') return item.values.find((v) => tagOf(v) === tag);
   return tag;
 }
