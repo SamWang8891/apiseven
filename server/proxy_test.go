@@ -1,8 +1,8 @@
 package main
 
 import (
+	"bufio"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -576,7 +576,7 @@ func TestProxyLogsThroughSlog(t *testing.T) {
 }
 
 // failingBody gives some bytes, then fails as a client's body does when it outlasts the read
-// timeout or sends a malformed chunk.
+// timeout.
 type failingBody struct{ sent bool }
 
 func (b *failingBody) Read(p []byte) (int, error) {
@@ -584,8 +584,12 @@ func (b *failingBody) Read(p []byte) (int, error) {
 		b.sent = true
 		return copy(p, `{"uri":"/`), nil
 	}
-	return 0, errors.New("read tcp 127.0.0.1:8080->127.0.0.1:50000: i/o timeout")
+	return 0, &net.OpError{Op: "read", Net: "tcp", Source: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 8080},
+		Addr: &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 50000}, Err: os.ErrDeadlineExceeded}
 }
+
+// The fixed answer to a body that cannot be read (pinned here as text, apart from proxy.go's constant).
+const wantUnreadable = "apiseven: could not read the request body (it was malformed, cut short or too slow to arrive)"
 
 // A failure to read the request from the client is not "cannot reach APISIX": 400, marked request.
 func TestProxyRequestBodyThatCannotBeReadIsABadRequest(t *testing.T) {
@@ -595,14 +599,64 @@ func TestProxyRequestBodyThatCannotBeReadIsABadRequest(t *testing.T) {
 		r := appRequest("PUT", "/apisix/admin/routes/r1", &failingBody{})
 		r.ContentLength = -1
 		w := serve(h, r)
-		assertErrorMsg(t, w, 400, "apiseven: could not read the request body: ")
+		assertErrorMsg(t, w, 400, wantUnreadable)
 		assertRefusal(t, "unreadable body", w, "request")
-		if strings.Contains(w.Body.String(), "reach the APISIX Admin API") {
-			t.Errorf("an unreadable request is reported as an unreachable APISIX: %s", w.Body)
+		if strings.Contains(w.Body.String(), "reach the APISIX Admin API") || strings.Contains(w.Body.String(), "i/o timeout") {
+			t.Errorf("an unreadable request is reported as an unreachable APISIX, or with the read error: %s", w.Body)
 		}
 	}
-	if strings.Contains(logs.String(), "cannot reach the APISIX Admin API") {
-		t.Errorf("logged as an unreachable APISIX:\n%s", logs)
+	if out := logs.String(); strings.Contains(out, "cannot reach the APISIX Admin API") || !strings.Contains(out, `msg="cannot read the request body" path=/apisix/admin/routes/r1 reason=timeout`) {
+		t.Errorf("not logged as an unreadable body with reason=timeout:\n%s", out)
+	}
+}
+
+// Go's parser quotes the line it refuses: a chunked body ending with the malformed trailer
+// "X-API-KEY TOPSECRET" fails with "malformed MIME header line: X-API-KEY TOPSECRET". Neither the
+// answer nor the log repeats the parser's text: a fixed sentence, and a fixed reason word in the log.
+func TestProxyRequestBodyErrorTextIsNeverRepeated(t *testing.T) {
+	head := "PUT /apisix/admin/routes/r1 HTTP/1.1\r\nHost: " + pageHost + "\r\nX-Apiseven-Request: 1\r\nContent-Type: application/json\r\n"
+	for _, tc := range []struct {
+		label, request, reason string
+	}{
+		{"a malformed chunked trailer", head + "Transfer-Encoding: chunked\r\n\r\n5\r\n{\"a\":\r\n0\r\nX-API-KEY TOPSECRET\r\n\r\n", "malformed"},
+		{"a body shorter than its Content-Length", head + "Content-Length: 50\r\n\r\n{\"uri\":\"/TOPSECRET", "truncated"},
+	} {
+		up := newUpstream(t)
+		h, logs := server(t, testConfig(t, up.URL, map[string]string{"APISIX_ADMIN_KEY": serverKey}))
+		srv := httptest.NewServer(h)
+		conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := io.WriteString(conn, tc.request); err != nil {
+			t.Fatal(err)
+		}
+		_ = conn.(*net.TCPConn).CloseWrite() // the client sends nothing more
+		res, err := http.ReadResponse(bufio.NewReader(conn), nil)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.label, err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		_ = conn.Close()
+		srv.Close() // waits for the handler, and so for its log lines
+		if res.StatusCode != 400 || res.Header.Get("X-Apiseven-Refusal") != "request" {
+			t.Errorf("%s: status %d, X-Apiseven-Refusal %q; want 400, request", tc.label, res.StatusCode, res.Header.Get("X-Apiseven-Refusal"))
+		}
+		var msg struct {
+			ErrorMsg string `json:"error_msg"`
+		}
+		if err := json.Unmarshal(body, &msg); err != nil || msg.ErrorMsg != wantUnreadable {
+			t.Errorf("%s: body %s, want error_msg %q", tc.label, body, wantUnreadable)
+		}
+		out := logs.String()
+		if !strings.Contains(out, `msg="cannot read the request body" path=/apisix/admin/routes/r1 reason=`+tc.reason+"\n") {
+			t.Errorf("%s: the log does not say reason=%s:\n%s", tc.label, tc.reason, out)
+		}
+		for _, leak := range []string{"TOPSECRET", "MIME", "EOF", serverKey} {
+			if strings.Contains(string(body), leak) || strings.Contains(out, leak) {
+				t.Errorf("%s: %q in the answer or the log:\n%s\n%s", tc.label, leak, body, out)
+			}
+		}
 	}
 }
 

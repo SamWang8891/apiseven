@@ -300,7 +300,9 @@ The server answers:
   `LISTEN` and exits 0 when healthy; the image and `compose.yaml` use it as the health check.
 
 It logs one line per request (method, path, status, duration, client address) to standard
-output, except for `/healthz`.
+output, except for `/healthz`. When a request body cannot be read, it also logs the path and a
+one-word reason (`timeout`, `truncated` or `malformed`), never the parser's message, which can quote
+the client's data.
 
 ## Security notes
 

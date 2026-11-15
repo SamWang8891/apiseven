@@ -84,6 +84,24 @@ func (b *inboundBody) failure() error {
 	return b.err
 }
 
+// unreadableBody is the whole answer to a body that could not be read. Neither it nor the log
+// carries the read error's text: Go's parser quotes the line it refuses, and a malformed chunked
+// trailer such as "X-API-KEY <key>" would put the key in the answer and the log.
+const unreadableBody = "apiseven: could not read the request body (it was malformed, cut short or too slow to arrive)"
+
+// bodyErrorReason is the one word the log says about a body read error.
+func bodyErrorReason(err error) string {
+	var netErr net.Error
+	switch {
+	case errors.As(err, &netErr) && netErr.Timeout():
+		return "timeout" // the upload outlasted the server's read timeout
+	case errors.Is(err, io.ErrUnexpectedEOF), errors.As(err, &netErr):
+		return "truncated" // the client closed or reset the connection before the body's end
+	default:
+		return "malformed" // refused by the parser: a bad chunk size, a malformed trailer
+	}
+}
+
 func hasDotSegment(p string) bool {
 	return slices.ContainsFunc(strings.Split(p, "/"), func(s string) bool { return s == "." || s == ".." })
 }
@@ -175,8 +193,8 @@ func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 					refuse(w, true, http.StatusRequestEntityTooLarge, "size", tooLarge)
 					return
 				}
-				logger.Info("cannot read the request body", "path", r.URL.Path, "error", bodyErr.Error())
-				refuse(w, true, http.StatusBadRequest, "request", "apiseven: could not read the request body: "+bodyErr.Error())
+				logger.Info("cannot read the request body", "path", r.URL.Path, "reason", bodyErrorReason(bodyErr))
+				refuse(w, true, http.StatusBadRequest, "request", unreadableBody)
 				return
 			}
 			// Transport errors name the address, never the request's URL; unwrap one that would.
