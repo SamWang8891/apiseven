@@ -12,16 +12,25 @@ import { stripTimestamps } from '../../api/sanitize';
 import type { Item, Obj } from '../../api/types';
 import { saveResource, type SaveResult } from '../../editor/save';
 import { ctxOf } from '../../test/ctx';
+import { EC_PAIR, RSA_PAIR } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
 import { sslIssues } from './validate';
 
 const env = import.meta.env as Record<string, string | undefined>;
-const api = new AdminClient({
-  id: 'live',
-  name: 'live',
-  baseUrl: env.APISIX_ADMIN_URL ?? 'http://127.0.0.1:19180',
-  key: env.APISIX_ADMIN_KEY ?? 'apiseven-dev-admin-key',
-});
+/** The writes the editor's save made, method and body. */
+const writes: { method: string; body: unknown }[] = [];
+const api = new AdminClient(
+  {
+    id: 'live',
+    name: 'live',
+    baseUrl: env.APISIX_ADMIN_URL ?? 'http://127.0.0.1:19180',
+    key: env.APISIX_ADMIN_KEY ?? 'apiseven-dev-admin-key',
+  },
+  (input, init) => {
+    if (init?.method && init.method !== 'GET') writes.push({ method: init.method, body: typeof init.body === 'string' ? JSON.parse(init.body) : undefined });
+    return fetch(input, init);
+  },
+);
 const [tlsHost = '127.0.0.1', tlsPort = '9443'] = (env.APISIX_TLS ?? '127.0.0.1:9443').split(':');
 const tag = `apiseven-live-${Date.now().toString(36)}`;
 const undo: (() => Promise<unknown>)[] = [];
@@ -31,10 +40,13 @@ function saved(result: SaveResult): Item {
   return result.item;
 }
 
-/** The subject CN APISIX presents for `servername` (undefined: no certificate, or the port is closed). */
-function presented(servername: string): Promise<string | undefined> {
+/**
+ * The subject CN APISIX presents for `servername` (undefined: no certificate, or the port is closed).
+ * `sigalgs` limits what the client accepts, so a server with an RSA and an EC pair picks that one.
+ */
+function presented(servername: string, sigalgs?: string): Promise<string | undefined> {
   return new Promise((resolve) => {
-    const socket = connect({ host: tlsHost, port: Number(tlsPort), servername, rejectUnauthorized: false }, () => {
+    const socket = connect({ host: tlsHost, port: Number(tlsPort), servername, rejectUnauthorized: false, ...(sigalgs ? { sigalgs, minVersion: 'TLSv1.3' as const } : {}) }, () => {
       const cn = socket.getPeerCertificate().subject?.CN;
       socket.end();
       resolve(typeof cn === 'string' ? cn : undefined);
@@ -48,14 +60,17 @@ function presented(servername: string): Promise<string | undefined> {
 }
 
 /** The CN once APISIX has picked the change up from etcd (a moment after the write). */
-async function until(servername: string, want: string | undefined): Promise<string | undefined> {
-  let cn = await presented(servername);
+async function until(servername: string, want: string | undefined, sigalgs?: string): Promise<string | undefined> {
+  let cn = await presented(servername, sigalgs);
   for (let i = 0; i < 20 && cn !== want; i++) {
     await new Promise((r) => setTimeout(r, 250));
-    cn = await presented(servername);
+    cn = await presented(servername, sigalgs);
   }
   return cn;
 }
+
+const ECDSA = 'ecdsa_secp256r1_sha256';
+const RSA = 'rsa_pss_rsae_sha256:rsa_pkcs1_sha256';
 
 describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => {
   afterAll(async () => {
@@ -103,5 +118,39 @@ describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => 
     await api.remove('ssls', created.id);
     undo.pop();
     if (tlsOpen) expect(await until(other, undefined)).toBeUndefined();
+  });
+
+  it('a new main pair on an SSL with an extra pair is PATCH {cert, key}: the stored extra key stays and still serves', async () => {
+    const tlsOpen = (await presented('apiseven.test')) === 'apiseven.test';
+    const sni = `${tag}-pair.live.test`;
+    const draft: Obj = { status: 1, sni, cert: SEED_CERT, key: SEED_KEY, certs: [RSA_PAIR.cert], keys: [RSA_PAIR.key] };
+    expect(sslIssues(draft, { isNew: true, ctx: ctxOf() })).toEqual([]);
+    const created = saved(await saveResource(api, { kind: 'ssls', isNew: true, draft }));
+    undo.push(() => api.remove('ssls', created.id));
+    expect(created.value).toMatchObject({ certs: [RSA_PAIR.cert] });
+    expect(created.value).not.toHaveProperty('keys');
+    if (tlsOpen) {
+      expect(await until(sni, 'apiseven.test', ECDSA)).toBe('apiseven.test');
+      expect(await presented(sni, RSA)).toBe('rsa-extra.apiseven.test');
+    }
+
+    // The main pair replaced: no extra key typed again, and the save is a PATCH of the pair alone.
+    const rotated: Obj = { ...stripTimestamps(created.value), cert: EC_PAIR.cert, key: EC_PAIR.key };
+    expect(sslIssues(rotated, { isNew: false, ctx: ctxOf(), original: created })).toEqual([]);
+    writes.length = 0;
+    const replaced = saved(await saveResource(api, { kind: 'ssls', id: created.id, isNew: false, draft: rotated, original: created }));
+    expect(writes).toEqual([{ method: 'PATCH', body: { cert: EC_PAIR.cert, key: EC_PAIR.key } }]);
+    expect(replaced.value).toMatchObject({ cert: EC_PAIR.cert, certs: [RSA_PAIR.cert] });
+    expect(replaced.value).not.toHaveProperty('key');
+
+    // The count still holds: a later PATCH is accepted (APISIX checks certs against the stored keys).
+    const described = saved(await saveResource(api, { kind: 'ssls', id: created.id, isNew: false, draft: { ...stripTimestamps(replaced.value), desc: tag }, original: replaced }));
+    expect(described.value).toMatchObject({ desc: tag, certs: [RSA_PAIR.cert] });
+
+    if (tlsOpen) {
+      // The new main certificate is presented, and the extra pair's stored key still serves its certificate.
+      expect(await until(sni, 'rotated.apiseven.test', ECDSA)).toBe('rotated.apiseven.test');
+      expect(await presented(sni, RSA)).toBe('rsa-extra.apiseven.test');
+    }
   });
 });
