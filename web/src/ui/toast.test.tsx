@@ -1,7 +1,9 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
 import { Dialog } from './Dialog';
+import { Menu } from './Menu';
 import { Toaster } from './Toaster';
 import { dismissToast, getToasts, MAX_VISIBLE, setToastPage, toast, toastsRaised } from './toast';
 
@@ -197,6 +199,70 @@ describe('toasts', () => {
     copied.focus();
     fireEvent.keyDown(copied, { key: 'Escape' });
     expect(getToasts().map((item) => item.message)).toEqual(['APISIX refused: etcd down']);
+  });
+
+  // Fix round 1, F1: an Escape that is not about a toast is left to what it is about, as with no toast on screen.
+  it('Escape outside the toasts is not marked handled: a field still sees it, and a CodeMirror Escape binding runs', async () => {
+    const { EditorView, keymap } = await import('@codemirror/view');
+    const { EditorState } = await import('@codemirror/state');
+    let escapes = 0;
+    render(<Toaster />);
+    const host = document.body.appendChild(document.createElement('div'));
+    const view = new EditorView({
+      parent: host,
+      state: EditorState.create({ doc: '{}', extensions: [keymap.of([{ key: 'Escape', run: () => ((escapes += 1), true) }])] }),
+    });
+    act(() => toast.error('Fix 1 problem before saving'));
+    view.contentDOM.focus();
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    view.contentDOM.dispatchEvent(event);
+    expect(escapes).toBe(1);
+    expect(getToasts().map((item) => item.message)).toEqual(['Fix 1 problem before saving']);
+    const field = document.body.appendChild(document.createElement('input'));
+    field.focus();
+    const plain = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    field.dispatchEvent(plain);
+    expect(plain.defaultPrevented).toBe(false);
+    view.destroy();
+    host.remove();
+    field.remove();
+  });
+
+  it('a dialog opened before a toast closes on the first Escape, and the toast stays', () => {
+    const closed = vi.fn();
+    function Page() {
+      return (
+        <>
+          <Toaster />
+          <Dialog open onClose={closed} title="Route web as JSON">
+            <button type="button">Copy</button>
+          </Dialog>
+        </>
+      );
+    }
+    render(<Page />);
+    act(() => toast.info('Copied'));
+    const copy = screen.getByRole('button', { name: 'Copy' });
+    copy.focus();
+    fireEvent.keyDown(copy, { key: 'Escape' });
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(getToasts().map((item) => item.message)).toEqual(['Copied']);
+  });
+
+  it('a menu opened before a toast closes on the first Escape, and the toast stays', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <Toaster />
+        <Menu trigger={<button type="button">Actions</button>} items={[{ id: 'edit', label: 'Edit', onSelect: () => {} }]} />
+      </>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Actions' }));
+    expect(await screen.findByRole('menu')).toBeInTheDocument();
+    act(() => toast.info('Copied'));
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(getToasts().map((item) => item.message)).toEqual(['Copied']);
   });
 
   it('a page-bound refusal goes when the user moves to another page; every other toast stays, errors included', () => {

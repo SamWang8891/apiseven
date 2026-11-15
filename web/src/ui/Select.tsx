@@ -3,6 +3,7 @@ import { Popover } from 'radix-ui';
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { t } from '../i18n';
 import { Field, type FieldProps } from './Field';
+import { escapeFallback } from './escape';
 import { useFieldIds } from './fieldIds';
 import { useLocked } from './LockContext';
 import { ReadOnlyValue } from './ReadOnly';
@@ -174,6 +175,7 @@ export function Select({
               e.preventDefault();
               triggerRef.current?.focus();
             }}
+            onKeyDown={escapeFallback(() => setOpen(false))}
           >
             {searchable && (
               <div className="ui-select__search">

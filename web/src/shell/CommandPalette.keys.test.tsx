@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Obj } from '../api/types';
@@ -6,6 +6,7 @@ import { t } from '../i18n';
 import { pathFor } from '../router/paths';
 import { DEV_CONN, renderApp, resetApp, saveConnections } from '../test/app';
 import type { FakeAdminOptions } from '../test/fakeAdmin';
+import { getToasts, toast } from '../ui/toast';
 
 beforeAll(async () => {
   await import('./CommandPalette');
@@ -47,6 +48,16 @@ function active(): HTMLElement {
 }
 
 describe('opening and closing', () => {
+  // Fix round 1, F1: a toast raised while the palette is open does not take its Escape.
+  it('Esc closes it on the first press while a toast raised after it shows; the toast stays', async () => {
+    const { user } = await open();
+    await openPalette(user);
+    act(() => toast.info('Copied'));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
+    expect(getToasts().map((item) => item.message)).toContain('Copied');
+  });
+
   it('Ctrl-K opens it while focus is in an input, with focus in its search box; Esc closes it and focus goes back', async () => {
     const { user } = await open();
     const search = await screen.findByRole('searchbox', { name: t('table.search.label', { plural: t('kind.routes.plural') }) });

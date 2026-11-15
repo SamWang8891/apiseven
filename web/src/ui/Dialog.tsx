@@ -3,6 +3,7 @@ import { Dialog as RadixDialog } from 'radix-ui';
 import { useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
+import { escapeFallback } from './escape';
 import { useModalMark } from './modal';
 import { PendingProvider, type PendingEntry } from './PendingContext';
 import './overlay.css';
@@ -29,7 +30,7 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md' }: 
     <RadixDialog.Root open={open} onOpenChange={(next) => !next && onClose()}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="ui-overlay">
-          <RadixDialog.Content className={`ui-dialog ui-dialog--${size}`} aria-describedby={undefined}>
+          <RadixDialog.Content className={`ui-dialog ui-dialog--${size}`} aria-describedby={undefined} onKeyDown={escapeFallback(onClose)}>
             <header className="ui-dialog__header">
               <RadixDialog.Title className="ui-dialog__title">{title}</RadixDialog.Title>
               <RadixDialog.Close asChild>

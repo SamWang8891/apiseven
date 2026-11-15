@@ -3,6 +3,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Button } from './Button';
 import { ModalMark } from './Dialog';
+import { escapeFallback } from './escape';
 import { PendingProvider, type PendingEntry } from './PendingContext';
 import './overlay.css';
 
@@ -39,6 +40,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, da
             className="ui-dialog ui-dialog--sm"
             {...(body === undefined ? { 'aria-describedby': undefined } : {})}
             onEscapeKeyDown={(e) => busy && e.preventDefault()}
+            onKeyDown={escapeFallback(() => !busy && onCancel())}
             onOpenAutoFocus={() => {
               returnTo.current = document.activeElement;
             }}

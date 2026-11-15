@@ -1,6 +1,6 @@
 import { ChevronUp, CircleAlert, CircleCheck, Info, X } from 'lucide-react';
 import { Toast } from 'radix-ui';
-import { useState, useSyncExternalStore } from 'react';
+import { useRef, useState, useSyncExternalStore } from 'react';
 import { t } from '../i18n';
 import { useModalOpen } from './modal';
 import { dismissToast, getToasts, MAX_VISIBLE, subscribeToasts, type ToastItem, type ToastTone } from './toast';
@@ -24,8 +24,9 @@ const DURATION: Record<ToastTone, number> = { success: 4000, info: 5000, error: 
  *   dialog (overlay.css keeps a dialog clear of the bottom 12% of the window), so none covers its
  *   buttons. The others come back, with their full time, when it closes.
  * The stack keeps the order the toasts were raised in, whatever order they were mounted in. Escape
- * dismisses a toast only while focus is in it, never one pressed elsewhere (a field, the code
- * editor's completion), which Radix would otherwise take as a dismissal of the newest.
+ * dismisses a toast only while focus is in it. One pressed elsewhere (a field, the code editor's
+ * completion, an overlay opened before the toast) is neither a dismissal nor marked handled: it does
+ * what it does with no toast on screen (an overlay below closes through ui/escape.ts).
  */
 export function Toaster() {
   const items = useSyncExternalStore(subscribeToasts, getToasts, getToasts);
@@ -50,14 +51,26 @@ export function Toaster() {
 function OneToast({ item, order }: { item: ToastItem; order: number }) {
   const { id, tone, message, action, count } = item;
   const Icon = ICONS[tone];
+  /** Set while Radix closes this toast for an Escape that was not about it: that close is ignored. */
+  const declined = useRef(false);
   return (
     <Toast.Root
       className={`ui-toast ui-toast--${tone}`}
       style={{ order }}
       type={tone === 'error' ? 'foreground' : 'background'}
       duration={DURATION[tone]}
-      onOpenChange={(open) => !open && dismissToast(id)}
-      onEscapeKeyDown={(e) => !inToast(e.target) && e.preventDefault()}
+      // Open while it is in the store: Radix asks to close it (time, swipe, the close button, Escape on it).
+      open
+      onOpenChange={(open) => {
+        if (open) return;
+        if (declined.current) declined.current = false;
+        else dismissToast(id);
+      }}
+      // An Escape pressed elsewhere is not marked handled (CodeMirror, a field, an overlay below take it:
+      // ui/escape.ts); Radix then closes this toast, which is declined.
+      onEscapeKeyDown={(e) => {
+        if (!inToast(e.target)) declined.current = true;
+      }}
     >
       <Icon className="ui-toast__icon" aria-hidden="true" size={16} strokeWidth={2.25} />
       <Toast.Description className="ui-toast__message">
@@ -106,9 +119,12 @@ function MoreRow({ count, errors, onShow }: { count: number; errors: number; onS
       duration={Infinity}
       open
       onOpenChange={() => {}}
+      // Escape on it shows what waits; one pressed elsewhere is left unhandled (OneToast), and the close
+      // Radix then asks for is ignored like every other.
       onEscapeKeyDown={(e) => {
+        if (!inToast(e.target)) return;
         e.preventDefault();
-        if (inToast(e.target)) onShow();
+        onShow();
       }}
       onSwipeStart={(e) => e.preventDefault()}
       onSwipeMove={(e) => e.preventDefault()}

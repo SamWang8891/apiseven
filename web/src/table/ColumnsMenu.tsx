@@ -3,7 +3,7 @@ import { Popover } from 'radix-ui';
 import { useEffect, useId, useRef, useState, type DragEvent, type KeyboardEvent } from 'react';
 import { t } from '../i18n';
 import type { ColumnDef } from '../resources/registry';
-import { Button } from '../ui';
+import { Button, escapeFallback } from '../ui';
 import { SelectBox } from './cells';
 
 export interface ColumnsMenuProps {
@@ -27,6 +27,7 @@ function move(order: string[], id: string, to: number): string[] {
  */
 export function ColumnsMenu({ columns, order, visible, onChange, onReset }: ColumnsMenuProps) {
   const titleId = useId();
+  const [open, setOpen] = useState(false);
   const byId = new Map(columns.map((c) => [c.id, c]));
   const shown = new Set(visible);
   const boxes = useRef(new Map<string, HTMLButtonElement>());
@@ -88,12 +89,12 @@ export function ColumnsMenu({ columns, order, visible, onChange, onReset }: Colu
   });
 
   return (
-    <Popover.Root>
+    <Popover.Root open={open} onOpenChange={setOpen}>
       <Popover.Trigger asChild>
         <Button icon={<Columns3 size={15} />} aria-label={t('table.columns')} />
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="ui-popover tbl-menu" align="end" sideOffset={4} collisionPadding={8} aria-labelledby={titleId}>
+        <Popover.Content className="ui-popover tbl-menu" align="end" sideOffset={4} collisionPadding={8} aria-labelledby={titleId} onKeyDown={escapeFallback(() => setOpen(false))}>
           <h2 className="tbl-menu__title" id={titleId}>
             {t('table.columns.title')}
           </h2>

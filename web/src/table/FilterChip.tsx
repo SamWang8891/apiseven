@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Item } from '../api/types';
 import { t } from '../i18n';
 import type { Ctx } from '../resources/ctx';
-import { Button, type Option } from '../ui';
+import { Button, escapeFallback, type Option } from '../ui';
 import { SelectBox } from './cells';
 import type { FilterDef } from './filter';
 
@@ -40,7 +40,7 @@ export function FilterChip({ filter, items, ctx, selected, onChange }: FilterChi
         </Button>
       </Popover.Trigger>
       <Popover.Portal>
-        <Popover.Content className="ui-popover tbl-menu" align="start" sideOffset={4} collisionPadding={8} aria-label={filter.label}>
+        <Popover.Content className="ui-popover tbl-menu" align="start" sideOffset={4} collisionPadding={8} aria-label={filter.label} onKeyDown={escapeFallback(() => setOpen(false))}>
           {/* Mounted only while open: the options are computed from the data then. */}
           <Options filter={filter} items={items} ctx={ctx} selected={selected} onChange={onChange} />
         </Popover.Content>

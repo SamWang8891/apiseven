@@ -1,5 +1,6 @@
 import { DropdownMenu } from 'radix-ui';
-import type { ReactElement, ReactNode } from 'react';
+import { useState, type ReactElement, type ReactNode } from 'react';
+import { escapeFallback } from './escape';
 import './overlay.css';
 
 export type MenuItem =
@@ -14,12 +15,13 @@ export interface MenuProps {
 
 /** Dropdown of actions. Opens on click or Enter/Space/ArrowDown; arrows move, typing jumps. */
 export function Menu({ trigger, items }: MenuProps) {
+  const [open, setOpen] = useState(false);
   return (
     // Non-modal: a modal menu locks page scroll, and hiding the scrollbar shifts the layout under it.
-    <DropdownMenu.Root modal={false}>
+    <DropdownMenu.Root modal={false} open={open} onOpenChange={setOpen}>
       <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="ui-popover ui-menu" align="end" sideOffset={4} collisionPadding={8}>
+        <DropdownMenu.Content className="ui-popover ui-menu" align="end" sideOffset={4} collisionPadding={8} onKeyDown={escapeFallback(() => setOpen(false))}>
           {items.map((item, i) =>
             'separator' in item ? (
               <DropdownMenu.Separator key={`separator-${i}`} className="ui-menu__separator" />
