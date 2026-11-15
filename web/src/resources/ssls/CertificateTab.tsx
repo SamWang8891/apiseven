@@ -21,16 +21,27 @@ import { typeOf } from './usage';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' ? v : undefined);
 
-/** A new SSL's certificate, as typed: emitted when it can be taken (a cleared box removes it); text with no PEM label, or with a private key, holds Save. */
+/**
+ * A new SSL's certificate, as typed: emitted when it can be taken (a cleared box removes it); text with
+ * no PEM label, or with a private key, holds Save. A draft certificate that holds a private key (typed
+ * into the JSON tab) is never put in the box: it starts empty and says that certificate stays.
+ */
 function CertField({ draft, setDraft, error }: { draft: TabProps['draft']; setDraft: TabProps['setDraft']; error?: string }) {
+  const keyInside = holdsPrivateKey(draft.cert);
   // Editing state: the text being typed (the draft keeps the last text that could be taken).
-  const [text, setText] = useEditingState(str(draft.cert) ?? '');
+  const [text, setText] = useEditingState(keyInside ? '' : (str(draft.cert) ?? ''));
   return (
     <>
+      {keyInside && text === '' && (
+        <p className="ssl-warn" role="note">
+          {t('ssl.cert.draftHoldsKey')}
+        </p>
+      )}
       <CertBox
         label={t('ssl.pem.cert')}
         help={t('ssl.pem.certHelp')}
         value={text}
+        standing={keyInside ? undefined : str(draft.cert)}
         error={error}
         onChange={(next) => {
           setText(next);

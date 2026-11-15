@@ -60,13 +60,24 @@ function CaField({ client, write, error }: { client: Obj; write: (ca: string | u
         label={t('ssl.client.ca')}
         help={t('ssl.client.caHelp')}
         value={text}
+        standing={keyInside ? undefined : str(client.ca)}
         error={error}
         onChange={(next) => {
           setText(next);
-          if (next.trim() === '') write(undefined);
-          else if (certProblem(next) === undefined) write(next);
+          if (next.trim() === '') {
+            // The stored CA that held a key stays until a new one is entered (said below).
+            if (!keyInside) write(undefined);
+          } else if (certProblem(next) === undefined) write(next);
         }}
       />
+      {keyInside && text === '' && (
+        <p className="ssl-keyline">
+          <span>{t('ssl.client.caStays')}</span>
+          <Button size="sm" variant="ghost" onClick={() => setReplacing(false)}>
+            {t('ssl.client.keepCa')}
+          </Button>
+        </p>
+      )}
       {certProblem(text) === undefined && text.trim() !== '' && <CertDetails pem={text} />}
     </>
   );

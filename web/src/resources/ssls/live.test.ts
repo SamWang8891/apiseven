@@ -77,7 +77,7 @@ describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => 
     for (const step of undo.reverse()) await step().catch(() => undefined);
   });
 
-  it('create, PATCH of its SNIs without the key, a full PUT with a new pair, a refusal sslIssues predicts, delete', async () => {
+  it('create, PATCH of its SNIs without the key, a PATCH of a new pair, a refusal sslIssues predicts, delete', async () => {
     // The HTTPS port answers when the seed's certificate is presented for its own name.
     const tlsOpen = (await presented('apiseven.test')) === 'apiseven.test';
     // Not under *.apiseven.test, which the seed's SSL serves: only this one presents a certificate for it.
@@ -103,8 +103,11 @@ describe.skipIf(env.APISIX_LIVE !== '1')('an SSL, against a live APISIX', () => 
       expect(await presented(`x.${tag}.live.test`)).toBeUndefined();
     }
 
-    // Replace: the draft has the pair again, so a full PUT; what comes back has no key, so the next save is a PATCH.
+    // Replace: the draft has the pair again, saved as PATCH {cert, key}; what comes back has no key, so the next save is a PATCH without one.
+    writes.length = 0;
     const replaced = saved(await saveResource(api, { kind: 'ssls', id: created.id, isNew: false, draft: { ...stripTimestamps(patched.value), cert: SEED_CERT, key: SEED_KEY }, original: patched }));
+    // The cert is unchanged here, so only the key goes.
+    expect(writes).toEqual([{ method: 'PATCH', body: { key: SEED_KEY } }]);
     expect(replaced.value).not.toHaveProperty('key');
     expect(replaced.value).toMatchObject({ snis: [sni, other], cert: SEED_CERT });
 

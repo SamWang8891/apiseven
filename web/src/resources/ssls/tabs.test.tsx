@@ -180,7 +180,7 @@ describe('a new SSL: the pair inline', () => {
     expect(box).toHaveValue('');
     expect(box).toHaveFocus();
     // The empty box says the key entered before still stands.
-    expect(screen.getByText(t('ssl.key.entered'))).toBeInTheDocument();
+    expect(screen.getByText(t('ssl.key.stays'))).toBeInTheDocument();
     await user.tab();
     expect(screen.queryByRole('textbox', { name: t('ssl.pem.key') })).toBeNull();
     expect(value().key).toBe(SEED_KEY);
@@ -275,6 +275,131 @@ describe('a private key arriving whole leaves the page at once (no blur needed)'
   });
 });
 
+describe('S1: a key counts as taken only when it is whole (BEGIN and END lines, or a reference)', () => {
+  const HALF = '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49';
+  const fill = async (user: ReturnType<typeof renderSsl>['user'], box: HTMLElement, text: string) => {
+    await user.click(box);
+    await user.paste(text);
+  };
+
+  it('dialog: a half key is not taken (Apply off, held); cleared, nothing stands', async () => {
+    const { user } = renderSsl(CertificateTab, STORED);
+    const dialog = await openReplace(user);
+    await fill(user, within(dialog).getByRole('textbox', { name: t('ssl.pem.cert') }), SEED_CERT);
+    const key = within(dialog).getByRole('textbox', { name: t('ssl.pem.key') });
+    await fill(user, key, HALF);
+    expect(within(dialog).getByText(t('ssl.pem.incomplete'))).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: t('ssl.replace.apply') })).toBeDisabled();
+    await user.clear(key);
+    expect(within(dialog).queryByText(t('ssl.key.entered'))).toBeNull();
+    expect(within(dialog).getByRole('button', { name: t('ssl.replace.apply') })).toBeDisabled();
+  });
+
+  it('dialog: after a whole key, Replace key and a half key: the earlier key stands and the box says so; cleared, it is the one applied', async () => {
+    const { user, value } = renderSsl(CertificateTab, STORED);
+    const dialog = await openReplace(user);
+    await fill(user, within(dialog).getByRole('textbox', { name: t('ssl.pem.cert') }), SEED_CERT);
+    await fill(user, within(dialog).getByRole('textbox', { name: t('ssl.pem.key') }), SEED_KEY);
+    await user.click(within(dialog).getByRole('button', { name: t('ssl.key.replaceKey') }));
+    const key = within(dialog).getByRole('textbox', { name: t('ssl.pem.key') });
+    await user.type(key, '-----BEGIN PRIVATE KEY-----');
+    expect(within(dialog).getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: t('ssl.replace.apply') })).toBeDisabled();
+    await user.clear(key);
+    expect(within(dialog).getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: t('ssl.replace.apply') }));
+    expect(value()).toEqual({ ...STORED, cert: SEED_CERT, key: SEED_KEY });
+  });
+
+  it('new SSL: a half key typed and cleared leaves no key; left in the box, it is held, not taken', async () => {
+    const { user, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    await user.type(key, '-----BEGIN PRIVATE KEY-----');
+    expect(value()).not.toHaveProperty('key');
+    await user.clear(key);
+    expect(value()).not.toHaveProperty('key');
+    expect(screen.queryByText(t('ssl.key.entered'))).toBeNull();
+    await fill(user, key, HALF);
+    await user.tab();
+    expect(value()).not.toHaveProperty('key');
+    expect(held()).toEqual([t('ui.pending.problem', { field: t('ssl.pem.key'), problem: t('ssl.pem.incomplete') })]);
+  });
+
+  it('a reference is whole as typed: it is the key', async () => {
+    const { user, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    await user.type(screen.getByRole('textbox', { name: t('ssl.pem.key') }), '$secret://vault/1/ssl/key');
+    expect(value().key).toBe('$secret://vault/1/ssl/key');
+  });
+});
+
+describe('S3: a refused file leaves the box and the draft as they were', () => {
+  const COMBINED = SEED_CERT + SEED_KEY;
+  const upload = async (user: ReturnType<typeof renderSsl>['user'], scope: HTMLElement, at: number, file: File) =>
+    user.upload(scope.querySelectorAll<HTMLInputElement>('input[type="file"]')[at] as HTMLInputElement, file);
+
+  it('new SSL: a combined file on a box that holds a certificate', async () => {
+    const { user, container, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    await upload(user, container, 0, new File([COMBINED], 'both.pem'));
+    expect(await screen.findByText(t('ssl.pem.fileHasKey'))).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: t('ssl.pem.cert') })).toHaveValue(SEED_CERT);
+    expect(value()).toEqual({ status: 1, cert: SEED_CERT });
+    expect(document.body.innerHTML).not.toContain(KEY_TEXT);
+  });
+
+  it('the CA box, editing a stored CA', async () => {
+    const stored = { ...STORED, client: { ca: SEED_CERT } };
+    const { user, container, value } = renderSsl(ClientTab, stored);
+    await upload(user, container, 0, new File([COMBINED], 'both.pem'));
+    expect(await screen.findByText(t('ssl.pem.fileHasKey'))).toBeInTheDocument();
+    expect(value()).toEqual(stored);
+  });
+
+  it('the key box: a file that is not a whole key', async () => {
+    const { user, container, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    await upload(user, container, 1, new File([SEED_CERT], 'cert.pem'));
+    expect(await screen.findByText(t('ssl.pem.fileRefused', { problem: t('ssl.pem.isCert') }))).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: t('ssl.pem.key') })).toHaveValue('');
+    expect(value()).toEqual({ status: 1, cert: SEED_CERT });
+  });
+
+  it('typed combined text over a certificate gives way, when the box is left, to the certificate it held', async () => {
+    const { user, value } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT }, { isNew: true });
+    const box = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
+    // Pasted over the whole text in one go: the draft keeps its certificate meanwhile (held).
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(COMBINED);
+    expect(value()).toEqual({ status: 1, cert: SEED_CERT });
+    await user.tab();
+    expect(box).toHaveValue(SEED_CERT);
+    expect(value()).toEqual({ status: 1, cert: SEED_CERT });
+    expect(screen.getByText(t('ssl.pem.keyCleared'))).toBeInTheDocument();
+  });
+});
+
+describe('S2 and S4: a box never shows a stored text that holds a key, and says what the draft keeps', () => {
+  const COMBINED = SEED_CERT + SEED_KEY;
+
+  it('Replace CA: the empty box says the stored CA stays, and Keep the stored CA closes it', async () => {
+    const stored = { ...STORED, client: { ca: COMBINED } };
+    const { user, value } = renderSsl(ClientTab, stored, { original: itemOf('s1', stored) });
+    await user.click(screen.getByRole('button', { name: t('ssl.client.replaceCa') }));
+    expect(screen.getByRole('textbox', { name: t('ssl.client.ca') })).toHaveValue('');
+    expect(screen.getByText(t('ssl.client.caStays'))).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: t('ssl.client.keepCa') }));
+    expect(screen.queryByRole('textbox', { name: t('ssl.client.ca') })).toBeNull();
+    expect(screen.getByRole('button', { name: t('ssl.client.replaceCa') })).toBeInTheDocument();
+    expect(value()).toEqual(stored);
+  });
+
+  it("a new SSL whose draft certificate (from the JSON tab) holds a key: an empty box and a warning, the key not on the page", () => {
+    renderSsl(CertificateTab, { status: 1, cert: COMBINED }, { isNew: true });
+    expect(screen.getByRole('textbox', { name: t('ssl.pem.cert') })).toHaveValue('');
+    expect(screen.getByText(t('ssl.cert.draftHoldsKey'))).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(KEY_TEXT);
+  });
+});
+
 describe('files are checked before they are read', () => {
   const pick = async (user: ReturnType<typeof renderSsl>['user'], dialog: HTMLElement, file: File) =>
     user.upload(dialog.querySelectorAll<HTMLInputElement>('input[type="file"]')[0] as HTMLInputElement, file);
@@ -331,7 +456,7 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
   it('uploaded in the new SSL certificate box: never shown, nothing taken', async () => {
     const { user, container, value } = renderSsl(CertificateTab, { status: 1 }, { isNew: true });
     await user.upload(container.querySelectorAll<HTMLInputElement>('input[type="file"]')[0] as HTMLInputElement, new File([COMBINED], 'both.pem'));
-    expect(await screen.findByText(t('ssl.pem.keyCleared'))).toBeInTheDocument();
+    expect(await screen.findByText(t('ssl.pem.fileHasKey'))).toBeInTheDocument();
     expect(value()).toEqual({ status: 1 });
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
   });

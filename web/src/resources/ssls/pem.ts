@@ -34,8 +34,15 @@ export function keyProblem(text: string): string | undefined {
   return CERT_LABEL.test(text) ? t('ssl.pem.isCert') : t('ssl.pem.noKeyLabel');
 }
 
-/** A private key that can be taken and has its END line: it arrived whole (pasted, uploaded, dropped). */
-export const completeKey = (text: string): boolean => keyProblem(text) === undefined && KEY_END.test(text);
+/**
+ * A private key whole enough to be taken: PEM with its BEGIN and END lines, or a $secret:// / $env://
+ * reference. Nothing less is ever the entered key (fix round 2, S1).
+ */
+export const wholeKey = (text: string): boolean => text.trim() !== '' && keyProblem(text) === undefined && (isSecretRef(text.trim()) || KEY_END.test(text));
+
+/** Why a key box's text is not taken: keyProblem, or a PEM key still without its END line. */
+export const keyBoxProblem = (text: string): string | undefined =>
+  keyProblem(text) ?? (text.trim() !== '' && !wholeKey(text) ? t('ssl.pem.incomplete') : undefined);
 
 /**
  * Why a typed SNI is refused: the schema's pattern (host_def_pat), or a wildcard that is not `*.`
