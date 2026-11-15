@@ -4,7 +4,9 @@
 // sends). Typed names are checked against the schema's pattern, and a wildcard that isn't `*.` is
 // refused as it is typed (the router would match it oddly: "*foo.test" covers "foo.test" and
 // "xfoo.test"). A note names the other certificates with one of these SNIs: APISIX presents the one
-// it loaded first.
+// it loaded first. Another names the SNIs the certificate's DNS names don't cover as a client judges
+// them (sniCover.ts), when those names are known here: clients sent to them are shown a certificate
+// that doesn't name them. Both are notes; neither holds or refuses anything.
 import { issuesUnder } from '../../editor/issues';
 import { t } from '../../i18n';
 import { Button, TagInput, useLocked } from '../../ui';
@@ -13,6 +15,7 @@ import { servedToClients, sniList } from '../resolve';
 import { readPair, writePair } from '../routes/pairs';
 import { sniProblem } from './pem';
 import { parseCert } from './parseCert';
+import { uncoveredSnis } from './sniCover';
 import { certOf, typeOf } from './usage';
 import { isSecretRef } from './validate';
 
@@ -32,9 +35,12 @@ export function SnisTab({ draft, setDraft, issues, ctx, original }: TabProps) {
   const locked = useLocked();
   const snis = readPair(draft, 'sni', 'snis');
   const error = [...issuesUnder(issues, 'sni'), ...issuesUnder(issues, 'snis')][0]?.message;
-  const dns = certOf(draft)?.dns ?? [];
+  const info = certOf(draft);
+  const dns = info?.dns ?? [];
   const sansNote = sansNoteOf(draft.cert, dns);
   const client = typeOf(draft) === 'client';
+  // A client certificate is shown to no TLS client; a certificate whose names aren't known says nothing.
+  const unnamed = info && !client ? uncoveredSnis(snis, dns) : [];
   // Other enabled server certificates with one of these SNIs, once the list has loaded.
   const own = new Set(sniList(draft));
   const others = ctx.loaded.ssls && servedToClients(draft)
@@ -63,6 +69,11 @@ export function SnisTab({ draft, setDraft, issues, ctx, original }: TabProps) {
         </div>
       )}
       {client && <p className="ed-note">{t('ssl.snis.clientNote')}</p>}
+      {unnamed.length > 0 && (
+        <p className="ssl-warn" role="note">
+          {t('ssl.snis.notNamed', { names: unnamed.join(', ') })}
+        </p>
+      )}
       {!client && others.length > 0 && (
         <p className="ssl-warn" role="note">
           {t('ssl.snis.shared', { names: others.map((item) => item.id).join(', ') })}
