@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query';
 import { ArrowLeft, CircleAlert, Server, Trash2, TriangleAlert } from 'lucide-react';
-import { useId, useState, type FormEvent } from 'react';
+import { useId, useRef, useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router';
 import { AdminClient } from '../api/client';
 import { refusalTitle, type ApiError } from '../api/errors';
@@ -127,11 +127,18 @@ function ConnectForm({ target, onOther }: { target?: SavedConnection; onOther: (
   const [key, setKey] = useState('');
   // Asking again for a key that was kept for one tab only keeps that choice.
   const [remember, setRemember] = useState(!target?.sessionOnly);
+  // The choice as it is when the check answers, not as it was on submit (it may change meanwhile).
+  const rememberNow = useRef(remember);
   const [urlError, setUrlError] = useState<string>();
   const [keyError, setKeyError] = useState<string>();
   const check = useMutation<{ version?: string }, ApiError, Omit<Connection, 'id'>>({
     mutationFn: (conn) => new AdminClient({ id: 'connect-check', ...conn }).ping(),
   });
+
+  /** A check still running is about the fields as submitted: a change to one drops it, and its answer is ignored. */
+  const fieldChanged = () => {
+    if (check.isPending) check.reset();
+  };
 
   const normalized = normalizeAdminUrl(url);
   const typedUrl = 'url' in normalized ? normalized.url : undefined;
@@ -160,7 +167,7 @@ function ConnectForm({ target, onOther }: { target?: SavedConnection; onOther: (
       onSuccess: () => {
         // A changed key is a new connection (new id), so no cached answer of the old one is reused.
         if (target) remove(target.id);
-        add(conn, remember);
+        add(conn, rememberNow.current);
         void navigate('/routes');
       },
     });
@@ -198,6 +205,7 @@ function ConnectForm({ target, onOther }: { target?: SavedConnection; onOther: (
               )
             }
             onChange={(e) => {
+              fieldChanged();
               setUrl(e.target.value);
               setUrlError(undefined);
             }}
@@ -214,7 +222,10 @@ function ConnectForm({ target, onOther }: { target?: SavedConnection; onOther: (
             placeholder={typedUrl ? hostOf(typedUrl) : undefined}
             help={t('connect.nameHelp')}
             autoComplete="off"
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              fieldChanged();
+              setName(e.target.value);
+            }}
           />
         </>
       )}
@@ -228,11 +239,19 @@ function ConnectForm({ target, onOther }: { target?: SavedConnection; onOther: (
         error={keyError}
         help={t('connect.keyHelp')}
         onChange={(e) => {
+          fieldChanged();
           setKey(e.target.value);
           setKeyError(undefined);
         }}
       />
-      <Checkbox checked={remember} onChange={setRemember} help={t('connect.rememberHelp')}>
+      <Checkbox
+        checked={remember}
+        onChange={(on) => {
+          rememberNow.current = on;
+          setRemember(on);
+        }}
+        help={t('connect.rememberHelp')}
+      >
         {t('connect.remember')}
       </Checkbox>
       {check.error && <SubmitError error={check.error} baseUrl={check.variables?.baseUrl ?? ''} />}

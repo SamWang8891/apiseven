@@ -152,6 +152,48 @@ describe('Connect page', () => {
   });
 });
 
+// Final wave G1: what is kept is decided when the check answers, and a check is about the fields as submitted.
+describe('a check still pending', () => {
+  /** A fake Admin API whose answer to the check waits for `release`. */
+  function gated() {
+    let release = () => {};
+    const gate = new Promise<undefined>((done) => (release = () => done(undefined)));
+    return { replies: { routes: () => gate }, release: () => release() };
+  }
+
+  it('Remember unticked while the check runs: the key is kept for this tab only, never in localStorage', async () => {
+    const { replies, release } = gated();
+    const setItem = vi.spyOn(Storage.prototype, 'setItem');
+    const { user } = await openConnect({ key: KEY, replies });
+    const remember = screen.getByRole('checkbox', { name: t('connect.remember') });
+    expect(remember).toBeChecked();
+    await fillAndSubmit(user, 'http://127.0.0.1:9180', KEY);
+    await user.click(remember);
+    expect(remember).not.toBeChecked();
+    release();
+    await waitFor(() => expect(window.location.hash).toBe('#/routes'));
+    const localWrites = setItem.mock.calls.filter((_, i) => setItem.mock.contexts[i] === localStorage);
+    for (const [name, value] of localWrites) {
+      expect(name).not.toContain(KEY);
+      expect(value).not.toContain(KEY);
+    }
+    expect(sessionStorage.getItem(STORAGE_KEYS.sessionKeys)).toContain(KEY);
+  });
+
+  it('a connection field changed while the check runs: its answer is ignored, nothing is saved, the page stays', async () => {
+    const { replies, release } = gated();
+    const { user } = await openConnect({ key: KEY, replies });
+    await fillAndSubmit(user, 'http://127.0.0.1:9180', KEY);
+    await user.type(screen.getByLabelText(t('connect.url')), '0');
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(window.location.hash).toBe('#/connect');
+    expect(localStorage.getItem(STORAGE_KEYS.connections) ?? '').not.toContain('127.0.0.1');
+    expect(sessionStorage.getItem(STORAGE_KEYS.sessionKeys) ?? '').not.toContain(KEY);
+    expect(screen.getByLabelText(t('connect.url'))).toHaveValue('http://127.0.0.1:91800');
+  });
+});
+
 describe('saved connections', () => {
   const other = { id: 'other', name: 'prod', baseUrl: 'http://prod.test:9180', key: 'prod-key' };
 
