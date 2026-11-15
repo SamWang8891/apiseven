@@ -64,8 +64,18 @@ func newUpstream(t *testing.T) *upstream {
 		w.Header().Set("Access-Control-Expose-Headers", "*")
 		w.Header().Set("Access-Control-Max-Age", "3600")
 		w.Header().Set("Content-Type", "application/json")
-		// Something behind the proxy tries to pass for apiseven's own refusal.
+		// Something behind the proxy tries to pass for apiseven's own refusal, and sends its own
+		// copies of two security headers.
 		w.Header().Set("X-Apiseven-Refusal", "header")
+		w.Header().Set("Content-Security-Policy", "default-src *")
+		w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+		if r.URL.Path == "/apisix/admin/truncated" {
+			conn, buf, _ := w.(http.Hijacker).Hijack()
+			_, _ = buf.WriteString("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\n\r\n{\"total\"")
+			_ = buf.Flush()
+			_ = conn.Close()
+			return
+		}
 		var code int
 		if _, err := fmt.Sscanf(r.URL.Path, "/apisix/admin/status/%d", &code); err == nil {
 			w.WriteHeader(code)
@@ -516,5 +526,50 @@ func TestProxiedErrorsAreNeverMarked(t *testing.T) {
 	}
 	if n := up.count(); n != 4 {
 		t.Errorf("%d requests reached APISIX, want 4", n)
+	}
+}
+
+func TestProxyRefusesBodiesOver16MiB(t *testing.T) {
+	up := newUpstream(t)
+	h, _ := server(t, testConfig(t, up.URL, nil))
+	big := strings.Repeat("x", maxBodyBytes+1)
+
+	// Announced by Content-Length (as browsers send it): refused before anything is forwarded.
+	w := serve(h, appRequest("PUT", "/apisix/admin/protos/p1", strings.NewReader(big)))
+	assertErrorMsg(t, w, 413, "apiseven: the request body is larger than 16 MiB")
+	assertRefusal(t, "Content-Length", w, "size")
+	if n := up.count(); n != 0 {
+		t.Errorf("%d oversized requests reached APISIX", n)
+	}
+
+	// Streamed without a length: cut off at the limit, answered the same.
+	r := appRequest("PUT", "/apisix/admin/protos/p1", io.MultiReader(strings.NewReader(big)))
+	r.ContentLength = -1
+	w = serve(h, r)
+	assertErrorMsg(t, w, 413, "apiseven: the request body is larger than 16 MiB")
+	assertRefusal(t, "streamed", w, "size")
+
+	// Exactly the limit passes.
+	w = serve(h, appRequest("PUT", "/apisix/admin/protos/p1", strings.NewReader(big[:maxBodyBytes])))
+	if w.Code != 200 || up.last(t).BodySize != maxBodyBytes {
+		t.Errorf("a 16 MiB body: %d, APISIX saw %d bytes", w.Code, up.last(t).BodySize)
+	}
+}
+
+// The reverse proxy's own messages (a broken answer from APISIX) go through slog, at WARN.
+func TestProxyLogsThroughSlog(t *testing.T) {
+	up := newUpstream(t)
+	h, logs := server(t, testConfig(t, up.URL, map[string]string{"APISIX_ADMIN_KEY": serverKey}))
+	r := appRequest("GET", "/apisix/admin/truncated?api_key=query-secret", nil)
+	r.Header.Set("Cookie", "cookie-secret")
+	serve(h, r)
+	out := logs.String()
+	if !strings.Contains(out, "level=WARN") || !strings.Contains(out, "ReverseProxy read error during body copy") {
+		t.Errorf("the proxy's own message is not in the slog output:\n%s", out)
+	}
+	for _, secret := range []string{serverKey, "query-secret", "cookie-secret"} {
+		if strings.Contains(out, secret) {
+			t.Errorf("the log holds %q:\n%s", secret, out)
+		}
 	}
 }

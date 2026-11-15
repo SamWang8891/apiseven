@@ -76,7 +76,9 @@ func assertSecurityHeaders(t *testing.T, label string, h http.Header) {
 	}
 }
 
-func TestContentSecurityPolicy(t *testing.T) {
+// The policy the amendment set, except script-src: 'unsafe-eval' lets Ajv compile the plugin schemas
+// APISIX reports into functions; inline and foreign scripts stay blocked.
+func TestContentSecurityPolicyAllowsEvalForAjvAndNoInlineOrForeignScript(t *testing.T) {
 	want := "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
 		"font-src 'self' data:; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 	if contentSecurityPolicy != want {

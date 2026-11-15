@@ -18,11 +18,14 @@ import (
 	"time"
 )
 
-// contentSecurityPolicy is sent with every response. The app needs no inline script and connects
-// only to its own origin here (the Admin API through the proxy); inline styles are for CodeMirror
-// and the style attributes React sets. 'unsafe-eval' is for Ajv, which compiles each JSON schema
-// (plugin schemas come from APISIX at run time) into a function with new Function; without it the
-// plugin forms lose their checks and their conditional fields.
+// contentSecurityPolicy is sent with every response. Everything comes from apiseven's own origin:
+// the app needs no inline script, and here it connects only to itself (config.json and the proxy).
+// 'unsafe-eval' is there because the form validator (Ajv) compiles each JSON schema APISIX reports
+// into a function with new Function, in the browser, at run time; it lets scripts already running in
+// the page use eval, while inline and foreign scripts stay blocked. Without it the plugin forms lose
+// their checks and their conditional fields. 'unsafe-inline' styles are for CodeMirror's style
+// elements and the style attributes React sets. The static folder and the single file have no policy:
+// no server sends them headers.
 const contentSecurityPolicy = "default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; " +
 	"font-src 'self' data:; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 

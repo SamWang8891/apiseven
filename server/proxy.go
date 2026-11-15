@@ -16,6 +16,11 @@ import (
 
 var proxyMethods = []string{"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
 
+// maxBodyBytes bounds a proxied request body: ample for protos and certificate chains.
+const maxBodyBytes = 16 << 20
+
+const tooLarge = "apiseven: the request body is larger than 16 MiB"
+
 // serveAdmin guards the Admin API proxy against requests the app did not make. Another web page
 // can make the operator's browser send a "simple" cross-origin request here (no preflight); it
 // cannot add a custom header without a preflight, which this server never grants, and a browser
@@ -39,6 +44,12 @@ func (h *handler) serveAdmin(w http.ResponseWriter, r *http.Request) {
 		refuse(w, true, http.StatusForbidden, "header", "apiseven: missing X-Apiseven-Request header")
 		return
 	}
+	if r.ContentLength > maxBodyBytes {
+		refuse(w, true, http.StatusRequestEntityTooLarge, "size", tooLarge)
+		return
+	}
+	// A body sent without a length is cut off at the limit; ErrorHandler answers 413 then.
+	r.Body = http.MaxBytesReader(w, r.Body, maxBodyBytes)
 	h.proxy.ServeHTTP(w, r)
 }
 
@@ -95,6 +106,8 @@ func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 	transport.ResponseHeaderTimeout = 60 * time.Second
 	return &httputil.ReverseProxy{
 		Transport: transport,
+		// Its own messages (such as a broken answer from APISIX) hold errors, never header values.
+		ErrorLog: slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		Rewrite: func(pr *httputil.ProxyRequest) {
 			pr.SetURL(target)
 			out := pr.Out.Header
@@ -123,6 +136,11 @@ func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
+			var tooBig *http.MaxBytesError
+			if errors.As(err, &tooBig) {
+				refuse(w, true, http.StatusRequestEntityTooLarge, "size", tooLarge)
+				return
+			}
 			// Transport errors name the address, never the request's URL; unwrap one that would.
 			var urlErr *url.Error
 			if errors.As(err, &urlErr) {
