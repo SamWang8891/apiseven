@@ -186,6 +186,26 @@ describe('the upstream editor', () => {
       expect(hostN(3)).toHaveFocus();
     });
 
+    // Fix round 2, R1.3: a row held for a clash that another row's edit resolved stays flagged while it is held.
+    it('row 3 held as a duplicate of row 1; row 1 renamed resolves it: row 3 stays flagged, a refused Save focuses it, leaving it adds it', async () => {
+      const MAPPED = { ...POOL, nodes: { 'a:80': 1, 'b:80': 1, 'c:80': 1 } };
+      const { user } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [MAPPED] } });
+      await main().findByRole('heading', { level: 1, name: 'web-pool' });
+      await user.keyboard('e');
+      await user.clear(await waitFor(() => hostN(3)));
+      await user.type(hostN(3), 'a');
+      await user.clear(hostN(1));
+      await user.type(hostN(1), 'z');
+      expect(hostN(3)).toHaveAttribute('aria-invalid', 'true');
+      expect(hostN(3)).toHaveAccessibleDescription(t('up.nodes.heldNotYet'));
+      await user.click(main().getByRole('button', { name: t('editor.save') }));
+      expect(hostN(3)).toHaveFocus();
+      await user.tab();
+      expect(hostN(3)).not.toHaveAttribute('aria-invalid');
+      await user.click(main().getByRole('button', { name: t('editor.save') }));
+      await waitFor(async () => expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument());
+    });
+
     it('a stored host holding a port: click in, Tab out: nothing changes, the page is not unsaved', async () => {
       const STORED = { ...POOL, nodes: [{ host: '10.0.0.5:8080', port: 80, weight: 1 }] };
       const { user } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [STORED] } });

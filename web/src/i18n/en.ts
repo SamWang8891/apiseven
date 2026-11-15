@@ -831,6 +831,7 @@ export const en: Record<string, string> = {
   'up.nodes.hostHasPort': 'Holds a port ({port}): APISIX would look the whole text up as a host name.',
   'up.nodes.hostColon': 'Holds ":": APISIX would look the whole text up as a host name.',
   'up.nodes.colonHeld': 'Not in the list yet: a host here can hold ":" only as an IPv6 address.',
+  'up.nodes.heldNotYet': 'Not in the list yet: leave this field to add it.',
   'up.nodes.movePort': 'Move {port} to Port',
   'up.nodes.movePortN': 'Move {port} to Port, node {n}',
   'up.nodes.movePortNew': 'Move {port} to Port, new node',

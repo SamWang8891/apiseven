@@ -301,6 +301,16 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     const h = held[idOf(i)];
     return h && strayColon(h.host) ? t('up.nodes.colonHeld') : undefined;
   };
+  /**
+   * A row still held after what held it went (another row's edit resolved the clash): judged from the
+   * rows now, it is flagged with its own message while it holds (addendum 2), so a refused Save has its
+   * field to focus. Leaving the field adds it (settle). An all-digit host is held only while it is typed.
+   */
+  const heldNotYet = (i: number): string | undefined => {
+    const h = held[idOf(i)];
+    if (!h || strayColon(h.host) || (h.port === undefined && /^\d+$/.test(h.host)) || otherOf(i) >= 0) return undefined;
+    return t('up.nodes.heldNotYet');
+  };
   /** The "Move <port> to Port" action, for a host that holds a port the row can take. */
   const moveButton = (i: number) => {
     const port = portInHost(hostText(i));
@@ -340,7 +350,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
           <HostInput
             aria-label={t('up.nodes.hostN', { n })}
             value={map ? hostText(i) : (row.host ?? '')}
-            error={duplicateOf(i) ?? issue(i, 'host') ?? colonHeld(i)}
+            error={duplicateOf(i) ?? issue(i, 'host') ?? colonHeld(i) ?? heldNotYet(i)}
             help={hostHint(i)}
             onChange={(e) => (map ? editAddress(i, { host: e.target.value, port: address.port }) : onChange(setNodeField(value, i, 'host', e.target.value)))}
             onKeyDown={enterMoves(i)}
