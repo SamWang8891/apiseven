@@ -217,6 +217,62 @@
   font-weight: 400;
 }
 
+/* The command palette's button, styled as a search field: icon, "Search…", the shortcut. */
+.shell-search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 220px;
+  height: var(--control-h-sm);
+  padding: 0 6px 0 var(--s2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--bg);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.shell-search:hover {
+  border-color: var(--text-2);
+  color: var(--text);
+}
+
+.shell-search__icon {
+  flex: none;
+}
+
+.shell-search__label {
+  flex: 1;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.shell-search__key {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--bg-sunken);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+/* Narrow windows: the icon and the shortcut only. */
+@media (max-width: 1180px) {
+  .shell-search {
+    width: auto;
+  }
+
+  .shell-search__label {
+    display: none;
+  }
+}
+
 .shell-version {
   display: inline-flex;
   align-items: center;

@@ -1,5 +1,5 @@
 import { LockKeyhole } from 'lucide-react';
-import { Fragment, useMemo, type ReactNode } from 'react';
+import { Fragment, lazy, Suspense, useMemo, useRef, type ReactNode } from 'react';
 import { Link, Navigate, Outlet, useLocation } from 'react-router';
 import { AdminClient } from '../api/client';
 import { ClientProvider } from '../api/hooks';
@@ -8,9 +8,13 @@ import { needsKey, useConnections, type SavedConnection } from '../connection/st
 import { t } from '../i18n';
 import { kindFromSegment, pathFor } from '../router/paths';
 import { Toaster, TooltipProvider } from '../ui';
-import { Header } from './Header';
+import { Header, SearchTrigger } from './Header';
 import { Sidebar } from './Sidebar';
+import { usePalette } from './usePalette';
 import './shell.css';
+
+// The palette and its search load on first open; the hotkey and the header button are all the entry holds.
+const CommandPalette = lazy(() => import('./CommandPalette'));
 
 /**
  * The frame of every page that talks to APISIX: sidebar, header, and the page in a scrolling main
@@ -28,18 +32,34 @@ function Frame({ conn }: { conn: SavedConnection }) {
   return (
     <ClientProvider client={client}>
       <TooltipProvider>
-        <div className="shell">
-          <Sidebar />
-          <Header title={<Breadcrumb />} />
-          <ReadOnlyBanner />
-          {/* Keyed by connection: a page never carries state over to another APISIX. */}
-          <main key={conn.id} className="shell-main">
-            <Outlet />
-          </main>
-        </div>
+        <Body connId={conn.id} />
         <Toaster />
       </TooltipProvider>
     </ClientProvider>
+  );
+}
+
+function Body({ connId }: { connId: string }) {
+  const main = useRef<HTMLElement>(null);
+  const palette = usePalette(main);
+  return (
+    <>
+      <div className="shell">
+        <Sidebar />
+        <Header title={<Breadcrumb />} search={<SearchTrigger onOpen={palette.show} />} />
+        <ReadOnlyBanner />
+        {/* Keyed by connection: a page never carries state over to another APISIX. Focusable, for the
+            page the palette opens. */}
+        <main key={connId} ref={main} className="shell-main" tabIndex={-1}>
+          <Outlet />
+        </main>
+      </div>
+      {palette.open && (
+        <Suspense fallback={null}>
+          <CommandPalette onClose={palette.close} />
+        </Suspense>
+      )}
+    </>
   );
 }
 

@@ -1,4 +1,4 @@
-import { Check, ChevronDown, LogOut, Monitor, Moon, Plus, Server, Sun } from 'lucide-react';
+import { Check, ChevronDown, LogOut, Monitor, Moon, Plus, Search, Server, Sun } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { usePing } from '../api/hooks';
@@ -8,11 +8,12 @@ import { t } from '../i18n';
 import { kindFromSegment, pathFor } from '../router/paths';
 import { Button, Menu, Tooltip, type MenuItem } from '../ui';
 import { useTheme, type ThemeChoice } from './theme';
+import { isMac } from './usePaletteHotkey';
 
 export interface HeaderProps {
   /** Where the user is: the page title or a breadcrumb. */
   title?: ReactNode;
-  /** Global search (Task 16). */
+  /** Global search: the command palette's button (SearchTrigger). */
   search?: ReactNode;
 }
 
@@ -27,6 +28,28 @@ export function Header({ title, search }: HeaderProps) {
         <ThemeToggle />
       </div>
     </header>
+  );
+}
+
+/**
+ * Opens the command palette: a button styled as a search field, with the shortcut. Below 1180px wide
+ * it keeps only the icon and the shortcut.
+ */
+export function SearchTrigger({ onOpen }: { onOpen: () => void }) {
+  const mac = isMac();
+  return (
+    <button
+      type="button"
+      className="shell-search"
+      aria-label={t('palette.open')}
+      aria-haspopup="dialog"
+      aria-keyshortcuts={mac ? 'Meta+K' : 'Control+K'}
+      onClick={onOpen}
+    >
+      <Search className="shell-search__icon" size={14} aria-hidden="true" />
+      <span className="shell-search__label">{t('palette.trigger')}</span>
+      <kbd className="shell-search__key">{t(mac ? 'palette.shortcut.mac' : 'palette.shortcut.other')}</kbd>
+    </button>
   );
 }
 

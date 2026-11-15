@@ -6,14 +6,7 @@ import logo from '../assets/logo.png';
 import { t } from '../i18n';
 import { pathFor } from '../router/paths';
 import { Tooltip } from '../ui';
-
-/** Sidebar groups, in order. Credentials have no entry: they live under their consumer. */
-const GROUPS: { label: string; kinds: Kind[] }[] = [
-  { label: 'nav.traffic', kinds: ['routes', 'stream_routes', 'services', 'upstreams'] },
-  { label: 'nav.access', kinds: ['consumers', 'consumer_groups', 'ssls', 'secrets'] },
-  { label: 'nav.plugins', kinds: ['global_rules', 'plugin_configs', 'plugin_metadata'] },
-  { label: 'nav.other', kinds: ['protos'] },
-];
+import { NAV_GROUPS } from './nav';
 
 export function Sidebar() {
   return (
@@ -23,7 +16,7 @@ export function Sidebar() {
         {t('app.name')}
       </Link>
       <nav className="shell-nav" aria-label={t('shell.nav')}>
-        {GROUPS.map((group) => (
+        {NAV_GROUPS.map((group) => (
           <Group key={group.label} label={t(group.label)} kinds={group.kinds} />
         ))}
       </nav>

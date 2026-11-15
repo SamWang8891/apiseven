@@ -9,6 +9,7 @@ const src = join(dirname(fileURLToPath(import.meta.url)), '..');
 const files = [
   { name: 'shell/shell.css', prefix: 'shell-' },
   { name: 'connection/connect.css', prefix: 'connect-' },
+  { name: 'shell/palette.css', prefix: 'cp-' },
 ].map(({ name, prefix }) => ({
   name,
   prefix,
@@ -19,7 +20,7 @@ function rules(css: string): [string, string][] {
   return [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => [(m[1] ?? '').trim(), m[2] ?? '']);
 }
 
-describe('shell and connect CSS', () => {
+describe('shell, palette and connect CSS', () => {
   it('uses only its own class prefix (or the bare root class), plus the shared mono helper', () => {
     for (const { name, prefix, css } of files) {
       for (const [sel] of rules(css)) {

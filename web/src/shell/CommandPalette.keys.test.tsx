@@ -1,0 +1,193 @@
+import { screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { Obj } from '../api/types';
+import { t } from '../i18n';
+import { pathFor } from '../router/paths';
+import { DEV_CONN, renderApp, resetApp, saveConnections } from '../test/app';
+
+beforeAll(async () => {
+  await import('./CommandPalette');
+});
+
+afterEach(() => {
+  resetApp();
+});
+
+const ROUTES: Obj[] = [
+  { id: 'r1', name: 'web-a', uri: '/a' },
+  { id: 'r2', name: 'web-b', uri: '/b' },
+];
+const UPSTREAMS: Obj[] = [{ id: 'u1', name: 'web-pool', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] }];
+
+async function open(hash = '#/routes') {
+  saveConnections([DEV_CONN], DEV_CONN.id);
+  const user = userEvent.setup();
+  const app = renderApp({ hash, counts: {}, objects: { routes: ROUTES, upstreams: UPSTREAMS } });
+  await screen.findByRole('main');
+  return { user, ...app };
+}
+
+const dialog = () => screen.queryByRole('dialog', { name: t('palette.title') });
+const box = () => screen.getByRole('combobox', { name: t('palette.input') });
+
+async function openPalette(user: ReturnType<typeof userEvent.setup>) {
+  await user.keyboard('{Control>}k{/Control}');
+  await screen.findByRole('dialog', { name: t('palette.title') });
+  return box();
+}
+
+/** The option aria-activedescendant points at. */
+function active(): HTMLElement {
+  const id = box().getAttribute('aria-activedescendant');
+  const el = id ? document.getElementById(id) : null;
+  if (!el) throw new Error('no active option');
+  return el;
+}
+
+describe('opening and closing', () => {
+  it('Ctrl-K opens it while focus is in an input, with focus in its search box; Esc closes it and focus goes back', async () => {
+    const { user } = await open();
+    const search = await screen.findByRole('searchbox', { name: t('table.search.label', { plural: t('kind.routes.plural') }) });
+    await user.click(search);
+    expect(await openPalette(user)).toHaveFocus();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
+    await waitFor(() => expect(search).toHaveFocus());
+    expect(search).toHaveValue('');
+  });
+
+  it('Ctrl-K inside the palette closes it (it toggles)', async () => {
+    const { user } = await open();
+    await openPalette(user);
+    await user.keyboard('{Control>}k{/Control}');
+    await waitFor(() => expect(dialog()).not.toBeInTheDocument());
+  });
+
+  it('Ctrl-K is taken from the browser (its default is prevented)', async () => {
+    await open();
+    const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true, cancelable: true });
+    document.body.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(await screen.findByRole('dialog', { name: t('palette.title') })).toBeInTheDocument();
+  });
+
+  it('"/" opens it when focus is not in a field', async () => {
+    const { user } = await open('#/upstreams/u1');
+    await screen.findByRole('heading', { level: 1, name: 'web-pool' });
+    await user.keyboard('/');
+    expect(await screen.findByRole('dialog', { name: t('palette.title') })).toBeInTheDocument();
+    expect(box()).toHaveValue('');
+  });
+
+  it('"/" is a character while typing in a field, and on a list it still goes to the list\'s own search', async () => {
+    const { user } = await open();
+    const search = await screen.findByRole('searchbox', { name: t('table.search.label', { plural: t('kind.routes.plural') }) });
+    await user.keyboard('/');
+    expect(search).toHaveFocus();
+    await user.keyboard('/x');
+    expect(search).toHaveValue('/x');
+    expect(dialog()).not.toBeInTheDocument();
+  });
+
+  it('the header button opens it and shows the shortcut', async () => {
+    const { user } = await open();
+    const button = screen.getByRole('button', { name: t('palette.open') });
+    expect(button).toHaveTextContent(t('palette.shortcut.other'));
+    await user.click(button);
+    expect(await screen.findByRole('dialog', { name: t('palette.title') })).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(button).toHaveFocus());
+  });
+});
+
+describe('moving through the results', () => {
+  it('Up/Down move and wrap; Home/End; hover sets the active row', async () => {
+    const { user } = await open();
+    await openPalette(user);
+    await user.type(box(), 'web');
+    await screen.findByRole('option', { name: /^web-pool/ });
+    const names = () => screen.getAllByRole('option').map((o) => o.textContent ?? '');
+    expect(names()).toEqual([expect.stringMatching(/^web-a/), expect.stringMatching(/^web-b/), expect.stringMatching(/^web-pool/)]);
+    expect(active()).toHaveTextContent(/^web-a/);
+    await user.keyboard('{ArrowDown}');
+    expect(active()).toHaveTextContent(/^web-b/);
+    await user.keyboard('{ArrowDown}{ArrowDown}');
+    expect(active()).toHaveTextContent(/^web-a/);
+    await user.keyboard('{ArrowUp}');
+    expect(active()).toHaveTextContent(/^web-pool/);
+    await user.keyboard('{Home}');
+    expect(active()).toHaveTextContent(/^web-a/);
+    await user.keyboard('{End}');
+    expect(active()).toHaveTextContent(/^web-pool/);
+    await user.hover(screen.getByRole('option', { name: /^web-b/ }));
+    expect(active()).toHaveTextContent(/^web-b/);
+    await user.keyboard('{Enter}');
+    await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('routes', 'r2')}`));
+  });
+
+  it('PageDown / PageUp move by group', async () => {
+    const { user } = await open();
+    await openPalette(user);
+    await user.type(box(), 'web');
+    await screen.findByRole('option', { name: /^web-pool/ });
+    await user.keyboard('{PageDown}');
+    expect(active()).toHaveTextContent(/^web-pool/);
+    await user.keyboard('{ArrowUp}{PageUp}');
+    expect(active()).toHaveTextContent(/^web-a/);
+  });
+
+  it('Ctrl-Enter opens the object in a new browser tab, by its hash URL', async () => {
+    const opened = vi.fn<(url?: string | URL, target?: string, features?: string) => Window | null>(() => null);
+    vi.stubGlobal('open', opened);
+    const { user } = await open();
+    await openPalette(user);
+    await user.type(box(), 'web-pool');
+    await screen.findByRole('option', { name: /^web-pool/ });
+    await user.keyboard('{Control>}{Enter}{/Control}');
+    expect(opened).toHaveBeenCalledWith(new URL(`#${pathFor('upstreams', 'u1')}`, window.location.href).href, '_blank', 'noopener');
+    expect(window.location.hash).toBe('#/routes');
+  });
+
+  it('after Enter navigates, focus is on the page it opened', async () => {
+    const { user } = await open();
+    await openPalette(user);
+    await user.type(box(), 'web-pool');
+    await screen.findByRole('option', { name: /^web-pool/ });
+    await user.keyboard('{Enter}');
+    await screen.findByRole('heading', { level: 1, name: 'web-pool' });
+    await waitFor(() => expect(screen.getByRole('main')).toHaveFocus());
+  });
+});
+
+describe('ARIA', () => {
+  it('a combobox controlling a listbox of grouped options; aria-activedescendant follows the active option', async () => {
+    const { user } = await open();
+    await openPalette(user);
+    const input = box();
+    expect(input).toHaveAttribute('aria-expanded', 'true');
+    const listbox = screen.getByRole('listbox');
+    expect(input).toHaveAttribute('aria-controls', listbox.id);
+    await user.type(input, 'web');
+    const routes = await within(listbox).findByRole('group', { name: t('kind.routes.plural') });
+    const upstreams = within(listbox).getByRole('group', { name: t('kind.upstreams.plural') });
+    const [first, second] = within(routes).getAllByRole('option');
+    expect(input).toHaveAttribute('aria-activedescendant', first?.id);
+    expect(first).toHaveAttribute('aria-selected', 'true');
+    expect(second).toHaveAttribute('aria-selected', 'false');
+    await user.keyboard('{ArrowDown}');
+    expect(input).toHaveAttribute('aria-activedescendant', second?.id);
+    expect(second).toHaveAttribute('aria-selected', 'true');
+    expect(within(upstreams).getAllByRole('option')).toHaveLength(1);
+    expect(within(screen.getByRole('dialog', { name: t('palette.title') })).getByRole('status')).toHaveTextContent(t('palette.count.other', { count: 3 }));
+  });
+
+  it('with nothing found the listbox is empty and collapsed', async () => {
+    const { user } = await open();
+    await openPalette(user);
+    await user.type(box(), 'zzz-nothing');
+    expect(await screen.findByText(t('palette.noResults', { query: 'zzz-nothing' }))).toBeInTheDocument();
+    expect(box()).toHaveAttribute('aria-expanded', 'false');
+    expect(box()).not.toHaveAttribute('aria-activedescendant');
+  });
+});
