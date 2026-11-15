@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -56,18 +57,31 @@ func (h *handler) serveAdmin(w http.ResponseWriter, r *http.Request) {
 }
 
 // inboundBody is the request body as the proxy reads it, remembering the first read error: an upload
-// that outlasts the read timeout, a malformed chunk, or more than maxBodyBytes.
+// that outlasts the read timeout, a malformed chunk, or more than maxBodyBytes. The transport reads
+// it in its own goroutine, possibly while ErrorHandler asks for the error, hence the mutex.
 type inboundBody struct {
 	io.ReadCloser
+	mu  sync.Mutex
 	err error
 }
 
 func (b *inboundBody) Read(p []byte) (int, error) {
 	n, err := b.ReadCloser.Read(p)
-	if err != nil && err != io.EOF && b.err == nil {
-		b.err = err
+	if err != nil && err != io.EOF {
+		b.mu.Lock()
+		if b.err == nil {
+			b.err = err
+		}
+		b.mu.Unlock()
 	}
 	return n, err
+}
+
+// failure is the first error reading the body, or nil.
+func (b *inboundBody) failure() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.err
 }
 
 func hasDotSegment(p string) bool {
@@ -153,15 +167,16 @@ func newProxy(cfg Config, logger *slog.Logger) http.Handler {
 			return nil
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
-			if body, ok := r.Body.(*inboundBody); ok && body.err != nil {
-				// The request could not be read from the client: not APISIX's doing.
+			if body, ok := r.Body.(*inboundBody); ok && body.failure() != nil {
+				// The request could not be read from the client: not APISIX's doing. (Set once, it stays.)
+				bodyErr := body.failure()
 				var tooBig *http.MaxBytesError
-				if errors.As(body.err, &tooBig) {
+				if errors.As(bodyErr, &tooBig) {
 					refuse(w, true, http.StatusRequestEntityTooLarge, "size", tooLarge)
 					return
 				}
-				logger.Info("cannot read the request body", "path", r.URL.Path, "error", body.err.Error())
-				refuse(w, true, http.StatusBadRequest, "request", "apiseven: could not read the request body: "+body.err.Error())
+				logger.Info("cannot read the request body", "path", r.URL.Path, "error", bodyErr.Error())
+				refuse(w, true, http.StatusBadRequest, "request", "apiseven: could not read the request body: "+bodyErr.Error())
 				return
 			}
 			// Transport errors name the address, never the request's URL; unwrap one that would.

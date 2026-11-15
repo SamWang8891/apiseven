@@ -605,3 +605,21 @@ func TestProxyRequestBodyThatCannotBeReadIsABadRequest(t *testing.T) {
 		t.Errorf("logged as an unreachable APISIX:\n%s", logs)
 	}
 }
+
+// ErrorHandler reads the body's error while the transport may still be reading the body in another
+// goroutine; `go test -race` reports an unguarded field.
+func TestInboundBodyErrorIsSafeToReadWhileTheBodyIsRead(t *testing.T) {
+	body := &inboundBody{ReadCloser: io.NopCloser(&failingBody{})}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = io.ReadAll(body)
+	}()
+	for range 1000 {
+		_ = body.failure()
+	}
+	<-done
+	if err := body.failure(); err == nil || !strings.Contains(err.Error(), "i/o timeout") {
+		t.Errorf("failure() = %v, want the read error", err)
+	}
+}
