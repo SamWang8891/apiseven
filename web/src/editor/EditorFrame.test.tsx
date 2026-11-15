@@ -546,6 +546,38 @@ describe('a save in flight', () => {
     expect(main().queryByText(t('editor.unsaved'))).not.toBeInTheDocument();
   });
 
+  it('a change from a callback made before the save is ignored while it is in flight, and after it (fix round 1, R3.2)', async () => {
+    const held = gate();
+    // A tab that keeps the setDraft it was given, as a late file read's closure does.
+    const kept: { setDraft?: (next: Obj) => void; draft?: Obj } = {};
+    const CAPTURE: TabDef = {
+      id: 'capture',
+      label: 'Capture',
+      fields: [],
+      render: ({ setDraft, draft }) => {
+        kept.setDraft = setDraft;
+        kept.draft = draft;
+        return <p>capture</p>;
+      },
+    };
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB, CAPTURE] }));
+    const { user, admin } = await openEditor('#/routes/r1?tab=capture', { objects: { routes: [ROUTE] }, replies: { 'routes/r1': (req) => (req.method === 'PUT' ? held.promise : undefined) } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await waitFor(() => expect(main().getByRole('button', { name: t('editor.save') })).toBeInTheDocument());
+    const stale = kept.setDraft as (next: Obj) => void;
+    act(() => stale({ ...(kept.draft as Obj), uri: '/mine' }));
+    await user.click(button(t('editor.save')));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    act(() => stale({ ...(kept.draft as Obj), uri: '/stale' }));
+    held.open();
+    expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    expect(writesOf(admin)[0]?.body?.uri).toBe('/mine');
+    act(() => stale({ ...(kept.draft as Obj), uri: '/after' }));
+    expect(kept.draft?.uri).toBe('/mine');
+    expect(main().queryByText(t('editor.unsaved'))).not.toBeInTheDocument();
+  });
+
   it('a create that finishes after the page was left does not navigate back to it', async () => {
     const held = gate();
     const { user, admin } = await openEditor(NEW_ROUTE, {

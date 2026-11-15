@@ -8,9 +8,9 @@
 // neither a file nor text changes nothing. A drop gives the box no focus, which is why the caller
 // decides what the box shows from whether its textarea (`inputRef`) has focus, not from focus events.
 // A file is read asynchronously: a read that finishes after anything later happened in the box (text
-// typed, pasted or dropped, another file, a change the caller made, the end of the editing session,
-// the box going away) is stale, and its result is ignored before the caller hears of it (Task 16b,
-// item 147).
+// typed, pasted or dropped, another file, a change the caller made, a lock (a save in flight
+// included), the end of the editing session, the box going away) is stale, and its result is ignored
+// before the caller hears of it (Task 16b, item 147).
 import { Upload } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
@@ -85,17 +85,18 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
 
   /**
    * Counts what happens in the box that makes a read still in progress stale: a text gesture, another
-   * file, and (below) the end of the editing session or of the box. A read also goes stale when the
-   * caller changed the text meanwhile (`changes`: a split's part arriving).
+   * file, and (below) a lock for any reason, a save in flight included (fix round 1, R3.2), the end of
+   * the editing session, or the box going. A read also goes stale when the caller changed the text
+   * meanwhile (`changes`: a split's part arriving).
    */
   const gestures = useRef(0);
-  // Editing state: one token per editing session; its effect's cleanup runs when the session ends and when the box goes.
+  // Editing state: one token per editing session; its effect's cleanup runs when the session ends, when the box locks or unlocks, and when it goes.
   const [session] = useEditingState(() => ({}));
   useEffect(
     () => () => {
       gestures.current++;
     },
-    [session],
+    [session, locked],
   );
 
   const read = (file: File | undefined) => {

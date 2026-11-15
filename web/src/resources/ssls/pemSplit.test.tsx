@@ -13,6 +13,7 @@ import { RSA_CA, RSA_LEAF } from '../../test/certs';
 import { itemOf } from '../../test/ctx';
 import { BAG_KEY, EC_PAIR, RSA_PAIR } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
+import { deferredFile } from '../../test/deferredFile';
 import { renderTab } from '../../test/tab';
 import { CertificateTab } from './CertificateTab';
 import { ClientTab } from './ClientTab';
@@ -363,16 +364,13 @@ describe('the split, Task 16b follow-ups', () => {
 
 /** A file whose text arrives only when `release` is called: a slow read (Task 16b, item 147). */
 function slowFile(text: string, name: string) {
-  const file = new File([text], name, { type: 'text/plain' });
-  let release = () => {};
-  const read = new Promise<string>((done) => (release = () => done(text)));
-  Object.defineProperty(file, 'text', { value: () => read });
+  const slow = deferredFile(new File([text], name, { type: 'text/plain' }), text);
   return {
-    file,
+    file: slow.file,
     release: () =>
       act(async () => {
-        release();
-        await read;
+        slow.release();
+        await slow.file.text();
       }),
   };
 }

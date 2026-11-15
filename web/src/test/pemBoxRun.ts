@@ -15,6 +15,7 @@ import { t } from '../i18n';
 import { RSA_LEAF } from './certs';
 import { RSA_CA } from './certs';
 import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY, RSA_PAIR } from './pairs';
+import { deferredFile } from './deferredFile';
 import type { prng } from './prng';
 import { SEED_CERT, SEED_KEY } from './sslSeed';
 
@@ -593,7 +594,7 @@ export class BoxRun {
         const heldBefore = held(m);
         const spec = FILES[name] as (typeof FILES)[string];
         // Now and then a file whose text arrives only later (item 147): its reading stays pending.
-        const slow = spec.text !== undefined && r.int(3) === 0 ? deferred(spec.file(), spec.text) : undefined;
+        const slow = spec.text !== undefined && r.int(3) === 0 ? deferredFile(spec.file(), spec.text) : undefined;
         const el = await this.ensureBox();
         const input = el.closest('.ssl-pem')?.querySelector<HTMLInputElement>('input[type="file"]') as HTMLInputElement;
         let picker = 0;
@@ -790,14 +791,6 @@ export class BoxRun {
       for (const key of ['ssl.box.hiddenStays', 'ssl.box.keptNone', 'ssl.box.keptCert']) expect(shows(key), `${where}: the note ${key}`).toBe(note === key);
     }
   }
-}
-
-/** `file` with its text arriving only when `release` is called (item 147): a read left pending. */
-function deferred(file: File, text: string): { file: File; release: () => void } {
-  let release = () => {};
-  const arrives = new Promise<string>((done) => (release = () => done(text)));
-  Object.defineProperty(file, 'text', { value: () => arrives });
-  return { file, release: () => release() };
 }
 
 /** Runs `run` and returns its first failure as one line, or undefined. */

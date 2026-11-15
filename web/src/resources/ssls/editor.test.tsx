@@ -1,7 +1,7 @@
 // The SSL editor as the registry wires it, on a fake Admin API that keeps a private key the way APISIX
 // does (stored encrypted, never returned by a GET): its tabs, the locked view, and what each save
 // sends. The key is checked to be nowhere on the page after every step that could leave it there.
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Obj } from '../../api/types';
@@ -11,6 +11,7 @@ import { resetApp } from '../../test/app';
 import { EC_IPV6, RSA_LEAF } from '../../test/certs';
 import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import { json, type FakeAdminOptions } from '../../test/fakeAdmin';
+import { deferredFile } from '../../test/deferredFile';
 import { EC_PAIR } from '../../test/pairs';
 import { editableControls } from '../../test/schemaForm';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
@@ -583,6 +584,34 @@ describe('O2: a reference is taken only when it is the whole text', () => {
     await waitFor(() => expect(getToasts().at(-1)?.message).toBe(heldToast(t('ssl.pem.cert'), t('ssl.pem.refNotAlone'))));
     expect(writesOf(admin)).toEqual([]);
     expect(box).toHaveValue(`$secret://vault/1/ssl/cert\n${RSA_LEAF}`);
+  });
+});
+
+describe('a file read that finishes while a save is in flight (Task 16b, item 147; fix round 1, R3.2)', () => {
+  it('changes neither the draft nor the request nor what the page shows afterwards', async () => {
+    let answer: (r: Response) => void = () => {};
+    const { user, admin } = await openEditor('#/ssls/new', {
+      objects: { ssls: [], routes: [], services: [] },
+      replies: { ssls: (req) => (req.method === 'POST' ? new Promise<Response>((done) => (answer = done)) : undefined) },
+    });
+    await newSsl(user);
+    const cert = main().getByRole('textbox', { name: t('ssl.pem.cert') });
+    const slow = deferredFile(new File([RSA_LEAF], 'leaf.crt', { type: 'text/plain' }), RSA_LEAF);
+    fireEvent.drop(cert, { dataTransfer: { files: [slow.file], getData: () => '' } });
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    await act(async () => {
+      slow.release();
+      await slow.file.text();
+    });
+    // APISIX refuses it late: the page is editable again, as it was before the save.
+    act(() => answer(json(400, { error_msg: 'refused late by the test' })));
+    expect(await main().findAllByText('refused late by the test')).not.toHaveLength(0);
+    expect(writesOf(admin)[0]?.body?.cert).toBe(SEED_CERT);
+    expect(main().getByRole('textbox', { name: t('ssl.pem.cert') })).toHaveValue(SEED_CERT);
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(2));
+    expect(writesOf(admin)[1]?.body?.cert).toBe(SEED_CERT);
   });
 });
 

@@ -2,7 +2,7 @@
 // opens LOCKED: its values read as full-contrast text and nothing changes until Edit (or `e`); Save
 // and Discard lock it again. A new object (or a copy) starts unlocked.
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 import { queryKeys, scopedKey, useAllPlugins, useClient, useInvalidate } from '../api/hooks';
 import { stripTimestamps } from '../api/sanitize';
@@ -43,6 +43,7 @@ import { SaveRefusalsContext } from './saveRefusals';
 import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle';
 import { useShownTabs } from './useShownTabs';
 import { useRequiredValues } from './untouched';
+import { useEdit } from './useEdit';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
 const valueOf = (item: Item): Obj => stripTimestamps(item.value);
@@ -153,14 +154,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   // problem is neither shown nor counted on a badge until then, though Save is refused for it.
   const required = useRequiredValues({ isNew, attempted, draft, issues, createId, idWithSlash: def.idWithSlash });
   const { shown: shownIssues, noteEdit } = required;
-  const edit = useCallback(
-    (next: Obj) => {
-      if (!editable) return;
-      noteEdit(next);
-      setDraft(next);
-    },
-    [editable, setDraft, noteEdit],
-  );
+  // Judged at the time of the call (useEdit.ts): no stale closure writes during a save or a lock.
+  const { edit, stop: stopEdits } = useEdit(editable, (next) => {
+    noteEdit(next);
+    setDraft(next);
+  });
 
   const shownTabs = useShownTabs(def.tabs);
   const tabFields = useMemo(() => shownTabs.map((tab) => ({ id: tab.id, fields: tab.fields, rest: tab.restFields })), [shownTabs]);
@@ -191,6 +189,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   // --- Lock and focus ------------------------------------------------------------------------------
   /** Locks the page; `remount` (Discard) throws away what the fields hold, by remounting them. */
   function lock(remount: boolean) {
+    stopEdits();
     focusNext.current = 'edit';
     setLocked(true);
     setSession((n) => n + 1);
@@ -263,6 +262,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     }
     inFlight.current = true;
     setSaving(true);
+    stopEdits();
     setFailure(undefined);
     const result = await saveResource(client, { kind, id: isNew ? createId : id, isNew, draft, original, parent, force });
     inFlight.current = false;
