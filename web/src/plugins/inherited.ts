@@ -13,20 +13,23 @@ import type { InheritedPlugin } from './PluginsTab';
  * The plugins a route also runs from its service and its plugin config (APISIX lays the plugin
  * config's over the service's, so a name in both comes from the plugin config), sorted by name.
  */
-export function inheritedPlugins(route: Obj, ctx: Ctx): InheritedPlugin[] {
+export function inheritedPlugins(route: Obj, ctx: Ctx, all?: Record<string, PluginInfo>): InheritedPlugin[] {
   return effectivePlugins({ ...route, plugins: undefined }, ctx).flatMap(({ name, from, disabled }) =>
-    from === 'service' || from === 'plugin_config' ? [withEffect({ name, from, disabled })] : [],
+    from === 'service' || from === 'plugin_config' ? [withEffect({ name, from, disabled }, all?.[name])] : [],
   );
 }
 
-/** A plugin run for the whole instance does nothing as an entry, on or off (entryEffect): never "off", marked as such. */
-function withEffect(row: InheritedPlugin, info?: PluginInfo): InheritedPlugin {
+/**
+ * A plugin run for the whole instance does nothing as an entry, on or off (entryEffect): never "off",
+ * marked as such. `info`, once the plugin list has loaded, recognises a custom one it reports as global.
+ */
+export function withEffect(row: InheritedPlugin, info?: PluginInfo): InheritedPlugin {
   return entryEffect(row.name, undefined, info) === 'noEffect' ? { ...row, disabled: false, noEffect: true } : row;
 }
 
 /** A stream route's: only from a service it merges with, and only what the stream subsystem runs (asStreamRoute, runsOnStream). */
-export function streamInheritedPlugins(route: Obj, ctx: Ctx): InheritedPlugin[] {
-  return inheritedPlugins(asStreamRoute(route), ctx).filter((p) => runsOnStream(p.name));
+export function streamInheritedPlugins(route: Obj, ctx: Ctx, all?: Record<string, PluginInfo>): InheritedPlugin[] {
+  return inheritedPlugins(asStreamRoute(route), ctx, all).filter((p) => runsOnStream(p.name));
 }
 
 /**

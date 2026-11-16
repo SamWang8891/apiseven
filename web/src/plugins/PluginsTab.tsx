@@ -17,7 +17,7 @@ import { ErrorLine } from '../schema-form/fields/chrome';
 import { Button, useLocked, useViewState } from '../ui';
 import { inheritLoading } from '../resources/routes/inherit';
 import { asStreamRoute } from '../resources/resolve';
-import { consumerGroupLoading, consumerInheritedPlugins, inheritedPlugins, streamInheritedPlugins } from './inherited';
+import { consumerGroupLoading, consumerInheritedPlugins, inheritedPlugins, streamInheritedPlugins, withEffect } from './inherited';
 import { PluginCard } from './PluginCard';
 import { PluginPicker } from './PluginPicker';
 import { emptyPlugins, subsystemOf, type Scope } from './scope';
@@ -63,6 +63,9 @@ export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues
   const all = query.data;
   const list = all ? 'loaded' : query.isError ? 'failed' : 'loading';
   const names = useMemo(() => Object.keys(value ?? {}).sort(byName), [value]);
+  // Rows a caller built without the plugin list (a route's own tab) are read against it too: a custom
+  // plugin it reports as global is never "off" (withEffect).
+  const rows = useMemo(() => inherited?.map((row) => withEffect(row, all?.[row.name])), [inherited, all]);
 
   // Each card's issues, paths relative to its config; the rest (about `plugins` itself, or about a
   // plugin with no card) shows above the cards.
@@ -190,7 +193,7 @@ export const PluginsTab: FC<PluginsTabProps> = ({ value, onChange, scope, issues
           ))}
         </div>
       )}
-      {inherited && inherited.length > 0 && <Inherited rows={inherited} local={names} />}
+      {rows && rows.length > 0 && <Inherited rows={rows} local={names} />}
       {picking && all && <PluginPicker open onClose={() => setPicking(false)} onPick={add} all={all} scope={scope} configured={names} />}
     </div>
   );
@@ -231,9 +234,9 @@ function Inherited({ rows, local }: { rows: InheritedPlugin[]; local: string[] }
 function inheritance(scope: Scope, draft: Obj, ctx: TabProps['ctx'], all: Record<string, PluginInfo> | undefined): { inherited?: InheritedPlugin[]; waiting?: string } {
   switch (scope) {
     case 'route':
-      return { inherited: inheritedPlugins(draft, ctx) };
+      return { inherited: inheritedPlugins(draft, ctx, all) };
     case 'stream_route':
-      return { inherited: streamInheritedPlugins(draft, ctx), waiting: inheritLoading(asStreamRoute(draft), ctx).service ? t('pl.inherited.loading') : undefined };
+      return { inherited: streamInheritedPlugins(draft, ctx, all), waiting: inheritLoading(asStreamRoute(draft), ctx).service ? t('pl.inherited.loading') : undefined };
     case 'consumer':
       return { inherited: consumerInheritedPlugins(draft, ctx, all), waiting: consumerGroupLoading(draft, ctx) ? t('pl.inherited.groupLoading') : undefined };
     default:

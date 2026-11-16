@@ -8,6 +8,7 @@ import { t } from '../i18n';
 import { resetApp } from '../test/app';
 import { main, openEditor, writesOf } from '../test/editor';
 import { ctxOf, itemOf } from '../test/ctx';
+import { json } from '../test/fakeAdmin';
 import { pluginFixture } from '../test/pluginFixture';
 import { pluginReplies, renderPluginsTab } from '../test/plugins';
 import { entryEffect } from './entryEffect';
@@ -115,5 +116,29 @@ describe('an instance-wide entry marked off with settings APISIX would refuse', 
     await user.click(main().getByRole('button', { name: t('editor.save') }));
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body).toMatchObject({ name: 'web2', plugins: { ai: AI } });
+  });
+});
+
+// Fix round 2, R3.5: a custom plugin this APISIX reports as scope "global", inherited by a route, is never "off" either.
+describe('an inherited custom plugin the Admin API reports as global', () => {
+  const ALL = { ...pluginFixture().http, 'my-reporter': { schema: {}, scope: 'global' } };
+
+  it('inheritedPlugins with the loaded list marks it as having no effect', () => {
+    const ctx = ctxOf({ services: [itemOf('s1', { plugins: { 'my-reporter': { _meta: { disable: true } } } })] });
+    expect(inheritedPlugins({ uri: '/', service_id: 's1' }, ctx, ALL)).toEqual([{ name: 'my-reporter', from: 'service', disabled: false, noEffect: true }]);
+  });
+
+  it('the Plugins tab reads rows it is given against the loaded list: "No effect here", never "off"', async () => {
+    renderPluginsTab({
+      scope: 'route',
+      value: {},
+      validate: false,
+      inherited: [{ name: 'my-reporter', from: 'service', disabled: true }],
+      admin: { replies: { plugins: () => json(200, ALL) } },
+    });
+    await loaded();
+    const row = (await screen.findByText('my-reporter', { selector: '.pl-inherited__name' })).closest('li') as HTMLElement;
+    await waitFor(() => expect(within(row).getByText(t('pl.card.instance'))).toBeInTheDocument());
+    expect(within(row).queryByText(t('pl.inherited.off'))).toBeNull();
   });
 });
