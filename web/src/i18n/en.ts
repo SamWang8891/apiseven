@@ -580,6 +580,7 @@ export const en: Record<string, string> = {
   'ui.select.clear': 'Clear selection',
   'ui.tags.placeholder': 'Type, then Enter',
   'ui.tags.remove': 'Remove {tag}',
+  'ui.tags.keyOut': 'a private key was taken out of this text (the •••••••• words): type the value again',
   'ui.kv.key': 'Key',
   'ui.kv.value': 'Value',
   'ui.kv.keyN': 'Key {n}',

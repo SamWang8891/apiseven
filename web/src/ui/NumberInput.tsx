@@ -5,6 +5,7 @@ import { Field, type FieldProps } from './Field';
 import { nameOfField, useFieldIds } from './fieldIds';
 import { useLocked } from './LockContext';
 import { usePending } from './PendingContext';
+import { holdsPrivateKey, withoutPrivateKeys } from './privateKeys';
 import { ReadOnlyValue } from './ReadOnly';
 import './input.css';
 
@@ -49,7 +50,7 @@ const format = (n: number | undefined): string => (n === undefined ? '' : String
 const decimals = (n: number): number => (String(n).split('.')[1] ?? '').length;
 
 export function NumberInput({
-  label, help, error, required, htmlFor, mono, id, value, onChange, min, max, step = 1, integer, fieldName, className, onKeyDown, ...native
+  label, help, error, required, htmlFor, mono, id, value, onChange, min, max, step = 1, integer, fieldName, className, onKeyDown, onBlur, ...native
 }: NumberInputProps) {
   const locked = useLocked();
   // The text being edited, which may be mid-way ("-", "1.") or invalid ("abc").
@@ -64,9 +65,10 @@ export function NumberInput({
   }
 
   const parsed = parse(draft, integer);
-  // Text that is not a number is shown but not emitted: Save waits until it is one, or is cleared.
+  // Text that is not a number is shown but not emitted: Save waits until it is one, or is cleared. The
+  // message never quotes a private key (fix round 1, Y2): its words stand in for it, as once the box is left.
   const named = nameOfField(fieldName, label, native['aria-label']);
-  usePending(locked || parsed.ok ? undefined : t(HELD[parsed.problem], { field: named, text: draft.trim() }));
+  usePending(locked || parsed.ok ? undefined : t(HELD[parsed.problem], { field: named, text: withoutPrivateKeys(draft, t('ssl.pem.marker')).trim() }));
   const rangeError =
     parsed.ok && parsed.value !== undefined
       ? min !== undefined && parsed.value < min
@@ -126,6 +128,12 @@ export function NumberInput({
         aria-describedby={ids.describedBy}
         onChange={(e) => edit(e.target.value)}
         onKeyDown={stepBy}
+        onBlur={(e) => {
+          // Leaving the box: text not taken stays, held (addendum rule 20), but a private key in it is
+          // taken out of the page, its words in its place (fix round 1, Y2). Such text is never a number.
+          if (holdsPrivateKey(draft)) setDraft(withoutPrivateKeys(draft, t('ssl.pem.marker')));
+          onBlur?.(e);
+        }}
         className={['ui-input ui-number', mono && 'mono', className].filter(Boolean).join(' ')}
       />
     </Field>

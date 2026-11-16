@@ -2,7 +2,11 @@
 // locked JSON), the plugin cards and the editor's JSON views. Small and free of the form's analysis,
 // so the editor frame can mask a locked object without loading the form.
 import type { Obj } from '../api/types';
+import { holdsPrivateKey, withoutPrivateKeys } from '../ui/privateKeys';
 import { expand, isObj, testPattern } from './refs';
+
+// The detection of a PEM private key lives with the kit, which needs it too (fix round 1, Y2).
+export { holdsPrivateKey, withoutPrivateKeys };
 
 /** What a secret reads as while hidden (the kit's masked input shows the same). */
 export const MASK = '••••••••';
@@ -142,15 +146,6 @@ export function redactSecrets(value: unknown, path: string, encrypt: string[], s
   return { value: out, redacted: JSON.stringify(out) !== JSON.stringify(value) };
 }
 
-/** The first line of a PEM private key of any form (PKCS#8, PKCS#1 RSA, SEC1 EC, DSA, encrypted). */
-const KEY_BEGIN = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
-
-/** Every PEM private-key block in a text, to its END line (or to the end of the text when that is missing). */
-const KEY_BLOCKS = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|$)/g;
-
-/** Whether `text` holds a PEM private key anywhere (a combined certificate + key file does). */
-export const holdsPrivateKey = (text: unknown): boolean => typeof text === 'string' && KEY_BEGIN.test(text);
-
 /**
  * Private-key material in a box's text, as every PEM box judges it (the SSL editor's, resources/ssls/
  * pemBox.ts heldWhy; the upstream form's certificate fields, upstream/fields.tsx), in this order: the
@@ -160,7 +155,3 @@ export function keyMaterialIn(text: string): 'marker' | 'key' | undefined {
   if (text.includes(MASK.slice(0, 1))) return 'marker';
   return holdsPrivateKey(text) ? 'key' : undefined;
 }
-
-/** `text` with each PEM private-key block replaced by `by` (or what it returns for the block); the rest, certificates included, kept. */
-export const withoutPrivateKeys = (text: string, by: string | ((block: string) => string)): string =>
-  typeof by === 'string' ? text.replace(KEY_BLOCKS, () => by) : text.replace(KEY_BLOCKS, by);

@@ -5,6 +5,7 @@ import { Field, type FieldProps } from './Field';
 import { nameOfField, useFieldIds } from './fieldIds';
 import { useEditingState, useLocked } from './LockContext';
 import { usePending } from './PendingContext';
+import { holdsPrivateKey, withoutPrivateKeys } from './privateKeys';
 import { ReadOnlyValue } from './ReadOnly';
 import { LabelTip } from './Tooltip';
 import './collection.css';
@@ -23,6 +24,8 @@ export type TagInputProps = Omit<ComponentProps<'input'>, 'value' | 'onChange' |
 /** What a paste is split on. */
 const SEPARATORS = /[\s,]+/;
 const SEPARATED = /[\s,]/;
+/** The mark of the words left where a private key was taken out of the box (ssl.pem.marker): never part of a tag. */
+const TAKEN_OUT = '•';
 
 /**
  * A list of short strings. Enter, comma, Tab or leaving the box adds what was typed; a paste replaces
@@ -32,7 +35,9 @@ const SEPARATED = /[\s,]/;
  * part of a paste is refused, the parts before it are added, and it and every part after it stay in
  * the box, so nothing pasted is lost; that text is split the same way when it is next committed, once
  * the refused part is corrected (final wave O1). Text typed is one tag, spaces and all, also when it
- * is typed over the whole of such text (fix round 1, F4).
+ * is typed over the whole of such text (fix round 1, F4). A private key in text left refused is taken
+ * out of the page when the box is left, its words in its place, which are never added as a tag; the
+ * held message never quotes a key (Codex final pass, fix round 1, Y2).
  */
 export function TagInput({
   label, help, error, required, htmlFor, id, value, onChange, validate, mono, placeholder, className, disabled, onBlur, fieldName, ...native
@@ -50,7 +55,7 @@ export function TagInput({
   usePending(
     locked || rejected === undefined || text === ''
       ? undefined
-      : t('ui.pending.tag', { field: nameOfField(fieldName, label, native['aria-label']), text, reason: rejected }),
+      : t('ui.pending.tag', { field: nameOfField(fieldName, label, native['aria-label']), text: withoutPrivateKeys(text, t('ssl.pem.marker')), reason: rejected }),
   );
   const inputRef = useRef<HTMLInputElement>(null);
   const shownError = rejected ?? error;
@@ -83,7 +88,7 @@ export function TagInput({
     const tags = candidates.map((c) => c.trim()).filter(Boolean);
     for (const [i, tag] of tags.entries()) {
       if (next.includes(tag)) continue;
-      const message = validate?.(tag);
+      const message = tag.includes(TAKEN_OUT) ? t('ui.tags.keyOut') : validate?.(tag);
       if (message) {
         setRejected(message);
         if (next.length > value.length) onChange(next);
@@ -104,12 +109,13 @@ export function TagInput({
     return left;
   }
 
-  function commit(): boolean {
-    if (!draft.trim()) return true;
-    if (parts) return addParts(draft) === '';
+  /** Adds what the box holds; returns the text left in it ('' when all was taken). */
+  function commit(): string {
+    if (!draft.trim()) return '';
+    if (parts) return addParts(draft);
     const left = add([draft]);
     setDraft(left);
-    return left === '';
+    return left;
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
@@ -119,7 +125,7 @@ export function TagInput({
       commit();
     } else if (e.key === 'Tab' && draft.trim()) {
       // Move on as usual once the tag is in; stay put if it was refused, so the message is seen.
-      if (!commit()) e.preventDefault();
+      if (commit() !== '') e.preventDefault();
     } else if (e.key === 'Backspace' && draft === '' && value.length > 0) {
       e.preventDefault();
       onChange(value.slice(0, -1));
@@ -190,7 +196,13 @@ export function TagInput({
           onKeyDown={onKeyDown}
           onPaste={onPaste}
           onBlur={(e) => {
-            commit();
+            const left = commit();
+            // Text left refused stays, held (addendum rule 20), but a private key in it is taken out of
+            // the page, its words in its place, as one piece from then on (fix round 1, Y2).
+            if (holdsPrivateKey(left)) {
+              setDraft(withoutPrivateKeys(left, t('ssl.pem.marker')));
+              setParts(false);
+            }
             onBlur?.(e);
           }}
         />

@@ -13,6 +13,7 @@ import { main, openEditor, writesOf } from '../test/editor';
 import { schemaOf } from '../test/pluginFixture';
 import { pluginReplies } from '../test/plugins';
 import { renderSchemaForm } from '../test/schemaForm';
+import { getToasts } from '../ui/toast';
 
 beforeAll(async () => {
   await import('../resources/routes/bodies');
@@ -139,5 +140,63 @@ describe('a list row’s summary (response-rewrite filters, 3.20)', () => {
     const schema: Obj = { type: 'object', properties: { list: { type: 'array', items: { type: 'object', properties: { host: { type: 'string' } } } } } };
     renderSchemaForm(schema, { list: [{ client_key: 'plain-text-key', host: 'h' }] }, { locked: true });
     expect(document.querySelector('.sf-card__summary')?.textContent).toBe('host=h');
+  });
+});
+
+// Fix round 1, Y2: a key typed into a field that refuses it (a number-only field, a tag list whose
+// items must be numbers) stays held once the field is left, but as the words for a key taken out of
+// the page; the held message, which a refused Save shows, never quotes it.
+describe('a key typed into a field that refuses it', () => {
+  const MARKER = t('ssl.pem.marker');
+  const line = pem(TYPED).replace(/\n/g, ' ');
+
+  it('limit-count’s rejected_code (a number only): once left, not in the page nor in the held message; still held; emptied, nothing held', async () => {
+    const form = renderSchemaForm(schemaOf('limit-count'), { count: 1, time_window: 60 }, { name: 'limit-count' });
+    const box = screen.getByRole('spinbutton', { name: /^rejected_code/ });
+    await form.user.click(box);
+    await form.user.paste(line);
+    expect(inPage(TYPED)).toBe(true);
+    await form.user.click(screen.getByRole('textbox', { name: /^time_window/ }));
+    expect(inPage(TYPED)).toBe(false);
+    expect(box).toHaveValue(MARKER);
+    expect(form.held()).toEqual([t('ui.pending.notNumber', { field: 'limit-count.rejected_code', text: MARKER })]);
+    expect(form.value()).toEqual({ count: 1, time_window: 60 });
+    await form.user.clear(box);
+    expect(form.held()).toEqual([]);
+  });
+
+  it('a list of numbers: once left, not in the page nor in the held message; still held; emptied, nothing held', async () => {
+    const schema: Obj = { type: 'object', properties: { statuses: { type: 'array', items: { type: 'integer', minimum: 500, maximum: 599 } } } };
+    const form = renderSchemaForm(schema, { statuses: [500] }, { name: 'api-breaker' });
+    const box = screen.getByRole('textbox', { name: /^statuses/ });
+    await form.user.click(box);
+    await form.user.paste(line);
+    expect(inPage(TYPED)).toBe(true);
+    await form.user.click(document.body);
+    expect(inPage(TYPED)).toBe(false);
+    expect(box).toHaveValue(MARKER);
+    expect(form.held()).toEqual([t('ui.pending.tag', { field: 'api-breaker.statuses', text: MARKER, reason: t('ui.number.integer') })]);
+    expect(form.value()).toEqual({ statuses: [500] });
+    await form.user.clear(box);
+    expect(form.held()).toEqual([]);
+  });
+
+  it('in the editor: Save is refused, its toast and every request free of the key', async () => {
+    const ROUTE: Obj = { id: 'r1', name: 'keys', uri: '/k', plugins: { 'limit-count': { count: 1, time_window: 60 } }, upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] } };
+    const { user, admin } = await openEditor('#/routes/r1?tab=plugins', { objects: { routes: [ROUTE] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'keys' });
+    await waitFor(() => expect(screen.queryByText(t('pl.loading'))).not.toBeInTheDocument());
+    await user.click(main().getByRole('button', { name: t('editor.edit') }));
+    const card = main().getByRole('group', { name: 'limit-count' });
+    if (!within(card).queryByRole('spinbutton', { name: /^rejected_code/ })) await user.click(within(card).getByRole('button', { name: 'limit-count' }));
+    const box = await within(card).findByRole('spinbutton', { name: /^rejected_code/ });
+    await user.click(box);
+    await user.paste(line);
+    await user.keyboard('{Control>}s{/Control}');
+    await waitFor(() => expect(getToasts().length).toBeGreaterThan(0));
+    expect(getToasts().at(-1)?.message).toContain(MARKER);
+    expect(JSON.stringify(getToasts())).not.toContain(TYPED);
+    expect(writesOf(admin)).toEqual([]);
+    expect(inPage(TYPED)).toBe(false);
   });
 });
