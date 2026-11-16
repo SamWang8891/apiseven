@@ -2,13 +2,25 @@
 // server-info, …) does nothing as an entry of an object's plugins, on or off. Its card says so instead
 // of offering an enable switch, and the picker does not offer it.
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { resetReadOnlyKeys } from '../api/write';
 import { t } from '../i18n';
+import { resetApp } from '../test/app';
+import { main, openEditor, writesOf } from '../test/editor';
 import { ctxOf, itemOf } from '../test/ctx';
 import { pluginFixture } from '../test/pluginFixture';
-import { renderPluginsTab } from '../test/plugins';
+import { pluginReplies, renderPluginsTab } from '../test/plugins';
 import { entryEffect } from './entryEffect';
 import { consumerInheritedPlugins, inheritedPlugins } from './inherited';
+
+beforeAll(async () => {
+  await import('../resources/routes/bodies');
+});
+
+afterEach(() => {
+  resetApp();
+  resetReadOnlyKeys();
+});
 
 const loaded = () => waitFor(() => expect(screen.queryByText(t('pl.loading'))).not.toBeInTheDocument());
 
@@ -76,5 +88,32 @@ describe('instance-wide entries elsewhere', () => {
     const row = screen.getByText('inspect', { selector: '.pl-inherited__name' }).closest('li') as HTMLElement;
     expect(within(row).getByText(t('pl.card.instance'))).toBeInTheDocument();
     expect(within(row).queryByText(t('pl.inherited.off'))).toBeNull();
+  });
+});
+
+// Fix round 1, R2.3: an instance-wide entry stored with _meta.disable and settings APISIX would refuse.
+describe('an instance-wide entry marked off with settings APISIX would refuse', () => {
+  const AI = { _meta: { disable: true, priority: 'high' } };
+
+  it('its card says only what holds: the mark keeps APISIX from checking them, not a switch', async () => {
+    const { user } = renderPluginsTab({ scope: 'route', value: { ai: AI }, validate: false });
+    await loaded();
+    const card = screen.getByRole('group', { name: 'ai' });
+    await user.click(within(card).getByRole('button', { name: 'ai' }));
+    const first = '_meta.priority: must be integer';
+    expect(within(card).getByText(t('pl.card.uncheckedInstance', { first }))).toBeInTheDocument();
+    expect(within(card).queryByText(t('pl.card.unchecked', { first }))).toBeNull();
+    expect(within(card).queryByText(t('pl.card.uncheckedSignIn', { first }))).toBeNull();
+  });
+
+  it('is kept unchanged when the route is saved', async () => {
+    const ROUTE = { id: 'r1', name: 'web', uri: '/a', plugins: { ai: AI }, upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] } };
+    const { user, admin } = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await user.type(await main().findByRole('textbox', { name: t('rt.general.name') }), '2');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ name: 'web2', plugins: { ai: AI } });
   });
 });

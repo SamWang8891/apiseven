@@ -745,6 +745,7 @@ export const en: Record<string, string> = {
   'pl.card.signIn.unusedNote': "This APISIX doesn't know {name}, so it doesn't use this entry (and refuses to save it).",
   'pl.card.unchecked': "Switched off, so APISIX doesn't check its settings; switched on, it would refuse them ({first}).",
   'pl.card.uncheckedSignIn': "Marked off (_meta.disable), so APISIX doesn't check its settings; without that mark it would refuse them ({first}).",
+  'pl.card.uncheckedInstance': "With _meta.disable set, APISIX doesn't check these settings when it stores them; without it, it would refuse them ({first}).",
   'pl.category.ai': 'AI',
   'pl.category.general': 'General',
   'pl.category.transformation': 'Transformation',

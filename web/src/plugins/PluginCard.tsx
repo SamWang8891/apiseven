@@ -176,6 +176,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
               danger={signIn?.state === 'stillSignsIn'}
               runNote={runNote}
               switchless={switchless}
+              instance={instance}
               errorResponseIgnored={subsystemOf(scope) === 'stream' ? 'stream' : role !== undefined ? 'signIn' : undefined}
               unchecked={unchecked}
               onChange={onChange}
@@ -188,7 +189,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
   );
 }, sameCard);
 
-function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, note, danger, runNote, switchless, errorResponseIgnored, unchecked, onChange, onJsonHeld }: {
+function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, note, danger, runNote, switchless, instance, errorResponseIgnored, unchecked, onChange, onJsonHeld }: {
   name: string;
   conf: unknown;
   stored: unknown;
@@ -205,6 +206,8 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
   runNote: string | undefined;
   /** No on/off switch (signInRole): the unchecked note speaks of the mark, and the run options have no disable. */
   switchless: boolean;
+  /** A plugin run for the whole instance (runsForInstance): the unchecked note says only what the mark does to the check. */
+  instance: boolean;
   /** Where APISIX never sends MetaForm's error_response (a stream route; a sign-in plugin's credential). */
   errorResponseIgnored: 'stream' | 'signIn' | undefined;
   /** What APISIX would refuse in this switched-off plugin's settings once it is switched on. */
@@ -278,8 +281,8 @@ function CardBody({ name, conf, stored, info, list, schema, encrypt, issues, not
       )}
       {unchecked.length > 0 && (
         <p className="pl-note" role="note">
-          {/* A sign-in card has no switch: say "marked off", not "switched off". */}
-          {t(switchless ? 'pl.card.uncheckedSignIn' : 'pl.card.unchecked', {
+          {/* A sign-in card has no switch: say "marked off", not "switched off"; an instance-wide one is not "off" at all. */}
+          {t(instance ? 'pl.card.uncheckedInstance' : switchless ? 'pl.card.uncheckedSignIn' : 'pl.card.unchecked', {
             first: unchecked[0]?.path ? `${unchecked[0].path}: ${unchecked[0].message}` : (unchecked[0]?.message ?? ''),
             count: unchecked.length,
           })}
