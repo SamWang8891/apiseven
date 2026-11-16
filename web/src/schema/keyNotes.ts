@@ -4,7 +4,10 @@
 // one editing session (`session`, random, so unique across page loads) and never reused: it resolves
 // to the key it was made for or to nothing, never to another key by its position, never to itself.
 // The SSL editor's notes (plugins/secrets.ts veilKeys) are these, with an SSL's `key` and `keys` as
-// keys whole.
+// keys whole. A note resolves only where it was made (fix round 2, R1.2): at the exact path of the text
+// it stands in, or, for a group of places the caller names (an SSL's key and certificate slots, whose
+// pairs the user may swap), at any place of the group; anywhere else it is refused, so a stored key can
+// never be moved into another field (a header, a description) by moving its note.
 import { t } from '../i18n';
 import { isObj } from './refs';
 import { holdsPrivateKey, isNeverShownName, MASK, withoutPrivateKeys } from './secrets';
@@ -14,6 +17,8 @@ export interface KeyNotes {
   readonly session: string;
   /** note text → the key text it stands for */
   readonly keys: ReadonlyMap<string, string>;
+  /** note text → where it was made (placeOf); none for a note made in text being typed, which is the user's own key. */
+  readonly at: ReadonlyMap<string, string>;
 }
 
 /**
@@ -29,8 +34,14 @@ function randomId(): string {
 
 /** A new, empty set of notes for an editing session. */
 export function newKeyNotes(): KeyNotes {
-  return { session: randomId(), keys: new Map() };
+  return { session: randomId(), keys: new Map(), at: new Map() };
 }
+
+/** Places a caller names as one (an SSL's key and certificate slots), where a note may move freely. */
+export type PlaceGroup = (path: readonly (string | number)[]) => boolean;
+
+/** Where a text is, as notes remember it: its path, or the group it belongs to. */
+const placeOf = (path: readonly (string | number)[], group: PlaceGroup | undefined): string => (group?.(path) ? '#group' : JSON.stringify(path));
 
 const escape = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -66,18 +77,31 @@ const byName: WholeKey = (_path, key) => key !== undefined && isNeverShownName(k
 export function veilValue(
   value: unknown,
   notes: KeyNotes,
-  opts: { mint?: boolean; whole?: WholeKey; under?: string } = {},
+  opts: { mint?: boolean; whole?: WholeKey; group?: PlaceGroup; under?: string } = {},
 ): { value: unknown; notes: KeyNotes; veiled: boolean; complete: boolean } {
   const { mint = true, under } = opts;
   const keys = new Map(notes.keys);
+  const at = new Map(notes.at);
   const used = new Set<string>();
   let complete = true;
-  const noteFor = (secret: string): string => {
+  let bound = false;
+  /** The note for `secret` at `place`: one made there, else one made in typed text (it is bound here now), else a new one. */
+  const noteFor = (secret: string, place: string): string => {
+    let free: string | undefined;
     for (const [note, text] of keys) {
-      if (text === secret && !used.has(note)) {
+      if (text !== secret || used.has(note)) continue;
+      const made = at.get(note);
+      if (made === place) {
         used.add(note);
         return note;
       }
+      if (made === undefined) free ??= note;
+    }
+    if (free !== undefined) {
+      used.add(free);
+      at.set(free, place);
+      bound = true;
+      return free;
     }
     if (!mint) {
       complete = false;
@@ -85,14 +109,16 @@ export function veilValue(
     }
     const note = t('json.keyNote', { id: `${notes.session}.${keys.size + 1}` });
     keys.set(note, secret);
+    at.set(note, place);
     used.add(note);
     return note;
   };
   const walk = (v: unknown, path: (string | number)[], key: string | undefined): unknown => {
     if (typeof v === 'string') {
+      const place = placeOf(path, opts.group);
       // A whole key the caller names (an SSL's) is a note even when empty; a never-shown name's text when it has any.
-      if (opts.whole?.(path, key) === true || (byName(path, key) && v !== '')) return noteFor(v);
-      return holdsPrivateKey(v) ? withoutPrivateKeys(v, noteFor) : v;
+      if (opts.whole?.(path, key) === true || (byName(path, key) && v !== '')) return noteFor(v, place);
+      return holdsPrivateKey(v) ? withoutPrivateKeys(v, (block) => noteFor(block, place)) : v;
     }
     if (Array.isArray(v)) return v.map((x, i) => walk(x, [...path, i], key));
     if (isObj(v)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, [...path, k], k)]));
@@ -100,7 +126,7 @@ export function veilValue(
   };
   const out = walk(value, [], under);
   if (used.size === 0 && complete) return { value, notes, veiled: false, complete };
-  return { value: out, notes: keys.size === notes.keys.size ? notes : { session: notes.session, keys }, veiled: used.size > 0, complete };
+  return { value: out, notes: keys.size === notes.keys.size && !bound ? notes : { session: notes.session, keys, at }, veiled: used.size > 0, complete };
 }
 
 /** Every text in `value`, at any depth. */
@@ -123,33 +149,36 @@ function textsOf(value: unknown, out = new Set<string>()): Set<string> {
 export function unveilValue(
   edited: unknown,
   notes: KeyNotes,
-  opts: { whole?: WholeKey; under?: string; before?: unknown } = {},
+  opts: { whole?: WholeKey; group?: PlaceGroup; under?: string; before?: unknown } = {},
 ): { ok: true; value: unknown } | { ok: false; problem: string } {
   const whole = opts.whole ?? byName;
   const kept = textsOf(opts.before);
   const seen = new Set<string>();
   let problem: string | undefined;
   let changed = false;
-  const resolve = (note: string): string => {
+  const resolve = (note: string, place: string): string => {
     const text = notes.keys.get(note);
+    const made = notes.at.get(note);
     if (text === undefined) problem ??= t('json.note.unknown');
     else if (seen.has(note)) problem ??= t('json.note.twice');
+    else if (made !== undefined && made !== place) problem ??= t('json.note.moved');
     seen.add(note);
     return text ?? note;
   };
   const walk = (v: unknown, path: (string | number)[], key: string | undefined): unknown => {
     if (typeof v === 'string') {
       if (!v.includes(MASK.slice(0, 1)) && !leftOfNote(v)) return v;
+      const place = placeOf(path, opts.group);
       if (whole(path, key) || byName(path, key)) {
         if (kept.has(v)) return v;
         if (v.includes(MASK.slice(0, 1))) {
           changed = true;
-          return resolve(v);
+          return resolve(v, place);
         }
         if (!kept.has(v)) problem ??= t('json.note.unknown');
         return v;
       }
-      const back = v.replace(notePattern(), resolve);
+      const back = v.replace(notePattern(), (note) => resolve(note, place));
       // A note changed by hand no longer matches: what is left of it must not be sent.
       if (leftOfNote(back) && !(back === v && kept.has(v))) problem ??= t('json.note.unknown');
       if (back !== v) changed = true;

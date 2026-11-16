@@ -281,3 +281,57 @@ describe('the conflict diff', () => {
     expect(inPage(STORED) || inPage(NEW)).toBe(false);
   });
 });
+
+// Fix round 2, R1.2: outside an SSL's own slots a note resolves only at the path it was made for.
+describe('a note moved to another field', () => {
+  async function editJson() {
+    const app = await open('#/routes/r1?tab=json');
+    await app.user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    const plugins = shown.plugins as Obj;
+    const token = note.exec(JSON.stringify(shown))?.[0] ?? '';
+    return { ...app, box, shown, plugins, token };
+  }
+
+  it('into a proxy-rewrite header (the stored key replaced by a new one where it was): refused, nothing sent, the key in no view', async () => {
+    const { user, admin, box, shown, plugins, token } = await editJson();
+    const moved = JSON.stringify({
+      ...shown,
+      plugins: { 'traffic-split': split(pem(NEW)), 'proxy-rewrite': { headers: { set: { 'X-K': token } } } },
+    });
+    expect(JSON.stringify(plugins)).toContain(token);
+    await replaceText(user, box, moved);
+    expect(await main().findByText(t('json.note.moved'))).toBeInTheDocument();
+    await user.keyboard('{Control>}s{/Control}');
+    expect(writesOf(admin)).toEqual([]);
+    expect(inPage(STORED)).toBe(false);
+  });
+
+  it('into desc: refused, nothing sent, and the General tab never shows the key', async () => {
+    const { user, admin, box, shown, token } = await editJson();
+    await replaceText(user, box, JSON.stringify({ ...shown, plugins: { 'traffic-split': split(pem(NEW)) }, desc: token }));
+    expect(await main().findByText(t('json.note.moved'))).toBeInTheDocument();
+    await user.keyboard('{Control>}s{/Control}');
+    expect(writesOf(admin)).toEqual([]);
+    expect(inPage(STORED)).toBe(false);
+  });
+
+  it('left in place with another change: saved, the stored key sent', async () => {
+    const { user, admin, box, shown, token } = await editJson();
+    expect(token).not.toBe('');
+    await replaceText(user, box, JSON.stringify({ ...shown, name: 'split2' }));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ name: 'split2', plugins: { 'traffic-split': split(pem(STORED)) } });
+  });
+
+  it('replaced at its own path by a new key: the new key sent', async () => {
+    const { user, admin, box, shown } = await editJson();
+    await replaceText(user, box, JSON.stringify({ ...shown, plugins: { 'traffic-split': split(pem(NEW)) } }));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ plugins: { 'traffic-split': split(pem(NEW)) } });
+  });
+});

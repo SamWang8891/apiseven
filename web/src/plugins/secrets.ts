@@ -21,7 +21,7 @@
 //   either; the editing JSON tab shows a note in their place (veilKeys).
 import { isObj } from '../api/sanitize';
 import type { Kind, Obj, PluginInfo } from '../api/types';
-import { unveilValue, veilValue, type KeyNotes, type WholeKey } from '../schema/keyNotes';
+import { unveilValue, veilValue, type KeyNotes, type PlaceGroup, type WholeKey } from '../schema/keyNotes';
 import { hideNeverShown, holdsPrivateKey, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
 import { managerOf, SCHEMAS, SECRET_FIELDS } from '../resources/secrets/schemas';
@@ -207,7 +207,11 @@ export { newKeyNotes } from '../schema/keyNotes';
 /** An SSL's private keys, whole: its `key` and each of its `keys` (a GET never returns them; a new one sits in the draft from Replace). */
 const sslKeys: WholeKey = (path) => (path.length === 1 && path[0] === 'key') || (path.length === 2 && path[0] === 'keys');
 
-const wholeFor = (kind: Kind): WholeKey | undefined => (kind === 'ssls' ? sslKeys : undefined);
+/** An SSL's key and certificate slots (`key`, `keys[i]`, `cert`, `certs[i]`, `client.ca`): a note made in one may move to another (the user swaps pairs). */
+const sslSlots: PlaceGroup = (path) =>
+  sslKeys(path, undefined) || (path.length === 1 && path[0] === 'cert') || (path.length === 2 && path[0] === 'certs') || (path.length === 2 && path[0] === 'client' && path[1] === 'ca');
+
+const wholeFor = (kind: Kind): { whole?: WholeKey; group?: PlaceGroup } => (kind === 'ssls' ? { whole: sslKeys, group: sslSlots } : {});
 
 /**
  * The draft as the editing JSON tab shows it (schema/keyNotes.ts veilValue): every value that is never
@@ -216,7 +220,7 @@ const wholeFor = (kind: Kind): WholeKey | undefined => (kind === 'ssls' ? sslKey
  * without it, `complete` says some had none).
  */
 export function veilKeys(kind: Kind, draft: Obj, notes: KeyNotes, mint = true): { value: Obj; notes: KeyNotes; veiled: boolean; complete: boolean } {
-  const veiled = veilValue(draft, notes, { mint, whole: wholeFor(kind) });
+  const veiled = veilValue(draft, notes, { mint, ...wholeFor(kind) });
   return { ...veiled, value: veiled.value as Obj };
 }
 
@@ -227,7 +231,7 @@ export function veilKeys(kind: Kind, draft: Obj, notes: KeyNotes, mint = true): 
  * `before` is the draft the text was made from. Text typed over a note is kept as typed.
  */
 export function unveilKeys(kind: Kind, edited: Obj, notes: KeyNotes, before?: Obj): { ok: true; value: Obj } | { ok: false; problem: string } {
-  const back = unveilValue(edited, notes, { whole: wholeFor(kind), before });
+  const back = unveilValue(edited, notes, { ...wholeFor(kind), before });
   return back.ok ? { ok: true, value: back.value as Obj } : back;
 }
 
