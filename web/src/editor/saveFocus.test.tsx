@@ -258,3 +258,47 @@ describe('a conflict, then the dialog closed without overwriting (F2)', () => {
     });
   }
 });
+
+// F3: the field a refused save left is found again after the saving state remounted it (a new element,
+// a new id): by its tab, its role, its accessible name and which one of that name it was. On the real
+// route editor, every PUT refused by APISIX, Cmd/Ctrl-S from each control.
+describe('a field remounted by the saving state is found again after a refusal (F3)', () => {
+  const REAL: Obj = {
+    id: 'r1',
+    name: 'web',
+    uri: '/a',
+    hosts: ['a.test', 'b.test'],
+    labels: { team: 'core' },
+    upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }], retries: 2 },
+  };
+  const CASES: { tab: string; role: 'textbox' | 'combobox' | 'spinbutton'; name: string | RegExp }[] = [
+    { tab: 'rt.tab.matching', role: 'textbox', name: new RegExp(`^${t('rt.match.uris')}\\b`) },
+    { tab: 'rt.tab.matching', role: 'textbox', name: new RegExp(`^${t('rt.match.hosts')}\\b`) },
+    { tab: 'rt.tab.general', role: 'textbox', name: t('ui.kv.keyN', { n: 1 }) },
+    { tab: 'rt.tab.upstream', role: 'combobox', name: new RegExp(`^${t('rt.up.service')}\\b`) },
+    { tab: 'rt.tab.upstream', role: 'textbox', name: t('up.nodes.hostN', { n: 1 }) },
+    { tab: 'rt.tab.upstream', role: 'textbox', name: t('up.nodes.new') },
+    { tab: 'rt.tab.upstream', role: 'spinbutton', name: new RegExp(`^${t('up.conn.retries')}\\b`) },
+  ];
+
+  for (const { tab, role, name } of CASES) {
+    it(`${t(tab)}: ${String(name)} (${role})`, async () => {
+      const { user, admin } = await openEditor('#/routes/r1', {
+        objects: { routes: [REAL], upstreams: [], services: [{ id: 's1', name: 'billing', upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.2', port: 80, weight: 1 }] } }], plugin_configs: [] },
+        replies: { ...pluginReplies(), 'routes/r1': (req) => (req.method === 'PUT' ? json(400, { error_msg: REFUSED }) : undefined) },
+      });
+      await main().findByRole('heading', { level: 1, name: 'web' });
+      await user.keyboard('e');
+      // Something to save: the description, on General.
+      await user.type(await main().findByRole('textbox', { name: t('rt.general.desc') }), 'x');
+      await user.click(main().getByRole('tab', { name: new RegExp(`^${t(tab)}`) }));
+      const before = await main().findByRole(role, { name });
+      before.focus();
+      expect(before).toHaveFocus();
+      pressCtrlS();
+      expect(await within(screen.getByRole('main')).findByRole('alert')).toHaveTextContent(REFUSED);
+      expect(writesOf(admin)).toHaveLength(1);
+      await waitFor(() => expect(document.activeElement).toBe(main().getByRole(role, { name })));
+    });
+  }
+});

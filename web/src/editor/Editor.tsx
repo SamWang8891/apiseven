@@ -44,11 +44,13 @@ import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle
 import { useShownTabs } from './useShownTabs';
 import { useRequiredValues } from './untouched';
 import { useEdit } from './useEdit';
-import { returnFocus } from './focusBack';
+import { returnFocus, type Place } from './focusBack';
 
 /** Where focus goes back after a refused save (final wave I1): what the save left, what was pressed. */
 interface Refocus {
   left?: HTMLElement;
+  /** Where `left` was, to find it again after a remount (F3). */
+  place?: Place;
   pressed?: HTMLElement;
   anyway: boolean;
   /** A local refusal that showed another tab: its first flagged control comes first (F1). */
@@ -253,7 +255,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       const at = document.activeElement;
       return !at || at === document.body || at === next.pressed;
     };
-    const back = () => returnFocus(next.left, next.pressed, next.anyway ? anywayRef.current : undefined, saveRef.current);
+    const back = () => returnFocus(next.left, next.place, next.pressed, next.anyway ? anywayRef.current : undefined, saveRef.current);
     if (!lost()) return;
     if (!next.toProblem) {
       back();
@@ -293,7 +295,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const saveAnyway = useSaveAnyway({ session, grounds: !locked && anywayGrounds, checked, shown: shownTabs, tabFields, send: () => requestSave(false, true) });
 
   /** `anyway`: Save anyway, which sends the draft past the kind's own checks (only those). */
-  async function save(force = false, left?: HTMLElement, anyway = false, pressed?: HTMLElement) {
+  async function save(force = false, left?: HTMLElement, anyway = false, pressed?: HTMLElement, place?: Place) {
     if (saving || locked || inFlight.current) return;
     if (problems > 0 && !(anyway && onlyLocal)) {
       if (refusedNow.current) return;
@@ -315,10 +317,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       if (first !== undefined && first !== active) {
         goTab(first);
         // Once that tab shows, its first flagged control takes focus; else where the user was (F1).
-        refocusNext.current = { left, pressed, anyway, toProblem: true };
+        refocusNext.current = { left, place, pressed, anyway, toProblem: true };
       } else if (holding) holding.focus();
       else if (first === undefined && (idMissing || idRefused)) idRef.current?.focus();
-      else returnFocus(left, pressed, anyway ? anywayRef.current : undefined, saveRef.current);
+      else returnFocus(left, place, pressed, anyway ? anywayRef.current : undefined, saveRef.current);
       return;
     }
     if (!isNew && !dirty && !force) {
@@ -329,7 +331,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     // A key known to be read-only: refused here, before the saving state (which would remount every
     // field for a save that sends nothing); the field left for it gets its focus back.
     if (writeRefused(client.conn.id)) {
-      refuseReadOnly({ left, pressed, anyway });
+      refuseReadOnly({ left, place, pressed, anyway });
       return;
     }
     inFlight.current = true;
@@ -343,7 +345,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     setSaving(false);
     if (!sent.ok) {
       // The key turned read-only meanwhile (another save of this connection was refused): the same refusal.
-      refuseReadOnly({ left, pressed, anyway });
+      refuseReadOnly({ left, place, pressed, anyway });
       return;
     }
     const result = sent.value;
@@ -372,10 +374,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       // memory of it goes, so nothing says "nothing else stops the save"; the session's yes stays
       // (Task 16b, item 151). Overwrite goes on anyway through `conflict.anyway`.
       saveAnyway.refused(false);
-      setConflict({ item: result.conflict, anyway, from: { left, pressed, anyway } });
+      setConflict({ item: result.conflict, anyway, from: { left, place, pressed, anyway } });
     } else if ('exists' in result || 'unchecked' in result) {
       saveAnyway.refused(false);
-      refocusNext.current = { left, pressed, anyway };
+      refocusNext.current = { left, place, pressed, anyway };
       // A create never overwrites: the id is taken, or could not be checked (saveResource).
       // On a page fixed to that id (a plugin's metadata), the stored object is shown on request instead of linked.
       const refusal = 'exists' in result ? takenFailure(kind, result.exists, parent, fixedId !== undefined) : uncheckedFailure(createId ?? '', result.unchecked);
@@ -385,7 +387,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       if ('unchecked' in result && result.unchecked.kind === 'auth') toConnect(result.unchecked);
     } else {
       // Refused by APISIX: focus goes back where the user was once the page shows why.
-      refocusNext.current = { left, pressed, anyway };
+      refocusNext.current = { left, place, pressed, anyway };
       const { error } = result;
       // Only a refused write says the key may not write; a refused read says the key is wrong.
       if (error.kind === 'auth') {
@@ -399,7 +401,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   }
 
   /** Not sent (the key is read-only): the draft stays, to be copied out (the JSON tab), the banner says why, and focus goes back where the user was. */
-  function refuseReadOnly(from: { left?: HTMLElement; pressed?: HTMLElement; anyway: boolean }) {
+  function refuseReadOnly(from: Refocus) {
     refocusNext.current = from;
     setFailure({ title: t('editor.notSent'), message: t('editor.readOnlySave') });
   }

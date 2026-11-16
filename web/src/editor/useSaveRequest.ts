@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type RefObject } from 'react';
 import { flushSync } from 'react-dom';
+import { placeOf, type Place } from './focusBack';
 
 /**
  * Save as the button and Cmd/Ctrl-S ask for it: the focused field in `body` is left first, and what
@@ -12,7 +13,7 @@ import { flushSync } from 'react-dom';
  */
 export function useSaveRequest(
   body: RefObject<HTMLElement | null>,
-  save: (force: boolean, left?: HTMLElement, anyway?: boolean, pressed?: HTMLElement) => Promise<void>,
+  save: (force: boolean, left?: HTMLElement, anyway?: boolean, pressed?: HTMLElement, place?: Place) => Promise<void>,
   enabled: boolean,
 ): (force?: boolean, anyway?: boolean) => void {
   const latest = useRef(save);
@@ -24,7 +25,9 @@ export function useSaveRequest(
     const focused = document.activeElement;
     const left = focused instanceof HTMLElement && body.current?.contains(focused) ? focused : undefined;
     const pressed = !left && focused instanceof HTMLElement && focused !== document.body ? focused : undefined;
+    // Where the field is, taken before the blur: the saving state may remount it (F3).
+    const place = left ? placeOf(left) : undefined;
     if (left) flushSync(() => left.blur());
-    void latest.current(force, left, anyway, pressed);
+    void latest.current(force, left, anyway, pressed, place);
   };
 }
