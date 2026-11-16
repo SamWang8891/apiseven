@@ -5,13 +5,14 @@ import { t } from '../../i18n';
 import { IdCell, LabelChips, NameDescCell, PluginChips, UsedByCell } from '../cells';
 import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
-import { labelPairs, nameOfValue, referencesTo } from '../resolve';
+import { labelPairs, nameOfValue, referenceUse } from '../resolve';
 import { servicePlugins } from '../services/columns';
 import { timeColumns } from '../timeColumns';
 
 /** The routes that name the plugin config (what APISIX's delete check looks at, admin/plugin_config.lua 47–62); undefined until they have loaded. */
 export function routesOf(item: Item, ctx: Ctx) {
-  return ctx.loaded.routes ? referencesTo('plugin_configs', item.id, ctx) : undefined;
+  const use = referenceUse('plugin_configs', item.id, ctx);
+  return 'refs' in use ? use.refs : undefined;
 }
 
 export const pluginConfigColumns: ColumnDef[] = [

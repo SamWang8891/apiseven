@@ -3,7 +3,8 @@ import { t } from '../i18n';
 import { EC_IPV6, FAR } from '../test/certs';
 import { ctxOf, itemOf } from '../test/ctx';
 import * as resolve from './resolve';
-import { effectivePlugins, labelPairs, nameOfValue, referencesTo, resolveRef, routeHosts, routeScript, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
+import type { Kind } from '../api/types';
+import { effectivePlugins, labelPairs, nameOfValue, referenceLists, referencesTo, resolveRef, routeHosts, routeScript, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
 
 describe('nameOfValue', () => {
   it('takes name, then username, then desc, skipping empty strings', () => {
@@ -556,6 +557,29 @@ describe('referencesTo', () => {
   });
 });
 
+// Fix round 1, R1.6: the table every "what uses it" waits on is what referencesTo reads, kind by kind, so a
+// case added there without the table fails here, never a definite "nothing uses it" while a list loads.
+describe('referenceLists', () => {
+  const KINDS: Kind[] = [
+    'routes', 'services', 'upstreams', 'consumers', 'credentials', 'consumer_groups', 'ssls', 'global_rules', 'plugin_configs', 'plugin_metadata', 'protos', 'secrets', 'stream_routes',
+  ];
+  const LISTS = new Set(['routes', 'streamRoutes', 'services', 'upstreams', 'ssls', 'pluginConfigs', 'consumerGroups', 'consumers', 'globalRules']);
+  const item = itemOf('o1', { name: 'o' });
+  const full = ctxOf({ routes: [item], streamRoutes: [item], services: [item], upstreams: [item], ssls: [item], pluginConfigs: [item], consumerGroups: [item], consumers: [item], globalRules: [item] });
+
+  it.each(KINDS)('%s: referencesTo reads exactly the lists the table names', (kind) => {
+    const read = new Set<string>();
+    const ctx = new Proxy(full, {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string' && LISTS.has(prop)) read.add(prop);
+        return Reflect.get(target, prop, receiver) as unknown;
+      },
+    });
+    referencesTo(kind, 'x', ctx);
+    expect([...read].sort()).toEqual([...referenceLists(kind)].sort());
+  });
+});
+
 describe('resolveRef', () => {
   const ctx = ctxOf({ services: [itemOf('s1', { name: 'web' }), itemOf('7')], pluginConfigs: [itemOf('pc1')] });
 
@@ -618,7 +642,7 @@ describe('every exported resolver, on odd shapes', () => {
 
   it('lists every exported function once, so a new one is added here', () => {
     expect(Object.keys(resolve).filter((name) => typeof (resolve as Record<string, unknown>)[name] === 'function').sort()).toEqual([
-      'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referenceUse', 'referencesTo', 'resolveRef',
+      'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referenceLists', 'referenceUse', 'referencesTo', 'resolveRef',
       'routeHosts', 'routeHostsLoading', 'routeHostsUnknown', 'routeScript', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter',
       'streamEffectivePlugins', 'upstreamSummary',
     ]);

@@ -2,21 +2,11 @@
 import type { Item, Kind } from '../../api/types';
 import { t } from '../../i18n';
 import { IdCell, LabelChips, NameDescCell, UsedByCell } from '../cells';
-import type { Ctx, CtxList } from '../ctx';
+import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
-import { labelPairs, nameOfValue, referencesTo, type Reference } from '../resolve';
+import { labelPairs, nameOfValue, referenceUse, type Reference, type ReferenceUse } from '../resolve';
 import { timeColumns } from '../timeColumns';
 import { contentBytes, formatBytes, isDescriptorSet } from './content';
-
-/** The lists a proto's users come from, and their kinds (for the names said when one failed). */
-const USER_LISTS: [CtxList, Kind][] = [
-  ['routes', 'routes'],
-  ['services', 'services'],
-  ['pluginConfigs', 'plugin_configs'],
-  ['consumers', 'consumers'],
-  ['consumerGroups', 'consumer_groups'],
-  ['globalRules', 'global_rules'],
-];
 
 /**
  * What uses the proto: the objects whose grpc-transcode names it (referencesTo), once every list they
@@ -25,14 +15,10 @@ const USER_LISTS: [CtxList, Kind][] = [
  * they use it as well (deleting the proto breaks them). So "unused" means none of them names it.
  * `loading` until then; `failed` (with the lists' kinds) when one of them could not be read.
  */
-export type ProtoUse = { refs: Reference[] } | { loading: true } | { failed: Kind[] };
+export type ProtoUse = ReferenceUse;
 
-export function protoUse(id: string, ctx: Ctx): ProtoUse {
-  const failed = USER_LISTS.filter(([list]) => ctx.failed[list]).map(([, kind]) => kind);
-  if (failed.length > 0) return { failed };
-  if (USER_LISTS.every(([list]) => ctx.loaded[list])) return { refs: referencesTo('protos', id, ctx) };
-  return { loading: true };
-}
+/** The lists are resolve.ts's one table (referenceUse): routes, services, plugin configs, consumers, consumer groups, global rules. */
+export const protoUse = (id: string, ctx: Ctx): ProtoUse => referenceUse('protos', id, ctx);
 
 /** The users once known; undefined while loading or when a list failed. */
 export function protoUsers(id: string, ctx: Ctx): Reference[] | undefined {

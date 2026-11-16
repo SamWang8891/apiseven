@@ -474,7 +474,11 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
   return refs.sort((a, b) => compareText(a.kind, b.kind) || compareText(a.name, b.name) || compareText(a.id, b.id));
 }
 
-/** The Ctx lists referencesTo reads for each kind (a kind not here is pointed at by nothing it knows of). */
+/**
+ * The Ctx lists referencesTo reads for each kind (a kind not here is pointed at by nothing it knows
+ * of): the one table every "what uses it" waits on (referenceUse, the Used-by columns, Delete). A test
+ * runs referencesTo for every kind and compares the lists it reads with this table.
+ */
 const REFERENCE_LISTS: Partial<Record<Kind, CtxList[]>> = {
   upstreams: ['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups', 'globalRules'],
   services: ['routes', 'streamRoutes'],
@@ -498,6 +502,9 @@ const LIST_KINDS: Record<CtxList, Kind> = {
   globalRules: 'global_rules',
 };
 
+/** The lists that can point at an object of `kind` (REFERENCE_LISTS); none for a kind nothing points at. */
+export const referenceLists = (kind: Kind): readonly CtxList[] => REFERENCE_LISTS[kind] ?? [];
+
 /** What uses an object: its references, `loading` while a list they come from has not loaded, or the kinds of the lists that `failed`. */
 export type ReferenceUse = { refs: Reference[] } | { loading: true } | { failed: Kind[] };
 
@@ -506,7 +513,7 @@ export type ReferenceUse = { refs: Reference[] } | { loading: true } | { failed:
  * then it can't be told (addendum rule 12), and a list that failed leaves it unknown.
  */
 export function referenceUse(kind: Kind, id: string, ctx: Ctx): ReferenceUse {
-  const lists = REFERENCE_LISTS[kind] ?? [];
+  const lists = referenceLists(kind);
   const failed = lists.filter((list) => ctx.failed[list]);
   if (failed.length > 0) return { failed: failed.map((list) => LIST_KINDS[list]) };
   if (lists.every((list) => ctx.loaded[list])) return { refs: referencesTo(kind, id, ctx) };

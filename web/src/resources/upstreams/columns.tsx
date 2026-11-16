@@ -9,7 +9,7 @@ import { addrOf, rowsOf, usesDiscovery } from '../../upstream/nodes';
 import { IdCell, LabelChips, NameDescCell, TimeCell, UsedByCell } from '../cells';
 import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
-import { labelPairs, nameOfValue, referencesTo, type Reference } from '../resolve';
+import { labelPairs, nameOfValue, referenceUse, type Reference } from '../resolve';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== '' ? v : undefined);
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
@@ -37,17 +37,15 @@ export function healthOf(up: Obj): HealthState {
 
 export const healthLabel = (state: HealthState): string => (state === 'off' ? t('ui.off') : t(`up.health.${state}`));
 
-/** The lists that can point at an upstream (referencesTo: routes, services, stream routes, and a traffic-split rule in a plugin config, consumer, consumer group or global rule). */
-export const USAGE_LISTS = ['routes', 'services', 'streamRoutes', 'pluginConfigs', 'consumers', 'consumerGroups', 'globalRules'] as const;
-
 /**
- * What points at the upstream: the references once every list that can has loaded; 'unknown' when one
- * of them failed to load (it can't be told), else 'loading' (addendum rule 12; with stream mode off,
- * the stream routes count as loaded).
+ * What points at the upstream (referenceUse, which waits on the lists of resolve.ts's one table): the
+ * references once every list that can point at it has loaded; 'unknown' when one of them failed to
+ * load (it can't be told), else 'loading' (addendum rule 12; with stream mode off, the stream routes
+ * count as loaded).
  */
 export function usedBy(item: Item, ctx: Ctx): Reference[] | 'loading' | 'unknown' {
-  if (USAGE_LISTS.every((list) => ctx.loaded[list])) return referencesTo('upstreams', item.id, ctx);
-  return USAGE_LISTS.some((list) => ctx.failed[list] && !ctx.loaded[list]) ? 'unknown' : 'loading';
+  const use = referenceUse('upstreams', item.id, ctx);
+  return 'refs' in use ? use.refs : 'failed' in use ? 'unknown' : 'loading';
 }
 
 // Headers are getters, so they follow the language table at use (never spread a column). The

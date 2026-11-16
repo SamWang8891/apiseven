@@ -7,7 +7,7 @@ import { HostsCell, IdCell, LabelChips, NameDescCell, PluginChips, TimeCell, Ups
 import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
 import { entryEffect } from '../../plugins/entryEffect';
-import { labelPairs, nameOfValue, referencesTo, upstreamSummary } from '../resolve';
+import { labelPairs, nameOfValue, referenceUse, upstreamSummary } from '../resolve';
 
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
 
@@ -34,7 +34,8 @@ export function servicePlugins(service: Obj): PluginChip[] {
  * loaded (with stream mode off, the stream routes count as loaded: there are none).
  */
 export function usersOf(item: Item, ctx: Ctx) {
-  return ctx.loaded.routes && ctx.loaded.streamRoutes ? referencesTo('services', item.id, ctx) : undefined;
+  const use = referenceUse('services', item.id, ctx);
+  return 'refs' in use ? use.refs : undefined;
 }
 
 // Headers are getters, so they follow the language table at use (never spread a column). The

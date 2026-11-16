@@ -96,6 +96,28 @@ describe('delete', () => {
     expect(within(dialog).queryByRole('link', { name: /gamma/ })).not.toBeInTheDocument();
   });
 
+  // Fix round 1, R1.5: the single dialog waits for the lists what uses it comes from, for every kind.
+  it('says checking… while a list what uses an upstream comes from loads, then the users', async () => {
+    let release = () => {};
+    const gate = new Promise<undefined>((done) => (release = () => done(undefined)));
+    const { user } = await open('#/upstreams', { replies: { routes: () => gate } });
+    await rowAction(user, 'backend', t('action.delete'));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(within(dialog).getByText(t('delete.checking'))).toBeInTheDocument();
+    expect(within(dialog).queryByText(t('delete.inUse'))).not.toBeInTheDocument();
+    act(() => release());
+    expect(await within(dialog).findByText(t('delete.inUse'))).toBeInTheDocument();
+    expect(within(dialog).queryByText(t('delete.checking'))).not.toBeInTheDocument();
+  });
+
+  it('says which list could not be read when one failed: unknown, never "in use by none"', async () => {
+    const { user } = await open('#/upstreams', { replies: { global_rules: () => json(500, { error_msg: 'etcd down' }) } });
+    await rowAction(user, 'backend', t('action.delete'));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(await within(dialog).findByText(t('delete.unknown', { lists: t('kind.global_rules.plural') }))).toBeInTheDocument();
+    expect(within(dialog).queryByText(t('delete.inUse'))).not.toBeInTheDocument();
+  });
+
   it('confirming removes the object, and its row goes once the list is reloaded', async () => {
     const { user, admin } = await open('#/routes');
     await rowAction(user, 'gamma', t('action.delete'));
