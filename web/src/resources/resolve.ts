@@ -3,6 +3,7 @@
 import { isObj } from '../api/sanitize';
 import type { Item, Kind, Obj } from '../api/types';
 import { t } from '../i18n';
+import { entryEffect } from '../plugins/entryEffect';
 import { runsOnStream } from '../plugins/stream';
 import type { Ctx, CtxList } from './ctx';
 import { parseCert } from './ssls/parseCert';
@@ -19,7 +20,10 @@ export interface UpstreamSummary {
 export interface EffectivePlugin {
   name: string;
   from: 'route' | 'service' | 'plugin_config';
+  /** `_meta.disable`: APISIX skips it for this object. Never for a `noEffect` entry. */
   disabled: boolean;
+  /** A plugin APISIX runs for the whole instance (entryEffect): this entry does nothing here, on or off. */
+  noEffect?: boolean;
 }
 
 export interface SslMatch {
@@ -241,7 +245,9 @@ export function effectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
   for (const [from, plugins] of layers) {
     if (!isObj(plugins)) continue;
     for (const [name, conf] of Object.entries(plugins)) {
-      if (!byName.has(name)) byName.set(name, { name, from, disabled: dig(conf, '_meta', 'disable') === true });
+      if (byName.has(name)) continue;
+      const effect = entryEffect(name, conf);
+      byName.set(name, effect === 'noEffect' ? { name, from, disabled: false, noEffect: true } : { name, from, disabled: effect === 'off' });
     }
   }
   return [...byName.values()].sort((a, b) => compareText(a.name, b.name));

@@ -462,6 +462,15 @@ describe('General', () => {
     expect(h.value()).toEqual({ uri: '/x', upstream_id: 'u1', name: 'shop', priority: 10 });
   });
 
+  // Fix round 1, J1: an instance-wide plugin's entry is named "(no effect here)", never "(off)".
+  it('the overview names an entry of a plugin run for the whole instance "no effect here", stored off or not', () => {
+    renderRouteTab(GeneralTab, { uri: '/x', upstream_id: 'u1', plugins: { inspect: { _meta: { disable: true } }, 'limit-count': { _meta: { disable: true }, count: 1, time_window: 60 } } }, { locked: true, ctx: CTX });
+    const row = within(screen.getByRole('region', { name: t('rt.overview') })).getByRole('link', { name: t('pl.tab') }).closest('div') as HTMLElement;
+    expect(row).toHaveTextContent(t('rt.overview.pluginNoEffect', { name: 'inspect' }));
+    expect(row).not.toHaveTextContent(t('rt.overview.pluginOff', { name: 'inspect' }));
+    expect(row).toHaveTextContent(t('rt.overview.pluginOff', { name: 'limit-count' }));
+  });
+
   it('locked, an overview links to each tab', () => {
     renderRouteTab(GeneralTab, FULL, { locked: true, ctx: CTX });
     const overview = screen.getByRole('region', { name: t('rt.overview') });

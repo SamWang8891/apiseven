@@ -6,6 +6,7 @@ import { t } from '../../i18n';
 import { HostsCell, IdCell, LabelChips, NameDescCell, PluginChips, TimeCell, UpstreamCell, UsedByCell, type PluginChip } from '../cells';
 import type { Ctx } from '../ctx';
 import type { ColumnDef } from '../registry';
+import { entryEffect } from '../../plugins/entryEffect';
 import { labelPairs, nameOfValue, referencesTo, upstreamSummary } from '../resolve';
 
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
@@ -14,11 +15,17 @@ function strings(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v !== '') : [];
 }
 
-/** The service's own plugins, by name, each saying whether it is off (`_meta.disable`). */
+/**
+ * The service's own plugins, by name, each saying whether it is off (`_meta.disable`), or that it has
+ * no effect here (a plugin APISIX runs for the whole instance: entryEffect), which is never "off".
+ */
 export function servicePlugins(service: Obj): PluginChip[] {
   if (!isObj(service.plugins)) return [];
   return Object.entries(service.plugins)
-    .map(([name, conf]) => ({ name, disabled: isObj(conf) && isObj(conf._meta) && conf._meta.disable === true }))
+    .map(([name, conf]): PluginChip => {
+      const effect = entryEffect(name, conf);
+      return effect === 'noEffect' ? { name, noEffect: true } : { name, disabled: effect === 'off' };
+    })
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 

@@ -282,6 +282,13 @@ describe('effectivePlugins', () => {
     ]);
   });
 
+  it('an entry of a plugin run for the whole instance has no effect: never disabled, stored off or not (J1)', () => {
+    expect(effectivePlugins({ plugins: { inspect: { _meta: { disable: true } }, ai: {} } }, ctx)).toEqual([
+      { name: 'ai', from: 'route', disabled: false, noEffect: true },
+      { name: 'inspect', from: 'route', disabled: false, noEffect: true },
+    ]);
+  });
+
   it('compares ids as strings and skips references that point nowhere', () => {
     const numeric = ctxOf({ services: [itemOf('7', { plugins: { gzip: {} } })] });
     expect(effectivePlugins({ service_id: 7 }, numeric)).toEqual([{ name: 'gzip', from: 'service', disabled: false }]);

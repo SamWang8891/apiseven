@@ -14,6 +14,7 @@ import type { TabProps } from '../registry';
 import { asStreamRoute, streamEffectivePlugins } from '../resolve';
 import { inheritLoading } from '../routes/inherit';
 import { targetOf } from '../upstreamSource';
+import { pluginName } from '../pluginName';
 import { snisOf } from './columns';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -64,7 +65,7 @@ function upstream(draft: Obj, ctx: Ctx): ReactNode {
  * then what it takes from its service. Until a service it merges with has loaded, that part says so.
  */
 function plugins(draft: Obj, ctx: Ctx): ReactNode {
-  const label = (p: { name: string; disabled: boolean }) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name);
+  const label = pluginName;
   const all = streamEffectivePlugins(draft, ctx);
   const own = all.filter((p) => p.from === 'route').map(label);
   const ownPart = own.length > 0 ? [<Mono key="own" values={own} />] : [];

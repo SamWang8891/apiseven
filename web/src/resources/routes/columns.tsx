@@ -91,12 +91,12 @@ export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx
  * can have one (routeScript): the stream list passes none.
  */
 export function pluginChips(route: Obj, ctx: Ctx, plugins: EffectivePlugin[] = effectivePlugins(route, ctx), notRun?: 'route' | 'service'): PluginChip[] {
-  return plugins.map(({ name, from, disabled }): PluginChip => {
-    if (from === 'service') return { name, disabled, notRun, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
+  return plugins.map(({ name, from, disabled, noEffect }): PluginChip => {
+    if (from === 'service') return { name, disabled, noEffect, notRun, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
     if (from === 'plugin_config') {
-      return { name, disabled, notRun, from: t('cell.plugin.fromPluginConfig', { name: refName('plugin_configs', route.plugin_config_id, ctx) ?? '' }) };
+      return { name, disabled, noEffect, notRun, from: t('cell.plugin.fromPluginConfig', { name: refName('plugin_configs', route.plugin_config_id, ctx) ?? '' }) };
     }
-    return { name, disabled, notRun };
+    return { name, disabled, noEffect, notRun };
   });
 }
 

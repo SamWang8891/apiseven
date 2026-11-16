@@ -261,6 +261,21 @@ describe('plugins', () => {
     expect(cell('plugins', r, ctxOf({ loaded: { services: false }, failed: { services: true } })).el).toHaveTextContent(t('cell.pluginsUnknown'));
   });
 
+  // Fix round 1, J1: a plugin APISIX runs for the whole instance does nothing as an entry, on or off
+  // (plugins/entryEffect.ts): its chip says "no effect here", never "off", and is not dimmed as not running.
+  it('an entry of a plugin run for the whole instance reads "no effect here", never "off", stored off or not', () => {
+    const ctx = ctxOf({ services: [itemOf('s5', { name: 'svc', plugins: { 'log-rotate': { _meta: { disable: true } } } })] });
+    const { el } = cell('plugins', route({ plugins: { inspect: { _meta: { disable: true } }, cors: {} }, service_id: 's5' }), ctx);
+    for (const name of ['inspect', 'log-rotate']) {
+      const chip = within(el).getByText(name).closest('.cell-plugin');
+      expect(chip).toHaveTextContent(t('cell.plugin.noEffect'));
+      expect(chip).not.toHaveTextContent(t('cell.plugin.off'));
+      expect(chip).not.toHaveClass('cell-plugin--off');
+    }
+    expect(within(el).getByText('inspect').closest('.cell-plugin')).toHaveAttribute('title', `inspect: ${t('pl.card.instanceNote', { name: 'inspect' })}`);
+    expect(within(el).getByText('cors').closest('.cell-plugin')).toHaveTextContent(/^cors$/);
+  });
+
   it('says off on a disabled plugin', () => {
     const { el } = cell('plugins', route({ plugins: { cors: { _meta: { disable: true } }, gzip: {} } }));
     expect(within(el).getByText('cors').closest('.cell-plugin')).toHaveTextContent(`cors${t('cell.plugin.off')}`);

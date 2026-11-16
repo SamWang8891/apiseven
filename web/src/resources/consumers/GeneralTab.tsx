@@ -22,11 +22,14 @@ import type { TabProps } from '../registry';
 import { findInCtx } from '../resolve';
 import { ResourcePicker } from '../ResourcePicker';
 import { scopedPlugins } from '../scopedPlugins';
+import { pluginName } from '../pluginName';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
 const idOf = (v: unknown): string | undefined => (typeof v === 'number' ? String(v) : typeof v === 'string' && v !== '' ? v : undefined);
 const named = (p: PluginChip) =>
-  p.notApplied
+  p.noEffect
+    ? pluginName(p)
+    : p.notApplied
     ? t('cs.overview.notApplied', { name: p.name })
     : p.notUsed
       ? t('cs.overview.notUsed', { name: p.name })

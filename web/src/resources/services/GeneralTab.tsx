@@ -13,6 +13,7 @@ import { Mono, Overview, Parts } from '../Overview';
 import type { TabProps } from '../registry';
 import { hostProblem } from '../routes/validate';
 import { targetOf } from '../upstreamSource';
+import { pluginName } from '../pluginName';
 import { servicePlugins } from './columns';
 
 const text = (v: unknown): string => (typeof v === 'string' ? v : '');
@@ -25,7 +26,7 @@ function upstream(draft: Obj, ctx: Ctx) {
 }
 
 function plugins(draft: Obj) {
-  const names = servicePlugins(draft).map((p) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name));
+  const names = servicePlugins(draft).map(pluginName);
   const parts = [...(names.length > 0 ? [<Mono key="own" values={names} />] : [t('svc.overview.noPlugins')])];
   // A service's script is inherited by its routes and runs instead of their plugins (merge_service_route, apisix/init.lua).
   if (draft.script !== undefined) parts.push(t('svc.overview.script'));

@@ -167,6 +167,8 @@ export interface PluginChip {
   unclassified?: boolean;
   /** Whose script runs instead of every plugin (a route's own, or its service's: resolve.ts routeScript): the plugin is not run. */
   notRun?: 'route' | 'service';
+  /** A plugin APISIX runs for the whole instance (plugins/entryEffect.ts): this entry does nothing here, on or off. */
+  noEffect?: boolean;
 }
 
 /**
@@ -175,7 +177,9 @@ export interface PluginChip {
  * in its tooltip above where it comes from.
  */
 const why = (plugin: PluginChip): string | undefined =>
-  plugin.notRun
+  plugin.noEffect
+    ? t('pl.card.instanceNote', { name: plugin.name })
+    : plugin.notRun
     ? t(plugin.notRun === 'route' ? 'cell.plugin.notRunRouteWhy' : 'cell.plugin.notRunServiceWhy')
     : plugin.notApplied
     ? t('cell.plugin.notAppliedWhy')
@@ -210,6 +214,7 @@ function pluginChip(plugin: PluginChip): ReactNode {
       {plugin.notUsed && <span className="cell-plugin__off">{t('cell.plugin.notUsed')}</span>}
       {plugin.offIgnored && <span className="cell-plugin__off">{t('cell.plugin.offIgnored')}</span>}
       {plugin.notRun && <span className="cell-plugin__off">{t('cell.plugin.notRun')}</span>}
+      {plugin.noEffect && <span className="cell-plugin__off">{t('cell.plugin.noEffect')}</span>}
       {plugin.from && <span className="ui-sr-only"> ({plugin.from})</span>}
     </span>
   );
@@ -220,7 +225,7 @@ function pluginChip(plugin: PluginChip): ReactNode {
         <span className="cell-tip-list">
           <span>{plugin.name}</span>
           <span>{plugin.from}</span>
-          {plugin.notRun && <span>{reason}</span>}
+          {(plugin.notRun || plugin.noEffect) && <span>{reason}</span>}
         </span>
       }
     >
@@ -240,6 +245,7 @@ function pluginLine(plugin: PluginChip): ReactNode {
     plugin.notUsed && t('cell.plugin.notUsed'),
     plugin.offIgnored && t('cell.plugin.offIgnored'),
     plugin.notRun && t('cell.plugin.notRun'),
+    plugin.noEffect && t('cell.plugin.noEffect'),
     plugin.from,
   ]
     .filter(Boolean)
