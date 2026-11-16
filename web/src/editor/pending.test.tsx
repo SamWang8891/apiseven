@@ -47,7 +47,7 @@ const HOLD_TAB: TabDef = {
       <HoldingField />
       <RenderCount />
       <Link to="?tab=general">Go to General</Link>
-      <Link to="/routes/new">New route</Link>
+      <Link to={newPathFor('routes')}>New route</Link>
     </>
   ),
 };
