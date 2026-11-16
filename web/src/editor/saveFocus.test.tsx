@@ -152,6 +152,8 @@ describe('focus after a refused save (I1)', () => {
       expect(button).toHaveAttribute('aria-disabled', 'true');
       expect(button).not.toBeDisabled();
     }
+    // F8: and it says why, as the kit rule asks of an unavailable button.
+    expect(discard).toHaveAccessibleDescription(t('editor.status.saving'));
     discard.focus();
     await user.keyboard('{Enter}');
     expect(discard).toHaveFocus();

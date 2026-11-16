@@ -174,8 +174,13 @@ export function EditorHeader({ editRef, saveRef, anywayRef, ...p }: EditorHeader
           )
         ) : (
           <>
-            {/* Unavailable while a save runs, never disabled: whoever just pressed it keeps focus (kit rule). */}
-            <Button aria-disabled={p.saving || undefined} onClick={p.onDiscard}>
+            {/* Unavailable while a save runs, never disabled: whoever just pressed it keeps focus, and hears why (kit rule). */}
+            {p.saving && (
+              <span id="ed-saving-why" hidden>
+                {t('editor.status.saving')}
+              </span>
+            )}
+            <Button aria-disabled={p.saving || undefined} aria-describedby={p.saving ? 'ed-saving-why' : undefined} onClick={p.onDiscard}>
               {t('editor.discard')}
             </Button>
             {/*
