@@ -36,10 +36,13 @@ test.describe('the single file, opened from disk', () => {
   // C2: the file carries the notice and names the licence; the three licence files are beside it.
   test('starts with a comment holding the NOTICE, the licence, and where the bundled libraries\' licences are', () => {
     const text = readFileSync(FILE, 'utf8');
-    const notice = readFileSync(fileURLToPath(new URL('../../NOTICE', import.meta.url)), 'utf8').trim().split('\n')[0]!;
+    const notice = readFileSync(fileURLToPath(new URL('../../NOTICE', import.meta.url)), 'utf8');
     expect(text.startsWith('<!--\n')).toBe(true);
     const comment = text.slice(0, text.indexOf('-->'));
-    expect(comment).toContain(notice);
+    // A line only the NOTICE has (the first, "apiseven", would pass on the name alone), and every line
+    // of it: the comment writes "--" as "- -", which the NOTICE does not hold.
+    expect(comment).toContain('This product includes material from Apache APISIX (https://apisix.apache.org/),');
+    for (const line of notice.trim().split('\n')) expect(comment, line).toContain(line);
     expect(comment).toContain('Apache-2.0');
     expect(comment).toContain('THIRD-PARTY-LICENSES.txt');
     expect(text.slice(text.indexOf('-->') + 3).trimStart().toLowerCase().startsWith('<!doctype html>')).toBe(true);
