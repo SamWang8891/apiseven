@@ -4,6 +4,7 @@ import { Pencil } from 'lucide-react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { Button } from './Button';
+import { Menu } from './Menu';
 import { TooltipProvider } from './Tooltip';
 
 // Known item 14 and fix round 1 (R6.6): an icon-only Button shows its label as a tooltip on hover and
@@ -254,7 +255,7 @@ describe('Button, loading', () => {
 });
 
 describe('Button, disabled', () => {
-  it('disabled for another reason stays disabled, loading or not, and is not marked aria-disabled', () => {
+  it('disabled for another reason stays disabled, loading or not; it is aria-disabled only while loading (busy is always marked so)', () => {
     const { rerender } = render(<Button disabled>Save</Button>);
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Save' })).not.toHaveAttribute('aria-disabled');
@@ -265,5 +266,51 @@ describe('Button, disabled', () => {
     );
     expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('aria-busy', 'true');
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveAttribute('aria-disabled', 'true');
+  });
+});
+
+// Final wave I2: a loading or unavailable Button blocks every activation, the ones a trigger listens
+// to included: a menu trigger opens on Enter, Space or ArrowDown, and on a pointer press, not on click.
+describe('a busy or unavailable Button used as a menu trigger', () => {
+  function Harness({ loading, unavailable }: { loading?: boolean; unavailable?: boolean }) {
+    return <Menu trigger={<Button aria-label="More" icon={icon} loading={loading} aria-disabled={unavailable || undefined} />} items={[{ id: 'a', label: 'Do it', onSelect: () => {} }]} />;
+  }
+
+  it('loading: neither Enter, Space, ArrowDown nor a pointer press opens its menu; it keeps focus', async () => {
+    const user = userEvent.setup();
+    render(<Harness loading />);
+    const trigger = screen.getByRole('button', { name: 'More' });
+    trigger.focus();
+    for (const key of ['{Enter}', ' ', '{ArrowDown}']) {
+      await user.keyboard(key);
+      expect(screen.queryByRole('menu')).toBeNull();
+    }
+    await user.click(trigger);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('unavailable through its own aria-disabled (not loading): the same, and the attribute is kept', async () => {
+    const user = userEvent.setup();
+    render(<Harness unavailable />);
+    const trigger = screen.getByRole('button', { name: 'More' });
+    expect(trigger).toHaveAttribute('aria-disabled', 'true');
+    trigger.focus();
+    for (const key of ['{Enter}', ' ', '{ArrowDown}']) {
+      await user.keyboard(key);
+      expect(screen.queryByRole('menu')).toBeNull();
+    }
+    await user.click(trigger);
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(trigger).toHaveFocus();
+  });
+
+  it('neither loading nor unavailable: Enter opens it, as before', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    screen.getByRole('button', { name: 'More' }).focus();
+    await user.keyboard('{Enter}');
+    expect(await screen.findByRole('menu')).toBeInTheDocument();
   });
 });

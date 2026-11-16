@@ -24,11 +24,15 @@ export type ButtonProps = Omit<ComponentProps<'button'>, 'children'> &
 /**
  * A button. An icon-only one shows its label (`title`, else `aria-label`) as a tooltip on hover and
  * keyboard focus, wherever a TooltipProvider is above it; elsewhere as its native title. Busy
- * (`loading`) or unavailable (`aria-disabled`), it does nothing when pressed (a form's submit
- * included) but keeps focus where a keyboard user is: give an unavailable one the reason
- * (aria-describedby). `disabled` is for a button the user is never on when it turns so.
+ * (`loading`) or unavailable (`aria-disabled`, the caller's own included), it does nothing when
+ * pressed (a form's submit included; a trigger's keys and pointer press too, so a menu does not open)
+ * but keeps focus where a keyboard user is: give an unavailable one the reason (aria-describedby).
+ * `disabled` is for a button the user is never on when it turns so.
  */
-export function Button({ variant = 'secondary', size = 'md', icon, loading, children, className, type = 'button', disabled, title, onClick, ...native }: ButtonProps) {
+/** The keys a trigger opens on (a menu: Enter, Space, ArrowDown; a list: ArrowUp too), blocked while inert. */
+const ACTIVATION_KEYS = new Set(['Enter', ' ', 'ArrowDown', 'ArrowUp']);
+
+export function Button({ variant = 'secondary', size = 'md', icon, loading, children, className, type = 'button', disabled, title, onClick, onKeyDown, onPointerDown, ...native }: ButtonProps) {
   const tooltips = useTooltipsAvailable();
   const iconOnly = children === undefined || children === null;
   const classes = ['ui-btn', `ui-btn--${variant}`, `ui-btn--${size}`, iconOnly && 'ui-btn--icon-only', className].filter(Boolean).join(' ');
@@ -54,6 +58,25 @@ export function Button({ variant = 'secondary', size = 'md', icon, loading, chil
               e.stopPropagation();
             }
           : onClick
+      }
+      // A trigger (a menu's, through asChild) opens on a key or a pointer press, not on the click: those
+      // are blocked as well. Every other key (Tab, Escape) goes on as usual.
+      onKeyDown={
+        inert
+          ? (e) => {
+              if (!ACTIVATION_KEYS.has(e.key)) return onKeyDown?.(e);
+              e.preventDefault();
+              e.stopPropagation();
+            }
+          : onKeyDown
+      }
+      onPointerDown={
+        inert
+          ? (e) => {
+              if (e.button !== 0) return onPointerDown?.(e);
+              e.stopPropagation();
+            }
+          : onPointerDown
       }
     >
       {shownIcon && (
