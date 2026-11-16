@@ -1,9 +1,10 @@
 // A certificate's details as our reader finds them (parseCert): subject, issuer, names, validity with
 // the expiry badge, serial and SHA-256 fingerprint. A $secret:// or $env:// reference is shown as
-// what it is, and a certificate the reader can't read says so: APISIX, which parses it with
-// OpenSSL, is the judge of that on save.
+// what it is, never with a private key stored after it, and a certificate the reader can't read says
+// so: APISIX, which parses it with OpenSSL, is the judge of that on save.
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { t } from '../../i18n';
+import { MASK, withoutPrivateKeys } from '../../schema/secrets';
 import { formatAbsolute } from '../../table/format';
 import { ExpiryBadge } from '../expiry';
 import { fingerprintOf, knownFingerprint } from './fingerprint';
@@ -51,6 +52,15 @@ function Fingerprint({ pem }: { pem: string }) {
   return <span className="mono ssl-wrap">{found.value ?? t('ui.empty')}</span>;
 }
 
+/**
+ * A certificate text that is a reference, as shown: trimmed, with every private-key block in it
+ * masked. APISIX takes a text that starts with a reference as one and parses nothing after it
+ * (secret.lua 91–103, ssl.lua 192–199), so a key pasted after the reference is stored with it; it
+ * never reaches the page (final wave M2).
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- what a reference shows as, beside the component that shows it
+export const referenceText = (pem: string): string => withoutPrivateKeys(pem.trim(), MASK);
+
 /** Details of the first certificate in `pem`; a note for a reference, one that can't be read, or none. */
 export function CertDetails({ pem }: { pem: unknown }) {
   if (typeof pem !== 'string' || pem.trim() === '') return <p className="ed-note">{t('ssl.cert.none')}</p>;
@@ -58,7 +68,7 @@ export function CertDetails({ pem }: { pem: unknown }) {
     return (
       <dl className="ssl-dl">
         <Row term={t('ssl.cert.reference')}>
-          <span className="mono ssl-wrap">{pem.trim()}</span>
+          <span className="mono ssl-wrap">{referenceText(pem)}</span>
           <span className="ssl-muted"> {t('ssl.cert.ref')}</span>
         </Row>
       </dl>

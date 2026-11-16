@@ -11,15 +11,16 @@ import { Button, useEditingState, useLocked } from '../../ui';
 import { freshIds, useRowIds, withoutId } from '../../upstream/rowIds';
 import { ExpiryBadge } from '../expiry';
 import { Section } from '../Section';
+import { referenceText } from './CertDetails';
 import { keyStates, withKeyEntered, withPairAdded, withPairRemoved, type KeyState } from './pairKeys';
 import { parseCert } from './parseCert';
 import { ReplaceCertDialog } from './ReplaceCertDialog';
 import { isSecretRef } from './validate';
 
-/** One line about a certificate: its subject and names, and its expiry; a reference or an unreadable one says so. */
+/** One line about a certificate: its subject and names, and its expiry; a reference (never a key after it) or an unreadable one says so. */
 function CertLine({ pem }: { pem: unknown }) {
   if (typeof pem !== 'string') return <span className="ssl-warn">{t('ssl.cert.unreadable')}</span>;
-  if (isSecretRef(pem.trim())) return <span className="mono ssl-wrap">{pem.trim()}</span>;
+  if (isSecretRef(pem.trim())) return <span className="mono ssl-wrap">{referenceText(pem)}</span>;
   const info = parseCert(pem);
   if (!info) return <span className="ssl-warn">{t('ssl.cert.unreadable')}</span>;
   return (

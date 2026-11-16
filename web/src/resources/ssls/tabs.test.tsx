@@ -11,6 +11,7 @@ import { editableControls } from '../../test/schemaForm';
 import { BAG_KEY, EC_PAIR, EC_PARAMS_KEY, RSA_PAIR } from '../../test/pairs';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
 import { renderTab } from '../../test/tab';
+import { MASK } from '../../schema/secrets';
 import { getToasts } from '../../ui/toast';
 import { CertificateTab } from './CertificateTab';
 import { ClientTab } from './ClientTab';
@@ -644,6 +645,45 @@ describe('a certificate box never takes a private key (a combined PEM)', () => {
     renderSsl(CertificateTab, stored, { locked: true, original });
     expect(screen.getAllByText(t('ssl.cert.holdsKey'))).toHaveLength(2);
     expect(document.body.innerHTML).not.toContain(KEY_TEXT);
+  });
+
+  // Final wave M2: APISIX takes text that starts with a reference as one and parses nothing after it
+  // (secret.lua 91–103, ssl.lua 192–199), so a key pasted after a reference is stored as it is.
+  describe('a reference followed by a private key (final wave M2)', () => {
+    const REF_KEY = `$env://CERT\n${SEED_KEY}`;
+    const noKey = () => {
+      expect(document.body.innerHTML).not.toContain(KEY_TEXT);
+      expect(document.body.innerHTML).not.toContain('PRIVATE KEY');
+    };
+
+    it('the main certificate and an extra one, locked and editing: the reference shows, the key is masked', () => {
+      const stored = { ...STORED, cert: REF_KEY, certs: [REF_KEY], keys: ['$env://KEY'] };
+      const view = renderSsl(CertificateTab, stored, { locked: true, original: itemOf('s1', stored) });
+      expect(screen.getByRole('definition', { name: t('ssl.cert.reference') })).toHaveTextContent(`$env://CERT ${MASK} ${t('ssl.cert.ref')}`);
+      expect(screen.getByRole('listitem', { name: t('ssl.extra.row', { n: 1 }) })).toHaveTextContent(`$env://CERT ${MASK}`);
+      noKey();
+      view.lock(false);
+      expect(screen.getByRole('definition', { name: t('ssl.cert.reference') })).toHaveTextContent(`$env://CERT ${MASK}`);
+      noKey();
+    });
+
+    it('the CA, locked and editing', () => {
+      const stored = { ...STORED, client: { ca: REF_KEY } };
+      const view = renderSsl(ClientTab, stored, { locked: true, original: itemOf('s1', stored) });
+      expect(screen.getByRole('definition', { name: t('ssl.cert.reference') })).toHaveTextContent(`$env://CERT ${MASK}`);
+      noKey();
+      view.lock(false);
+      expect(screen.getByRole('definition', { name: t('ssl.cert.reference') })).toHaveTextContent(`$env://CERT ${MASK}`);
+      noKey();
+    });
+
+    it("the extra certificate's details in the dialog that enters its key", async () => {
+      const { user } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT, key: EC_PAIR.key, certs: [REF_KEY] }, { isNew: true });
+      await user.click(screen.getByRole('button', { name: t('ssl.extra.enterKeyFor', { n: 1 }) }));
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByRole('definition', { name: t('ssl.cert.reference') })).toHaveTextContent(`$env://CERT ${MASK}`);
+      noKey();
+    });
   });
 
   it('the CA field, locked and editing: the warning, no key text, and Replace CA for a clean one', async () => {
