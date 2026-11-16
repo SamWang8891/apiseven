@@ -110,6 +110,23 @@ describe('limit-count’s count stored as text ("5", which APISIX takes)', () =>
   });
 });
 
+// Codex final pass 2b, V5: in an enum field, Keep (and Replace, its box empty) gives back the stored
+// value itself, `null` included.
+describe('an enum of null and true, a stored null, a key in the draft', () => {
+  const schema: Obj = { type: 'object', properties: { setting: { enum: [null, true] } } };
+  const draft: Obj = { setting: `$env://SETTING\n${pem(BODY)}` };
+
+  it.each([
+    ['Keep the stored value', () => screen.getByRole('button', { name: t('sf.secret.keep') })],
+    ['Replace (its box empty)', () => screen.getByRole('button', { name: t('sf.secret.replace', { name: 'setting' }) })],
+  ])('%s gives back null, not "null"', async (_what, button) => {
+    const form = renderSchemaForm(schema, draft, { baseline: { setting: null }, name: 'p' });
+    expect(inPage(BODY)).toBe(false);
+    await form.user.click(button());
+    expect(form.value()).toEqual({ setting: null });
+  });
+});
+
 describe('a route with all three, in the editor', () => {
   const ROUTE: Obj = {
     id: 'r1',
