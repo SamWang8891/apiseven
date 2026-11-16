@@ -10,9 +10,10 @@ seed:
 	node dev/seed.mjs
 
 # The web app's dependencies. Every target that runs npm in web/ installs them first when
-# web/node_modules is missing (order-only: an existing install is left as it is).
+# web/node_modules is missing (order-only: an existing install is left as it is). A failed install
+# leaves no web/node_modules behind, so the next run installs again.
 web/node_modules:
-	cd web && npm ci
+	cd web && { npm ci || { rm -rf node_modules; exit 1; }; }
 
 # The web app's dev server (needs a running APISIX; see dev-up).
 web: | web/node_modules

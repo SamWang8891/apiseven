@@ -531,7 +531,7 @@ export const en: Record<string, string> = {
   'connect.notAdmin': "This doesn't look like an APISIX Admin API ({status}).",
   'connect.adminApiV2': "APISIX answered in the Admin API's v2 format, which apiseven does not read.",
   'connect.adminApiV2Hint':
-    "apiseven needs the v3 format, APISIX's default: in APISIX's config.yaml, set deployment.admin.admin_api_version to v3 (or remove that line), then restart APISIX.",
+    "apiseven needs the v3 format (the default in APISIX 3.20): in APISIX's config.yaml, set deployment.admin.admin_api_version to v3 (or remove that line), then restart APISIX.",
   'connect.reason.auth': 'The Admin API rejected the saved key.',
   'connect.other': 'Use another connection',
   'connect.back': 'Back to {name}',

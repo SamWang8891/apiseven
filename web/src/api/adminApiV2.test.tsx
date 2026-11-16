@@ -53,6 +53,15 @@ describe('an Admin API answer in the v2 format', () => {
     }
   });
 
+  // Review of wave A, minor 5: the v3 shapes themselves are explicit negatives.
+  it('a v3 item and a v3 list are read, not taken for the v2 format', async () => {
+    const item = await answering({ key: '/apisix/routes/1', value: ROUTE, createdIndex: 21, modifiedIndex: 21 }).get('routes', '1');
+    expect(item).toMatchObject({ id: '1', value: ROUTE });
+    const list = await answering({ total: 1, list: [{ key: '/apisix/routes/1', value: ROUTE, createdIndex: 21, modifiedIndex: 21 }] }).list('routes');
+    expect(list.map((i) => i.id)).toEqual(['1']);
+    await expect(answering({ total: 0, list: [] }).ping()).resolves.toBeDefined();
+  });
+
   it('is told apart from an answer that is not the Admin API at all', async () => {
     for (const body of [{ status: 'ok' }, { node: 'x' }, { node: { value: ROUTE } }, { list: 'x' }]) {
       const err = await failure(answering(body).list('routes'));

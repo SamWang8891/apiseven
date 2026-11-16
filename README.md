@@ -109,7 +109,7 @@ deployment:
       - name: viewer
         key: 9b27e04d5c13f8a6b0e49d72c5f18a3e
         role: viewer
-    admin_api_version: v3       # the default; apiseven needs it (see Supported APISIX versions)
+    admin_api_version: v3       # the default in APISIX 3.20; apiseven needs it (see Supported APISIX versions)
 ```
 
 Restart APISIX after changing `config.yaml`. The keys above are examples: make your own.
