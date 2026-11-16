@@ -5,6 +5,7 @@ import type { Obj, PluginInfo } from '../api/types';
 import type { Ctx } from '../resources/ctx';
 import { asStreamRoute, effectivePlugins, resolveRef } from '../resources/resolve';
 import { isAuthPlugin } from './auth';
+import { entryEffect } from './entryEffect';
 import { runsOnStream } from './stream';
 import type { InheritedPlugin } from './PluginsTab';
 
@@ -14,8 +15,13 @@ import type { InheritedPlugin } from './PluginsTab';
  */
 export function inheritedPlugins(route: Obj, ctx: Ctx): InheritedPlugin[] {
   return effectivePlugins({ ...route, plugins: undefined }, ctx).flatMap(({ name, from, disabled }) =>
-    from === 'service' || from === 'plugin_config' ? [{ name, from, disabled }] : [],
+    from === 'service' || from === 'plugin_config' ? [withEffect({ name, from, disabled })] : [],
   );
+}
+
+/** A plugin run for the whole instance does nothing as an entry, on or off (entryEffect): never "off", marked as such. */
+function withEffect(row: InheritedPlugin, info?: PluginInfo): InheritedPlugin {
+  return entryEffect(row.name, undefined, info) === 'noEffect' ? { ...row, disabled: false, noEffect: true } : row;
 }
 
 /** A stream route's: only from a service it merges with, and only what the stream subsystem runs (asStreamRoute, runsOnStream). */
@@ -38,7 +44,7 @@ export function consumerInheritedPlugins(consumer: Obj, ctx: Ctx, all?: Record<s
   if (!isObj(plugins)) return [];
   return Object.entries(plugins)
     .map(([name, conf]): InheritedPlugin => {
-      const plugin: InheritedPlugin = { name, from: 'consumer_group', disabled: isObj(conf) && isObj(conf._meta) && conf._meta.disable === true };
+      const plugin = withEffect({ name, from: 'consumer_group', disabled: entryEffect(name, conf, all?.[name]) === 'off' }, all?.[name]);
       return isAuthPlugin(name, all) ? { ...plugin, notApplied: true } : plugin;
     })
     .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));

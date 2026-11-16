@@ -4,7 +4,11 @@
 import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
+import { ctxOf, itemOf } from '../test/ctx';
+import { pluginFixture } from '../test/pluginFixture';
 import { renderPluginsTab } from '../test/plugins';
+import { entryEffect } from './entryEffect';
+import { consumerInheritedPlugins, inheritedPlugins } from './inherited';
 
 const loaded = () => waitFor(() => expect(screen.queryByText(t('pl.loading'))).not.toBeInTheDocument());
 
@@ -40,5 +44,37 @@ describe('an entry of a plugin run for the whole instance', () => {
     expect(dialog.querySelector('[data-plugin="ai"]')).toBeNull();
     expect(dialog.querySelector('[data-plugin="ai-proxy"]')).not.toBeNull();
     expect(within(dialog).getByRole('option', { name: /^limit-count\b/ })).toBeInTheDocument();
+  });
+});
+
+// Fix round 1, F3 (the part this file's code owns): an instance-wide entry is never "off" where it is
+// inherited, and the helper the lists and overviews call says what to show.
+describe('instance-wide entries elsewhere', () => {
+  it('entryEffect: "noEffect" for one, whatever its _meta.disable; "off" and "on" for the others', () => {
+    expect(entryEffect('inspect', { _meta: { disable: true } })).toBe('noEffect');
+    expect(entryEffect('server-info', {})).toBe('noEffect');
+    expect(entryEffect('my-reporter', { _meta: { disable: true } }, { schema: {}, scope: 'global' })).toBe('noEffect');
+    expect(entryEffect('limit-count', { _meta: { disable: true } })).toBe('off');
+    expect(entryEffect('limit-count', {})).toBe('on');
+  });
+
+  it('inherited from a service, a plugin config or a consumer group: never marked off, marked as having no effect', () => {
+    const ctx = ctxOf({
+      services: [itemOf('s1', { plugins: { inspect: { _meta: { disable: true } }, cors: { _meta: { disable: true } } } })],
+      consumerGroups: [itemOf('g', { plugins: { ai: { _meta: { disable: true } } } })],
+    });
+    expect(inheritedPlugins({ uri: '/', service_id: 's1' }, ctx)).toEqual([
+      { name: 'cors', from: 'service', disabled: true },
+      { name: 'inspect', from: 'service', disabled: false, noEffect: true },
+    ]);
+    expect(consumerInheritedPlugins({ username: 'jo', group_id: 'g' }, ctx, pluginFixture().http)).toEqual([{ name: 'ai', from: 'consumer_group', disabled: false, noEffect: true }]);
+  });
+
+  it('the inherited list says "no effect here" for one, never "off"', async () => {
+    renderPluginsTab({ scope: 'route', value: {}, validate: false, inherited: [{ name: 'inspect', from: 'service', disabled: false, noEffect: true }] });
+    await loaded();
+    const row = screen.getByText('inspect', { selector: '.pl-inherited__name' }).closest('li') as HTMLElement;
+    expect(within(row).getByText(t('pl.card.instance'))).toBeInTheDocument();
+    expect(within(row).queryByText(t('pl.inherited.off'))).toBeNull();
   });
 });

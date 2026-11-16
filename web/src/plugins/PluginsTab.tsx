@@ -30,6 +30,8 @@ export interface InheritedPlugin {
   disabled: boolean;
   /** Merged in, but APISIX never runs it here (an auth plugin from a consumer group: plugins/auth.ts). */
   notApplied?: boolean;
+  /** A plugin APISIX runs for the whole instance: the entry does nothing, on or off (entryEffect); never `disabled`. */
+  noEffect?: boolean;
 }
 
 const FROM = {
@@ -209,6 +211,7 @@ function Inherited({ rows, local }: { rows: InheritedPlugin[]; local: string[] }
             <span className="pl-inherited__name mono">{row.name}</span>
             <span className="pl-inherited__from">{t(FROM[row.from])}</span>
             {row.disabled && <span className="pl-inherited__tag">{t('pl.inherited.off')}</span>}
+            {row.noEffect && <span className="pl-inherited__tag">{t('pl.card.instance')}</span>}
             {row.notApplied ? (
               <>
                 <span className="pl-inherited__tag">{t('pl.inherited.notApplied')}</span>
