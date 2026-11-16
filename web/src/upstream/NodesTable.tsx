@@ -339,11 +339,16 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     write(h ? setNodeField(next, i, 'port', h.port) : next);
   }
 
-  /** A port typed into an array row: written at once, or, while the row holds an address, held with it (both fields are that address). */
+  /**
+   * A port typed into an array row: written at once (an array takes any host and port), which ends a
+   * hold the row had; the host it held (from before the list became an array) is written with it, as
+   * the field shows it.
+   */
   function editArrayPort(i: number, port: number | undefined) {
     const h = held[idOf(i)];
-    if (h) hold(i, { host: h.host, port });
-    else onChange(setNodeField(value, i, 'port', port));
+    hold(i, undefined);
+    const next = h ? setNodeField(value, i, 'host', h.host) : value;
+    write(setNodeField(next, i, 'port', port));
   }
 
   /**

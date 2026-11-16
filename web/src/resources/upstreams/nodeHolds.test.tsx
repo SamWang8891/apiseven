@@ -646,6 +646,25 @@ const COMMITS: [string, CommitCase][] = [
     },
   ],
   [
+    // Fix round 2, item 3: typing writes what the list can hold at once, and an array holds any host and port.
+    'a port typed into a row held through a conversion: host and port written at once, the hold ended',
+    {
+      nodes: { 'a:80': 1, 'b:90': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a', true);
+        await u.tab();
+        await typeInto(u, portN(2), '80', true);
+        await typeInto(u, priorityN(1), '1');
+        await u.tripleClick(portN(2));
+      },
+      commit: (u) => u.paste('81'),
+      expected: [
+        { host: 'a', port: 80, weight: 1, priority: 1 },
+        { host: 'a', port: 81, weight: 1 },
+      ],
+    },
+  ],
+  [
     'a paste of two addresses into an array row (the row as it was, the nodes added at the end)',
     {
       nodes: [{ host: 'a', port: 80, weight: 1 }],
