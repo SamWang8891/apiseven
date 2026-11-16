@@ -10,6 +10,7 @@ import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
 import type { Issue } from '../../editor/issues';
 import { t } from '../../i18n';
+import { MASK, withoutPrivateKeys } from '../../schema/secrets';
 import type { ValidateEnv } from '../registry';
 import { hostProblem, labelsRefused } from '../routes/validate';
 
@@ -21,6 +22,14 @@ import { hostProblem, labelsRefused } from '../routes/validate';
 export function isSecretRef(value: unknown): value is string {
   return typeof value === 'string' && (value.startsWith('$secret://') || value.toUpperCase().startsWith('$ENV://'));
 }
+
+/**
+ * A certificate text that is a reference, as shown: trimmed, with every private-key block in it
+ * masked. APISIX takes a text that starts with a reference as one and parses nothing after it
+ * (secret.lua 91–103, ssl.lua 192–199), so a key pasted after the reference is stored with it; it
+ * never reaches the page (final wave M2).
+ */
+export const referenceText = (pem: string): string => withoutPrivateKeys(pem.trim(), MASK);
 
 /** A string of `min`–65536 characters (certificate_scheme 128, private_key_schema 64), or a reference. */
 const pemOk = (value: unknown, min: number): boolean => isSecretRef(value) || (typeof value === 'string' && value.length >= min && value.length <= 64 * 1024);

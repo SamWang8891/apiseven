@@ -4,12 +4,11 @@
 // so: APISIX, which parses it with OpenSSL, is the judge of that on save.
 import { useEffect, useId, useState, type ReactNode } from 'react';
 import { t } from '../../i18n';
-import { MASK, withoutPrivateKeys } from '../../schema/secrets';
 import { formatAbsolute } from '../../table/format';
 import { ExpiryBadge } from '../expiry';
 import { fingerprintOf, knownFingerprint } from './fingerprint';
 import { parseCert } from './parseCert';
-import { isSecretRef } from './validate';
+import { isSecretRef, referenceText } from './validate';
 
 /** One term and its value: the value is named by the term (role definition, aria-labelledby). */
 export function Row({ term, children }: { term: string; children: ReactNode }) {
@@ -51,15 +50,6 @@ function Fingerprint({ pem }: { pem: string }) {
   if (found.value === undefined && !canDigest()) return <span className="ssl-muted">{t('ssl.cert.fingerprintInsecure')}</span>;
   return <span className="mono ssl-wrap">{found.value ?? t('ui.empty')}</span>;
 }
-
-/**
- * A certificate text that is a reference, as shown: trimmed, with every private-key block in it
- * masked. APISIX takes a text that starts with a reference as one and parses nothing after it
- * (secret.lua 91–103, ssl.lua 192–199), so a key pasted after the reference is stored with it; it
- * never reaches the page (final wave M2).
- */
-// eslint-disable-next-line react-refresh/only-export-components -- what a reference shows as, beside the component that shows it
-export const referenceText = (pem: string): string => withoutPrivateKeys(pem.trim(), MASK);
 
 /** Details of the first certificate in `pem`; a note for a reference, one that can't be read, or none. */
 export function CertDetails({ pem }: { pem: unknown }) {
