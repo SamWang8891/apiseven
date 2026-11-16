@@ -229,9 +229,10 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     if (edit.reason === 'duplicate') {
       const before = start.current[id];
       // A node this edit added goes back to being the new-node row, which shows what it holds, only while
-      // nothing else was typed into it (it has no port and the default weight): otherwise it stays, at its
-      // last good address, holding the text, so the port or weight typed into it is not lost.
-      if (before === 'new' && h.port === undefined && rows[i]?.weight === NEW_WEIGHT) {
+      // nothing else was typed into it (it has no port and the default weight) and "Add a node" holds
+      // nothing of its own (Codex final pass 2b, V3: its text and hold would go): otherwise it stays, at its
+      // last good address, holding the text as a duplicate, so nothing typed anywhere is lost.
+      if (before === 'new' && h.port === undefined && rows[i]?.weight === NEW_WEIGHT && !held[idOf(fresh)]) {
         setIds((prev) => [...withoutId(prev.slice(0, -1), i), id]);
         return { up: removeNode(value, i), ok: false };
       }

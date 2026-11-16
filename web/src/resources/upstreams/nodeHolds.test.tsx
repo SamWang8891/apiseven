@@ -421,6 +421,31 @@ const HELD: [string, HeldCase][] = [
       after: { 7: 1, 'a.example:80': 1, 'b.example:80': 1, 'c.example:80': 1 },
     },
   ],
+  // Codex final pass 2b, V3: a row this edit added, held, then turned into a duplicate while "Add a node"
+  // holds input: the duplicate stays on its row (no row removed, no id re-keyed), and "Add a node" keeps
+  // its text and its hold. Both fields are pinned, each as its own case.
+  ...((): [string, HeldCase][] => {
+    const reach = async (u: UserEvent) => {
+      await typeInto(u, newHost(), 'b');
+      await typeInto(u, hostN(2), ':');
+      await typeInto(u, newHost(), '42');
+      // `b:` becomes `a` in one change (the text selected, then typed over).
+      await u.tripleClick(hostN(2));
+      await u.keyboard('a');
+    };
+    const nodes = { a: 1 };
+    const after = { a: 1, b: 1 };
+    return [
+      [
+        'a row this edit added, held, made a duplicate while "Add a node" holds digits: the duplicate stays on the row',
+        { nodes, reach, field: () => hostN(2), typed: 'a', message: t('up.nodes.dupOf', { n: 1 }), pending: t('up.pending.duplicate', { node: node(2), addr: 'a' }), after },
+      ],
+      [
+        'a row this edit added, held, made a duplicate while "Add a node" holds digits: "Add a node" keeps its text and hold',
+        { nodes, reach, field: newHost, typed: '42', message: t('up.nodes.digitsHeld'), pending: t('up.pending.unsaved', { node: newNode(), addr: '42' }), after },
+      ],
+    ];
+  })(),
 ];
 
 const saveKeys = (u: UserEvent) => u.keyboard('{Control>}s{/Control}');
