@@ -79,12 +79,13 @@ function plugins(draft: Obj, ctx: Ctx): ReactNode {
   const script = routeScript(draft, ctx);
   if (script === 'route') return t('rt.overview.script');
   if (script === 'service') return t('rt.overview.serviceScript');
+  // Whether the service's script replaces these plugins isn't known yet, or at all: only that is said,
+  // in the Plugins tab's words (the list says "loading…" / "unknown" too).
+  if (script === 'loading') return t('rt.pl.serviceScriptLoading');
+  if (script === 'unknown') return t('rt.pl.serviceScriptUnknown');
   const names = effectivePlugins(draft, ctx).map((p) => (p.disabled ? t('rt.overview.pluginOff', { name: p.name }) : p.name));
-  const waiting = inheritLoading(draft, ctx);
-  // The inherited ones aren't known yet (nor, from a service, whether its script runs instead): show
-  // the route's own, and say the rest is loading.
-  const loading = waiting.service ? t('rt.overview.serviceLoading') : t('rt.overview.inheritedLoading');
-  if (waiting.service || waiting.pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), loading]} />;
+  // The plugin config's aren't known yet: show the route's and the service's, and say the rest is loading.
+  if (inheritLoading(draft, ctx).pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), t('rt.overview.inheritedLoading')]} />;
   return names.length > 0 ? <Mono values={names} /> : t('rt.overview.noPlugins');
 }
 

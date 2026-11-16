@@ -219,6 +219,16 @@ describe('General', () => {
     expect(overview).not.toHaveTextContent('limit-count');
   });
 
+  // Fix round 1, F1: a service's script means nothing to a stream route (apisix/plugin.lua 775–802).
+  it("the overview lists a stream route's plugins as running when its service has a script", () => {
+    const ctx = ctxOf({ ...CTX, services: [itemOf('web', { name: 'web', script: 'return {} -- service', plugins: { 'limit-conn': {} } })] });
+    tab(GeneralTab, { service_id: 'web', plugins: { 'ip-restriction': {} } }, { locked: true, ctx });
+    const overview = screen.getByRole('region', { name: t('sr.overview') });
+    expect(overview).toHaveTextContent(`ip-restrictionlimit-conn ${t('rt.overview.viaService')}`);
+    expect(overview).not.toHaveTextContent(t('rt.overview.serviceScript'));
+    expect(overview).not.toHaveTextContent(t('rt.pl.serviceScriptNote'));
+  });
+
   it('the overview shows a server address range apart from its port (known item 19)', () => {
     tab(GeneralTab, { server_addr: '10.0.0.0/8', server_port: 9100 }, { locked: true });
     tab(GeneralTab, { server_addr: 'fe80::/64', server_port: 9100 }, { locked: true });

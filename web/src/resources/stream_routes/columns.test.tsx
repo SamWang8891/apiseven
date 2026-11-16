@@ -83,6 +83,18 @@ describe('stream route columns', () => {
     expect(shown).not.toHaveTextContent('limit-count');
   });
 
+  // Fix round 1, F1: the stream subsystem merges only plugins and upstream from a service and loads no
+  // script (apisix/plugin.lua 775–802; init.lua 1064–1067 is the HTTP access phase): its plugins run.
+  it("plugins: a service's script changes nothing for a stream route, whose plugins read as running", () => {
+    const ctx = ctxOf({ ...CTX, services: [itemOf('web', { name: 'web', script: 'return {} -- service', plugins: { 'ip-restriction': {} } })] });
+    const route = itemOf('sr9', { server_port: 9100, service_id: 'web', plugins: { 'limit-conn': {} } });
+    const shown = cell('plugins', route, ctx);
+    expect(shown).toHaveTextContent('limit-conn');
+    expect(shown).toHaveTextContent('ip-restriction');
+    expect(shown).not.toHaveTextContent(t('cell.plugin.notRun'));
+    expect(shown.querySelectorAll('.cell-plugin--off')).toHaveLength(0);
+  });
+
   it('the optional columns: id, description, service, labels', () => {
     expect(value('id', ETCD)).toBe('etcd-tcp');
     expect(value('desc', ETCD)).toBe('TCP 9100 to etcd');

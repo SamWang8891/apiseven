@@ -87,11 +87,10 @@ export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx
 
 /**
  * The plugins that run (by default a route's, effectivePlugins), each saying where an inherited one
- * comes from; every one "not run" when a script runs instead (the route's own or its service's: routeScript).
+ * comes from; every one "not run" when `notRun` names whose script runs instead. Only an HTTP route
+ * can have one (routeScript): the stream list passes none.
  */
-export function pluginChips(route: Obj, ctx: Ctx, plugins: EffectivePlugin[] = effectivePlugins(route, ctx)): PluginChip[] {
-  const script = routeScript(route, ctx);
-  const notRun = script === 'route' || script === 'service' ? script : undefined;
+export function pluginChips(route: Obj, ctx: Ctx, plugins: EffectivePlugin[] = effectivePlugins(route, ctx), notRun?: 'route' | 'service'): PluginChip[] {
   return plugins.map(({ name, from, disabled }): PluginChip => {
     if (from === 'service') return { name, disabled, notRun, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
     if (from === 'plugin_config') {
@@ -106,7 +105,7 @@ function pluginsCell(route: Obj, ctx: Ctx): ReactNode {
   const script = routeScript(route, ctx);
   if (script === 'loading') return <span className="cell-muted">{t('picker.loading')}</span>;
   if (script === 'unknown') return <span className="cell-muted">{t('cell.pluginsUnknown')}</span>;
-  return <PluginChips plugins={pluginChips(route, ctx)} />;
+  return <PluginChips plugins={pluginChips(route, ctx, undefined, script)} />;
 }
 
 const time = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);

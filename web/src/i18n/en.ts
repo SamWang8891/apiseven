@@ -1166,7 +1166,6 @@ export const en: Record<string, string> = {
   'rt.overview.pluginOff': '{name} (off)',
   'rt.overview.script': 'Script (instead of plugins)',
   'rt.overview.serviceScript': "The service's script (instead of plugins)",
-  'rt.overview.serviceLoading': "the service's plugins, or a script instead of them: loading…",
   'rt.overview.timeouts': 'timeouts: {list}',
   'rt.overview.timeout': '{name} {value}s',
   'rt.overview.timeoutMissing': '{name} not set',

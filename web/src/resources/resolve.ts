@@ -248,11 +248,13 @@ export function effectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
 }
 
 /**
- * Whose script runs for a route instead of every plugin: its own, else its service's. APISIX copies
- * the service into the route, the route's script over the service's (merge_service_route,
+ * Whose script runs for an HTTP route instead of every plugin: its own, else its service's. APISIX
+ * copies the service into the route, the route's script over the service's (merge_service_route,
  * apisix/plugin.lua 705–735), and a merged route with a script runs it and none of its own, its
  * plugin config's or its service's plugins (apisix/init.lua 1064–1070). `loading` while the services
- * have not loaded, `unknown` when their read failed; undefined when no script runs.
+ * have not loaded, `unknown` when their read failed; undefined when no script runs. Never for a stream
+ * route: the stream subsystem merges only plugins and upstream from a service
+ * (merge_service_stream_route, apisix/plugin.lua 775–802) and loads no script.
  */
 export function routeScript(route: Obj, ctx: Ctx): 'route' | 'service' | 'loading' | 'unknown' | undefined {
   if (route.script !== undefined) return 'route';

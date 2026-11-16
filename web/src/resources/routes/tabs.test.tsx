@@ -391,15 +391,29 @@ describe('Plugins', () => {
     expect(screen.queryByText(t('rt.pl.serviceScriptNote'))).not.toBeInTheDocument();
   });
 
-  it("the overview says the service's script runs instead of plugins, and loading… before the services are in", () => {
-    const view = renderRouteTab(GeneralTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked: true, ctx: SCRIPTED_SERVICE });
+  it("says it isn't known whether the service's script takes over when the services failed to load", () => {
+    renderRouteTab(RoutePluginsTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked: true, ctx: ctxOf({ loaded: { services: false }, failed: { services: true } }) });
+    expect(screen.getByText(t('rt.pl.serviceScriptUnknown'))).toBeInTheDocument();
+    expect(screen.queryByText(t('rt.pl.serviceScriptLoading'))).not.toBeInTheDocument();
+  });
+
+  // Fix round 1, R1.1: while the service is loading, or after its read failed, the overview says only
+  // that whether its script replaces these plugins is not (yet) known, as the Plugins tab and the list do.
+  it("the overview says the service's script runs instead of plugins; loading or unknown, only that it isn't known yet", () => {
+    const route = { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } };
     const row = () => within(screen.getByRole('region', { name: t('rt.overview') })).getByRole('link', { name: t('pl.tab') }).closest('div') as HTMLElement;
+    const view = renderRouteTab(GeneralTab, route, { locked: true, ctx: SCRIPTED_SERVICE });
     expect(row()).toHaveTextContent(t('rt.overview.serviceScript'));
     expect(row()).not.toHaveTextContent('key-auth');
     view.unmount();
-    renderRouteTab(GeneralTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked: true, ctx: ctxOf({ loaded: { services: false } }) });
-    expect(row()).toHaveTextContent(t('rt.overview.serviceLoading'));
-    expect(row()).not.toHaveTextContent(t('rt.overview.serviceScript'));
+    const loading = renderRouteTab(GeneralTab, route, { locked: true, ctx: ctxOf({ loaded: { services: false } }) });
+    expect(row()).toHaveTextContent(t('rt.pl.serviceScriptLoading'));
+    expect(row()).not.toHaveTextContent('key-auth');
+    loading.unmount();
+    renderRouteTab(GeneralTab, route, { locked: true, ctx: ctxOf({ loaded: { services: false }, failed: { services: true } }) });
+    expect(row()).toHaveTextContent(t('rt.pl.serviceScriptUnknown'));
+    expect(row()).not.toHaveTextContent('key-auth');
+    expect(row()).not.toHaveTextContent(t('picker.loading'));
   });
 });
 
