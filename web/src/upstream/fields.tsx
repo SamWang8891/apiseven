@@ -230,10 +230,10 @@ function keyWhy(text: string): string | undefined {
 /**
  * PEM text: pasted, or read from a file. Locked, a certificate that parses reads as its subject and
  * expiry. A certificate field never shows private-key material: a value holding some reads "holds a
- * private key, not shown" (an empty box stands over it and keeps it), and text or a file holding
- * some is refused there. A `secret` (a private key) is never shown once set: it reads "set, not shown" (the stored
- * key) or "a new key was entered, not shown", with Replace (APISIX hands back only its encrypted form
- * anyway). `stored` is the key as the editor last loaded it (from the frame, never what the field saw
+ * private key, not shown" (an empty box stands over it and keeps it), and text or a file holding some is
+ * refused there. A `secret` (a private key) is never shown once set: it reads "set, not shown" (the
+ * stored key) or "a new key was entered, not shown", with Replace (APISIX hands back only its encrypted
+ * form anyway). `stored` is the key as the editor last loaded it (from the frame, never what the field saw
  * when it mounted, so a tab switch changes nothing): an empty replacement keeps it, and "Keep the
  * stored key" puts it back; with no stored key neither exists, and an empty box means no key.
  */

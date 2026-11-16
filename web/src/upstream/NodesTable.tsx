@@ -83,15 +83,15 @@ const NOTHING_SKIPPED: Skipped = { dup: [], bad: [] };
  * hold is held in the row's fields exactly as typed, flagged with why and what to do, and Save is refused
  * naming the node: an address another row has (the row goes back to its address from before the edit, a
  * row this edit added back to "Add a node" while nothing else was typed into it; the user changes it or
- * keeps both, which stores an array); an
- * all-digit host without a port (JavaScript would move an integer key to the top of the map under the
- * cursor); a host with a stray colon (not an IPv6 address); a held address whose clash another row's edit
- * resolved. Leaving a field writes nothing and never splits or rewrites what it shows. Enter is the
- * explicit commit: in a host holding a port it moves the port to Port, in a held map row it takes what
- * the row holds (an all-digit host as the host name), in "Add a node" it adds the node; "Move <port> to
- * Port" does what Enter does. A result another row has is not written: the field stays as typed, held as
- * a duplicate. A paste of one address goes in at the cursor and is judged as typed text; a paste of
- * several adds a node for each, judged as Enter in "Add a node" judges it (see paste). A change that turns the map into an array (a priority other than 0, "Keep
+ * keeps both, which stores an array); an all-digit host without a port (JavaScript would move an integer
+ * key to the top of the map under the cursor); a host with a stray colon (not an IPv6 address); a held
+ * address whose clash another row's edit resolved. Leaving a field writes nothing and never splits or
+ * rewrites what it shows. Enter is the explicit commit: in a host holding a port it moves the port to
+ * Port, in a held map row it takes what the row holds (an all-digit host as the host name), in "Add a
+ * node" it adds the node; "Move <port> to Port" does what Enter does. A result another row has is not
+ * written: the field stays as typed, held as a duplicate. A paste of one address goes in at the cursor
+ * and is judged as typed text; a paste of several adds a node for each, judged as Enter in "Add a node"
+ * judges it (see paste). A change that turns the map into an array (a priority other than 0, "Keep
  * both") ends no other row's hold: what a row holds stays held in the array, which takes it on Enter or
  * when more is typed (a hold ends only when its own text is resolved).
  */
