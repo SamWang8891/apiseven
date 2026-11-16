@@ -1,6 +1,6 @@
 import { ChevronUp, CircleAlert, CircleCheck, Info, X } from 'lucide-react';
 import { Toast } from 'radix-ui';
-import { useRef, useState, useSyncExternalStore } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { t } from '../i18n';
 import { useModalOpen } from './modal';
 import { dismissToast, getToasts, MAX_VISIBLE, subscribeToasts, type ToastItem, type ToastTone } from './toast';
@@ -20,6 +20,7 @@ const DURATION: Record<ToastTone, number> = { success: 4000, info: 5000, error: 
  * one that is not visible is not mounted, so its time does not run. That is the case for:
  * - toasts beyond the newest MAX_VISIBLE: they wait, collapsed, behind a "+N more" row that shows
  *   them all (as do a swipe of it and Escape on it: what waits has not been seen, so nothing clears it);
+ *   the row then goes, and the focus it had goes to the first toast it revealed (final wave O4);
  * - while a dialog is open, every toast but the newest, which sits centred in the band under the
  *   dialog (overlay.css keeps a dialog clear of the bottom 12% of the window), so none covers its
  *   buttons. The others come back, with their full time, when it closes.
@@ -37,9 +38,21 @@ export function Toaster() {
   const visible = modal ? items.slice(-1) : expanded ? items : items.slice(-MAX_VISIBLE);
   const waiting = modal ? [] : items.slice(0, items.length - visible.length);
   const order = new Map(items.map((item, i) => [item.id, i]));
+  /** The first toast an expansion revealed, while the "+N more" row it replaces had focus: it takes that focus once shown. */
+  const focusNext = useRef<number | undefined>(undefined);
+  const show = (hadFocus: boolean) => {
+    if (hadFocus) focusNext.current = waiting[0]?.id;
+    setExpanded(true);
+  };
+  useLayoutEffect(() => {
+    const id = focusNext.current;
+    if (id === undefined) return;
+    focusNext.current = undefined;
+    document.querySelector<HTMLElement>(`.ui-toast[data-toast-id="${id}"]`)?.focus();
+  });
   return (
     <Toast.Provider label={t('ui.toast.label')} swipeDirection="right">
-      {waiting.length > 0 && <MoreRow count={waiting.length} errors={waiting.filter((item) => item.tone === 'error').length} onShow={() => setExpanded(true)} />}
+      {waiting.length > 0 && <MoreRow count={waiting.length} errors={waiting.filter((item) => item.tone === 'error').length} onShow={show} />}
       {visible.map((item) => (
         <OneToast key={item.id} item={item} order={order.get(item.id) ?? 0} />
       ))}
@@ -56,6 +69,7 @@ function OneToast({ item, order }: { item: ToastItem; order: number }) {
   return (
     <Toast.Root
       className={`ui-toast ui-toast--${tone}`}
+      data-toast-id={id}
       style={{ order }}
       type={tone === 'error' ? 'foreground' : 'background'}
       duration={DURATION[tone]}
@@ -109,11 +123,15 @@ const withErrors = (more: string, errors: number): string =>
 /**
  * "2 more notifications, 1 error · Show": the older toasts waiting behind the visible ones. It never
  * times out and is never dismissed (nothing behind it was seen): Escape on it and a swipe show them.
- * A change of what waits is announced.
+ * A change of what waits is announced. `onShow` hears whether the row had focus, which it gives up as
+ * it goes.
  */
-function MoreRow({ count, errors, onShow }: { count: number; errors: number; onShow: () => void }) {
+function MoreRow({ count, errors, onShow }: { count: number; errors: number; onShow: (hadFocus: boolean) => void }) {
+  const row = useRef<HTMLLIElement>(null);
+  const showing = () => onShow(row.current?.contains(document.activeElement) ?? false);
   return (
     <Toast.Root
+      ref={row}
       className="ui-toast ui-toast--more"
       style={{ order: -1 }}
       type="background"
@@ -125,20 +143,20 @@ function MoreRow({ count, errors, onShow }: { count: number; errors: number; onS
       onEscapeKeyDown={(e) => {
         if (!inToast(e.target)) return;
         e.preventDefault();
-        onShow();
+        showing();
       }}
       onSwipeStart={(e) => e.preventDefault()}
       onSwipeMove={(e) => e.preventDefault()}
       onSwipeEnd={(e) => {
         e.preventDefault();
-        onShow();
+        showing();
       }}
     >
       <Toast.Description className="ui-toast__message" aria-live="polite" aria-atomic="true">
         {withErrors(count === 1 ? t('ui.toast.moreOne') : t('ui.toast.more', { count }), errors)}
       </Toast.Description>
       {/* Not a Toast.Action: that would close the row instead of showing what waits. */}
-      <button type="button" className="ui-toast__show" aria-label={t('ui.toast.showMore', { more: withErrors(t('ui.toast.moreShort', { count }), errors) })} onClick={onShow}>
+      <button type="button" className="ui-toast__show" aria-label={t('ui.toast.showMore', { more: withErrors(t('ui.toast.moreShort', { count }), errors) })} onClick={showing}>
         <ChevronUp aria-hidden="true" size={14} />
         {t('ui.toast.show')}
       </button>

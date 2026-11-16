@@ -181,6 +181,53 @@ describe('toasts', () => {
     expect(shown()).toEqual(['Notice 2', 'Notice 3', 'Notice 4', 'Notice 5', 'Notice 6', 'Notice 7']);
   });
 
+  // Final wave O4: the "+N more" row goes once it shows what waits; the focus it had goes to the first toast it revealed.
+  it('"Show" pressed from the keyboard, or Escape on the row: focus goes to the first toast it revealed, not body; a swipe with focus elsewhere moves none', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <input aria-label="field" />
+        <Toaster />
+      </>,
+    );
+    const toastOf = (message: string) => [...document.querySelectorAll<HTMLElement>('.ui-toast')].find((el) => el.textContent?.includes(message));
+    act(() => {
+      for (const n of [1, 2, 3, 4, 5]) toast.info(`Notice ${n}`);
+    });
+    within(moreRow() as HTMLElement).getByRole('button', { name: t('ui.toast.showMore', { more: t('ui.toast.moreShort', { count: 2 }) }) }).focus();
+    await user.keyboard('{Enter}');
+    expect(moreRow()).toBeNull();
+    expect(toastOf('Notice 1')).toHaveFocus();
+
+    act(() => {
+      for (const item of getToasts()) dismissToast(item.id);
+    });
+    act(() => {
+      for (const n of [6, 7, 8, 9]) toast.info(`Notice ${n}`);
+    });
+    const row = moreRow() as HTMLElement;
+    row.focus();
+    fireEvent.keyDown(row, { key: 'Escape' });
+    expect(toastOf('Notice 6')).toHaveFocus();
+
+    act(() => {
+      for (const item of getToasts()) dismissToast(item.id);
+    });
+    act(() => {
+      for (const n of [10, 11, 12, 13]) toast.info(`Notice ${n}`);
+    });
+    const field = screen.getByRole('textbox', { name: 'field' });
+    field.focus();
+    const again = moreRow() as HTMLElement;
+    Object.assign(again, { setPointerCapture: () => {}, hasPointerCapture: () => true, releasePointerCapture: () => {} });
+    fireEvent.pointerDown(again, { button: 0, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(again, { clientX: 30, clientY: 0 });
+    fireEvent.pointerMove(again, { clientX: 120, clientY: 0 });
+    fireEvent.pointerUp(again, { clientX: 120, clientY: 0 });
+    expect(shown()).toEqual(['Notice 10', 'Notice 11', 'Notice 12', 'Notice 13']);
+    expect(field).toHaveFocus();
+  });
+
   // Task 16b item 166: Escape typed elsewhere (a field, the code editor's completion) is not a dismissal.
   it('Escape pressed outside the toasts dismisses none; Escape on a toast dismisses that one', () => {
     render(
