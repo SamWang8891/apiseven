@@ -14,6 +14,10 @@
 //     the text is broken) is veiled where it stands, to an END line or to the end of the text. A string
 //     is read as a whole-key place's text only where a value goes: right after the place's name and
 //     colon, or as an item of its list (F5); any other string is ordinary text, its blocks veiled.
+//     A whole-key place's text that holds a key, or text and no note, becomes one note; notes of this
+//     session in it that may stand there (rule 4) are resolved into the new note's key text, so it
+//     says what Save would have sent before (F3). When one may not, only its blocks are veiled and
+//     that note is refused as before.
 //  4. Taking text back (unveilValue) resolves every note in every text, in place, to its key text when
 //     it is a note of this session, appears once in the text, and stands where it may: at its own path;
 //     anywhere in the caller's group with it (an SSL's key and certificate slots); or at any path that
@@ -203,6 +207,19 @@ function notesIn(value: unknown): Map<string, number> {
 }
 
 /**
+ * Why `note` may not stand at `path` (rule 4), as the message that holds the text, or undefined when it
+ * may: `count` is how often it appears in the text.
+ */
+function refusalOf(note: string, path: Path, notes: KeyNotes, count: number, group: PlaceGroup | undefined): string | undefined {
+  if (!notes.keys.has(note)) return t('json.note.unknown');
+  if (count > 1) return t('json.note.twice');
+  const made = notes.at.get(note);
+  if (made === undefined || made === JSON.stringify(path)) return undefined;
+  const own = JSON.parse(made) as Path;
+  return sameGroup(group, own, path) || sameButIndices(own, path) ? undefined : t('json.note.moved', { path: pathName(own) });
+}
+
+/**
  * `edited` (an editing JSON view's text, parsed) with every note resolved in place (rule 4), or the
  * problem that holds the text (rule 5). `before` is the value the text was made from: a text it already
  * held is never taken for a damaged note. Text typed around a note is kept as typed.
@@ -219,15 +236,8 @@ export function unveilValue(
   let problem: string | undefined;
   let changed = false;
   const resolve = (note: string, path: Path): string => {
-    const text = notes.keys.get(note);
-    const made = notes.at.get(note);
-    if (text === undefined) problem ??= t('json.note.unknown');
-    else if ((found.get(note) ?? 0) > 1) problem ??= t('json.note.twice');
-    else if (made !== undefined && made !== JSON.stringify(path)) {
-      const own = JSON.parse(made) as Path;
-      if (!sameGroup(opts.group, own, path) && !sameButIndices(own, path)) problem ??= t('json.note.moved', { path: pathName(own) });
-    }
-    return text ?? note;
+    problem ??= refusalOf(note, path, notes, found.get(note) ?? 0, opts.group);
+    return notes.keys.get(note) ?? note;
   };
   const walk = (v: unknown, path: (string | number)[], key: string | undefined): unknown => {
     if (typeof v === 'string') {
@@ -341,7 +351,8 @@ function decode(raw: string): string {
  * Raw text being typed in an editing JSON view, which may not parse, with its key texts veiled (rule 3),
  * for leaving the view. Read string by string, so a block never crosses the end of the string it starts
  * in (and an escaped one is seen as what it says): a whole-key place's text that holds a key, or no
- * note, becomes one note; in any other string, property names included, each block becomes a note in
+ * note, becomes one note (the notes in it that may stand there resolved into its key text); in any
+ * other string, property names included, each block becomes a note in
  * place, found as rule 1 finds it (withoutPrivateKeys: to an END line, or to the end of that string).
  * Then any block still in the raw text (between strings, where the text is broken) becomes a note
  * there, to an END line or to the end of the text. Only those strings and blocks are rewritten, the rest
@@ -351,7 +362,7 @@ function decode(raw: string): string {
 export function veilTypedText(
   text: string,
   notes: KeyNotes,
-  opts: { whole?: WholeKey; under?: string } = {},
+  opts: { whole?: WholeKey; group?: PlaceGroup; under?: string } = {},
 ): { text: string; notes: KeyNotes; veiled: boolean } {
   if (!opts.whole && !mayHoldKeys(text, notes.session)) return { text, notes, veiled: false };
   const keys = new Map(notes.keys);
@@ -360,18 +371,33 @@ export function veilTypedText(
     keys.set(note, secret);
     return note;
   };
+  const literals = literalsOf(text);
+  // How often each note appears in the text (rule 4), counted only when a whole-key place holds one.
+  let counts: Map<string, number> | undefined;
+  const countOf = (note: string): number => {
+    if (!counts) {
+      counts = new Map();
+      for (const { raw } of literals) for (const [n] of decode(raw).matchAll(notePattern())) counts.set(n, (counts.get(n) ?? 0) + 1);
+    }
+    return counts.get(note) ?? 0;
+  };
   let out = '';
   let from = 0;
-  for (const literal of literalsOf(text)) {
+  for (const literal of literals) {
     const value = decode(literal.raw);
     const path = literal.path;
     // The property it is under, as the value walks read it (an array's items under the array's name).
     const key = path && ([...path].reverse().find((seg): seg is string => typeof seg === 'string') ?? opts.under);
     let next = value;
     if (path && isWhole(opts.whole, path, key)) {
-      // A whole key place: veiled as a whole when it holds a key, or holds text and no note.
-      const hasNote = value.includes(MASK.slice(0, 1)) && notePattern().test(value);
-      if (value !== '' && (holdsPrivateKey(value) || !hasNote)) next = mint(value);
+      // A whole key place: veiled as a whole when it holds a key, or holds text and no note. Notes in it
+      // that may stand here are part of its key text, resolved: what Save would have sent (F3). When
+      // one may not, only its blocks are veiled, and the note stays to be refused as before.
+      const here = [...value.matchAll(notePattern())].map(([note]) => note);
+      if (value !== '' && (holdsPrivateKey(value) || here.length === 0)) {
+        const resolvable = here.every((note) => refusalOf(note, path, notes, countOf(note), opts.group) === undefined);
+        next = resolvable ? mint(value.replace(notePattern(), (note) => notes.keys.get(note) ?? note)) : withoutPrivateKeys(value, mint);
+      }
     } else if (holdsPrivateKey(value)) next = withoutPrivateKeys(value, mint);
     if (next === value) continue;
     out += text.slice(from, literal.start) + JSON.stringify(next);

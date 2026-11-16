@@ -543,6 +543,46 @@ describe.each(views)('F1: after leaving $name, no private-key text is in the pag
   });
 });
 
+// Fix round 4, F3: a whole-key place minted on leaving resolves the notes of this session in it, so
+// what was taken while typed is still taken once left, and Save sends what it would have sent before.
+describe('F3: a stored note with a key pasted after it, in a whole-key place', () => {
+  it("a route's client_key: no message before leaving or after; saved as the stored key, a newline and the pasted key", async () => {
+    const { user, admin } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    const token = note.exec(JSON.stringify(shown))?.[0] ?? '';
+    const error = () => document.querySelector('.ed-json__error')?.textContent;
+    await replaceText(user, box, JSON.stringify({ ...shown, plugins: { 'traffic-split': split(`${token}\n${pem(NEW)}`) } }));
+    expect(inPage(NEW)).toBe(true);
+    expect(error()).toBeUndefined();
+    await user.click(main().getByRole('heading', { level: 1, name: 'split' }));
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+    expect(error()).toBeUndefined();
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ plugins: { 'traffic-split': split(`${pem(STORED)}\n${pem(NEW)}`) } });
+  });
+
+  it('a note moved from another place, with a key pasted after it: refused with the same message before and after leaving, the keys in no view', async () => {
+    const { user, admin } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    const token = note.exec(JSON.stringify(shown))?.[0] ?? '';
+    const moved = { ...shown, plugins: { 'traffic-split': split(pem(KEY_A)) }, upstream: { ...(shown.upstream as Obj), tls: { client_cert: CERT, client_key: `${token}\n${pem(NEW)}` } } };
+    await replaceText(user, box, JSON.stringify(moved));
+    expect(await main().findByText(t('json.note.moved', { path: KEY_PATH }))).toBeInTheDocument();
+    await user.click(main().getByRole('heading', { level: 1, name: 'split' }));
+    await waitFor(() => expect(inPage(NEW) || inPage(KEY_A)).toBe(false));
+    expect(main().getByText(t('json.note.moved', { path: KEY_PATH }))).toBeInTheDocument();
+    await user.keyboard('{Control>}s{/Control}');
+    expect(writesOf(admin)).toEqual([]);
+  });
+});
+
 // Fix round 4, F5: leaving reads a string as a whole-key place only where its name and colon stand
 // right before it; any other string is ordinary text (its blocks only).
 describe('F5: leaving mints only what the reader read as a whole-key place', () => {

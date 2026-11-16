@@ -236,9 +236,9 @@ export function unveilKeys(kind: Kind, edited: Obj, notes: KeyNotes, before?: Ob
   return back.ok ? { ok: true, value: back.value as Obj } : back;
 }
 
-/** The editing JSON tab's raw text with its key texts veiled, for leaving the tab (schema/keyNotes.ts veilTypedText; an SSL's `key` and `keys` whole). */
+/** The editing JSON tab's raw text with its key texts veiled, for leaving the tab (schema/keyNotes.ts veilTypedText; an SSL's `key` and `keys` whole, its slots one group). */
 export function veilTypedKeys(kind: Kind, text: string, notes: KeyNotes): { text: string; notes: KeyNotes; veiled: boolean } {
-  return veilTypedText(text, notes, { whole: wholeFor(kind).whole });
+  return veilTypedText(text, notes, wholeFor(kind));
 }
 
 /** Whether copied text leaves a private key out: it shows a note and holds no private key itself. */
