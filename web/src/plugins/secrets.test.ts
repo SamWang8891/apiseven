@@ -257,7 +257,8 @@ describe('veilKeys / unveilKeys: the editing JSON tab never shows an SSL key, an
     const other = veilKeys('ssls', draft, newKeyNotes());
     // From another session (an earlier edit, another tab's copy): even with the same number.
     expect(unveilKeys('ssls', { ...shown, key: other.value.key }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
-    expect(unveilKeys('ssls', { ...shown, key: `${shown.key as string}x` }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+    // A note whose id was changed (text typed around a note is kept as typed: fix round 3, R4.1).
+    expect(unveilKeys('ssls', { ...shown, key: (shown.key as string).replace(/\.1,/, '.9,') }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
     expect(unveilKeys('ssls', { ...shown, keys: [(shown.keys as string[])[0], (shown.keys as string[])[0]] }, notes)).toEqual({ ok: false, problem: t('json.note.twice') });
     // A client certificate's extra keys too (APISIX doesn't parse them, so nothing else would stop a note).
     expect(unveilKeys('ssls', { type: 'client', keys: [`${'•'.repeat(80)}`] }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });

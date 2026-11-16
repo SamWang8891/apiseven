@@ -21,7 +21,7 @@
 //   either; the editing JSON tab shows a note in their place (veilKeys).
 import { isObj } from '../api/sanitize';
 import type { Kind, Obj, PluginInfo } from '../api/types';
-import { unveilValue, veilValue, type KeyNotes, type PlaceGroup, type WholeKey } from '../schema/keyNotes';
+import { unveilValue, veilTypedText, veilValue, type KeyNotes, type PlaceGroup, type WholeKey } from '../schema/keyNotes';
 import { hideNeverShown, holdsPrivateKey, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
 import { managerOf, SCHEMAS, SECRET_FIELDS } from '../resources/secrets/schemas';
@@ -225,14 +225,20 @@ export function veilKeys(kind: Kind, draft: Obj, notes: KeyNotes, mint = true): 
 }
 
 /**
- * `edited` (the JSON tab's text, parsed) with each note turned back into the key it was made for,
- * wherever it now is (schema/keyNotes.ts unveilValue). Refused (`problem`, the text then holds Save as
- * unfinished input) when a note stands for no key of this session, is used twice, or is left damaged;
- * `before` is the draft the text was made from. Text typed over a note is kept as typed.
+ * `edited` (the JSON tab's text, parsed) with each note turned back into the key it was made for, where
+ * it may stand (schema/keyNotes.ts unveilValue, rule 4: an SSL's notes anywhere among its key and
+ * certificate slots). Refused (`problem`, the text then holds Save as unfinished input) when a note
+ * stands for no key of this session, is used twice, is out of place, or is left damaged; `before` is
+ * the draft the text was made from. Text typed around a note is kept as typed.
  */
 export function unveilKeys(kind: Kind, edited: Obj, notes: KeyNotes, before?: Obj): { ok: true; value: Obj } | { ok: false; problem: string } {
   const back = unveilValue(edited, notes, { ...wholeFor(kind), before });
   return back.ok ? { ok: true, value: back.value as Obj } : back;
+}
+
+/** The editing JSON tab's raw text with its key texts veiled, for leaving the tab (schema/keyNotes.ts veilTypedText; an SSL's `key` and `keys` whole). */
+export function veilTypedKeys(kind: Kind, text: string, notes: KeyNotes): { text: string; notes: KeyNotes; veiled: boolean } {
+  return veilTypedText(text, notes, { whole: wholeFor(kind).whole });
 }
 
 /** Whether copied text leaves a private key out: it shows a note and holds no private key itself. */

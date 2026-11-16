@@ -13,7 +13,7 @@ import { deepEqual } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
-import { mayHoldKeys, mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
+import { mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
 import { hideNeverShown, redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
@@ -103,7 +103,7 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
       return;
     }
     // Each note back to the key it stands for; a note that stands for none (or twice) holds the text.
-    const back = mayHoldNotes(text) ? unveilValue(parsed, notes, { before: current.synced }) : ({ ok: true, value: parsed } as const);
+    const back = mayHoldNotes(text, notes.session) ? unveilValue(parsed, notes, { before: current.synced }) : ({ ok: true, value: parsed } as const);
     if (!back.ok) {
       const { problem } = back;
       setState((s) => ({ ...s, text, notes, error: problem, held: t('ui.pending.problem', { field: name, problem }) }));
@@ -114,15 +114,14 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
   }
 
   /**
-   * Leaving the editor: a key typed or pasted here becomes a note: a whole key block in the raw text,
-   * whether or not it parses or is held (the text then goes the usual way); else a key the config holds
-   * with no note yet. Nothing else about the text changes.
+   * Leaving the editor: every key text typed or pasted here becomes a note (schema/keyNotes.ts rule 3),
+   * whether or not the text parses or is held; the text then goes the usual way, and nothing else about
+   * it changes.
    */
   function leave() {
     if (locked) return;
     const typed = veilTypedText(current.text, current.notes);
     if (typed.veiled) change(typed.text, typed.notes);
-    else if (current.held === undefined && mayHoldKeys(current.text) && !veilValue(conf, current.notes, { mint: false }).complete) setState(stateOf(conf, current.notes));
   }
 
   // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.

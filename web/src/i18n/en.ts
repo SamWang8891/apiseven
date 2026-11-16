@@ -337,7 +337,7 @@ export const en: Record<string, string> = {
   'json.keyNote': '•••••••• private key {id}, not shown',
   'json.note.unknown': 'a private-key note here stands for no key of this edit (changed, or from elsewhere): put the note back as it was, or paste the key itself',
   'json.note.twice': 'the same private-key note is used twice: each stands for one key',
-  'json.note.moved': 'a private-key note was moved: put it back where it was, or paste the key itself',
+  'json.note.moved': 'a private-key note was moved: put it back at {path}, or paste the key itself',
   'json.copiedMasked': 'Copied the JSON with its secrets masked. To copy them too, choose Show secrets first.',
   'json.copyFailed': "Couldn't copy: {error}",
   'json.inexact': 'The number {number} has more digits than can be saved exactly.',

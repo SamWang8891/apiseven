@@ -6,11 +6,11 @@ import { useAllPlugins } from '../api/hooks';
 import { t } from '../i18n';
 import { scopeOfKind, subsystemOf } from '../plugins/scope';
 import type { Kind, Obj } from '../api/types';
-import { copiedWithout, copiedWithoutKey, newKeyNotes, redactObject, unveilKeys, veilKeys, type KeyNotes } from '../plugins/secrets';
+import { copiedWithout, copiedWithoutKey, newKeyNotes, redactObject, unveilKeys, veilKeys, veilTypedKeys, type KeyNotes } from '../plugins/secrets';
 import { registry, type TabProps } from '../resources/registry';
 import { Button, CodeEditor, toast, useEditingState, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
-import { mayHoldKeys, mayHoldNotes, veilTypedText } from '../schema/keyNotes';
+import { mayHoldKeys, mayHoldNotes } from '../schema/keyNotes';
 import { deepEqual } from './draft';
 import { parse, pretty } from './json';
 
@@ -116,7 +116,7 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
       return;
     }
     // Only text that may hold a note is walked (a keystroke in a large object would walk all of it).
-    const back = mayHoldNotes(text) ? unveilKeys(kind, parsed.value, notes, current.synced) : ({ ok: true, value: parsed.value } as const);
+    const back = mayHoldNotes(text, notes.session) ? unveilKeys(kind, parsed.value, notes, current.synced) : ({ ok: true, value: parsed.value } as const);
     if (!back.ok) {
       const { problem } = back;
       setState((s) => ({ ...s, text, notes, error: problem, held: t('ui.pending.problem', { field, problem }) }));
@@ -145,7 +145,7 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
   // text can hold nothing to veil (an SSL's key slots are veiled whatever their text).
   const formatted = useMemo(() => {
     if (current.error !== undefined) return false;
-    const tidy = kind === 'ssls' || mayHoldKeys(current.text) ? veilKeys(kind, draft, current.notes, false) : { value: draft, complete: true };
+    const tidy = kind === 'ssls' || mayHoldKeys(current.text, current.notes.session) ? veilKeys(kind, draft, current.notes, false) : { value: draft, complete: true };
     return tidy.complete && current.text === pretty(tidy.value);
   }, [kind, draft, current.notes, current.text, current.error]);
   return (
@@ -171,16 +171,12 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
       <div
         ref={hostRef}
         onBlur={(e) => {
-          // Leaving the editor: a key typed or pasted here becomes a note, so no key rests on the page
-          // outside the text being typed (fix round 1, R1): a whole key block in the raw text, whether or
-          // not it parses or is held (the text then goes the usual way); else a key the draft holds with
-          // no note yet. Nothing else about the text changes.
+          // Leaving the editor: every key text typed or pasted here becomes a note (schema/keyNotes.ts
+          // rule 3), whether or not the text parses or is held; the text then goes the usual way, and
+          // nothing else about it changes.
           if (locked || e.currentTarget.contains(e.relatedTarget)) return;
-          const typed = veilTypedText(current.text, current.notes);
+          const typed = veilTypedKeys(kind, current.text, current.notes);
           if (typed.veiled) change(typed.text, typed.notes);
-          else if (current.held === undefined && (kind === 'ssls' || mayHoldKeys(current.text)) && !veilKeys(kind, draft, current.notes, false).complete) {
-            setState(stateOf(kind, draft, current.notes));
-          }
         }}
       >
         <CodeEditor

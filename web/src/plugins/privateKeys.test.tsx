@@ -41,6 +41,8 @@ const ROUTE: Obj = { id: 'r1', name: 'split', uri: '/s', plugins: { 'traffic-spl
 // In the markup or in the text a reader gets (CodeMirror can split a token over several elements).
 const inPage = (text: string) => document.body.innerHTML.includes(text) || (document.body.textContent ?? '').includes(text);
 const note = /•{8} private key [0-9a-z]{8}\.\d+, not shown/;
+/** Where traffic-split's upstream key sits in ROUTE, as a moved note's message names it. */
+const KEY_PATH = 'plugins.traffic-split.rules.0.weighted_upstreams.0.upstream.tls.client_key';
 
 async function open(hash = '#/routes/r1?tab=plugins', route: Obj = ROUTE) {
   const app = await openEditor(hash, { objects: { routes: [route] }, replies: pluginReplies() });
@@ -325,7 +327,7 @@ describe('a note moved to another field', () => {
     });
     expect(JSON.stringify(plugins)).toContain(token);
     await replaceText(user, box, moved);
-    expect(await main().findByText(t('json.note.moved'))).toBeInTheDocument();
+    expect(await main().findByText(t('json.note.moved', { path: KEY_PATH }))).toBeInTheDocument();
     await user.keyboard('{Control>}s{/Control}');
     expect(writesOf(admin)).toEqual([]);
     expect(inPage(STORED)).toBe(false);
@@ -334,7 +336,7 @@ describe('a note moved to another field', () => {
   it('into desc: refused, nothing sent, and the General tab never shows the key', async () => {
     const { user, admin, box, shown, token } = await editJson();
     await replaceText(user, box, JSON.stringify({ ...shown, plugins: { 'traffic-split': split(pem(NEW)) }, desc: token }));
-    expect(await main().findByText(t('json.note.moved'))).toBeInTheDocument();
+    expect(await main().findByText(t('json.note.moved', { path: KEY_PATH }))).toBeInTheDocument();
     await user.keyboard('{Control>}s{/Control}');
     expect(writesOf(admin)).toEqual([]);
     expect(inPage(STORED)).toBe(false);
@@ -433,5 +435,139 @@ describe('ordinary text with dots', () => {
     await user.click(main().getByRole('button', { name: t('editor.save') }));
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body).toMatchObject({ desc: 'steps •• done', plugins: { 'traffic-split': split(pem(STORED)) } });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Fix round 3: the note rule (schema/keyNotes.ts, rules 1–6), held against R1.4 and R4.1–R4.5.
+
+describe('R4.1: a whole-key place with text around the key is veiled whole on leaving, and saved exactly as entered', () => {
+  const BAG = 'Bag Attributes\n    localKeyID: 01 00 00 00\nKey Attributes: <No Attributes>\n';
+
+  it.each([
+    ['Bag Attributes before the key', BAG + pem(NEW)],
+    ['a certificate and the key (a bundle)', `${CERT}\n${pem(NEW)}`],
+  ])("a route's client_key with %s", async (_what, entered) => {
+    const { user, admin } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    await replaceText(user, box, JSON.stringify({ ...shown, plugins: { 'traffic-split': split(entered) } }));
+    await user.click(main().getByRole('heading', { level: 1, name: 'split' }));
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+    expect(inPage('Bag Attributes')).toBe(false);
+    expect(main().queryByText(t('json.note.unknown'))).not.toBeInTheDocument();
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ plugins: { 'traffic-split': split(entered) } });
+  });
+
+  it('an SSL’s keys[0] with Bag Attributes, and keys[1] a bundle, in the SSL JSON tab', async () => {
+    const { RSA_LEAF, EC_IPV6 } = await import('../test/certs');
+    const SSL: Obj = { id: 's1', snis: ['a.test'], cert: RSA_LEAF, type: 'server' };
+    const { user, admin } = await openEditor('#/ssls/s1?tab=json', { objects: { ssls: [SSL], routes: [], services: [] } });
+    await main().findByRole('heading', { level: 1 });
+    await user.keyboard('e');
+    const box = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: t('kind.ssls.singular') }) });
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    const keys = [BAG + pem(NEW), `${EC_IPV6}\n${pem(STORED)}`];
+    await replaceText(user, box, JSON.stringify({ ...shown, certs: [RSA_LEAF, EC_IPV6], keys }));
+    await user.click(main().getByRole('heading', { level: 1 }));
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+    expect(inPage(STORED)).toBe(false);
+    expect(main().queryByText(t('json.note.unknown'))).not.toBeInTheDocument();
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ keys });
+  });
+});
+
+describe('R4.2: a note moved only by an array edit stays its key', () => {
+  const TWO: Obj = {
+    ...ROUTE,
+    plugins: { 'traffic-split': { rules: [{ weighted_upstreams: [{ weight: 1 }, { upstream: { type: 'roundrobin', scheme: 'https', nodes: { '10.0.0.9:443': 1 }, tls: { client_cert: CERT, client_key: pem(STORED) } }, weight: 2 }] }] } },
+  };
+  const ups = (o: Obj) => (((o.plugins as Obj)['traffic-split'] as Obj).rules as Obj[])[0]?.weighted_upstreams as Obj[];
+  const withUps = (o: Obj, list: Obj[]): Obj => ({ ...o, plugins: { 'traffic-split': { rules: [{ weighted_upstreams: list }] } } });
+
+  async function editTwo() {
+    const app = await open('#/routes/r1?tab=json', TWO);
+    await app.user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    return { ...app, box, shown: JSON.parse(box.textContent ?? '{}') as Obj };
+  }
+
+  it('the element before the one with the key removed: saved, the stored key sent at its new place', async () => {
+    const { user, admin, box, shown } = await editTwo();
+    const list = ups(shown);
+    await replaceText(user, box, JSON.stringify(withUps(shown, [list[1] as Obj])));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(ups(writesOf(admin)[0]?.body as Obj)).toEqual([ups(TWO)[1]]);
+  });
+
+  it('the two elements reordered: saved, the stored key sent with its own element', async () => {
+    const { user, admin, box, shown } = await editTwo();
+    const list = ups(shown);
+    await replaceText(user, box, JSON.stringify(withUps(shown, [list[1] as Obj, list[0] as Obj])));
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(ups(writesOf(admin)[0]?.body as Obj)).toEqual([ups(TWO)[1], ups(TWO)[0]]);
+  });
+});
+
+describe('R4.3–R4.5: escapes, blocks across strings, what is left of a note', () => {
+  it('an escaped mask run is refused like a typed one; a key with escaped dashes is a note once left (a route with no key, so no note in the text)', async () => {
+    const PLAIN: Obj = { id: 'r1', name: 'split', uri: '/s', upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] } };
+    const { user, admin } = await open('#/routes/r1?tab=json', PLAIN);
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toContain('"uri"'));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    await replaceText(user, box, JSON.stringify({ ...shown, desc: '§' }).replace('"§"', `"${'\\u2022'.repeat(8)}"`));
+    expect(await main().findByText(t('json.note.unknown'))).toBeInTheDocument();
+    await user.keyboard('{Control>}s{/Control}');
+    expect(writesOf(admin)).toEqual([]);
+    const escaped = JSON.stringify(pem(NEW)).replace(/-/g, '\\u002d');
+    await replaceText(user, box, JSON.stringify({ ...shown, desc: '§' }).replace('"§"', escaped));
+    expect(inPage(NEW)).toBe(true);
+    await user.click(main().getByRole('heading', { level: 1, name: 'split' }));
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+  });
+
+  it('a block never crosses the end of its string: lines in a list, and a half key before a whole one, stay as typed', async () => {
+    const form = renderSchemaForm({ type: 'object', properties: { body_schema: { type: 'object' } } }, {});
+    const box = await screen.findByRole('textbox', { name: t('sf.json.label', { key: 'body_schema' }) });
+    const lines = { lines: ['-----BEGIN PRIVATE KEY-----', 'MIIElinesBody', '-----END PRIVATE KEY-----'], other: 1 };
+    await replaceText(form.user, box, JSON.stringify(lines));
+    await form.user.click(document.body);
+    expect(form.value()).toEqual({ body_schema: lines });
+    const half = { a: '-----BEGIN PRIVATE KEY-----\nhalf', between: 'kept', b: pem(NEW) };
+    await replaceText(form.user, box, JSON.stringify(half));
+    await form.user.click(document.body);
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+    expect(form.value()).toEqual({ body_schema: half });
+    expect(box.textContent).toContain('"between":"kept"');
+  });
+
+  it('what is left of a note that keeps its id, or a note used as a property name, is refused; nothing is sent', async () => {
+    const { user, admin } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const text = JSON.stringify(JSON.parse(box.textContent ?? '{}'));
+    const token = note.exec(text)?.[0] ?? '';
+    const id = /[0-9a-z]{8}\.\d+/.exec(token)?.[0] ?? '';
+    for (const left of [`•••• ${id}, not shown`, id]) {
+      await replaceText(user, box, text.replace(token, left));
+      expect(await main().findByText(t('json.note.unknown'))).toBeInTheDocument();
+      await user.keyboard('{Control>}s{/Control}');
+    }
+    await replaceText(user, box, text.replace(token, 'x').replace('"uri"', JSON.stringify(token)));
+    expect(await main().findByText(t('json.note.unknown'))).toBeInTheDocument();
+    await user.keyboard('{Control>}s{/Control}');
+    expect(writesOf(admin)).toEqual([]);
   });
 });

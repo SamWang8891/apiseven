@@ -6,7 +6,7 @@ import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '.
 import { inexactNumberIn } from '../../ui/decimal';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
-import { mayHoldKeys, mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../../schema/keyNotes';
+import { mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../../schema/keyNotes';
 import { hideNeverShown, isNeverShownName, keyPath, redactSecrets } from '../../schema/secrets';
 import { jsonType } from '../node';
 import { FieldLabel } from './chrome';
@@ -153,7 +153,7 @@ export function JsonField({
       return;
     }
     // Each note back to the key it stands for; a note that stands for none (or twice) holds the text.
-    const back = mayHoldNotes(next) ? unveilValue(parsed, withNotes, { under, before: synced }) : ({ ok: true, value: parsed } as const);
+    const back = mayHoldNotes(next, withNotes.session) ? unveilValue(parsed, withNotes, { under, before: synced }) : ({ ok: true, value: parsed } as const);
     if (!back.ok) {
       setInvalid({ error: back.problem, held: t('ui.pending.problem', { field: fieldName, problem: back.problem }) });
       return;
@@ -163,16 +163,13 @@ export function JsonField({
   }
 
   /**
-   * Leaving the editor: a key typed or pasted here becomes a note: a whole key block in the raw text,
-   * whether or not it parses or is held (the text then goes the usual way); else a key the value holds
-   * with no note yet. Nothing else about the text changes.
+   * Leaving the editor: every key text typed or pasted here becomes a note (schema/keyNotes.ts rule 3),
+   * whether or not the text parses or is held; the text then goes the usual way, and nothing else about
+   * it changes.
    */
   function leave() {
-    const typed = veilTypedText(text, notes);
+    const typed = veilTypedText(text, notes, { under });
     if (typed.veiled) edit(typed.text, typed.notes);
-    else if (invalid === undefined && (mayHoldKeys(text) || (under !== undefined && isNeverShownName(under))) && !veilValue(value, notes, { mint: false, under }).complete) {
-      setShownText(veiledText(value, notes, under));
-    }
   }
 
   return (
