@@ -172,8 +172,15 @@ export function unveilValue(
       if (whole(path, key) || byName(path, key)) {
         if (kept.has(v)) return v;
         if (v.includes(MASK.slice(0, 1))) {
+          // Exactly one note, white space around it kept (a key pasted with its last line break, then veiled).
+          const note = v.trim();
+          const one = notePattern().exec(note);
+          if (one?.index !== 0 || one[0] !== note) {
+            problem ??= t('json.note.unknown');
+            return v;
+          }
           changed = true;
-          return resolve(v, place);
+          return v.replace(note, () => resolve(note, place));
         }
         if (!kept.has(v)) problem ??= t('json.note.unknown');
         return v;
