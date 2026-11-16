@@ -416,7 +416,7 @@ function splitUpstreamIds(plugins: unknown): unknown[] {
  * name: one pass over each list it reads (REFERENCE_LISTS), whatever the number of objects asked
  * about. An object pointing at one id twice (an upstream_id and a traffic-split rule) is listed once.
  */
-function referencesByTarget(kind: Kind, ctx: Ctx): Map<string, Reference[]> {
+function buildReferencesByTarget(kind: Kind, ctx: Ctx): Map<string, Reference[]> {
   const index = new Map<string, Reference[]>();
   const collect = (from: Kind, items: Item[], targets: (value: Obj) => unknown[]): void => {
     for (const item of items) {
@@ -487,9 +487,30 @@ function referencesByTarget(kind: Kind, ctx: Ctx): Map<string, Reference[]> {
   return index;
 }
 
-/** The objects whose fields point at `kind` / `id`, sorted by kind then name. Kinds nothing points at give []. */
+/**
+ * One reverse index per context and kind, built on first use and reused by every referenceUse and
+ * referencesTo of that context (the Used-by cells and sorts, the filters, the Delete dialogs). useCtx
+ * memoizes the context, and nothing changes one after it is built: a new list is a new context.
+ */
+const INDEXES = new WeakMap<Ctx, Map<Kind, Map<string, Reference[]>>>();
+
+function referencesByTarget(kind: Kind, ctx: Ctx): Map<string, Reference[]> {
+  let byKind = INDEXES.get(ctx);
+  if (!byKind) {
+    byKind = new Map();
+    INDEXES.set(ctx, byKind);
+  }
+  let index = byKind.get(kind);
+  if (!index) {
+    index = buildReferencesByTarget(kind, ctx);
+    byKind.set(kind, index);
+  }
+  return index;
+}
+
+/** The objects whose fields point at `kind` / `id`, sorted by kind then name (a copy). Kinds nothing points at give []. */
 export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
-  return referencesByTarget(kind, ctx).get(id) ?? [];
+  return [...(referencesByTarget(kind, ctx).get(id) ?? [])];
 }
 
 /**
@@ -547,5 +568,5 @@ export function referenceIndex(kind: Kind, ctx: Ctx): (id: string) => ReferenceU
   }
   if (!lists.every((list) => ctx.loaded[list])) return () => ({ loading: true });
   const byTarget = referencesByTarget(kind, ctx);
-  return (id) => ({ refs: byTarget.get(id) ?? [] });
+  return (id) => ({ refs: [...(byTarget.get(id) ?? [])] });
 }

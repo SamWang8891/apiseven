@@ -111,7 +111,7 @@ export function References({ kind, id, ctx, use: given }: { kind: Kind; id: stri
     if ('loading' in use) return <p className="list-refs__warning">{t('delete.checking')}</p>;
     return use.refs.length > 0 ? <RefList refs={use.refs} warning={t('delete.inUse')} /> : null;
   }
-  const use = protoUse(id, ctx);
+  const use = given ?? protoUse(id, ctx);
   if ('failed' in use) {
     return (
       <p className="list-refs__warning">

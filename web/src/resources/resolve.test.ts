@@ -4,7 +4,7 @@ import { EC_IPV6, FAR } from '../test/certs';
 import { ctxOf, itemOf } from '../test/ctx';
 import * as resolve from './resolve';
 import type { Kind } from '../api/types';
-import { effectivePlugins, labelPairs, nameOfValue, referenceLists, referencesTo, resolveRef, routeHosts, routeScript, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
+import { effectivePlugins, labelPairs, nameOfValue, referenceLists, referenceUse, referencesTo, resolveRef, routeHosts, routeScript, sniList, sslExpiries, sslForHost, upstreamSummary } from './resolve';
 
 describe('nameOfValue', () => {
   it('takes name, then username, then desc, skipping empty strings', () => {
@@ -554,6 +554,45 @@ describe('referencesTo', () => {
     expect(referencesTo('consumers', 'alice', ctx)).toEqual([]);
     expect(referencesTo('global_rules', 'g', ctx)).toEqual([]);
     expect(referencesTo('secrets', 'vault/1', ctx)).toEqual([]);
+  });
+});
+
+// Last step, fix round 1, F4: one reverse index per context and kind, built on first use and reused by
+// every referenceUse / referencesTo of that context (the Used-by cells and sorts, the filters, Delete).
+describe('the reverse index, once per context', () => {
+  const N = 500;
+  const pools = Array.from({ length: N }, (_, i) => itemOf(`u${i}`));
+  const users = Array.from({ length: N * 2 }, (_, i) => itemOf(`r${i}`, { name: `r${i}`, upstream_id: `u${i % N}` }));
+  /** A context whose list reads are counted: one pass over the lists per build. */
+  function counted() {
+    let reads = 0;
+    const lists = new Set(['routes', 'streamRoutes', 'services', 'upstreams', 'ssls', 'pluginConfigs', 'consumerGroups', 'consumers', 'globalRules']);
+    const ctx = new Proxy(ctxOf({ routes: users }), {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string' && lists.has(prop)) reads += 1;
+        return Reflect.get(target, prop, receiver) as unknown;
+      },
+    });
+    return { ctx, reads: () => reads };
+  }
+
+  it(`is built once for ${N} referenceUse and referencesTo calls on one context, and again for a new context`, () => {
+    const one = counted();
+    for (const pool of pools) referenceUse('upstreams', pool.id, one.ctx);
+    for (const pool of pools) referencesTo('upstreams', pool.id, one.ctx);
+    // One pass: each list upstreams are read from, once.
+    expect(one.reads()).toBe(referenceLists('upstreams').length);
+    expect(referenceUse('upstreams', 'u7', one.ctx)).toEqual({ refs: [{ kind: 'routes', id: 'r507', name: 'r507' }, { kind: 'routes', id: 'r7', name: 'r7' }] });
+    const two = counted();
+    referenceUse('upstreams', 'u7', two.ctx);
+    expect(two.reads()).toBe(referenceLists('upstreams').length);
+  });
+
+  it('hands out copies: a caller sorting what it got changes nothing for the next', () => {
+    const { ctx } = counted();
+    const first = referencesTo('upstreams', 'u3', ctx);
+    first.reverse();
+    expect(referencesTo('upstreams', 'u3', ctx).map((r) => r.id)).toEqual(['r3', 'r503']);
   });
 });
 

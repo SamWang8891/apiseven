@@ -4,17 +4,20 @@
 import { screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item } from '../api/types';
-import { referenceIndex } from '../resources/resolve';
+import { referenceIndex, referenceUse } from '../resources/resolve';
 import { ctxOf, itemOf } from '../test/ctx';
 import { renderWithProviders } from '../test/providers';
 import { BulkReferences } from './BulkReferences';
 
 vi.mock('../resources/resolve', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../resources/resolve')>();
-  return { ...actual, referenceIndex: vi.fn(actual.referenceIndex) };
+  return { ...actual, referenceIndex: vi.fn(actual.referenceIndex), referenceUse: vi.fn(actual.referenceUse) };
 });
 
-afterEach(() => vi.mocked(referenceIndex).mockClear());
+afterEach(() => {
+  vi.mocked(referenceIndex).mockClear();
+  vi.mocked(referenceUse).mockClear();
+});
 
 const ctx = ctxOf({
   routes: [itemOf('r1', { name: 'alpha', upstream_id: 'u1' }), itemOf('r2', { name: 'beta', upstream_id: 'u1' }), itemOf('r3', { name: 'gamma', upstream_id: 'u9' })],
@@ -49,9 +52,28 @@ describe('BulkReferences', () => {
     const forThree = vi.mocked(referenceIndex).mock.calls.length;
     expect(forOne).toBeGreaterThan(0);
     expect(forThree).toBe(forOne);
+    // References uses what the dialog read: it never falls back to a call of its own per object.
+    expect(vi.mocked(referenceUse)).not.toHaveBeenCalled();
     for (const [kind, given] of vi.mocked(referenceIndex).mock.calls) {
       expect(kind).toBe('upstreams');
       expect(given).toBe(ctx);
     }
+  });
+});
+
+describe('BulkReferences, protos (F4)', () => {
+  const protoCtx = ctxOf({
+    routes: [itemOf('r1', { name: 'alpha', plugins: { 'grpc-transcode': { proto_id: 'p1' } } })],
+    services: [itemOf('s1', { name: 'billing', plugins: { 'grpc-transcode': { proto_id: 'p1' } } })],
+    pluginConfigs: [itemOf('pc1', { name: 'shared', plugins: { 'grpc-transcode': { proto_id: 'p2' } } })],
+  });
+  const protos: Item[] = [itemOf('p1', { name: 'greeter' }), itemOf('p2', { name: 'other' }), itemOf('p3', { name: 'unused' })];
+
+  it('shows what uses each selected proto, as the single dialog does, from the one index: References computes nothing of its own', async () => {
+    renderWithProviders(<BulkReferences kind="protos" items={protos} ctx={protoCtx} />);
+    await screen.findAllByRole('group');
+    expect(listed()).toEqual({ greeter: ['Route alpha', 'Service billing'], other: ['Plugin Config shared'] });
+    expect(vi.mocked(referenceUse)).not.toHaveBeenCalled();
+    expect(vi.mocked(referenceIndex).mock.calls.every(([kind, given]) => kind === 'protos' && given === protoCtx)).toBe(true);
   });
 });
