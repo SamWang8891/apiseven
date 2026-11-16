@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react';
-import { use, useCallback, useRef, useState, type FocusEvent, type ReactNode } from 'react';
+import { use, useCallback, useEffect, useRef, useState, type FocusEvent, type ReactNode } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
@@ -103,7 +103,7 @@ function sameMap(a: Obj, b: Obj): boolean {
  * outside replaces them. Taking over from the key/value editor (`from`: its rows), they start as that
  * editor's rows.
  */
-function MapRows({ node, value, path, emit, label, labelId, help, error, from }: {
+function MapRows({ node, value, path, emit, label, labelId, help, error, from, onTaken }: {
   node: MapNode;
   value: Obj;
   path: string;
@@ -113,11 +113,17 @@ function MapRows({ node, value, path, emit, label, labelId, help, error, from }:
   help: ReactNode;
   error: string | undefined;
   from: readonly EntryRow<string>[] | undefined;
+  /** Called once the rows have started from `from`: what they were handed is let go. */
+  onTaken: () => void;
 }) {
   const locked = useLocked();
   // Rows being typed belong to the editing session (the locked view shows them): Save and Discard
   // start them over from the value.
   const [rows, setRows] = useEditingState(() => (from ? rowsFromEditor(value, from) : toRows(value)));
+  // Started from the key/value editor's rows: the field keeps no copy of them (Codex final pass 2b, V1).
+  useEffect(() => {
+    if (from !== undefined) onTaken();
+  }, [from, onTaken]);
   // A value from outside replaces the rows, but for rows that hold something: those stay, as typed.
   const [synced, setSynced] = useState(value);
   if (value !== synced) {
@@ -245,6 +251,8 @@ interface MapModeState {
   onRows: (rows: readonly EntryRow<string>[]) => void;
   /** For the rows: the key/value editor's rows they take over from, when they did on leaving it. */
   taken: readonly EntryRow<string>[] | undefined;
+  /** For the rows: they have started from `taken`, which is let go. */
+  onTaken: () => void;
 }
 
 /**
@@ -266,13 +274,17 @@ function useMapMode(node: MapNode, value: unknown): MapModeState {
   const [kept, setKept] = useEditingState<MapMode | undefined>(undefined);
   /** The renderer on the page. */
   const [shown, setShown] = useState(wanted);
-  /** The key/value editor's rows as they stand (its onRows), read when it is left. */
+  /**
+   * The key/value editor's rows as they stand (its onRows), read when it is left; only while it is on
+   * the page: no copy outlives it, so none holds a key the value no longer holds (Codex final pass 2b, V1).
+   */
   const editorRows = useRef<readonly EntryRow<string>[] | undefined>(undefined);
   const onRows = useCallback((rows: readonly EntryRow<string>[]) => {
     editorRows.current = rows;
   }, []);
-  /** The key/value editor's rows the rows took over from on leaving it: editing state, for the rows' start only. */
+  /** The key/value editor's rows the rows took over from on leaving it, until the rows have started from them (V1). */
   const [taken, setTaken] = useEditingState<readonly EntryRow<string>[] | undefined>(undefined);
+  const onTaken = useCallback(() => setTaken(undefined), [setTaken]);
   let mode = kept !== undefined && mapModeFits(node, value, kept) ? kept : wanted;
   if (mode !== shown) {
     if (typing && shown === 'kv') {
@@ -289,6 +301,9 @@ function useMapMode(node: MapNode, value: unknown): MapModeState {
     }
   }
   const track = useCallback((entries: PendingEntry[]) => setHolds(entries.length > 0), []);
+  useEffect(() => {
+    if (mode !== 'kv') editorRows.current = undefined;
+  }, [mode]);
   const focus = {
     onFocus: () => setTyping(true),
     onBlur: (e: FocusEvent) => {
@@ -300,10 +315,11 @@ function useMapMode(node: MapNode, value: unknown): MapModeState {
         setShown('rows');
         setHolds(false);
         setTaken(editorRows.current);
+        editorRows.current = undefined;
       }
     },
   };
-  return { mode, track, focus, onRows, taken };
+  return { mode, track, focus, onRows, taken, onTaken };
 }
 
 /**
@@ -314,7 +330,7 @@ function useMapMode(node: MapNode, value: unknown): MapModeState {
  */
 export function MapField(props: FieldProps<MapNode>) {
   const { node, value, name, path, onChange, prop, required, ariaLabel } = props;
-  const { mode, track, focus, onRows, taken } = useMapMode(node, value);
+  const { mode, track, focus, onRows, taken, onTaken } = useMapMode(node, value);
   const id = useFieldId(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
@@ -352,7 +368,7 @@ export function MapField(props: FieldProps<MapNode>) {
   if (mode === 'rows') {
     return (
       <PendingScope onChange={track}>
-        <MapRows node={node} value={map} path={path} emit={emit} label={label} labelId={labelId} help={help} error={error} from={taken} />
+        <MapRows node={node} value={map} path={path} emit={emit} label={label} labelId={labelId} help={help} error={error} from={taken} onTaken={onTaken} />
       </PendingScope>
     );
   }

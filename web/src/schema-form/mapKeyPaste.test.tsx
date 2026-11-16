@@ -68,3 +68,95 @@ describe('a private key pasted into a map value (proxy-rewrite headers.set, 3.20
     expect(form.value()).toEqual({ headers: { set: { 'X-A': 'a', 'X-B': KEY } } });
   });
 });
+
+/**
+ * Every string the component named `component` around `el`, and every component below it, keeps in its
+ * hooks (state, refs, memos and their deps), read from React's committed fiber tree (not the work-in-
+ * progress copy React keeps of the render before): what the field retains. Nothing of the app is
+ * exported for it.
+ */
+function retainedStrings(el: Element, component: string): string[] {
+  interface Fiber { type: unknown; tag: number; return: Fiber | null; child: Fiber | null; sibling: Fiber | null; memoizedState: unknown; stateNode: unknown }
+  const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+  let top = key ? ((el as unknown as Record<string, Fiber | undefined>)[key] ?? null) : null;
+  while (top?.return) top = top.return;
+  // The host root's FiberRoot knows which of the two trees is the committed one.
+  const committed = (top?.stateNode as { current?: Fiber } | undefined)?.current ?? null;
+  const find = (f: Fiber | null, test: (f: Fiber) => boolean): Fiber | null => {
+    for (let at = f; at; at = at.sibling) {
+      if (test(at)) return at;
+      const below = find(at.child, test);
+      if (below) return below;
+    }
+    return null;
+  };
+  let fiber = find(committed, (f) => f.stateNode === el);
+  const named = (f: Fiber) => typeof f.type === 'function' && (f.type as { name?: string }).name === component;
+  while (fiber && !named(fiber)) fiber = fiber.return;
+  if (!fiber) throw new Error(`no ${component} above the element`);
+  const out: string[] = [];
+  const seen = new WeakSet<object>();
+  const visit = (v: unknown, depth: number) => {
+    if (typeof v === 'string') out.push(v);
+    if (v === null || typeof v !== 'object' || depth > 16 || seen.has(v)) return;
+    seen.add(v);
+    if ('$$typeof' in v || v instanceof Node) return;
+    for (const x of Array.isArray(v) ? (v as unknown[]) : Object.values(v)) visit(x, depth + 1);
+  };
+  // Function components (0), forwardRef (11), memo (14, 15): their memoizedState is their hooks.
+  const walk = (f: Fiber | null) => {
+    for (let at = f; at; at = at.sibling) {
+      if ([0, 11, 14, 15].includes(at.tag)) visit(at.memoizedState, 0);
+      walk(at.child);
+    }
+  };
+  if ([0, 11, 14, 15].includes(fiber.tag)) visit(fiber.memoizedState, 0);
+  walk(fiber.child);
+  return out;
+}
+
+// Codex final pass 2b, V1: once the rows have taken over from the key/value editor, the field keeps no
+// copy of the editor's rows: a key replaced afterwards is in nothing it retains, and a lock changes none of that.
+describe('a key pasted into a map value, handed to the rows, then replaced (V1)', () => {
+  const A = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAAmapKeyFirstA';
+  const B = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAAmapKeySecondB';
+  const keyOf = (body: string) => `-----BEGIN PRIVATE KEY----- ${body}${'A'.repeat(100)} -----END PRIVATE KEY-----`;
+  const holds = (body: string) => retainedStrings(screen.getByRole('group', { name: /^set/ }), 'MapField').some((s) => s.includes(body));
+
+  it('after the replacement, and after a lock, the field retains nothing of A; a later hand-over never brings it back', async () => {
+    const form = renderSchemaForm(schemaOf('proxy-rewrite'), { headers: { set: { 'X-A': 'a' } } }, { name: 'proxy-rewrite' });
+    const value1 = group('set').getByRole('textbox', { name: t('ui.kv.valueN', { n: 1 }) });
+    await form.user.click(value1);
+    await form.user.keyboard('{Control>}a{/Control}');
+    await form.user.paste(keyOf(A));
+    await form.user.click(document.body);
+    await waitFor(() => expect(inPage(A)).toBe(false));
+
+    // Replaced in the rows by B, and left.
+    await form.user.click(group('set').getByRole('button', { name: t('sf.secret.replace', { name: t('sf.map.valueOf', { key: 'X-A' }) }) }));
+    await form.user.click(group('set').getByRole('textbox', { name: t('sf.map.valueOf', { key: 'X-A' }) }));
+    await form.user.paste(keyOf(B));
+    await form.user.click(document.body);
+    await waitFor(() => expect(inPage(B)).toBe(false));
+    expect(form.value()).toEqual({ headers: { set: { 'X-A': keyOf(B) } } });
+    // The walk reads what the field holds: B, the value it shows.
+    expect(holds(B)).toBe(true);
+    expect(holds(A)).toBe(false);
+
+    form.update({ locked: true });
+    expect(holds(A)).toBe(false);
+    form.update({ locked: false });
+    expect(holds(A)).toBe(false);
+
+    // The row removed, the map is a key/value editor again; a new key there is handed over as before, A nowhere.
+    await form.user.click(group('set').getByRole('button', { name: t('sf.map.remove', { key: 'X-A' }) }));
+    await form.user.click(group('set').getByRole('button', { name: t('ui.kv.add') }));
+    await form.user.type(group('set').getByRole('textbox', { name: t('ui.kv.keyN', { n: 1 }) }), 'X-C');
+    await form.user.click(group('set').getByRole('textbox', { name: t('ui.kv.valueN', { n: 1 }) }));
+    await form.user.paste(keyOf('MIIEvQIBADANBgkqhkiG9w0BAQEFAAmapKeyThirdC'));
+    await form.user.click(document.body);
+    await waitFor(() => expect(inPage('mapKeyThirdC')).toBe(false));
+    expect(form.value()).toEqual({ headers: { set: { 'X-C': keyOf('MIIEvQIBADANBgkqhkiG9w0BAQEFAAmapKeyThirdC') } } });
+    expect(inPage(A) || holds(A) || holds(B)).toBe(false);
+  });
+});
