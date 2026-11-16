@@ -87,6 +87,24 @@ describe('focus after a refused save (I1)', () => {
     expect(main().getByRole('textbox', { name: 'URI' })).toHaveValue('/b');
   });
 
+  it('a refusal that comes after the user moved on leaves focus where they went', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { user, admin } = await editing({ error_msg: REFUSED }, gate);
+    const uri = await main().findByRole('textbox', { name: 'URI' });
+    await user.clear(uri);
+    await user.type(uri, '/b');
+    pressCtrlS();
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    // While the save is out, the user goes on to the ⋯ menu's button.
+    const more = main().getByRole('button', { name: t('editor.more') });
+    more.focus();
+    release();
+    expect(await within(screen.getByRole('main')).findByRole('alert')).toHaveTextContent(REFUSED);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(document.activeElement).toBe(more);
+  });
+
   it('the field left is gone after the refusal (APISIX names a property on another tab): focus is on Save', async () => {
     const { user } = await editing({ error_msg: 'invalid configuration: property "upstream" validation failed: wrong type' });
     const uri = await main().findByRole('textbox', { name: 'URI' });

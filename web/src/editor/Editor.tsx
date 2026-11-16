@@ -233,6 +233,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     const next = refocusNext.current;
     if (!next) return;
     refocusNext.current = undefined;
+    // Only focus the save lost is given back: if the user has gone on meanwhile (another control, a
+    // field), it stays where they went.
+    const at = document.activeElement;
+    if (at && at !== document.body && at !== next.pressed) return;
     returnFocus(next.left, next.pressed, next.anyway ? anywayRef.current : undefined, saveRef.current);
   });
 
