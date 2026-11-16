@@ -31,7 +31,8 @@ const SEPARATED = /[\s,]/;
  * `validate` refuses stays in the box, flagged, and holds Save (usePending) until it is changed. When a
  * part of a paste is refused, the parts before it are added, and it and every part after it stay in
  * the box, so nothing pasted is lost; that text is split the same way when it is next committed, once
- * the refused part is corrected (final wave O1). Text typed is one tag, spaces and all.
+ * the refused part is corrected (final wave O1). Text typed is one tag, spaces and all, also when it
+ * is typed over the whole of such text (fix round 1, F4).
  */
 export function TagInput({
   label, help, error, required, htmlFor, id, value, onChange, validate, mono, placeholder, className, disabled, onBlur, fieldName, ...native
@@ -41,6 +42,8 @@ export function TagInput({
   const [rejected, setRejected] = useEditingState<string | undefined>(undefined);
   /** Editing state: the box holds several parts of a paste, left after a refused one: committed, they are split again (O1). */
   const [parts, setParts] = useEditingState(false);
+  /** A key that types a character went down with the whole text selected: what it types replaces all of it, so it is typed text (F4). */
+  const overAll = useRef(false);
   // Text still being typed is added when the box is left (an editor's Save leaves it first); text
   // that was refused cannot be, so Save waits for it.
   const text = draft.trim();
@@ -110,6 +113,7 @@ export function TagInput({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    overAll.current = false;
     if (e.key === 'Enter' || e.key === ',') {
       if (draft.trim() || e.key === ',') e.preventDefault();
       commit();
@@ -119,11 +123,15 @@ export function TagInput({
     } else if (e.key === 'Backspace' && draft === '' && value.length > 0) {
       e.preventDefault();
       onChange(value.slice(0, -1));
+    } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const box = e.currentTarget;
+      overAll.current = box.value !== '' && box.selectionStart === 0 && box.selectionEnd === box.value.length;
     }
   }
 
   function onPaste(e: ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData('text');
+    overAll.current = false;
     // One word: the browser puts it where the selection is, as typing would.
     if (!SEPARATED.test(text)) return;
     e.preventDefault();
@@ -175,8 +183,9 @@ export function TagInput({
           onChange={(e) => {
             setDraft(e.target.value);
             setRejected(undefined);
-            // Emptied, the box holds no part of a paste any more: what is typed next is one tag.
-            if (e.target.value === '') setParts(false);
+            // Emptied, or typed over as a whole (fix round 1, F4), the box holds no part of a paste any more: what is typed is one tag.
+            if (e.target.value === '' || overAll.current) setParts(false);
+            overAll.current = false;
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}

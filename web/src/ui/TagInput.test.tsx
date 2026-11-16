@@ -132,6 +132,19 @@ describe('TagInput', () => {
     expect(onChange).toHaveBeenLastCalledWith(['/a', '/b', '/x y']);
   });
 
+  // Fix round 1, F4: text typed over the whole held text is typed text, one tag, as the box's doc says.
+  it('text typed over the whole text a paste left is one tag, spaces and all', async () => {
+    const validate = (tag: string) => (tag.startsWith('/') ? undefined : 'Starts with /');
+    const { onChange, user, input } = setup({ validate });
+    await user.click(input);
+    await user.paste('bad /x');
+    expect(input).toHaveValue('bad /x');
+    input.setSelectionRange(0, input.value.length);
+    await user.keyboard('/a b{Enter}');
+    expect(onChange).toHaveBeenLastCalledWith(['/a b']);
+    expect(input).toHaveValue('');
+  });
+
   // Final wave O2: a paste of several tags replaces the selection, as any paste does.
   it('a paste of several tags replaces the selected text first, then splits', async () => {
     const { onChange, user, input } = setup();
