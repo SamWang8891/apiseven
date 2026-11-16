@@ -12,14 +12,17 @@
 // - a secret manager entry: its manager's credentials (secrets/schemas.ts SECRET_FIELDS: a vault
 //   token, AWS keys, a GCP private key); every value but the id for a manager it doesn't know;
 // - any `client_key` (an upstream's or an inline upstream's tls.client_key, which a GET returns as
-//   APISIX's AES ciphertext) is never shown, not even on "Show secrets";
+//   APISIX's AES ciphertext; traffic-split's, which it returns as stored) and every PEM private-key
+//   block in any text, whatever field it is in (final wave fix round 1, R1: schema/secrets.ts
+//   hideNeverShown) are never shown, not even on "Show secrets"; the editing JSON views show a note in
+//   their place (veilKeys, schema/keyNotes.ts);
 // - an SSL's private keys, `key` and each of `keys`: a GET never returns them (admin/resource.lua
 //   180–193), but a new one sits in the draft from Replace until the save, so they are never shown
 //   either; the editing JSON tab shows a note in their place (veilKeys).
 import { isObj } from '../api/sanitize';
 import type { Kind, Obj, PluginInfo } from '../api/types';
-import { t } from '../i18n';
-import { holdsPrivateKey, isNeverShownName, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
+import { unveilValue, veilValue, type KeyNotes, type WholeKey } from '../schema/keyNotes';
+import { hideNeverShown, holdsPrivateKey, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
 import { managerOf, SCHEMAS, SECRET_FIELDS } from '../resources/secrets/schemas';
 
@@ -65,22 +68,6 @@ function maskSslKeys(value: Obj): { value: Obj; redacted: boolean } {
 function encryptOf(schema: Obj | undefined): string[] {
   const list: unknown = schema?.encrypt_fields;
   return Array.isArray(list) ? list.filter((p): p is string => typeof p === 'string') : [];
-}
-
-/** `value` with every string `masks(keys)` says is secret replaced by MASK. */
-function mask(value: unknown, masks: (key: string) => boolean): { value: unknown; redacted: boolean } {
-  let redacted = false;
-  const walk = (v: unknown, secret: boolean): unknown => {
-    if (typeof v === 'string') {
-      if (!secret) return v;
-      redacted = true;
-      return MASK;
-    }
-    if (Array.isArray(v)) return v.map((x) => walk(x, secret));
-    return isObj(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, secret || masks(k))])) : v;
-  };
-  const out = walk(value, false);
-  return { value: out, redacted };
 }
 
 /**
@@ -132,9 +119,11 @@ function maskPlugins(plugins: Obj, kind: Kind, all: Record<string, PluginInfo> |
  */
 export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginInfo> | undefined, id?: string): Redacted {
   const ownId = typeof value.id === 'string' ? value.id : id;
-  const clientKeys = mask(value, isNeverShownName);
+  // Never shown, not even on "Show secrets": a never-shown name's text (client_key) and every PEM
+  // private-key block in any text (hideNeverShown), and an SSL's own keys.
+  const clientKeys = hideNeverShown(value);
   const never = kind === 'ssls' ? maskSslKeys(clientKeys.value as Obj) : { value: clientKeys.value as Obj, redacted: false };
-  never.redacted ||= clientKeys.redacted;
+  never.redacted ||= clientKeys.hidden;
   const revealed = never.redacted ? never.value : value;
   // By name: everything but what a schema-aware pass below reads (each plugin's config; a metadata
   // entry or a secret manager entry whose schema is known), where a number its schema types as one is
@@ -198,6 +187,8 @@ export function redactPair(
   const r = redactObject(theirs, kind, all, id);
   const marked = (shown: unknown, real: unknown, other: unknown): unknown => {
     if (shown === MASK && (typeof real === 'string' || typeof real === 'number')) return real === other ? MASK : MASK_CHANGED;
+    // A text masked in place (a private-key block in it): changed when the real texts differ.
+    if (typeof shown === 'string' && typeof real === 'string' && shown !== real && real !== other) return `${shown} ${MASK_CHANGED.slice(MASK.length + 1)}`;
     if (Array.isArray(shown) && Array.isArray(real)) return shown.map((s, i) => marked(s, real[i], Array.isArray(other) ? other[i] : undefined));
     if (isObj(shown) && isObj(real)) return Object.fromEntries(Object.entries(shown).map(([k, s]) => [k, marked(s, real[k], isObj(other) ? other[k] : undefined)]));
     return shown;
@@ -210,135 +201,34 @@ export function redactPair(
   };
 }
 
-/**
- * The notes the editing JSON tab shows in place of private keys: each note is a token for one key text,
- * made in one editing session (`session`, random, so unique across page loads) and never reused, so a
- * note resolves to the key it was made for or to nothing: never to another key by its position, never
- * to itself.
- */
-export interface KeyNotes {
-  /** Random (randomId): a note made on another page load never names this session. */
-  readonly session: string;
-  /** note text → the key text it stands for */
-  readonly keys: ReadonlyMap<string, string>;
-}
+export type { KeyNotes } from '../schema/keyNotes';
+export { newKeyNotes } from '../schema/keyNotes';
+
+/** An SSL's private keys, whole: its `key` and each of its `keys` (a GET never returns them; a new one sits in the draft from Replace). */
+const sslKeys: WholeKey = (path) => (path.length === 1 && path[0] === 'key') || (path.length === 2 && path[0] === 'keys');
+
+const wholeFor = (kind: Kind): WholeKey | undefined => (kind === 'ssls' ? sslKeys : undefined);
 
 /**
- * A session id no other page load (another browser tab, a reload) makes: 8 base-36 characters from
- * crypto.getRandomValues, which browsers offer on any origin (crypto.subtle only on secure ones). A
- * counter would start again at 1 on every load, so a note copied between tabs would name the same
- * session and resolve to the other SSL's keys.
- */
-function randomId(): string {
-  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(8));
-  return Array.from(bytes, (b) => (b % 36).toString(36)).join('');
-}
-
-/** A new, empty set of notes for an editing session. */
-export function newKeyNotes(): KeyNotes {
-  return { session: randomId(), keys: new Map() };
-}
-
-/** The slots of an SSL that hold a private key: `key` and each of `keys` whole; a key block inside `cert`, an entry of `certs`, `client.ca`. */
-interface Slot {
-  /** The whole text is a key (`key`, `keys`), else keys are blocks inside it (`cert`, `certs`, `client.ca`). */
-  whole: boolean;
-  get: (o: Obj) => unknown;
-  set: (o: Obj, v: unknown) => Obj;
-}
-
-function slotsOf(value: Obj): Slot[] {
-  const slots: Slot[] = [];
-  if (value.key !== undefined) slots.push({ whole: true, get: (o) => o.key, set: (o, v) => ({ ...o, key: v }) });
-  const list = (name: 'keys' | 'certs', whole: boolean) => {
-    const items = value[name];
-    if (!Array.isArray(items)) return;
-    items.forEach((_, i) => {
-      const at = (o: Obj): unknown[] => (Array.isArray(o[name]) ? (o[name] as unknown[]) : []);
-      slots.push({ whole, get: (o) => at(o)[i], set: (o, v) => ({ ...o, [name]: at(o).map((x, j) => (j === i ? v : x)) }) });
-    });
-  };
-  list('keys', true);
-  if (value.cert !== undefined) slots.push({ whole: false, get: (o) => o.cert, set: (o, v) => ({ ...o, cert: v }) });
-  list('certs', false);
-  if (isObj(value.client) && value.client.ca !== undefined) {
-    slots.push({ whole: false, get: (o) => (isObj(o.client) ? o.client.ca : undefined), set: (o, v) => ({ ...o, client: { ...(isObj(o.client) ? o.client : {}), ca: v } }) });
-  }
-  return slots;
-}
-
-/** What the editing JSON tab shows for a private key's text, or a note made in another session. */
-const notePattern = (): RegExp => new RegExp(t('json.keyNote', { id: '\u0000' }).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('\u0000', '[0-9a-z.]+'), 'g');
-
-/**
- * The draft as the editing JSON tab shows it: an SSL's private keys (`key`, each of `keys`) and any
- * private-key block stored inside `cert`, `certs` or `client.ca` replaced by its note. A key that has
- * no note yet gets a new one (`mint`; without it, `complete` says some had none). Every other kind, and
- * an SSL without such text, as it is.
+ * The draft as the editing JSON tab shows it (schema/keyNotes.ts veilValue): every value that is never
+ * shown as a note: a PEM private-key block in any text, in place; a never-shown name's text (client_key)
+ * whole; an SSL's `key` and each of its `keys` whole. A key that has no note yet gets a new one (`mint`;
+ * without it, `complete` says some had none).
  */
 export function veilKeys(kind: Kind, draft: Obj, notes: KeyNotes, mint = true): { value: Obj; notes: KeyNotes; veiled: boolean; complete: boolean } {
-  if (kind !== 'ssls') return { value: draft, notes, veiled: false, complete: true };
-  const keys = new Map(notes.keys);
-  const used = new Set<string>();
-  let complete = true;
-  const noteFor = (secret: string): string => {
-    for (const [note, text] of keys) {
-      if (text === secret && !used.has(note)) {
-        used.add(note);
-        return note;
-      }
-    }
-    if (!mint) {
-      complete = false;
-      return secret;
-    }
-    const note = t('json.keyNote', { id: `${notes.session}.${keys.size + 1}` });
-    keys.set(note, secret);
-    used.add(note);
-    return note;
-  };
-  let value = draft;
-  for (const slot of slotsOf(draft)) {
-    const text = slot.get(draft);
-    if (typeof text !== 'string') continue;
-    if (slot.whole) value = slot.set(value, noteFor(text));
-    else if (holdsPrivateKey(text)) value = slot.set(value, withoutPrivateKeys(text, noteFor));
-  }
-  return { value, notes: keys.size === notes.keys.size ? notes : { session: notes.session, keys }, veiled: used.size > 0, complete };
+  const veiled = veilValue(draft, notes, { mint, whole: wholeFor(kind) });
+  return { ...veiled, value: veiled.value as Obj };
 }
 
 /**
  * `edited` (the JSON tab's text, parsed) with each note turned back into the key it was made for,
- * wherever it now is. Refused (`problem`, the text then holds Save as unfinished input) when a note
- * stands for no key of this session (changed by hand, pasted from elsewhere, left from an earlier
- * session) or is used twice (each stands for one key): a note's text never reaches the draft, so it is
- * never sent as a key, whatever its length and the SSL's type. Text typed over a note is kept as typed.
+ * wherever it now is (schema/keyNotes.ts unveilValue). Refused (`problem`, the text then holds Save as
+ * unfinished input) when a note stands for no key of this session, is used twice, or is left damaged;
+ * `before` is the draft the text was made from. Text typed over a note is kept as typed.
  */
-export function unveilKeys(kind: Kind, edited: Obj, notes: KeyNotes): { ok: true; value: Obj } | { ok: false; problem: string } {
-  if (kind !== 'ssls') return { ok: true, value: edited };
-  const seen = new Set<string>();
-  let problem: string | undefined;
-  const resolve = (note: string): string => {
-    const text = notes.keys.get(note);
-    if (text === undefined) problem ??= t('json.note.unknown');
-    else if (seen.has(note)) problem ??= t('json.note.twice');
-    seen.add(note);
-    return text ?? note;
-  };
-  let value = edited;
-  for (const slot of slotsOf(edited)) {
-    const text = slot.get(edited);
-    if (typeof text !== 'string' || !text.includes(MASK.slice(0, 1))) continue;
-    if (slot.whole) {
-      value = slot.set(value, resolve(text));
-      continue;
-    }
-    const back = text.replace(notePattern(), resolve);
-    // A note changed by hand no longer matches: what is left of it must not be sent.
-    if (back.includes(MASK.slice(0, 1))) problem ??= t('json.note.unknown');
-    value = slot.set(value, back);
-  }
-  return problem === undefined ? { ok: true, value } : { ok: false, problem };
+export function unveilKeys(kind: Kind, edited: Obj, notes: KeyNotes, before?: Obj): { ok: true; value: Obj } | { ok: false; problem: string } {
+  const back = unveilValue(edited, notes, { whole: wholeFor(kind), before });
+  return back.ok ? { ok: true, value: back.value as Obj } : back;
 }
 
 /** Whether copied text leaves a private key out: it shows a note and holds no private key itself. */

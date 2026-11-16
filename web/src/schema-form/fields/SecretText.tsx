@@ -20,14 +20,17 @@
 // 4. Every keystroke is the value; nothing is held; leaving the box changes nothing (addendum 20).
 // The session's flags (useEditingState: the box's text, revealed) start over with each editing
 // session and are lost on a remount; nothing shown depends on their surviving one.
-// 5. A never-shown secret (`neverShown`: a client_key, schema/secrets.ts) has no Show anywhere: locked,
-//    "Set, not shown" in words; editing, the same words as above without Show, and a box only for
-//    text typed in this session (Replace opens it empty), as the upstream editor's key field does.
+// 5. A never-shown secret (`neverShown`: a client_key, or a value holding a PEM private key, stored or
+//    entered: fix round 1, R1) has no Show anywhere: locked, "Set, not shown" in words; editing, the same
+//    words as above without Show, and a box only for text typed in this session (Replace opens it
+//    empty), as the upstream editor's key field does. A key typed or pasted into the box shows until
+//    the box is left; then the box closes and the words say a new value was entered.
 import { Eye, EyeOff, Replace, Undo2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { Button, Field, Input, Textarea, useBusy, useEditingState, useLocked } from '../../ui';
 import { ReadOnlyValue } from '../../ui/ReadOnly';
+import { holdsPrivateKey } from '../../schema/secrets';
 
 export interface SecretTextProps {
   /** The field's common props, as StringField builds them. */
@@ -106,9 +109,24 @@ export function SecretText({ common, name, value, stored, storedKnown = true, mo
   if (boxText !== undefined || (revealed && has) || (!has && stored === undefined)) {
     const text = boxText ?? (revealed ? value : '');
     return (
-      <div className="sf-secret">
+      <div
+        className="sf-secret"
+        onBlur={(e) => {
+          // Left (focus outside the box and its buttons) with a private key in it: masked from now on
+          // (rule 5); other text stays as typed.
+          if (e.currentTarget.contains(e.relatedTarget)) return;
+          if (holdsPrivateKey(boxText)) setBoxText(undefined);
+        }}
+      >
         <div className="sf-secret__box">
-          <Textarea {...common} mono={mono} rows={rows} value={text} help={acting ? helpWith(common.help, emptyWords) : undefined} onChange={type} />
+          <Textarea
+            {...common}
+            mono={mono}
+            rows={rows}
+            value={text}
+            help={acting ? helpWith(common.help, emptyWords) : undefined}
+            onChange={type}
+          />
         </div>
         {(keep || (acting && revealed && boxText === undefined)) && (
           <span className="sf-secret__tools">

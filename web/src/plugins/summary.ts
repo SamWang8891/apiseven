@@ -2,7 +2,7 @@
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
-import { isSecretName, MASK } from '../schema/secrets';
+import { holdsPrivateKey, isSecretName, MASK } from '../schema/secrets';
 import { META } from './meta';
 
 const MAX = 80;
@@ -28,7 +28,8 @@ export function pluginSummary(_name: string, conf: Obj, encrypt: string[] = []):
   const isScalar = (v: unknown) => !Array.isArray(v) && !isObj(v);
   const ordered = [...entries.filter(([, v]) => isScalar(v)), ...entries.filter(([, v]) => !isScalar(v))];
   const pairs = ordered.map(([key, value]) => {
-    if (encrypt.includes(key) || isSecretName(key)) return `${key}=${MASK}`;
+    // A secret, or text holding a PEM private key whatever its name (never shown: fix round 1, R1).
+    if (encrypt.includes(key) || isSecretName(key) || holdsPrivateKey(value)) return `${key}=${MASK}`;
     if (Array.isArray(value)) return `${key}=[${value.length}]`;
     if (isObj(value)) return `${key}={…}`;
     return `${key}=${scalar(value)}`;

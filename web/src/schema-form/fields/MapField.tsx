@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react';
-import { use, useCallback, useState, type ReactNode } from 'react';
+import { use, useCallback, useState, type FocusEvent, type ReactNode } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
@@ -225,17 +225,19 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
  * and unmount another row's unfinished edit). Kept that way, it stays for the editing session (it
  * still shows the value), so finishing the edit does not swap the field under the keyboard either.
  */
-function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (entries: PendingEntry[]) => void } {
+function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (entries: PendingEntry[]) => void; focus: { onFocus: () => void; onBlur: (e: FocusEvent) => void } } {
   const wanted = mapMode(node, value);
   /** Whether the renderer on the page holds input (its PendingScope). */
   const [holds, setHolds] = useState(false);
+  /** Focus is in the key/value editor: a private key being typed there shows until it is left (fix round 1, R1), then rows hide it. */
+  const [typing, setTyping] = useState(false);
   /** A renderer kept over a change while it held input: editing state (Save and Discard end it). */
   const [kept, setKept] = useEditingState<MapMode | undefined>(undefined);
   /** The renderer on the page. */
   const [shown, setShown] = useState(wanted);
   let mode = kept !== undefined && mapModeFits(node, value, kept) ? kept : wanted;
   if (mode !== shown) {
-    if (holds && mapModeFits(node, value, shown)) {
+    if ((holds && mapModeFits(node, value, shown)) || (typing && shown === 'kv')) {
       setKept(shown);
       mode = shown;
     } else {
@@ -245,7 +247,13 @@ function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (ent
     }
   }
   const track = useCallback((entries: PendingEntry[]) => setHolds(entries.length > 0), []);
-  return { mode, track };
+  const focus = {
+    onFocus: () => setTyping(true),
+    onBlur: (e: FocusEvent) => {
+      if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget)) setTyping(false);
+    },
+  };
+  return { mode, track, focus };
 }
 
 /**
@@ -256,7 +264,7 @@ function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (ent
  */
 export function MapField(props: FieldProps<MapNode>) {
   const { node, value, name, path, onChange, prop, required, ariaLabel } = props;
-  const { mode, track } = useMapMode(node, value);
+  const { mode, track, focus } = useMapMode(node, value);
   const id = useFieldId(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
@@ -304,7 +312,7 @@ export function MapField(props: FieldProps<MapNode>) {
     .map((k) => badKey(node, k))
     .find((m) => m !== undefined);
   return (
-    <div className="sf-map" role="group" aria-labelledby={labelId}>
+    <div className="sf-map" role="group" aria-labelledby={labelId} {...focus}>
       <PendingScope onChange={track}>
         <KeyValueInput
           label={label}

@@ -194,7 +194,8 @@ describe('a stored secret', () => {
     expect(dialog.textContent).toContain(`${MASK} (changed)`);
   });
 
-  it('a GCP private key (multi-line) is not on the page on Edit until revealed; Replace starts empty and keeps the stored key while empty; after Save it is masked again', async () => {
+  // Final wave fix round 1, R1: a PEM private key is never shown, so there is no Show for it (there was).
+  it('a GCP private key (multi-line) is not on the page on Edit and has no Show; Replace starts empty and keeps the stored key while empty; Save sends it unchanged', async () => {
     const { user, admin } = await open('#/secrets/gcp%2Fg1', [GCP]);
     await main().findByRole('heading', { level: 1, name: 'gcp/g1' });
     await settled();
@@ -213,9 +214,8 @@ describe('a stored secret', () => {
     await user.type(box, 'X');
     await user.click(main().getByRole('button', { name: t('sf.secret.keep') }));
     expect(main().getByText(t('sf.secret.stored'))).toBeInTheDocument();
-    // Reveal: the key in a box; a save sends it back unchanged; then it is masked again.
-    await user.click(main().getByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
-    expect(main().getByRole('textbox', { name: 'private_key (required)' })).toHaveValue(GCP_KEY);
+    // Never revealed; a save sends it back unchanged.
+    expect(main().queryByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) })).not.toBeInTheDocument();
     await user.type(main().getByRole('textbox', { name: 'project_id (required)' }), '2');
     await save(user);
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'secrets/gcp/g1', body: { ...GCP, auth_config: { ...(GCP.auth_config as Obj), project_id: 'p12' } } }]));
@@ -277,7 +277,8 @@ describe('a stored secret', () => {
     expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
   });
 
-  it('a revealed key stays revealed through a save APISIX refuses (late), and its box says what emptying it saves', async () => {
+  // Fix round 1, R1: there is no Show for a PEM private key to stay revealed through a refused save (there was).
+  it('a stored key stays "Set, not shown", with no Show, through a save APISIX refuses (late)', async () => {
     const { user } = await openEditor('#/secrets/gcp%2Fg1', {
       objects: { secrets: [GCP] },
       replies: { 'secrets/gcp/g1': (req) => (req.method === 'PUT' ? later(() => json(400, { error_msg: 'invalid configuration: refused' })) : undefined) },
@@ -286,12 +287,13 @@ describe('a stored secret', () => {
     await settled();
     await main().findByText('svc@p.iam');
     await user.keyboard('e');
-    await user.click(await main().findByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) }));
+    expect(await main().findByText(t('sf.secret.stored'))).toBeInTheDocument();
+    expect(main().queryByRole('button', { name: t('sf.secret.show', { name: 'private_key' }) })).not.toBeInTheDocument();
     await user.type(main().getByRole('textbox', { name: 'project_id (required)' }), '2');
     await save(user);
     expect(await main().findByRole('alert')).toHaveTextContent('invalid configuration: refused');
-    expect(main().getByRole('textbox', { name: 'private_key (required)' })).toHaveValue(GCP_KEY);
-    expect(main().getByText(t('sf.secret.emptyStored'))).toBeInTheDocument();
+    expect(main().getByText(t('sf.secret.stored'))).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain('GCPSTOREDKEYTEXT');
   });
 
   it('an AWS entry masks its access key id too, locked and in the JSON tab', async () => {

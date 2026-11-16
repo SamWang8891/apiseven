@@ -1,7 +1,8 @@
 // A plugin card's JSON view (moved out of PluginCard.tsx unchanged, but for the masking of a plugin
 // whose schema isn't known): the whole config, `_meta` included, linted against the plugin's schema.
 // Text that doesn't parse, or isn't an object, stays here and holds Save. Locked, it shows the stored
-// value with its secrets masked behind "Show secrets". What the browser can't check of the schema (a
+// value with its secrets masked behind "Show secrets"; what is never shown (a PEM private key in any
+// value, a client_key) is masked locked and a note while editing (schema/keyNotes.ts), never the key. What the browser can't check of the schema (a
 // pattern JavaScript can't compile, the keys and conditions that depend on one, or a schema Ajv
 // can't compile) refuses nothing (schema/prepare.ts): a quiet note says what APISIX checks on save.
 import { Eye, EyeOff } from 'lucide-react';
@@ -12,6 +13,7 @@ import { deepEqual } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
+import { newKeyNotes, unveilValue, veilValue, type KeyNotes } from '../schema/keyNotes';
 import { hideNeverShown, redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
@@ -19,10 +21,29 @@ import { maskConfig } from './secrets';
 
 const pretty = (v: unknown): string => JSON.stringify(v, null, 2) ?? '';
 
+interface JsonState {
+  text: string;
+  /** The config the text was last made from or turned into. */
+  synced: unknown;
+  /** Shown under the editor: why the text is not taken. */
+  error: string | undefined;
+  /** For Save (usePending): the text holds input that is not in the config. */
+  held: string | undefined;
+  /** The notes standing for private keys in the text (schema/keyNotes.ts). */
+  notes: KeyNotes;
+}
+
+/** The text for `conf`, every value never shown as a note (fix round 1, R1), made with `notes`. */
+function stateOf(conf: unknown, notes: KeyNotes): JsonState {
+  const veiled = veilValue(conf, notes);
+  return { text: pretty(veiled.value), synced: conf, error: undefined, held: undefined, notes: veiled.notes };
+}
+
 /** Whether `text` already says `value` (so the value coming back from a JSON edit keeps what was typed). */
-function says(text: string, value: unknown): boolean {
+function says(text: string, value: unknown, notes: KeyNotes): boolean {
   try {
-    return deepEqual(JSON.parse(text), value);
+    const back = unveilValue(JSON.parse(text), notes, { before: value });
+    return back.ok && deepEqual(back.value, value);
   } catch {
     return false;
   }
@@ -40,12 +61,12 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
 }) {
   const locked = useLocked();
   /** `error` (shown) and `held` (for Save) are set while the text is not emitted. */
-  const [state, setState] = useState(() => ({ text: pretty(conf), synced: conf, error: undefined as string | undefined, held: undefined as string | undefined }));
+  const [state, setState] = useState(() => stateOf(conf, newKeyNotes()));
   const [revealed, setRevealed] = useReveal();
   // A config changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
   let current = state;
   if (!Object.is(conf, state.synced)) {
-    current = state.held !== undefined || says(state.text, conf) ? { ...state, synced: conf } : { text: pretty(conf), synced: conf, error: undefined, held: undefined };
+    current = state.held !== undefined || says(state.text, conf, state.notes) ? { ...state, synced: conf } : stateOf(conf, state.notes);
     setState(current);
   }
   // A plugin whose schema isn't known (not loaded on this APISIX, or the list still loading) has every value
@@ -80,8 +101,21 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
       setState((s) => ({ ...s, text, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field: name, text: inexact }) }));
       return;
     }
-    setState({ text, synced: parsed, error: undefined, held: undefined });
-    onChange(parsed);
+    // Each note back to the key it stands for; a note that stands for none (or twice) holds the text.
+    const back = unveilValue(parsed, current.notes, { before: current.synced });
+    if (!back.ok) {
+      const { problem } = back;
+      setState((s) => ({ ...s, text, error: problem, held: t('ui.pending.problem', { field: name, problem }) }));
+      return;
+    }
+    setState((s) => ({ ...s, text, synced: back.value, error: undefined, held: undefined }));
+    onChange(back.value);
+  }
+
+  /** Leaving the editor: a key typed or pasted here (with no note yet) becomes a note; the config is unchanged. */
+  function leave() {
+    if (locked || current.held !== undefined) return;
+    if (!veilValue(conf, current.notes, { mint: false }).complete) setState(stateOf(conf, current.notes));
   }
 
   // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.
@@ -95,16 +129,18 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
           </Button>
         </div>
       )}
-      <CodeEditor
-        language="json"
-        jsonSchema={schema}
-        value={text}
-        onChange={change}
-        minLines={4}
-        maxLines={24}
-        aria-label={t('pl.card.jsonLabel', { name })}
-        aria-invalid={!locked && current.held !== undefined}
-      />
+      <div onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && leave()}>
+        <CodeEditor
+          language="json"
+          jsonSchema={schema}
+          value={text}
+          onChange={change}
+          minLines={4}
+          maxLines={24}
+          aria-label={t('pl.card.jsonLabel', { name })}
+          aria-invalid={!locked && current.held !== undefined}
+        />
+      </div>
       <div aria-live="polite">{!locked && current.error !== undefined && <p className="pl-json__error mono">{current.error}</p>}</div>
       {schema && <SchemaGapsNote schema={schema} className="pl-note" />}
       {issues.length > 0 && (

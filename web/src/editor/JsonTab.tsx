@@ -54,10 +54,10 @@ function stateOf(kind: Kind, draft: Obj, notes: KeyNotes): JsonState {
 }
 
 /** `text` parsed, with each note turned back into its key; undefined when it doesn't parse or a note stands for no key. */
-function draftOf(kind: Kind, text: string, notes: KeyNotes): Obj | undefined {
+function draftOf(kind: Kind, text: string, notes: KeyNotes, before: Obj): Obj | undefined {
   const parsed = parse(text);
   if (!parsed.ok) return undefined;
-  const back = unveilKeys(kind, parsed.value, notes);
+  const back = unveilKeys(kind, parsed.value, notes, before);
   return back.ok ? back.value : undefined;
 }
 
@@ -68,10 +68,12 @@ function draftOf(kind: Kind, text: string, notes: KeyNotes): Obj | undefined {
  * elsewhere (a form tab, Discard) the text follows. Locked: read-only, still selectable and
  * copyable, its secrets masked (an auth plugin's key: redactObject) behind "Show secrets", which
  * hides them again on every lock change. While editing, the text is the real one: it is what Save
- * sends, except an SSL's private keys, which are never shown: a note stands in each one's place and
- * for it alone (veilKeys: a token made for this editing session, not a position), wherever it is
- * moved; removing a note removes its key, and a note that stands for no key, or is used twice, holds
- * Save. The text and its notes are editing state: they start over when the editing session ends.
+ * sends, except what is never shown (a PEM private key in any value, a client_key, an SSL's keys): a
+ * note stands in each one's place and for it alone (veilKeys: a token made for this editing session,
+ * not a position), wherever it is moved; removing a note removes its key, and a note that stands for
+ * no key, is used twice or is left damaged holds Save. A key typed or pasted here shows as typed until
+ * the editor is left, and is a note from then on. The text and its notes are editing state: they start
+ * over when the editing session ends.
  * `issues` (those no form tab owns) are listed under it.
  */
 export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
@@ -84,7 +86,7 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
   // A draft changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
   let current = state;
   if (draft !== state.synced) {
-    const says = deepEqual(draftOf(kind, state.text, state.notes), draft);
+    const says = deepEqual(draftOf(kind, state.text, state.notes, state.synced), draft);
     current = state.held !== undefined || says ? { ...state, synced: draft } : stateOf(kind, draft, state.notes);
     setState(current);
   }
@@ -111,7 +113,7 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
       setState((s) => ({ ...s, text, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field, text: inexact }) }));
       return;
     }
-    const back = unveilKeys(kind, parsed.value, current.notes);
+    const back = unveilKeys(kind, parsed.value, current.notes, current.synced);
     if (!back.ok) {
       const { problem } = back;
       setState((s) => ({ ...s, text, error: problem, held: t('ui.pending.problem', { field, problem }) }));
@@ -158,7 +160,15 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
           </Button>
         </div>
       </div>
-      <div ref={hostRef}>
+      <div
+        ref={hostRef}
+        onBlur={(e) => {
+          // Leaving the editor: a key typed or pasted here (one with no note yet) becomes a note, so no key
+          // rests on the page outside the text being typed (fix round 1, R1). The draft is unchanged.
+          if (locked || current.held !== undefined || e.currentTarget.contains(e.relatedTarget)) return;
+          if (!veilKeys(kind, draft, current.notes, false).complete) setState(stateOf(kind, draft, current.notes));
+        }}
+      >
         <CodeEditor
           value={shown}
           onChange={change}

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { holdsPrivateKey } from '../../schema/secrets';
 import { Input, Select, Textarea } from '../../ui';
 import type { StringNode } from '../analyze';
 import { useFieldError, useFieldId, useStoredAt, useStoredKnown } from '../context';
@@ -22,6 +24,13 @@ export function StringField({ node, value, name, path, onChange, prop, required,
   const text = typeof value === 'string' ? value : '';
   const emit = (next: string) => onChange(name, next === '' ? undefined : next);
   const common = { id, label, help, error, required, placeholder, 'aria-label': label ? undefined : ariaLabel };
+  const storedText = typeof stored === 'string' && stored !== '' ? stored : undefined;
+  /** Focus is in the plain box: a key being typed or pasted there shows until the box is left. */
+  const [typing, setTyping] = useState(false);
+  const typed = { onFocus: () => setTyping(true), onBlur: () => setTyping(false) };
+  // Never shown (fix round 1, R1): a never-shown name's value, or one that holds a PEM private key, stored
+  // or entered, whatever the field; a key typed into a plain box from the moment the box is left.
+  const neverShown = node.neverShown === true || holdsPrivateKey(storedText) || holdsPrivateKey(text);
 
   if (node.enum) {
     return (
@@ -37,23 +46,23 @@ export function StringField({ node, value, name, path, onChange, prop, required,
   }
   // A multi-line secret (a PEM private key): one component locked or not, so a save in flight keeps
   // what it shows; a stored one is not put on the page until revealed or replaced (SecretText).
-  if (node.multiline && node.secret) {
+  if ((node.multiline && node.secret) || (neverShown && !typing)) {
     return (
       <SecretText
         common={common}
         name={prop?.key ?? ariaLabel ?? ''}
         value={text}
-        stored={typeof stored === 'string' && stored !== '' ? stored : undefined}
+        stored={storedText}
         storedKnown={storedKnown}
         mono={node.mono}
         rows={node.mono ? 6 : 3}
-        neverShown={node.neverShown}
+        neverShown={neverShown}
         onText={emit}
       />
     );
   }
   if (node.multiline) {
-    return <Textarea {...common} mono={node.mono} rows={node.mono ? 6 : 3} value={text} onChange={emit} />;
+    return <Textarea {...common} {...typed} mono={node.mono} rows={node.mono ? 6 : 3} value={text} onChange={emit} />;
   }
-  return <Input {...common} mono={node.mono} secret={node.secret} value={text} onChange={(e) => emit(e.target.value)} />;
+  return <Input {...common} {...typed} mono={node.mono} secret={node.secret} value={text} onChange={(e) => emit(e.target.value)} />;
 }

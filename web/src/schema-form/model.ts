@@ -4,6 +4,7 @@
 import type { Obj } from '../api/types';
 import { t } from '../i18n';
 import { schemaGaps, validatorFor } from '../schema/ajv';
+import { holdsPrivateKey } from '../schema/secrets';
 import { DECIMAL_TEXT, exactly } from '../ui/decimal';
 import { isObj } from '../schema/refs';
 import { ANY_SCHEMA, jsonType, type MapNode, type Node, type ObjectNode, type ObjectPart, type Prop, type VariantNode } from './analyze';
@@ -81,7 +82,8 @@ export function fits(node: Node, v: unknown): boolean {
     case 'map':
       return isObj(v);
     case 'array-scalar':
-      return Array.isArray(v) && v.every((x) => x !== undefined && scalar(x) && x !== null && fits(node.item, x));
+      // A tag holding a PEM private key would show it: such a list is shown as JSON, which veils it (fix round 1, R1).
+      return Array.isArray(v) && v.every((x) => x !== undefined && scalar(x) && x !== null && fits(node.item, x) && !holdsPrivateKey(x));
     case 'array-object':
       return Array.isArray(v) && v.every((x) => fits(node.item, x));
     case 'variant':
@@ -155,7 +157,8 @@ export function mapModeFits(node: MapNode, value: unknown, mode: MapMode): boole
   const entries = Object.values(value ?? {});
   if (mode === 'rows') return node.value.kind !== 'json' && entries.every((v) => fits(node.value, v));
   const kinds = textKinds(node.value);
-  return kinds.has('string') && entries.every((v) => kinds.has(jsonType(v) === 'integer' ? 'number' : jsonType(v)));
+  // An entry holding a PEM private key is never shown: rows, whose fields hide it (fix round 1, R1).
+  return kinds.has('string') && entries.every((v) => kinds.has(jsonType(v) === 'integer' ? 'number' : jsonType(v)) && !holdsPrivateKey(v));
 }
 
 /**

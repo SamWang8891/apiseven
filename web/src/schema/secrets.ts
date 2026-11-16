@@ -27,17 +27,19 @@ const NEVER_SHOWN = new Set(['client_key']);
 export const isNeverShownName = (key: string): boolean => NEVER_SHOWN.has(key);
 
 /**
- * `value` with the text of every never-shown key at any depth masked (`under`: the value itself sits
- * at such a key, all of its text then masked); `hidden` says whether anything was. What every view
- * of a value starts from, "Show secrets" included.
+ * `value` with what is never shown masked, at any depth (final wave fix round 1, R1): the text of every
+ * never-shown key whole (`under`: the value itself sits at such a key, all of its text then masked),
+ * and every PEM private-key block in any other text, in place (holdsPrivateKey: the SSL editor's
+ * detection), whatever field it is in. `hidden` says whether anything was. What every view of a value
+ * starts from, "Show secrets" included.
  */
 export function hideNeverShown(value: unknown, under = false): { value: unknown; hidden: boolean } {
   let hidden = false;
   const walk = (v: unknown, never: boolean): unknown => {
     if (typeof v === 'string') {
-      if (!never) return v;
+      if (!never && !holdsPrivateKey(v)) return v;
       hidden = true;
-      return MASK;
+      return never ? MASK : withoutPrivateKeys(v, MASK);
     }
     if (Array.isArray(v)) return v.map((x) => walk(x, never));
     return isObj(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, never || isNeverShownName(k))])) : v;

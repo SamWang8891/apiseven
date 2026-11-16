@@ -6,6 +6,7 @@ import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '.
 import { inexactNumberIn } from '../../ui/decimal';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
+import { newKeyNotes, unveilValue, veilValue, type KeyNotes } from '../../schema/keyNotes';
 import { hideNeverShown, isNeverShownName, keyPath, redactSecrets } from '../../schema/secrets';
 import { jsonType } from '../node';
 import { FieldLabel } from './chrome';
@@ -14,11 +15,18 @@ import type { FieldProps } from './types';
 
 const toText = (v: unknown): string => (v === undefined ? '' : (JSON.stringify(v, null, 2) ?? ''));
 
-/** Whether `text` is `value` written as JSON (so a new value from outside need not replace it). */
-function says(text: string, value: unknown): boolean {
+/** The text for `value` while editing: every value never shown as a note (schema/keyNotes.ts), made with `notes`; `under`, the property it sits under. */
+function veiledText(value: unknown, notes: KeyNotes, under: string | undefined): { text: string; notes: KeyNotes } {
+  const veiled = veilValue(value, notes, { under });
+  return { text: toText(veiled.value), notes: veiled.notes };
+}
+
+/** Whether `text` is `value` written as JSON, its notes read back (so a new value from outside need not replace it). */
+function says(text: string, value: unknown, notes: KeyNotes, under: string | undefined): boolean {
   if (text.trim() === '') return value === undefined;
   try {
-    return JSON.stringify(JSON.parse(text)) === JSON.stringify(value);
+    const back = unveilValue(JSON.parse(text), notes, { under, before: value });
+    return back.ok && JSON.stringify(back.value) === JSON.stringify(value);
   } catch {
     return false;
   }
@@ -62,7 +70,11 @@ export function JsonField({
   const placed = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
   const fieldName = useFieldName(path);
-  const [text, setText] = useState(() => toText(value));
+  // While editing, what is never shown (a PEM private key, a client_key) is a note in the text (fix round 1, R1).
+  const under = keyPath(path).at(-1);
+  const [shownText, setShownText] = useState(() => veiledText(value, newKeyNotes(), under));
+  const { text, notes } = shownText;
+  const setText = (next: string) => setShownText((s) => ({ ...s, text: next }));
   /** Why the text typed is not emitted: shown on the field, and held for Save. */
   const [invalid, setInvalid] = useState<{ error: string; held: string }>();
   usePending(locked ? undefined : invalid?.held);
@@ -79,7 +91,7 @@ export function JsonField({
   // A new value from outside replaces the text, unless the text holds Save: what was typed stays.
   if (!Object.is(value, synced)) {
     setSynced(value);
-    if (invalid === undefined && !says(text, value)) setText(toText(value));
+    if (invalid === undefined && !says(text, value, notes, under)) setShownText(veiledText(value, notes, under));
   }
 
   const key = prop?.key ?? ariaLabel ?? path;
@@ -140,22 +152,36 @@ export function JsonField({
       setInvalid({ error: t('sf.json.type', { type }), held: t('ui.pending.jsonType', { field: fieldName, type }) });
       return;
     }
+    // Each note back to the key it stands for; a note that stands for none (or twice) holds the text.
+    const back = unveilValue(parsed, notes, { under, before: synced });
+    if (!back.ok) {
+      setInvalid({ error: back.problem, held: t('ui.pending.problem', { field: fieldName, problem: back.problem }) });
+      return;
+    }
     setInvalid(undefined);
-    onChange(name, parsed);
+    onChange(name, back.value);
+  }
+
+  /** Leaving the editor: a key typed or pasted here (with no note yet) becomes a note; the value is unchanged. */
+  function leave() {
+    if (invalid !== undefined) return;
+    if (!veilValue(value, notes, { mint: false, under }).complete) setShownText(veiledText(value, notes, under));
   }
 
   return (
     <Field label={label} help={fullHelp} error={invalid?.error ?? placed} required={required} controlId={id}>
-      <CodeEditor
-        language="json"
-        jsonSchema={schema}
-        value={text}
-        onChange={edit}
-        minLines={3}
-        maxLines={16}
-        aria-label={t('sf.json.label', { key })}
-        aria-invalid={invalid !== undefined}
-      />
+      <div onBlur={(e) => !e.currentTarget.contains(e.relatedTarget) && leave()}>
+        <CodeEditor
+          language="json"
+          jsonSchema={schema}
+          value={text}
+          onChange={edit}
+          minLines={3}
+          maxLines={16}
+          aria-label={t('sf.json.label', { key })}
+          aria-invalid={invalid !== undefined}
+        />
+      </div>
     </Field>
   );
 }

@@ -142,8 +142,8 @@ describe('redactObject, per kind', () => {
     expect(out).toMatchObject({ redacted: true, revealable: false });
     expect(out.value.cert).toBe(`${CERT}${MASK}\n`);
     expect((out.value.certs as string[])[0]).toBe(`${MASK}\n${CERT}`);
-    // Another kind's text is left to its own rules.
-    expect(redactObject({ desc: CERT + KEY }, 'routes', all()).value).toEqual({ desc: CERT + KEY });
+    // Fix round 1, R1: in any kind's text too, whatever the field (it was left to its own rules before).
+    expect(redactObject({ desc: CERT + KEY }, 'routes', all())).toMatchObject({ value: { desc: `${CERT}${MASK}\n` }, revealed: { desc: `${CERT}${MASK}\n` }, revealable: false });
   });
 
   it("plugin metadata: its plugin's metadata encrypt_fields (azure-functions master_apikey); everything while loading", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
+import { MASK } from '../schema/secrets';
 import { pluginSummary } from './summary';
 
 describe('pluginSummary', () => {
@@ -57,5 +58,12 @@ describe('pluginSummary', () => {
   it('masks secrets: encrypt_fields given, and keys named like secrets', () => {
     expect(pluginSummary('key-auth', { key: 'my-api-key' }, ['key'])).toBe('key=••••••••');
     expect(pluginSummary('limit-count', { count: 1, redis_password: 'hunter2' })).toBe('count=1, redis_password=••••••••');
+  });
+});
+
+// Fix round 1, R1: text holding a PEM private key is masked whatever its name.
+describe('pluginSummary and private keys', () => {
+  it('masks a value that holds a PEM private key', () => {
+    expect(pluginSummary('x', { sp_cert: '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----', a: 1 })).toBe(`sp_cert=${MASK}, a=1`);
   });
 });
