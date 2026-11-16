@@ -341,3 +341,46 @@ describe('focus after a create (F6)', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('main')));
   });
 });
+
+// Fix round 2, G2: the remembered place resolves by its ordinal only while the panel still has as many
+// controls of that kind and name; otherwise the ordinal could name another one (another card's).
+describe('a place whose controls changed during the save (G2)', () => {
+  it('two open cards with rejected_code, the first one’s focused; that card collapsed during the save and focus on body: after the 400, Save, not the other card’s rejected_code', async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const route: Obj = {
+      ...ROUTE,
+      plugins: {
+        'limit-conn': { conn: 1, burst: 0, default_conn_delay: 0.1, key: 'remote_addr', rejected_code: 503 },
+        'limit-count': { count: 1, time_window: 60, rejected_code: 503 },
+      },
+    };
+    const { user, admin } = await openEditor('#/routes/r1', {
+      objects: { routes: [route], upstreams: [] },
+      replies: { ...pluginReplies(), 'routes/r1': (req) => (req.method === 'PUT' ? gate.then(() => json(400, { error_msg: REFUSED })) : undefined) },
+    });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await user.type(await main().findByRole('textbox', { name: t('rt.general.desc') }), 'x');
+    await user.click(main().getByRole('tab', { name: new RegExp(`^${t('pl.tab')}`) }));
+    const toggleOf = async (name: string) => (await main().findAllByRole('button', { name: new RegExp(`^${name}\\b`) })).find((b) => b.hasAttribute('aria-expanded'))!;
+    for (const name of ['limit-conn', 'limit-count']) {
+      const toggle = await toggleOf(name);
+      if (toggle.getAttribute('aria-expanded') !== 'true') await user.click(toggle);
+    }
+    // The cards' forms load lazily.
+    await waitFor(() => expect(main().getAllByRole('spinbutton', { name: 'rejected_code' })).toHaveLength(2), { timeout: 5000 });
+    const first = main().getAllByRole('spinbutton', { name: 'rejected_code' })[0]!;
+    first.focus();
+    pressCtrlS();
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    // While the PUT is out: the first card collapsed, and focus fallen to body.
+    // (The fields read as text while the save is out; the card's toggle stays usable.)
+    await user.click(await toggleOf('limit-conn'));
+    await waitFor(async () => expect(await toggleOf('limit-conn')).toHaveAttribute('aria-expanded', 'false'));
+    (document.activeElement as HTMLElement | null)?.blur();
+    release();
+    expect(await within(screen.getByRole('main')).findByRole('alert')).toHaveTextContent(REFUSED);
+    await waitFor(() => expect(document.activeElement).toBe(saveButton()));
+  });
+});

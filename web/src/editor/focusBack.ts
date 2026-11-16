@@ -23,6 +23,8 @@ export interface Place {
   kind: string;
   name: string;
   index: number;
+  /** How many controls of that kind and name the tab had: the ordinal holds only while this does (G2). */
+  count: number;
 }
 
 /** What can take focus in a tab: form controls, buttons, and what ARIA makes one (a code editor's text). */
@@ -58,15 +60,23 @@ export function placeOf(el: HTMLElement): Place | undefined {
   const name = nameOf(el);
   if (!panel || !name) return undefined;
   const kind = kindOf(el);
-  const index = [...panel.querySelectorAll(CONTROLS)].filter(sameAs(kind, name)).indexOf(el);
-  return index < 0 ? undefined : { tab: tabOf(panel), kind, name, index };
+  const same = [...panel.querySelectorAll(CONTROLS)].filter(sameAs(kind, name));
+  const index = same.indexOf(el);
+  return index < 0 ? undefined : { tab: tabOf(panel), kind, name, index, count: same.length };
 }
 
-/** The control at `place` in the tab panel shown now: the same tab, kind, name and ordinal; never one of another name. */
+/**
+ * The control at `place` in the tab panel shown now: the same tab, kind, name and ordinal, while the
+ * tab holds as many of that kind and name as it did; never one of another name.
+ */
 export function findPlace(place: Place | undefined, within: ParentNode = document): HTMLElement | undefined {
   if (!place) return undefined;
   const panel = [...within.querySelectorAll('[role="tabpanel"]:not([hidden])')].find((p) => tabOf(p) === place.tab);
-  const found = panel ? [...panel.querySelectorAll(CONTROLS)].filter(sameAs(place.kind, place.name))[place.index] : undefined;
+  const same = panel ? [...panel.querySelectorAll(CONTROLS)].filter(sameAs(place.kind, place.name)) : [];
+  // With more or fewer of them than before (a card closed or opened meanwhile), the ordinal could name
+  // another one: then the place is not resolved.
+  if (same.length !== place.count) return undefined;
+  const found = same[place.index];
   return found instanceof HTMLElement ? found : undefined;
 }
 
