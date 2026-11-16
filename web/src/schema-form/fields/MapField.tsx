@@ -238,7 +238,11 @@ function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (ent
     if (holds && mapModeFits(node, value, shown)) {
       setKept(shown);
       mode = shown;
-    } else setShown(mode);
+    } else {
+      // The renderer going away tells nothing as it unmounts (PendingContext): it holds nothing from here.
+      setShown(mode);
+      setHolds(false);
+    }
   }
   const track = useCallback((entries: PendingEntry[]) => setHolds(entries.length > 0), []);
   return { mode, track };
