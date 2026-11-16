@@ -274,8 +274,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     inFlight.current = false;
     setSaving(false);
     if (!sent.ok) {
-      // Not sent: the draft stays, to be copied out (the JSON tab), and the banner says why.
-      setFailure({ title: t('editor.notSent'), message: sent.error.message });
+      // Not sent (the key is read-only): the draft stays, to be copied out (the JSON tab), and the banner says why.
+      setFailure({ title: t('editor.notSent'), message: t('editor.readOnlySave') });
       return;
     }
     const result = sent.value;

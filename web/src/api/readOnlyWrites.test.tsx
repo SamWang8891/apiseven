@@ -59,7 +59,9 @@ describe('the editor with a key found read-only (C1)', () => {
     expect(uri).toHaveValue('/b');
     expect(main().getByText(t('editor.editing'))).toBeInTheDocument();
     // Cmd/Ctrl-S is told why, where the last refusal was.
-    expect(within(await main().findByRole('alert')).getByText(t('readOnly.refused'))).toBeInTheDocument();
+    const notSent = await main().findByRole('alert');
+    expect(within(notSent).getByText(t('editor.notSent'))).toBeInTheDocument();
+    expect(within(notSent).getByText(t('editor.readOnlySave'))).toBeInTheDocument();
   });
 
   it('Save anyway, refused for the key, stays where it was (focusable) and is unavailable likewise; pressing it sends nothing', async () => {
