@@ -10,7 +10,7 @@ import { scopeOfKind, subsystemOf } from '../plugins/scope';
 import { copiedWithout, redactObject } from '../plugins/secrets';
 import { registry } from '../resources/registry';
 import { listNames, protoUse } from '../resources/protos/columns';
-import { referenceUse, type Reference } from '../resources/resolve';
+import { referenceUse, type Reference, type ReferenceUse } from '../resources/resolve';
 import { pathFor } from '../router/paths';
 import { Button, CodeEditor, ConfirmDialog, Dialog, toast, useReveal } from '../ui';
 import './list.css';
@@ -96,9 +96,10 @@ const PROTO_BLOCKERS = new Set<string>(['routes', 'services']);
  * until then, and which list when one could not be read). A proto's users are split into those APISIX
  * refuses the delete over and those that just stop working.
  */
-export function References({ kind, id, ctx }: { kind: Kind; id: string; ctx: Ctx }) {
+export function References({ kind, id, ctx, use: given }: { kind: Kind; id: string; ctx: Ctx; use?: ReferenceUse }) {
   if (kind !== 'protos') {
-    const use = referenceUse(kind, id, ctx);
+    // `use`: already known (BulkReferences reads it from one index for all the objects it lists).
+    const use = given ?? referenceUse(kind, id, ctx);
     if ('failed' in use) {
       return (
         <p className="list-refs__warning">

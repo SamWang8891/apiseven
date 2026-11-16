@@ -642,7 +642,7 @@ describe('every exported resolver, on odd shapes', () => {
 
   it('lists every exported function once, so a new one is added here', () => {
     expect(Object.keys(resolve).filter((name) => typeof (resolve as Record<string, unknown>)[name] === 'function').sort()).toEqual([
-      'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referenceLists', 'referenceUse', 'referencesTo', 'resolveRef',
+      'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referenceIndex', 'referenceLists', 'referenceUse', 'referencesTo', 'resolveRef',
       'routeHosts', 'routeHostsLoading', 'routeHostsUnknown', 'routeScript', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter',
       'streamEffectivePlugins', 'upstreamSummary',
     ]);
@@ -679,6 +679,7 @@ describe('every exported resolver, on odd shapes', () => {
     }
     for (const kind of ['upstreams', 'services', 'plugin_configs', 'consumer_groups', 'ssls', 'protos', 'routes'] as const) {
       expect(() => resolve.referencesTo(kind, 'o1', ctx)).not.toThrow();
+      expect(() => resolve.referenceIndex(kind, ctx)('o1')).not.toThrow();
     }
     for (const host of HOSTS) expect(() => resolve.sslExpiries(resolve.sslForHost(host, ctx)), host).not.toThrow();
   });

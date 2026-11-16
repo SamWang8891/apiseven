@@ -411,23 +411,33 @@ function splitUpstreamIds(plugins: unknown): unknown[] {
   });
 }
 
-/** The objects whose fields point at `kind` / `id`, sorted by kind then name. Kinds nothing points at give []. */
-export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
-  const refs: Reference[] = [];
-  const is = (value: unknown): boolean => idOf(value) === id;
-  const collect = (from: Kind, items: Item[], uses: (value: Obj) => boolean): void => {
-    for (const item of items) if (uses(item.value)) refs.push({ kind: from, id: item.id, name: itemName(item) });
+/**
+ * For every object of `kind` the lists point at, the objects pointing at it, each sorted by kind then
+ * name: one pass over each list it reads (REFERENCE_LISTS), whatever the number of objects asked
+ * about. An object pointing at one id twice (an upstream_id and a traffic-split rule) is listed once.
+ */
+function referencesByTarget(kind: Kind, ctx: Ctx): Map<string, Reference[]> {
+  const index = new Map<string, Reference[]>();
+  const collect = (from: Kind, items: Item[], targets: (value: Obj) => unknown[]): void => {
+    for (const item of items) {
+      const ids = new Set(targets(item.value).map(idOf).filter((id): id is string => id !== undefined));
+      for (const id of ids) {
+        const refs = index.get(id) ?? [];
+        refs.push({ kind: from, id: item.id, name: itemName(item) });
+        index.set(id, refs);
+      }
+    }
   };
 
   switch (kind) {
     case 'upstreams': {
       // APISIX also refuses to delete an upstream a traffic-split rule points at, in a global rule too
       // (apisix/admin/upstreams.lua delete_checker, 90–129; global rules 123–126).
-      const inSplit = (v: Obj): boolean => splitUpstreamIds(v.plugins).some(is);
-      const direct = (v: Obj): boolean => is(v.upstream_id) || inSplit(v);
+      const inSplit = (v: Obj): unknown[] => splitUpstreamIds(v.plugins);
+      const direct = (v: Obj): unknown[] => [v.upstream_id, ...inSplit(v)];
       collect('routes', ctx.routes, direct);
       collect('services', ctx.services, direct);
-      collect('stream_routes', ctx.streamRoutes, (v) => is(v.upstream_id));
+      collect('stream_routes', ctx.streamRoutes, (v) => [v.upstream_id]);
       collect('plugin_configs', ctx.pluginConfigs, inSplit);
       collect('consumers', ctx.consumers, inSplit);
       collect('consumer_groups', ctx.consumerGroups, inSplit);
@@ -435,24 +445,24 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
       break;
     }
     case 'services':
-      collect('routes', ctx.routes, (v) => is(v.service_id));
-      collect('stream_routes', ctx.streamRoutes, (v) => is(v.service_id));
+      collect('routes', ctx.routes, (v) => [v.service_id]);
+      collect('stream_routes', ctx.streamRoutes, (v) => [v.service_id]);
       break;
     case 'plugin_configs':
-      collect('routes', ctx.routes, (v) => is(v.plugin_config_id));
+      collect('routes', ctx.routes, (v) => [v.plugin_config_id]);
       break;
     case 'stream_routes':
       // A stream route another names as its protocol's superior (xRPC): APISIX refuses the delete
       // (apisix/admin/stream_routes.lua 150–152, tostring(superior_id) == id).
-      collect('stream_routes', ctx.streamRoutes, (v) => is(dig(v, 'protocol', 'superior_id')));
+      collect('stream_routes', ctx.streamRoutes, (v) => [dig(v, 'protocol', 'superior_id')]);
       break;
     case 'consumer_groups':
-      collect('consumers', ctx.consumers, (v) => is(v.group_id));
+      collect('consumers', ctx.consumers, (v) => [v.group_id]);
       break;
     case 'ssls': {
       // An inline upstream can name a client certificate just like a stored one.
-      const inline = (v: Obj): boolean => is(dig(v, 'upstream', 'tls', 'client_cert_id'));
-      collect('upstreams', ctx.upstreams, (v) => is(dig(v, 'tls', 'client_cert_id')));
+      const inline = (v: Obj): unknown[] => [dig(v, 'upstream', 'tls', 'client_cert_id')];
+      collect('upstreams', ctx.upstreams, (v) => [dig(v, 'tls', 'client_cert_id')]);
       collect('routes', ctx.routes, inline);
       collect('services', ctx.services, inline);
       collect('stream_routes', ctx.streamRoutes, inline);
@@ -461,7 +471,7 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
     case 'protos': {
       // APISIX's delete check looks at routes and services (admin/proto.lua 61–101); the others use it
       // too, through grpc-transcode wherever it is configured (protoDeleteBlockers).
-      const uses = (v: Obj): boolean => is(dig(v, 'plugins', 'grpc-transcode', 'proto_id'));
+      const uses = (v: Obj): unknown[] => [dig(v, 'plugins', 'grpc-transcode', 'proto_id')];
       collect('routes', ctx.routes, uses);
       collect('services', ctx.services, uses);
       collect('plugin_configs', ctx.pluginConfigs, uses);
@@ -473,7 +483,13 @@ export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
     default:
       break;
   }
-  return refs.sort((a, b) => compareText(a.kind, b.kind) || compareText(a.name, b.name) || compareText(a.id, b.id));
+  for (const refs of index.values()) refs.sort((a, b) => compareText(a.kind, b.kind) || compareText(a.name, b.name) || compareText(a.id, b.id));
+  return index;
+}
+
+/** The objects whose fields point at `kind` / `id`, sorted by kind then name. Kinds nothing points at give []. */
+export function referencesTo(kind: Kind, id: string, ctx: Ctx): Reference[] {
+  return referencesByTarget(kind, ctx).get(id) ?? [];
 }
 
 /**
@@ -515,9 +531,21 @@ export type ReferenceUse = { refs: Reference[] } | { loading: true } | { failed:
  * then it can't be told (addendum rule 12), and a list that failed leaves it unknown.
  */
 export function referenceUse(kind: Kind, id: string, ctx: Ctx): ReferenceUse {
+  return referenceIndex(kind, ctx)(id);
+}
+
+/**
+ * referenceUse for any object of `kind` in this context, from one reverse index (referencesByTarget):
+ * build it once for a context, then ask it per object (the bulk Delete confirmation over many).
+ */
+export function referenceIndex(kind: Kind, ctx: Ctx): (id: string) => ReferenceUse {
   const lists = referenceLists(kind);
   const failed = lists.filter((list) => ctx.failed[list]);
-  if (failed.length > 0) return { failed: failed.map((list) => LIST_KINDS[list]) };
-  if (lists.every((list) => ctx.loaded[list])) return { refs: referencesTo(kind, id, ctx) };
-  return { loading: true };
+  if (failed.length > 0) {
+    const use: ReferenceUse = { failed: failed.map((list) => LIST_KINDS[list]) };
+    return () => use;
+  }
+  if (!lists.every((list) => ctx.loaded[list])) return () => ({ loading: true });
+  const byTarget = referencesByTarget(kind, ctx);
+  return (id) => ({ refs: byTarget.get(id) ?? [] });
 }
