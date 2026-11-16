@@ -5,7 +5,7 @@
 // host field keeps focus while the node appears. A map-shaped list stays a map through edits (see
 // NodesTable and nodes.ts). Locked, it is a plain table.
 import { Copy, X } from 'lucide-react';
-import { useEffect, useRef, type ClipboardEvent, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type ClipboardEvent, type KeyboardEvent } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { deepEqual } from '../editor/draft';
@@ -69,6 +69,28 @@ function commitOf(typed: Address): Held {
   return as === typed ? typed : { ...typed, as };
 }
 
+/**
+ * A map's row ids after a write, by key: JavaScript puts an integer-like key (an all-digit host
+ * without a port) before every other key, so a written map's rows need not be in the order the write
+ * built them, and ids that follow positions would put one row's held text on another. Each id whose
+ * key is still there stays with that key; the ids left (a renamed row's, an added row's) go to the
+ * keys that came, in order; the new-node row's id stays last.
+ */
+function idsByKey(before: { keys: string[]; ids: number[] }, keys: string[], ids: number[]): number[] {
+  const alive = new Set(ids.slice(0, -1));
+  const kept = new Map<string, number>();
+  before.keys.forEach((key, j) => {
+    const id = before.ids[j];
+    if (id !== undefined && alive.has(id) && keys.includes(key)) kept.set(key, id);
+  });
+  const placed = new Set(kept.values());
+  const rest = ids.slice(0, -1).filter((id) => !placed.has(id));
+  const out = keys.map((key) => kept.get(key) ?? rest.shift() ?? -1);
+  return [...out, ids.at(-1) ?? -1];
+}
+
+const sameList = <T,>(a: readonly T[], b: readonly T[]): boolean => a.length === b.length && a.every((x, i) => x === b[i]);
+
 /** Addresses a paste of several did not add: those the list already has (a map), and those that are no address. */
 interface Skipped {
   dup: string[];
@@ -117,7 +139,15 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   const rows = rowsOf(value.nodes);
   const fresh = rows.length;
   /** The rows' ids, then the new-node row's. */
-  const [ids, setIds] = useRowIds(rows.length + 1);
+  const [positional, setIds] = useRowIds(rows.length + 1);
+  // A map's ids follow its keys (idsByKey): a write that put an integer-like key first moves no id.
+  const keys = isObj(value.nodes) ? rows.map((row) => row.addr ?? '') : undefined;
+  const [seen, setSeen] = useState<{ keys: string[]; ids: number[] }>();
+  const ids = keys && seen && !sameList(seen.keys, keys) && positional.length === keys.length + 1 ? idsByKey(seen, keys, positional) : positional;
+  if (keys && (!seen || !sameList(seen.keys, keys) || !sameList(seen.ids, ids))) {
+    setSeen({ keys, ids });
+    if (!sameList(ids, positional)) setIds(ids);
+  }
   const idOf = (i: number): number => ids[i] ?? -1;
   /**
    * The row that already has the address row `i` holds (computed from the rows now, so it follows
@@ -298,18 +328,30 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     return map && as && rows[i]?.addr === as.key ? as.text : (rows[i]?.host ?? '');
   };
 
-  /** Host text typed into an array row: written at once (an array takes any host), which ends a hold the row had. */
+  /**
+   * Host text typed into an array row: written at once (an array takes any host), which ends a hold the
+   * row had; a port it held (from before the list became an array) is written with it, as the field shows it.
+   */
   function editArrayHost(i: number, text: string) {
+    const h = held[idOf(i)];
     hold(i, undefined);
-    write(setNodeField(value, i, 'host', text));
+    const next = setNodeField(value, i, 'host', text);
+    write(h ? setNodeField(next, i, 'port', h.port) : next);
+  }
+
+  /** A port typed into an array row: written at once, or, while the row holds an address, held with it (both fields are that address). */
+  function editArrayPort(i: number, port: number | undefined) {
+    const h = held[idOf(i)];
+    if (h) hold(i, { host: h.host, port });
+    else onChange(setNodeField(value, i, 'port', port));
   }
 
   /**
    * Enter in a row's host field, the explicit commit: a host holding a port (`10.0.0.5:8080`,
    * `[::1]:9000`) does exactly what "Move <port> to Port" does, in either form; a held map row is placed
    * as it is judged (an all-digit host taken as the host name, an address whose clash has gone added);
-   * a row still held from before the list became an array takes its host as it is judged, the port its
-   * field shows (or the one Enter moved off the text).
+   * a row still held from before the list became an array takes the address it holds, host and port as
+   * its fields show them (or the port Enter moved off the text).
    */
   const enterCommits = (i: number) => (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
@@ -319,7 +361,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     else if (h) {
       const at = judged(h);
       hold(i, undefined);
-      write(setNodeField(setNodeField(value, i, 'host', at.host), i, 'port', h.as ? at.port : rows[i]?.port));
+      write(setNodeField(setNodeField(value, i, 'host', at.host), i, 'port', at.port));
     } else return;
     e.preventDefault();
   };
@@ -335,7 +377,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
       editAddress(i, commitOf({ host: text, port: shown(i).port }), true);
       return;
     }
-    const split = committed({ host: text, port: rows[i]?.port });
+    const split = committed({ host: text, port: shown(i).port });
     hold(i, undefined);
     write(setNodeField(setNodeField(value, i, 'host', split.host), i, 'port', split.port));
   }
@@ -402,14 +444,16 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     const h = held[idOf(i)];
     if (!h) return undefined;
     // Held from before the list became an array (a priority, "Keep both"), which can take it: Enter does.
-    if (!map) return t('up.nodes.heldNotYet');
+    if (!map) return notYet(i);
     const at = judged(h);
     const other = otherOf(i);
     if (other >= 0) return t('up.nodes.dupOf', { n: other + 1 });
     if (strayColon(at.host)) return t('up.nodes.colonHeld');
     if (at.port === undefined && /^\d+$/.test(at.host)) return t('up.nodes.digitsHeld');
-    return t('up.nodes.heldNotYet');
+    return notYet(i);
   };
+  /** What Enter does with what a field holds: "Add a node" adds it; a node's row takes it as its address. */
+  const notYet = (i: number): string => t(i === fresh ? 'up.nodes.heldNotYet' : 'up.nodes.heldReplace');
   /** The "Move <port> to Port" action, for a host that holds a port the row can take (in a map, text held for its stray colon). */
   const moveButton = (i: number) => {
     const port = portInHost(hostText(i));
@@ -464,10 +508,11 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
             integer
             min={1}
             max={65535}
-            value={map ? address.port : row.port}
+            // A held address shows its port in either form, also once the list became an array.
+            value={map || held[idOf(i)] ? address.port : row.port}
             error={issue(i, 'port')}
             // A port edit keeps the host as the field shows it (an IPv6 address as typed, not bracketed).
-            onChange={(v) => (map ? editAddress(i, { host: hostText(i), port: v }) : onChange(setNodeField(value, i, 'port', v)))}
+            onChange={(v) => (map ? editAddress(i, { host: hostText(i), port: v }) : editArrayPort(i, v))}
             onBlur={() => map && leave(i)}
           />
         </td>

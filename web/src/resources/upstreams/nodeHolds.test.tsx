@@ -55,6 +55,7 @@ const newHost = () => main().getByRole('textbox', { name: t('up.nodes.new') });
 const hostN = (n: number) => main().getByRole('textbox', { name: t('up.nodes.hostN', { n }) });
 const priorityN = (n: number) => main().getByRole('spinbutton', { name: t('up.nodes.priorityN', { n }) });
 const weightN = (n: number) => main().getByRole('spinbutton', { name: t('up.nodes.weightN', { n }) });
+const portN = (n: number) => main().getByRole('spinbutton', { name: t('up.nodes.portN', { n }) });
 const save = () => main().getByRole('button', { name: t('editor.save') });
 const newNode = () => t('up.pending.newNode');
 const node = (n: number) => t('up.pending.node', { n });
@@ -266,7 +267,7 @@ const HELD: [string, HeldCase][] = [
       },
       field: () => hostN(3),
       typed: 'a',
-      message: t('up.nodes.heldNotYet'),
+      message: t('up.nodes.heldReplace'),
       pending: t('up.pending.unsaved', { node: node(3), addr: 'a:80' }),
     },
   ],
@@ -313,7 +314,7 @@ const HELD: [string, HeldCase][] = [
       },
       field: () => hostN(2),
       typed: 'a',
-      message: t('up.nodes.heldNotYet'),
+      message: t('up.nodes.heldReplace'),
       pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
       after: [{ host: 'a', port: 80, weight: 1, priority: 1 }, { host: 'b', port: 80, weight: 1 }],
     },
@@ -328,7 +329,7 @@ const HELD: [string, HeldCase][] = [
       },
       field: () => hostN(2),
       typed: 'a',
-      message: t('up.nodes.heldNotYet'),
+      message: t('up.nodes.heldReplace'),
       pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
       after: [{ host: 'a', port: 80, weight: 1 }, { host: 'b', port: 80, weight: 1, priority: 1 }],
     },
@@ -360,9 +361,64 @@ const HELD: [string, HeldCase][] = [
       },
       field: () => hostN(3),
       typed: '10:',
-      message: t('up.nodes.heldNotYet'),
+      message: t('up.nodes.heldReplace'),
       pending: t('up.pending.unsaved', { node: node(3), addr: '10:' }),
       after: [{ host: 'a', port: 80, weight: 1 }, { host: 'a', port: 80, weight: 1 }, { host: '10', port: 80, weight: 1 }],
+    },
+  ],
+  // Fix round 1, F3: a hold reached through the port keeps its port through a conversion: the row reads as before it.
+  [
+    'a duplicate held through its port, then a priority set on another row: the port as typed stays',
+    {
+      nodes: { 'a:80': 1, 'b:90': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a', true);
+        await u.tab();
+        await typeInto(u, portN(2), '80', true);
+        await typeInto(u, priorityN(1), '1');
+        expect(portN(2)).toHaveValue('80');
+      },
+      field: () => hostN(2),
+      typed: 'a',
+      message: t('up.nodes.heldReplace'),
+      pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
+      after: [{ host: 'a', port: 80, weight: 1, priority: 1 }, { host: 'a', port: 90, weight: 1 }],
+    },
+  ],
+  [
+    'a duplicate held through its port, then "Keep both" on another row: the port as typed stays',
+    {
+      nodes: { 'a:80': 1, 'b:90': 1, 'c:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a', true);
+        await u.tab();
+        await typeInto(u, portN(2), '80', true);
+        await typeInto(u, hostN(3), 'a', true);
+        await u.click(main().getByRole('button', { name: t('up.nodes.keepBothN', { n: 3 }) }));
+        expect(portN(2)).toHaveValue('80');
+      },
+      field: () => hostN(2),
+      typed: 'a',
+      message: t('up.nodes.heldReplace'),
+      pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
+      after: [{ host: 'a', port: 80, weight: 1 }, { host: 'a', port: 90, weight: 1 }, { host: 'a', port: 80, weight: 1 }],
+    },
+  ],
+  // Fix round 1, R2.3: a write that puts an integer-like key first moves no row's hold to another row.
+  [
+    'a duplicate held in a row, then "7 c.example:80" pasted into "Add a node" (the digits key goes first)',
+    {
+      nodes: { 'a.example:80': 1, 'b.example:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a.example', true);
+        await u.click(newHost());
+        await u.paste('7 c.example:80');
+      },
+      field: () => hostN(3),
+      typed: 'a.example',
+      message: t('up.nodes.dupOf', { n: 2 }),
+      pending: t('up.pending.duplicate', { node: node(3), addr: 'a.example:80' }),
+      after: { 7: 1, 'a.example:80': 1, 'b.example:80': 1, 'c.example:80': 1 },
     },
   ],
 ];
@@ -568,6 +624,24 @@ const COMMITS: [string, CommitCase][] = [
         { host: 'a', port: 80, weight: 1 },
         { host: 'a', port: 80, weight: 1 },
         { host: '42', weight: 1 },
+      ],
+    },
+  ],
+  [
+    'Enter in a row held through its port after a priority made the list an array (F3): the port as typed',
+    {
+      nodes: { 'a:80': 1, 'b:90': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a', true);
+        await u.tab();
+        await typeInto(u, portN(2), '80', true);
+        await typeInto(u, priorityN(1), '1');
+        await u.click(hostN(2));
+      },
+      commit: enter,
+      expected: [
+        { host: 'a', port: 80, weight: 1, priority: 1 },
+        { host: 'a', port: 80, weight: 1 },
       ],
     },
   ],

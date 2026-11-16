@@ -216,7 +216,8 @@ describe('the upstream editor', () => {
     });
 
     // Fix round 2, R1.3: a row held for a clash that another row's edit resolved stays flagged while it is held.
-    // Fix round 3: leaving it writes nothing; Enter adds it.
+    // Fix round 3: leaving it writes nothing; Enter adds it. Final wave fix round 1, R2.7: its message says
+    // what Enter does for a node's row (it gives the node that address).
     it('row 3 held as a duplicate of row 1; row 1 renamed resolves it: row 3 stays flagged, a refused Save focuses it, Tab writes nothing, Enter adds it', async () => {
       const MAPPED = { ...POOL, nodes: { 'a:80': 1, 'b:80': 1, 'c:80': 1 } };
       const { user, admin } = await openEditor('#/upstreams/web-pool?tab=nodes', { objects: { upstreams: [MAPPED] } });
@@ -227,7 +228,7 @@ describe('the upstream editor', () => {
       await user.clear(hostN(1));
       await user.type(hostN(1), 'z');
       expect(hostN(3)).toHaveAttribute('aria-invalid', 'true');
-      expect(hostN(3)).toHaveAccessibleDescription(t('up.nodes.heldNotYet'));
+      expect(hostN(3)).toHaveAccessibleDescription(t('up.nodes.heldReplace'));
       await user.click(main().getByRole('button', { name: t('editor.save') }));
       expect(hostN(3)).toHaveFocus();
       await user.tab();

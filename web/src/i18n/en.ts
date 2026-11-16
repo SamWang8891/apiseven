@@ -868,6 +868,7 @@ export const en: Record<string, string> = {
   'up.nodes.hostColon': 'Holds ":": APISIX would look the whole text up as a host name.',
   'up.nodes.colonHeld': 'Not in the list yet: a host here can hold ":" only as an IPv6 address.',
   'up.nodes.heldNotYet': 'Not in the list yet: press Enter to add it.',
+  'up.nodes.heldReplace': 'Not in the list yet: press Enter to give this node this address.',
   'up.nodes.digitsHeld': 'Not in the list yet: a host of digits only. Press Enter to use it as the host name.',
   'up.nodes.movePort': 'Move {port} to Port',
   'up.nodes.movePortN': 'Move {port} to Port, node {n}',
