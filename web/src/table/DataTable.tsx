@@ -121,9 +121,14 @@ export function DataTable(props: DataTableProps) {
   if ([...selected].some((id) => !shownIds.has(id))) setSelected(new Set([...selected].filter((id) => shownIds.has(id))));
   const selectedItems = useMemo(() => sorted.filter((i) => selected.has(i.id)), [sorted, selected]);
 
-  /** The bulk action waiting for its confirmation; it is about the selection as it is now (rows gone meanwhile drop out of it). */
-  const [confirming, setConfirming] = useState<BulkAction>();
-  if (confirming && selectedItems.length === 0) setConfirming(undefined);
+  /**
+   * The bulk action waiting for its confirmation, by id: it is about the selection as it is now (rows
+   * gone meanwhile drop out of it), and its texts are the action's as it is now (what it says follows
+   * the lists it reads as they load).
+   */
+  const [confirmingId, setConfirming] = useState<string>();
+  const confirming = confirmingId === undefined ? undefined : bulkActions.find((action) => action.id === confirmingId);
+  if (confirmingId !== undefined && (!confirming || selectedItems.length === 0)) setConfirming(undefined);
   const [progress, setProgress] = useState<{ done: number; total: number }>();
 
   async function runBulk(action: BulkAction, list: Item[]) {
@@ -263,7 +268,7 @@ export function DataTable(props: DataTableProps) {
                   size="sm"
                   variant={action.danger ? 'danger' : 'secondary'}
                   disabled={action.disabled || progress !== undefined}
-                  onClick={() => (action.confirm ? setConfirming(action) : void runBulk(action, selectedItems))}
+                  onClick={() => (action.confirm ? setConfirming(action.id) : void runBulk(action, selectedItems))}
                 >
                   {action.label}
                 </Button>

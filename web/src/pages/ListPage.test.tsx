@@ -202,6 +202,53 @@ describe('status', () => {
     expect(main().getByRole('link', { name: 'beta' })).toBeInTheDocument();
   });
 
+  // Final wave G2: the bulk confirmation shows what uses each selected object, as the single dialog does.
+  describe('bulk Delete names what uses each selected object', () => {
+    const UPSTREAMS = [{ id: 'u1', name: 'backend' }, { id: 'u2', name: 'spare' }, { id: 'u3', name: 'split-target' }];
+    const RULES = [{ id: 'g1', plugins: { 'traffic-split': { rules: [{ weighted_upstreams: [{ upstream_id: 'u3' }] }] } } }];
+    const selectAll = async (user: ReturnType<typeof userEvent.setup>) => {
+      await main().findByRole('link', { name: 'spare' });
+      await user.click(main().getByRole('checkbox', { name: t('table.selectAll', { count: 3 }) }));
+      await user.click(main().getByRole('button', { name: t('action.delete') }));
+      return screen.findByRole('alertdialog', { name: t('bulk.delete.title', { count: 3, plural: t('kind.upstreams.plural') }) });
+    };
+
+    it('each object in use is named with its users, linked; one in use by none is not', async () => {
+      const { user } = await open('#/upstreams', { objects: { routes: ROUTES, upstreams: UPSTREAMS, global_rules: RULES } });
+      const dialog = await selectAll(user);
+      const backend = await within(dialog).findByRole('group', { name: 'backend' });
+      expect(within(backend).getByText(t('delete.inUse'))).toBeInTheDocument();
+      expect(within(backend).getByRole('link', { name: /alpha/ })).toHaveAttribute('href', '#/routes/r1');
+      expect(within(backend).getByRole('link', { name: /beta/ })).toHaveAttribute('href', '#/routes/r2');
+      const split = within(dialog).getByRole('group', { name: 'split-target' });
+      expect(within(split).getByRole('link', { name: /g1/ })).toHaveAttribute('href', '#/global_rules/g1');
+      expect(within(dialog).queryByRole('group', { name: 'spare' })).not.toBeInTheDocument();
+    });
+
+    it('says checking… while a list they come from loads, then the users, the dialog still open', async () => {
+      let release = () => {};
+      const gate = new Promise<undefined>((done) => (release = () => done(undefined)));
+      const { user } = await open('#/upstreams', { objects: { routes: ROUTES, upstreams: UPSTREAMS, global_rules: RULES }, replies: { routes: () => gate } });
+      const dialog = await selectAll(user);
+      expect(within(dialog).getByText(t('bulk.delete.checking'))).toBeInTheDocument();
+      expect(within(dialog).queryByRole('group')).not.toBeInTheDocument();
+      act(() => release());
+      const backend = await within(dialog).findByRole('group', { name: 'backend' });
+      expect(within(backend).getByRole('link', { name: /alpha/ })).toBeInTheDocument();
+      expect(within(dialog).queryByText(t('bulk.delete.checking'))).not.toBeInTheDocument();
+    });
+
+    it('says which list could not be read when one failed: unknown, never "in use by none"', async () => {
+      const { user } = await open('#/upstreams', {
+        objects: { routes: ROUTES, upstreams: UPSTREAMS },
+        replies: { global_rules: () => json(500, { error_msg: 'etcd down' }) },
+      });
+      const dialog = await selectAll(user);
+      expect(await within(dialog).findByText(t('bulk.delete.unknown', { lists: t('kind.global_rules.plural') }))).toBeInTheDocument();
+      expect(within(dialog).queryByText(t('bulk.delete.checking'))).not.toBeInTheDocument();
+    });
+  });
+
   // Task 16b item 13: a key refused once is refused for the rest.
   it('a bulk action stops at the first write refused for the key, and says how many were done', async () => {
     const { user, admin } = await open('#/routes', {

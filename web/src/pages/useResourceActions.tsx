@@ -12,6 +12,7 @@ import { registry } from '../resources/registry';
 import { newPathFor, pathFor } from '../router/paths';
 import type { BulkAction, MenuItemFor } from '../table/DataTable';
 import { toast } from '../ui';
+import { BulkReferences } from './BulkReferences';
 import { DeleteResourceDialog, ViewJsonDialog } from './RowActions';
 
 /** Names listed in the bulk delete confirmation before "and N more". */
@@ -148,6 +149,7 @@ export function useResourceActions(kind: Kind, parent: Parent | undefined, ctx: 
             ))}
           </ul>
           {items.length > LISTED && <p>{t('bulk.delete.more', { count: items.length - LISTED })}</p>}
+          <BulkReferences kind={kind} items={items} ctx={ctx} />
         </div>
       ),
     }),

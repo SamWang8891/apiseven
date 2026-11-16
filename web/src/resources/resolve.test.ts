@@ -611,7 +611,7 @@ describe('every exported resolver, on odd shapes', () => {
 
   it('lists every exported function once, so a new one is added here', () => {
     expect(Object.keys(resolve).filter((name) => typeof (resolve as Record<string, unknown>)[name] === 'function').sort()).toEqual([
-      'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referencesTo', 'resolveRef',
+      'asStreamRoute', 'effectivePlugins', 'findInCtx', 'isEnabled', 'labelPairs', 'nameOfValue', 'ownUpstream', 'referenceUse', 'referencesTo', 'resolveRef',
       'routeHosts', 'routeHostsLoading', 'routeHostsUnknown', 'routeScript', 'servedToClients', 'sniList', 'sslExpiries', 'sslForHost', 'sslNotAfter',
       'streamEffectivePlugins', 'upstreamSummary',
     ]);

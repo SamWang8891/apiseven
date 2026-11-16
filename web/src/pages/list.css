@@ -82,6 +82,18 @@
   color: var(--text-2);
 }
 
+/* One selected object's users in the bulk Delete confirmation, under its name. */
+.list-refs__item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.list-refs__name {
+  margin: 0;
+  font-weight: 600;
+}
+
 .list-error {
   padding: var(--s2) var(--s3);
   border-left: 3px solid var(--danger);
