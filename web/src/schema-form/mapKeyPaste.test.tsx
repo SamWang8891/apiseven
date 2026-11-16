@@ -4,7 +4,7 @@
 // take over when the field is left, starting from the editor's own rows, so another row's unfinished
 // input is kept (final wave D3: a renderer switch never discards another row's edit).
 import { screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { t } from '../i18n';
 import { schemaOf } from '../test/pluginFixture';
 import { renderSchemaForm } from '../test/schemaForm';
@@ -158,5 +158,51 @@ describe('a key pasted into a map value, handed to the rows, then replaced (V1)'
     await waitFor(() => expect(inPage('mapKeyThirdC')).toBe(false));
     expect(form.value()).toEqual({ headers: { set: { 'X-C': keyOf('MIIEvQIBADANBgkqhkiG9w0BAQEFAAmapKeyThirdC') } } });
     expect(inPage(A) || holds(A) || holds(B)).toBe(false);
+  });
+});
+
+// Codex final pass 2b, V2: leaving a key/value editor whose value the rows' preference would not show
+// (http-logger's log_format, whose values are any JSON) while another row holds unfinished input: the
+// rows take over anyway, the key hidden by its field, and the row keeps its input and its hold; only
+// with nothing held does the map go to its JSON renderer.
+describe('a key pasted into a map of any JSON, another row holding input (V2)', () => {
+  beforeAll(async () => {
+    await import('../ui/codemirror/CodeEditorImpl');
+  });
+  // The map's own group (the key/value editor inside it is a group of the same name).
+  const logFormat = () => within(screen.getAllByRole('group', { name: /^log_format/ })[0] as HTMLElement);
+
+  it('http-logger log_format (3.20): left, row 2 still shows its unfinished state and holds Save; the key is not in the page', async () => {
+    const form = renderSchemaForm(schemaOf('http-logger'), { uri: 'http://log.test', log_format: { a: 'one', b: 'two' } }, { name: 'http-logger' });
+    const field = 'http-logger.log_format';
+    await form.user.clear(logFormat().getByRole('textbox', { name: t('ui.kv.keyN', { n: 2 }) }));
+    const held = [t('ui.pending.noKey', { field, n: 2 })];
+    expect(form.held()).toEqual(held);
+    const value1 = logFormat().getByRole('textbox', { name: t('ui.kv.valueN', { n: 1 }) });
+    await form.user.click(value1);
+    await form.user.keyboard('{Control>}a{/Control}');
+    await form.user.paste(KEY);
+    await form.user.click(document.body);
+
+    await waitFor(() => expect(inPage(BODY)).toBe(false));
+    const rows = logFormat();
+    expect(rows.getByRole('textbox', { name: t('sf.map.keyOf', { n: 1 }) })).toHaveValue('a');
+    expect(rows.getByRole('textbox', { name: t('sf.map.keyOf', { n: 2 }) })).toHaveValue('');
+    expect(rows.getByRole('textbox', { name: t('sf.json.label', { key: t('sf.map.valueOfEntry', { n: 2 }) }) }).textContent).toBe('"two"');
+    expect(form.held()).toEqual(held);
+    expect(form.value()).toEqual({ uri: 'http://log.test', log_format: { a: KEY, b: 'two' } });
+  });
+
+  it('with nothing held, leaving goes to the JSON renderer, the key a note there', async () => {
+    const form = renderSchemaForm(schemaOf('http-logger'), { uri: 'http://log.test', log_format: { a: 'one', b: 'two' } }, { name: 'http-logger' });
+    const value1 = logFormat().getByRole('textbox', { name: t('ui.kv.valueN', { n: 1 }) });
+    await form.user.click(value1);
+    await form.user.keyboard('{Control>}a{/Control}');
+    await form.user.paste(KEY);
+    await form.user.click(document.body);
+    await waitFor(() => expect(inPage(BODY)).toBe(false));
+    expect(screen.getByRole('textbox', { name: t('sf.json.label', { key: 'log_format' }) })).toBeInTheDocument();
+    expect(form.held()).toEqual([]);
+    expect(form.value()).toEqual({ uri: 'http://log.test', log_format: { a: KEY, b: 'two' } });
   });
 });

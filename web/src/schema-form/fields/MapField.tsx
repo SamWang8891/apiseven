@@ -243,6 +243,12 @@ function MapRows({ node, value, path, emit, label, labelId, help, error, from, o
   );
 }
 
+/**
+ * Whether the map shown as `mode` shows `value`: the rows always do (an entry their value field can't
+ * show is JSON in its row), the others as mapModeFits says. What a renderer holding input needs to stay.
+ */
+const shows = (node: MapNode, value: unknown, mode: MapMode): boolean => (mode === 'rows' ? value === undefined || isObj(value) : mapModeFits(node, value, mode));
+
 interface MapModeState {
   mode: MapMode;
   track: (entries: PendingEntry[]) => void;
@@ -262,7 +268,9 @@ interface MapModeState {
  * still shows the value), so finishing the edit does not swap the field under the keyboard either.
  * While the user is in the key/value editor it stays, whatever the value asks for (a private key typed
  * or pasted there shows until it is left: fix round 1, R1), with nothing set as it renders (Codex final
- * pass, X3: that looped); leaving it switches to the rows, which start from its rows, held ones too.
+ * pass, X3: that looped); leaving it switches to the rows, which start from its rows, held ones too. It
+ * does so also where the value asks for JSON while a row holds input, the rows then kept for the
+ * session: no switch drops a row's edit or ends its hold (Codex final pass 2b, V2).
  */
 function useMapMode(node: MapNode, value: unknown): MapModeState {
   const wanted = mapMode(node, value);
@@ -285,12 +293,12 @@ function useMapMode(node: MapNode, value: unknown): MapModeState {
   /** The key/value editor's rows the rows took over from on leaving it, until the rows have started from them (V1). */
   const [taken, setTaken] = useEditingState<readonly EntryRow<string>[] | undefined>(undefined);
   const onTaken = useCallback(() => setTaken(undefined), [setTaken]);
-  let mode = kept !== undefined && mapModeFits(node, value, kept) ? kept : wanted;
+  let mode = kept !== undefined && shows(node, value, kept) ? kept : wanted;
   if (mode !== shown) {
     if (typing && shown === 'kv') {
       // In the key/value editor: it stays until it is left (focus.onBlur switches then).
       mode = shown;
-    } else if (holds && mapModeFits(node, value, shown)) {
+    } else if (holds && shows(node, value, shown)) {
       setKept(shown);
       mode = shown;
     } else {
@@ -310,8 +318,10 @@ function useMapMode(node: MapNode, value: unknown): MapModeState {
       if ((e.currentTarget as HTMLElement).contains(e.relatedTarget)) return;
       setTyping(false);
       // Left with an entry the key/value editor can't show (a private key): the rows take over now,
-      // from its rows as they stand, so another row's unfinished input stays on the page (D3).
-      if (shown === 'kv' && wanted === 'rows') {
+      // from its rows as they stand, so another row's unfinished input stays on the page (D3); where the
+      // value asks for JSON, only while a row holds input, and kept then (V2).
+      if (shown === 'kv' && wanted !== 'kv' && (wanted === 'rows' || holds)) {
+        if (wanted !== 'rows') setKept('rows');
         setShown('rows');
         setHolds(false);
         setTaken(editorRows.current);
