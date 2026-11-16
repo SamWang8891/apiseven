@@ -36,6 +36,15 @@ export function useReadOnlyKey(): boolean {
 }
 
 /**
+ * Whether a write on connection `connId` would be refused now, without a request (its key turned out
+ * read-only): the rule useWrite enforces, asked synchronously by a caller that would otherwise enter a
+ * state first (the editor's saving state, which remounts its fields).
+ */
+export function writeRefused(connId: string): boolean {
+  return readOnly.has(connId);
+}
+
+/**
  * Why a write on the active connection would not be sent: its key turned out read-only, and useWrite
  * refuses every write at once from then on. Undefined while it may write. What a control that would
  * write says while it is unavailable (aria-disabled, so a keyboard user on it keeps their place).
@@ -87,7 +96,7 @@ export function useWrite(): <T>(action: (client: AdminClient) => Promise<T>, opt
   const queryClient = useQueryClient();
   return useCallback(
     async <T>(action: (client: AdminClient) => Promise<T>, opts: WriteOptions = {}): Promise<WriteResult<T>> => {
-      if (readOnly.has(client.conn.id)) {
+      if (writeRefused(client.conn.id)) {
         const error = new ApiError('auth', t('readOnly.refused'));
         if (!opts.silent) toast.error(error.message);
         return { ok: false, error };

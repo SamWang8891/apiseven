@@ -56,7 +56,8 @@ describe('the editor with a key found read-only (C1)', () => {
     await settle();
     // No GET (the conflict check) and no PUT.
     expect(admin.requests.length).toBe(sent);
-    expect(uri).toHaveValue('/b');
+    // The field on the page now (the first, refused save remounted it): the draft is still there.
+    expect(main().getByRole('textbox', { name: 'URI' })).toHaveValue('/b');
     expect(main().getByText(t('editor.editing'))).toBeInTheDocument();
     // Cmd/Ctrl-S is told why, where the last refusal was.
     const notSent = await main().findByRole('alert');
@@ -95,7 +96,38 @@ describe('the editor with a key found read-only (C1)', () => {
     fireEvent.keyDown(window, { key: 's', ctrlKey: true });
     await settle();
     expect(admin.requests.length).toBe(sent);
-    expect(uri).toHaveValue('/b');
+    expect(main().getByRole('textbox', { name: 'URI' })).toHaveValue('/b');
+  });
+
+  // Fix round 1, F1: the refusal comes before the saving state, so nothing remounts and the field typed in keeps focus.
+  it('Cmd/Ctrl-S from a field, once the key is known read-only: no request, no saving state, focus stays on that very field', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
+    const { admin } = await openEditor('#/routes/r1', {
+      objects: { routes: [ROUTE] },
+      replies: { 'routes/r1': (req) => (req.method === 'PUT' ? json(401, VIEWER) : undefined) },
+    });
+    const user = userEvent.setup();
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    await user.type(await main().findByRole('textbox', { name: 'URI' }), 'x');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await screen.findByText(t('readOnly.banner'));
+    const sent = admin.requests.length;
+
+    const field = main().getByRole('textbox', { name: 'URI' });
+    await user.click(field);
+    await user.type(field, 'y');
+    for (const keys of ['{Control>}s{/Control}', '{Meta>}s{/Meta}']) {
+      await user.keyboard(keys);
+      await settle();
+      expect(admin.requests.length).toBe(sent);
+      expect(field.isConnected).toBe(true);
+      expect(field).toHaveFocus();
+      expect(field).toHaveValue('/axy');
+      expect(main().getByRole('button', { name: t('editor.save') })).not.toHaveAttribute('aria-busy');
+    }
+    const notSent = await main().findByRole('alert');
+    expect(within(notSent).getByText(t('editor.readOnlySave'))).toBeInTheDocument();
   });
 });
 

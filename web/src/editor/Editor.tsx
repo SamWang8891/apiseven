@@ -8,7 +8,7 @@ import { queryKeys, scopedKey, useAllPlugins, useClient, useInvalidate } from '.
 import { stripTimestamps } from '../api/sanitize';
 import type { Item, Kind, Obj, Parent } from '../api/types';
 import type { ApiError } from '../api/errors';
-import { useMarkReadOnly, useReadOnlyKey, useWrite } from '../api/write';
+import { useMarkReadOnly, useReadOnlyKey, useWrite, writeRefused } from '../api/write';
 import type { ConnectState } from '../connection/ConnectPage';
 import { t } from '../i18n';
 import { scopeOfKind } from '../plugins/scope';
@@ -264,6 +264,12 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       toast.info(t('editor.nothingToSave'));
       return;
     }
+    // A key known to be read-only: refused here, before the saving state (which would remount every
+    // field for a save that sends nothing); the field left for it gets its focus back.
+    if (writeRefused(client.conn.id)) {
+      refuseReadOnly(left);
+      return;
+    }
     inFlight.current = true;
     setSaving(true);
     stopEdits();
@@ -274,8 +280,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     inFlight.current = false;
     setSaving(false);
     if (!sent.ok) {
-      // Not sent (the key is read-only): the draft stays, to be copied out (the JSON tab), and the banner says why.
-      setFailure({ title: t('editor.notSent'), message: t('editor.readOnlySave') });
+      // The key turned read-only meanwhile (another save of this connection was refused): the same refusal.
+      refuseReadOnly(left);
       return;
     }
     const result = sent.value;
@@ -325,6 +331,12 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       setFailure(saveFailure(error, path));
       if (path !== undefined) goTab(tabOfIssue({ path, message: '' }, tabFields, JSON_TAB));
     }
+  }
+
+  /** Not sent (the key is read-only): the draft stays, to be copied out (the JSON tab), the banner says why, and focus goes back to the field left. */
+  function refuseReadOnly(left: HTMLElement | undefined) {
+    setFailure({ title: t('editor.notSent'), message: t('editor.readOnlySave') });
+    if (left?.isConnected) left.focus();
   }
 
   /**
