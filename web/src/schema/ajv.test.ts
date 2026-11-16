@@ -294,6 +294,20 @@ describe('fieldErrors with luaTables (as APISIX validates: an empty table is a l
       expect(fieldErrors(schema, rules(n, { match: [{ vars: 'x' }] }), { luaTables: true }), `${n} rules`).toEqual([{ path: 'rules.16.match.0.vars', message: 'must be array' }]);
     }
   });
+
+  // Fix round 1, Y3: where a failing anyOf / oneOf weighs its branches, one place is turned per round
+  // (a branch may want the other type at another place); elsewhere every place in the round.
+  it('an anyOf whose branches want the two types at two places (a custom plugin’s schema): taken, as APISIX takes it', () => {
+    const either: Obj = { anyOf: [{ properties: { a: { type: 'array' }, b: { type: 'object' } } }, { properties: { a: { type: 'object' }, b: { type: 'array' } } }] };
+    expect(fieldErrors(either, { a: {}, b: {} }, { luaTables: true })).toEqual([]);
+    expect(fieldErrors(either, { a: [], b: [] }, { luaTables: true })).toEqual([]);
+    // The same below a list, beside places no combinator weighs, many of them.
+    const below: Obj = { type: 'object', properties: { items: { type: 'array', items: either }, lists: { type: 'array', items: { type: 'array' } } } };
+    const many = { items: Array.from({ length: 20 }, () => ({ a: {}, b: {} })), lists: Array.from({ length: 200 }, () => ({})) };
+    expect(fieldErrors(below, many, { luaTables: true })).toEqual([]);
+    // A non-empty value of the wrong type is still refused.
+    expect(fieldErrors(either, { a: { x: 1 }, b: { y: 1 } }, { luaTables: true })?.length).toBeGreaterThan(0);
+  });
 });
 
 describe('specificErrors', () => {

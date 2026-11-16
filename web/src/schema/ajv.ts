@@ -330,24 +330,37 @@ function emptyTables(value: unknown): number {
   return items.length === 0 ? 1 : items.reduce((n: number, item) => n + emptyTables(item), 0);
 }
 
+/** Whether the JSON pointer `path` is `at` or below it. */
+const atOrBelow = (path: string, at: string): boolean => path === at || path.startsWith(`${at}/`);
+
 /**
  * `value` (defaults applied) with each empty table read as the type its schema position asks for,
  * `[]` as `{}` where an object is wanted and `{}` as `[]` where a list is, as APISIX's validator reads
  * an empty Lua table: then minItems, required and the rest apply to it as APISIX applies them. Each
  * place is turned once (a branch of a combinator may want the other type), by the first error there.
  * Every round turns each place an error then asks for, however many (Codex final pass, X4: the 16
- * rounds of one place each stopped at the 17th); a place is an empty table of `value` and turning one
- * leaves an empty table, so there are no more rounds than empty tables, and one that finds none.
+ * rounds of one place each stopped at the 17th), except where a failing anyOf / oneOf weighs its
+ * branches (a place at or below its own): there one place a round, as a branch may want the other
+ * type at another place (fix round 1, Y3). A place is an empty table of `value` and turning one leaves
+ * an empty table, so there are no more rounds than empty tables, and one that finds none.
  */
 function asLuaTables(schema: Obj, value: unknown, opts: CheckOptions): unknown {
   let current = withDefaults(schema, value);
   const turned = new Set<string>();
   const places = emptyTables(current);
   for (let round = 0; round <= places; round += 1) {
-    const errors = (schemaErrors(schema, current, opts) ?? []).filter((e) => !turned.has(e.instancePath) && emptyTableTypeError(e, current));
+    const all = schemaErrors(schema, current, opts) ?? [];
+    const errors = all.filter((e) => !turned.has(e.instancePath) && emptyTableTypeError(e, current));
     if (errors.length === 0) break;
+    // Ajv reports a branch's errors only with its anyOf / oneOf failing, at or below that one's place.
+    const weighed = all.filter((e) => e.keyword === 'anyOf' || e.keyword === 'oneOf').map((e) => e.instancePath);
+    let combinatorPlace = false;
     for (const error of errors) {
       if (turned.has(error.instancePath)) continue;
+      if (weighed.some((at) => atOrBelow(error.instancePath, at))) {
+        if (combinatorPlace) continue;
+        combinatorPlace = true;
+      }
       turned.add(error.instancePath);
       const wanted = String((error.params as Record<string, unknown>).type).split(',');
       const at = valueAt(current, error.instancePath);
