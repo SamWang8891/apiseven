@@ -154,3 +154,23 @@ describe('TagInput: a validate message that quotes the refused text', () => {
     expect(held()).toEqual([t('ui.pending.tag', { field: 'Hosts', text: 'abc', reason: '"abc" is not a path' })]);
   });
 });
+
+// Fix round 2, Z2: only the hidden-key words' own mask run is refused; other text with a bullet is a tag as before.
+describe('TagInput: text with a bullet', () => {
+  const any = () => undefined;
+
+  it('a•b is added as typed; the marker words pasted back are still refused', async () => {
+    const { user, held } = withProvider(<Tags validate={any} />);
+    const input = screen.getByRole('textbox', { name: 'Hosts' });
+    await user.type(input, 'a•b{Enter}');
+    expect(screen.getByRole('status', { name: 'tags' })).toHaveTextContent(/^a•b$/);
+    expect(held()).toEqual([]);
+    await user.paste(MARKER);
+    await user.keyboard('{Enter}');
+    // A paste is split on spaces and commas; what is left from the refused part on is joined by spaces.
+    const left = MARKER.split(/[\s,]+/).join(' ');
+    expect(screen.getByRole('status', { name: 'tags' })).toHaveTextContent(/^a•b$/);
+    expect(input).toHaveValue(left);
+    expect(held()).toEqual([t('ui.pending.tag', { field: 'Hosts', text: left, reason: t('ui.tags.keyOut') })]);
+  });
+});

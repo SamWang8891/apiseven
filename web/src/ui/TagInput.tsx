@@ -24,8 +24,12 @@ export type TagInputProps = Omit<ComponentProps<'input'>, 'value' | 'onChange' |
 /** What a paste is split on. */
 const SEPARATORS = /[\s,]+/;
 const SEPARATED = /[\s,]/;
-/** The mark of the words left where a private key was taken out of the box (ssl.pem.marker): never part of a tag. */
-const TAKEN_OUT = '•';
+/**
+ * The mask run the words left where a private key was taken out of the box start with (ssl.pem.marker,
+ * the app's MASK): text holding it is never a tag. Any other text, a lone bullet included, is as before
+ * (fix round 2, Z2); a pasted marker splits with this run as its first part, so it is refused there too.
+ */
+const TAKEN_OUT = '••••••••';
 
 /**
  * A list of short strings. Enter, comma, Tab or leaving the box adds what was typed; a paste replaces
