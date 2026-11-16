@@ -1,8 +1,9 @@
 // Fix round 3: the node table's one rule, pinned on the upstream page with the frame's Save.
 // 1. Leaving a field writes nothing. 2. Typing writes what the list can hold at once. 3. Text a map can't
 // hold is held exactly as typed, flagged, and named by a refused Save. 4. Enter is the explicit commit;
-// 5. "Move <port> to Port" and a paste do what Enter does. A commit whose result another row has writes
-// nothing and holds the text as a duplicate.
+// 5. "Move <port> to Port" does what Enter does. A commit whose result another row has writes nothing and
+// holds the text as a duplicate. A paste (final wave F7): one address goes in at the cursor and is judged as
+// typed text; several become one node each, as "Add a node" with Enter would make them.
 import { waitFor } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { useCallback, useLayoutEffect } from 'react';
@@ -196,8 +197,9 @@ const HELD: [string, HeldCase][] = [
       pending: t('up.pending.duplicate', { node: node(2), addr: '10.0.0.5:8080' }),
     },
   ],
+  // Final wave F7 (these expectations changed): one pasted address goes in as typed, then is judged as typed text.
   [
-    'an address the list has, pasted into "Add a node"',
+    'host:port pasted into "Add a node" (judged as typed: a stray colon)',
     {
       nodes: { '10.0.0.5:8080': 1 },
       reach: async (u) => {
@@ -206,22 +208,37 @@ const HELD: [string, HeldCase][] = [
       },
       field: newHost,
       typed: '10.0.0.5:8080',
-      message: t('up.nodes.dupOf', { n: 1 }),
-      pending: t('up.pending.duplicate', { node: newNode(), addr: '10.0.0.5:8080' }),
+      message: t('up.nodes.colonHeld'),
+      pending: t('up.pending.unsaved', { node: newNode(), addr: '10.0.0.5:8080' }),
     },
   ],
   [
-    'an address the list has, pasted into a row',
+    'host:port pasted over a row\'s host (judged as typed: a stray colon)',
     {
       nodes: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 },
       reach: async (u) => {
-        await u.click(hostN(2));
+        await u.tripleClick(hostN(2));
         await u.paste('10.0.0.5:8080');
       },
       field: () => hostN(2),
       typed: '10.0.0.5:8080',
-      message: t('up.nodes.dupOf', { n: 1 }),
-      pending: t('up.pending.duplicate', { node: node(2), addr: '10.0.0.5:8080' }),
+      message: t('up.nodes.colonHeld'),
+      pending: t('up.pending.unsaved', { node: node(2), addr: '10.0.0.5:8080' }),
+    },
+  ],
+  [
+    'a port pasted at the end of a stored host (re-review 3, O3: inserted at the cursor, not over the host)',
+    {
+      nodes: { '10.0.0.5:80': 1 },
+      reach: async (u) => {
+        await u.click(hostN(1));
+        await u.keyboard('{End}');
+        await u.paste(':9090');
+      },
+      field: () => hostN(1),
+      typed: '10.0.0.5:9090',
+      message: t('up.nodes.colonHeld'),
+      pending: t('up.pending.unsaved', { node: node(1), addr: '10.0.0.5:9090' }),
     },
   ],
   [
@@ -455,12 +472,30 @@ const COMMITS: [string, CommitCase][] = [
     },
   ],
   [
-    'a paste into a map row',
-    { nodes: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 }, reach: (u) => u.click(hostN(2)), commit: (u) => u.paste('10.0.0.7:9090'), expected: { '10.0.0.5:8080': 1, '10.0.0.7:9090': 1 } },
+    'Enter after host:port pasted over a map row\'s host',
+    {
+      nodes: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 },
+      reach: async (u) => {
+        await u.tripleClick(hostN(2));
+        await u.paste('10.0.0.7:9090');
+      },
+      commit: enter,
+      expected: { '10.0.0.5:8080': 1, '10.0.0.7:9090': 1 },
+    },
   ],
   [
     'a paste of two addresses into "Add a node" (a map)',
     { nodes: { '10.0.0.5:8080': 1 }, reach: (u) => u.click(newHost()), commit: (u) => u.paste('10.0.0.7:9090\n10.0.0.8:80'), expected: { '10.0.0.5:8080': 1, '10.0.0.7:9090': 1, '10.0.0.8:80': 1 } },
+  ],
+  [
+    // Final wave F7: each address judged as "Add a node" judges it; the clash and the stray colon in the middle are not written.
+    'a paste of four addresses, a clash and a stray colon in the middle (a map)',
+    {
+      nodes: { '10.0.0.5:8080': 1 },
+      reach: (u) => u.click(newHost()),
+      commit: (u) => u.paste('10.0.0.7:9090\n10.0.0.5:8080\n10.0.0.9:\n10.0.0.8:80'),
+      expected: { '10.0.0.5:8080': 1, '10.0.0.7:9090': 1, '10.0.0.8:80': 1 },
+    },
   ],
   [
     'Enter in a row still held after a priority made the list an array (F2)',
@@ -497,8 +532,13 @@ const COMMITS: [string, CommitCase][] = [
     },
   ],
   [
-    'a paste into an array row',
-    { nodes: [{ host: 'a', port: 80, weight: 1 }], reach: (u) => u.click(hostN(1)), commit: (u) => u.paste('10.0.0.7:9090'), expected: [{ host: '10.0.0.7', port: 9090, weight: 1 }] },
+    'a paste of two addresses into an array row (the row as it was, the nodes added at the end)',
+    {
+      nodes: [{ host: 'a', port: 80, weight: 1 }],
+      reach: (u) => u.click(hostN(1)),
+      commit: (u) => u.paste('10.0.0.7:9090 10.0.0.8'),
+      expected: [{ host: 'a', port: 80, weight: 1 }, { host: '10.0.0.7', port: 9090, weight: 1 }, { host: '10.0.0.8', weight: 1 }],
+    },
   ],
 ];
 

@@ -61,7 +61,9 @@ describe('the upstream editor', () => {
     await user.type(await main().findByRole('textbox', { name: t('up.nodes.new') }), '10.0.0.5');
     await user.type(main().getByRole('spinbutton', { name: t('up.nodes.portN', { n: 1 }) }), '8080');
     await user.click(main().getByRole('textbox', { name: t('up.nodes.new') }));
+    // A pasted address goes in as typed; Enter moves its port to Port (final wave F7).
     await user.paste('10.0.0.6:8080');
+    await user.keyboard('{Enter}');
 
     await user.click(tab(t('up.section.balancing')));
     await user.click(await main().findByRole('combobox', { name: t('up.balance.type') }));

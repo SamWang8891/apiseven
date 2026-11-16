@@ -9,14 +9,12 @@ import {
   keepBoth,
   setMapAddress,
   type AddressEdit,
-  isNodeList,
   parseAddr,
-  parseNodeList,
-  pasteNodes,
   removeNode,
   rowsOf,
   setNodeField,
   sharesOf,
+  splitNodeList,
   usesDiscovery,
 } from './nodes';
 
@@ -131,36 +129,14 @@ describe('editing nodes', () => {
     expect(removeNode({ nodes: { a: 1 } }, 0).nodes).toEqual({});
     expect(removeNode(MAP, 0).nodes).toEqual({ 'b.example': 1 });
   });
-
-  it('a paste replaces the address of the row it lands in and adds the rest after it', () => {
-    const up = { nodes: [{ host: 'old', port: 1, weight: 4 }, { host: 'z', weight: 1 }] };
-    expect(pasteNodes(up, 0, [{ host: 'a', port: 80 }, { host: 'b', port: 81 }])).toEqual({
-      up: { nodes: [{ host: 'a', port: 80, weight: 4 }, { host: 'b', port: 81, weight: 1 }, { host: 'z', weight: 1 }] },
-      skipped: [],
-    });
-    // A host without a port keeps the row's port.
-    expect(pasteNodes(up, 0, [{ host: 'a' }]).up.nodes).toEqual([{ host: 'a', port: 1, weight: 4 }, { host: 'z', weight: 1 }]);
-    // In a map, addresses already there are left out and named.
-    expect(pasteNodes(MAP, 1, [{ host: '10.0.0.1', port: 80 }, { host: 'c' }])).toEqual({
-      up: { ...MAP, nodes: { '10.0.0.1:80': 3, 'b.example': 1, c: 1 } },
-      skipped: ['10.0.0.1:80'],
-    });
-  });
 });
 
+// Final wave F8: one splitter for pasted text; the table reads each address as Enter reads "Add a node".
 describe('pasted text', () => {
-  it('splits on lines, commas and spaces', () => {
-    expect(parseNodeList('10.0.0.1:80\n10.0.0.2:8080, b.example\r\n')).toEqual([
-      { host: '10.0.0.1', port: 80 },
-      { host: '10.0.0.2', port: 8080 },
-      { host: 'b.example' },
-    ]);
-  });
-
-  it('is read as addresses when it holds several or a port', () => {
-    expect(isNodeList('a.example')).toBe(false);
-    expect(isNodeList('a.example:80')).toBe(true);
-    expect(isNodeList('a\nb')).toBe(true);
+  it('splits on lines, commas and spaces, each address as pasted', () => {
+    expect(splitNodeList('10.0.0.1:80\n10.0.0.2:8080, b.example\r\n')).toEqual(['10.0.0.1:80', '10.0.0.2:8080', 'b.example']);
+    expect(splitNodeList('  a.example  ')).toEqual(['a.example']);
+    expect(splitNodeList('')).toEqual([]);
   });
 });
 

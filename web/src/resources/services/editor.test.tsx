@@ -200,7 +200,9 @@ describe('creating a service', () => {
     await settled();
     expect(main().getByRole('radio', { name: t('rt.up.source.inline') })).toBeChecked();
     await user.click(main().getByRole('textbox', { name: t('up.nodes.new') }));
+    // A pasted address goes in as typed; Enter moves its port to Port (final wave F7).
     await user.paste('10.0.1.20:3000');
+    await user.keyboard('{Enter}');
 
     await user.click(tab(t('pl.tab')));
     await settled();

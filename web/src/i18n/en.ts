@@ -880,6 +880,7 @@ export const en: Record<string, string> = {
   'up.pending.duplicate': '{node}: "{addr}" is already in the list',
   'up.pending.unsaved': '{node}: "{addr}" is not in the upstream yet',
   'up.nodes.skipped': 'Already in the list, not added again: {list}',
+  'up.nodes.skippedBad': 'Not an address (a host holds ":" only as an IPv6 address), not added: {list}',
   'up.nodes.duplicateTaken': 'Another row is waiting for its host at the same port: fill that in first',
 
   'up.discovery.type': 'Discovery type',

@@ -135,7 +135,9 @@ describe('the route editor', () => {
 
     // A node typed in makes it a route APISIX takes.
     await user.click(main().getByRole('textbox', { name: t('up.nodes.new') }));
+    // A pasted address goes in as typed; Enter moves its port to Port (final wave F7).
     await user.paste('10.0.0.5:8080');
+    await user.keyboard('{Enter}');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body).toEqual({ uri: '/*', status: 1, upstream: { nodes: [{ host: '10.0.0.5', port: 8080, weight: 1 }] } });

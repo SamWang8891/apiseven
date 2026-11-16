@@ -1,5 +1,5 @@
 // The node list: a row per node (host, port, weight, priority, and the share of requests its weight
-// gives it), plus an empty row at the end to type a new node into or paste `host:port` lines. Rows
+// gives it), plus an empty row at the end to type a new node into or paste `host:port` lines into. Rows
 // are keyed by ids that follow them through removals, copies and pastes (rowIds.ts), so what a
 // row's fields hold stays on that row. The new-node row hands its id to the node it becomes, so the
 // host field keeps focus while the node appears. A map-shaped list stays a map through edits (see
@@ -23,17 +23,15 @@ import {
   committed,
   duplicateNode,
   isIpv6,
-  isNodeList,
   keepBoth,
   NEW_WEIGHT,
-  parseAddr,
-  pasteNodes,
   portInHost,
   removeNode,
   rowsOf,
   setMapAddress,
   setNodeField,
   sharesOf,
+  splitNodeList,
   strayColon,
   type Address,
   type NodeRow,
@@ -55,8 +53,8 @@ function HostInput(props: Omit<InputProps, 'mono' | 'autoComplete'>) {
 
 /**
  * What a map row (or "Add a node") holds that the map can't take: the host field's text exactly as
- * typed, and the port; `as`, the address an explicit commit (Enter, "Move <port> to Port", a paste) read
- * it as, when that moved a port off the text.
+ * typed, and the port; `as`, the address an explicit commit (Enter, "Move <port> to Port") read it as,
+ * when that moved a port off the text.
  */
 interface Held extends Address {
   as?: Address;
@@ -71,8 +69,13 @@ function commitOf(typed: Address): Held {
   return as === typed ? typed : { ...typed, as };
 }
 
-/** The addresses in pasted text, as pasted (separated by line breaks, commas or spaces). */
-const pastedTexts = (text: string): string[] => text.split(/[\s,]+/).filter(Boolean);
+/** Addresses a paste of several did not add: those the list already has (a map), and those that are no address. */
+interface Skipped {
+  dup: string[];
+  bad: string[];
+}
+
+const NOTHING_SKIPPED: Skipped = { dup: [], bad: [] };
 
 /**
  * The editing table. Typing writes at once whenever the text is something the list can hold: any host
@@ -85,8 +88,9 @@ const pastedTexts = (text: string): string[] => text.split(/[\s,]+/).filter(Bool
  * resolved. Leaving a field writes nothing and never splits or rewrites what it shows. Enter is the
  * explicit commit: in a host holding a port it moves the port to Port, in a held map row it takes what
  * the row holds (an all-digit host as the host name), in "Add a node" it adds the node; "Move <port> to
- * Port" and a paste do what Enter does. A result another row has is not written: the field stays as
- * typed, held as a duplicate. A change that turns the map into an array (a priority other than 0, "Keep
+ * Port" does what Enter does. A result another row has is not written: the field stays as typed, held as
+ * a duplicate. A paste of one address goes in at the cursor and is judged as typed text; a paste of
+ * several adds a node for each, judged as Enter in "Add a node" judges it (see paste). A change that turns the map into an array (a priority other than 0, "Keep
  * both") ends no other row's hold: what a row holds stays held in the array, which takes it on Enter or
  * when more is typed (a hold ends only when its own text is resolved).
  */
@@ -95,7 +99,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   // Both end with the editing session (Save, Discard): nothing held may come back on the next Edit.
   /** What map rows (or the new-node field) hold that the map can't take, by row id. */
   const [held, setHeld] = useEditingState<Record<number, Held>>({});
-  const [skipped, setSkipped] = useEditingState<string[]>([]);
+  const [skipped, setSkipped] = useEditingState<Skipped>(NOTHING_SKIPPED);
   /**
    * A map row's host as the user typed it, where its key reads it otherwise (an IPv6 address, bracketed
    * in the key): shown while the row's key is still that one, until the editing session ends.
@@ -164,7 +168,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   /** After `rows` became `count` rows by nodes added at the end: the new-node row's id goes to the first of them. */
   const appendedFromNew = (count: number) => setIds((prev) => [...prev, ...freshIds(count)]);
   const write = (up: Obj) => {
-    setSkipped([]);
+    setSkipped(NOTHING_SKIPPED);
     onChange(up);
   };
 
@@ -215,7 +219,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
 
   /**
    * Text in the new-node field; true when a node was added. Typed, what the list can hold is added as it
-   * is. `commit` (Enter, Move <port> to Port): `host:port` is read as a paste reads it and an all-digit
+   * is. `commit` (Enter, Move <port> to Port): `host:port` is read as an address (committed) and an all-digit
    * host is taken. A refusal holds the text as typed.
    */
   function editNew(text: string, commit = false): boolean {
@@ -225,7 +229,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     }
     if (!map) {
       // An array takes any host. What the field held (from before the list became an array) ends here;
-      // Enter reads `host:port` as a paste reads it.
+      // Enter reads `host:port` as an address.
       const at = commit ? judged(commitOf({ host: text, port: undefined })) : { host: text, port: undefined };
       hold(fresh, undefined);
       appendedFromNew(1);
@@ -334,54 +338,45 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   }
 
   /**
-   * Text pasted into a host field that reads as addresses becomes nodes, in one change. In an array, the
-   * first replaces the node pasted into (or is added) and the rest follow it. In a map, the first is
-   * placed as Enter places what is typed, where it was pasted (a refusal holds it there as pasted, a
-   * duplicate as a duplicate), and the rest are added at the end, those the list already has named.
+   * A paste into a host field (a row's or "Add a node"). One address, or any text without a separator,
+   * goes in where the cursor is, as any paste does, and is then judged as typed text. Several addresses
+   * (separated by line breaks, commas or spaces) leave the field as it was and become one node each,
+   * added at the end in one change, each judged as Enter judges "Add a node" (`host:port` read as an
+   * address, an all-digit host taken): one the list can't hold (in a map, an address it already has or
+   * that came earlier in the paste; in either form, a host with a stray colon) is not added, nothing is
+   * written for it, and it is named.
    */
-  function paste(e: ClipboardEvent<HTMLInputElement>, index: number | undefined) {
-    const text = e.clipboardData.getData('text');
-    const texts = isNodeList(text) ? pastedTexts(text) : [];
-    if (texts.length === 0) return;
+  function paste(e: ClipboardEvent<HTMLInputElement>) {
+    const texts = splitNodeList(e.clipboardData.getData('text'));
+    if (texts.length < 2) return;
     e.preventDefault();
-    if (!map) {
-      const pasted = texts.map((addr) => parseAddr(addr));
-      const result = index === undefined ? addNodes(value, pasted.map((row) => ({ ...row, weight: NEW_WEIGHT }))) : pasteNodes(value, index, pasted);
-      const added = rowsOf(result.up.nodes).length - rows.length;
-      // Into the new-node row: it becomes the first pasted node. Into a node: the rest right after it.
-      if (added > 0) {
-        if (index === undefined) appendedFromNew(added);
-        else setIds((prev) => withNewIds(prev, index + 1, added));
+    let up = value;
+    let added = 0;
+    const left: Skipped = { dup: [], bad: [] };
+    for (const text of texts) {
+      const at = judged(commitOf({ host: text, port: undefined }));
+      if (strayColon(at.host)) {
+        left.bad.push(text);
+        continue;
       }
-      if (result.up !== value) onChange(result.up);
-      setSkipped(result.skipped);
-      return;
+      if (map) {
+        const edit = addMapNode(up, at, { commitDigits: true });
+        if (!edit.ok) {
+          (edit.reason === 'duplicate' ? left.dup : left.bad).push(text);
+          continue;
+        }
+        up = edit.up;
+      } else {
+        up = addNodes(up, [{ host: at.host, port: at.port, weight: NEW_WEIGHT }]).up;
+      }
+      added++;
     }
-    const [first = '', ...rest] = texts;
-    let base = value;
-    let firstAdded = false;
-    if (index === undefined) {
-      const h = commitOf({ host: first, port: undefined });
-      const edit = addMapNode(value, judged(h), { commitDigits: true });
-      if (edit.ok) {
-        hold(fresh, undefined);
-        start.current[idOf(fresh)] = 'new';
-        base = edit.up;
-        firstAdded = true;
-      } else hold(fresh, h);
-    } else {
-      base = placeAddress(index, commitOf({ host: first, port: shown(index).port }), true).up;
+    // The new nodes get new ids before the new-node row's: no field's text or focus moves.
+    if (added > 0) {
+      setIds((prev) => withNewIds(prev, prev.length - 1, added));
+      onChange(up);
     }
-    const result = addNodes(
-      base,
-      rest.map((addr) => ({ ...parseAddr(addr), weight: NEW_WEIGHT })),
-    );
-    const added = rowsOf(result.up.nodes).length - rowsOf(base.nodes).length;
-    // The new-node row's id goes to a first node added from it; the rest get new ids before the new-node row.
-    if (firstAdded) appendedFromNew(1 + added);
-    else if (added > 0) setIds((prev) => withNewIds(prev, prev.length - 1, added));
-    if (result.up !== value) onChange(result.up);
-    setSkipped(result.skipped);
+    setSkipped(left);
   }
 
   /**
@@ -454,7 +449,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
             onChange={(e) => (map ? editAddress(i, { host: e.target.value, port: address.port }) : editArrayHost(i, e.target.value))}
             onKeyDown={enterCommits(i)}
             onBlur={() => map && leave(i)}
-            onPaste={(e) => paste(e, i)}
+            onPaste={paste}
           />
           {keepButton(i)}
           {moveButton(i)}
@@ -531,14 +526,14 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
           placeholder={t('up.nodes.newPlaceholder')}
           error={heldMessage(fresh)}
           onChange={(e) => editNew(e.target.value)}
-          // Enter adds what the field holds, `host:port` read as a paste reads it; leaving it writes nothing.
+          // Enter adds what the field holds, `host:port` read as an address; leaving it writes nothing.
           onKeyDown={(e) => {
             const text = held[idOf(fresh)]?.host;
             if (e.key !== 'Enter' || text === undefined) return;
             e.preventDefault();
             editNew(text, true);
           }}
-          onPaste={(e) => paste(e, undefined)}
+          onPaste={paste}
         />
         {keepButton(fresh)}
         {moveButton(fresh)}
@@ -553,7 +548,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
         <Head priority shares={shares !== undefined} actions />
         <tbody>{[...rows.map(nodeRow), newRow]}</tbody>
       </table>
-      {skipped.length > 0 && <IssueLine message={t('up.nodes.skipped', { list: skipped.join(', ') })} />}
+      {skipped.dup.length > 0 && <IssueLine message={t('up.nodes.skipped', { list: skipped.dup.join(', ') })} />}
+      {skipped.bad.length > 0 && <IssueLine message={t('up.nodes.skippedBad', { list: skipped.bad.join(', ') })} />}
     </>
   );
 }

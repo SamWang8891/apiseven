@@ -262,12 +262,24 @@ describe('host:port typed by hand', () => {
     expect(h.changes.mock.calls.length).toBe(writes);
   });
 
-  it('a paste of host:port into a host cell splits at once, as before', async () => {
+  // Final wave F7 (this test's expectation changed): one pasted address goes in as typed, then Enter commits it.
+  it('a paste of host:port into a host cell goes in as typed text, flagged as holding a port; Enter moves it to Port', async () => {
     const h = renderUpstream({ nodes: [{ host: 'a', port: 80, weight: 1 }] }, { section: 'nodes' });
     await h.user.clear(host(1));
     await h.user.click(host(1));
     await h.user.paste('10.0.0.7:7070');
+    expect(h.value().nodes).toEqual([{ host: '10.0.0.7:7070', port: 80, weight: 1 }]);
+    expect(host(1)).toHaveAccessibleDescription(t('up.nodes.hostHasPort', { port: 7070 }));
+    await h.user.keyboard('{Enter}');
     expect(h.value().nodes).toEqual([{ host: '10.0.0.7', port: 7070, weight: 1 }]);
+  });
+
+  it('a paste goes in where the cursor is, not over the whole host', async () => {
+    const h = renderUpstream({ nodes: [{ host: 'a', port: 80, weight: 1 }] }, { section: 'nodes' });
+    await h.user.click(host(1));
+    await h.user.keyboard('{End}');
+    await h.user.paste('.example');
+    expect(h.value().nodes).toEqual([{ host: 'a.example', port: 80, weight: 1 }]);
   });
 });
 
@@ -385,17 +397,27 @@ describe('map-shaped nodes stay a map through edits', () => {
     expect(screen.getByRole('button', { name: t('up.nodes.duplicateN', { n: 1 }) })).toBeDisabled();
   });
 
-  // Fix round 3: a paste does what Enter does: the first address, one the list has, is held in the field as pasted.
-  it('a paste into "Add a node": the first address goes as Enter puts it (one the list has is held there, as pasted); the rest are added, those the list has named', async () => {
+  // Final wave F7 (this test's expectation changed): several pasted addresses each become a node as "Add a
+  // node" with Enter would; the field pasted into stays as it was.
+  it('a paste of several addresses into "Add a node": one change adding each the list can hold; those it has, and those that are no address, named', async () => {
     const h = renderUpstream(MAP, { section: 'nodes' });
     await h.user.click(newHost());
     const before = h.changes.mock.calls.length;
-    await h.user.paste('10.0.0.1:80\n10.0.0.3:80\n10.0.0.2:80');
+    await h.user.paste('10.0.0.1:80\n10.0.0.3:80\n10.0.0.9:\n10.0.0.2:80');
     expect(h.changes.mock.calls.length).toBe(before + 1);
     expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.2:80': 2, '10.0.0.3:80': 1 });
-    expect(newHost()).toHaveValue('10.0.0.1:80');
-    expect(newHost()).toHaveAccessibleDescription(t('up.nodes.dupOf', { n: 1 }));
-    expect(screen.getByText(t('up.nodes.skipped', { list: '10.0.0.2:80' }))).toBeInTheDocument();
+    expect(newHost()).toHaveValue('');
+    expect(newHost()).not.toHaveAttribute('aria-invalid');
+    expect(screen.getByText(t('up.nodes.skipped', { list: '10.0.0.1:80, 10.0.0.2:80' }))).toBeInTheDocument();
+    expect(screen.getByText(t('up.nodes.skippedBad', { list: '10.0.0.9:' }))).toBeInTheDocument();
+  });
+
+  it('a paste of several addresses into a row leaves that row as it was', async () => {
+    const h = renderUpstream(MAP, { section: 'nodes' });
+    await h.user.click(host(1));
+    await h.user.paste('10.0.0.4:80 10.0.0.5:81');
+    expect(h.value().nodes).toEqual({ '10.0.0.1:80': 1, '10.0.0.2:80': 2, '10.0.0.4:80': 1, '10.0.0.5:81': 1 });
+    expect(host(1)).toHaveValue('10.0.0.1');
   });
 });
 

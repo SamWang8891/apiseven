@@ -82,9 +82,9 @@ export interface Address {
 }
 
 /**
- * An address with the port its host holds moved to its port, as a paste reads it (parseAddr):
- * `10.0.0.5:8080`, `[::1]:9000`. Only on the user's explicit commit (Enter, "Move <port> to Port", a
- * paste), never on leaving a field. Anything else is left as it is.
+ * An address with the port its host holds moved to its port, as parseAddr reads it: `10.0.0.5:8080`,
+ * `[::1]:9000`. Only on the user's explicit commit (Enter, "Move <port> to Port", each address of a paste
+ * of several), never on leaving a field. Anything else is left as it is.
  */
 export function committed(address: Address): Address {
   const parsed = parseAddr(address.host);
@@ -216,29 +216,6 @@ export function addNodes(up: Obj, added: NodeRow[]): { up: Obj; skipped: string[
   return { up: skipped.length === added.length ? up : writeMap(up, entries), skipped };
 }
 
-/**
- * Pasted addresses landing in node `index`'s host: the first replaces that node's host (and its
- * port, when the paste has one), the rest are added after it with the default weight (a map: at the
- * end, leaving out, and returning in `skipped`, the addresses it already has).
- */
-export function pasteNodes(up: Obj, index: number, pasted: NodeRow[]): { up: Obj; skipped: string[] } {
-  const [first, ...rest] = pasted;
-  if (!first) return { up, skipped: [] };
-  const added = rest.map((row) => ({ ...row, weight: NEW_WEIGHT }));
-  if (isObj(up.nodes)) {
-    const row = rowsOf(up.nodes)[index] ?? {};
-    const address: Address = { host: first.host ?? '', port: first.port ?? row.port };
-    const edit = setMapAddress(up, index, address, { commitDigits: true });
-    const result = addNodes(edit.ok ? edit.up : up, added);
-    return { up: result.up, skipped: edit.ok ? result.skipped : [addrOf(address.host, address.port), ...result.skipped] };
-  }
-  const nodes = [...list(up)];
-  const node: Obj = { ...(isObj(nodes[index]) ? nodes[index] : {}), host: first.host };
-  if (first.port !== undefined) node.port = first.port;
-  nodes.splice(index, 1, node, ...added.map(nodeOf));
-  return { up: setPathRaw(up, ['nodes'], nodes), skipped: [] };
-}
-
 /** Removes node `index`; the emptied list stays as an empty list of its shape while it is edited. */
 export function removeNode(up: Obj, index: number): Obj {
   if (isObj(up.nodes)) {
@@ -279,18 +256,9 @@ export function duplicateNode(up: Obj, index: number): Obj {
   return setPathRaw(up, ['nodes'], nodes);
 }
 
-/** Addresses in pasted text: separated by line breaks, commas or spaces. */
-export function parseNodeList(text: string): NodeRow[] {
-  return text
-    .split(/[\s,]+/)
-    .filter(Boolean)
-    .map((addr) => parseAddr(addr));
-}
-
-/** Whether pasted text reads as addresses (several, or one with a port) rather than a host being typed. */
-export function isNodeList(text: string): boolean {
-  const trimmed = text.trim();
-  return /[\s,]/.test(trimmed) || parseAddr(trimmed).port !== undefined;
+/** The addresses in pasted text, each as pasted: separated by line breaks, commas or spaces. */
+export function splitNodeList(text: string): string[] {
+  return text.split(/[\s,]+/).filter(Boolean);
 }
 
 /** A node's part of the requests: a fraction of 1, or standing by for a higher priority. */
