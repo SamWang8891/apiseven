@@ -2,7 +2,7 @@
 // the key, lists edited as lines or as status codes, a titled group of fields, PEM text with
 // upload, and the line that shows a problem not tied to one input. Plain helpers are in values.ts.
 import { CircleAlert, Upload } from 'lucide-react';
-import { useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
 import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, useEditingState, useLocked, type InputProps, type NumberInputProps } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
@@ -192,8 +192,8 @@ export function IssueLine({ message }: { message: string | undefined }) {
   );
 }
 
-/** A button that reads a text file (a PEM) and hands over its content. */
-function UploadButton({ label, onText }: { label: string; onText: (text: string) => void }) {
+/** A button that picks a text file (a PEM) and hands it over, to be read by the field. */
+function UploadButton({ label, onFile }: { label: string; onFile: (file: File) => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
   return (
     <>
@@ -207,7 +207,7 @@ function UploadButton({ label, onText }: { label: string; onText: (text: string)
         onChange={(e) => {
           const file = e.target.files?.[0];
           e.target.value = '';
-          if (file) void file.text().then(onText);
+          if (file) onFile(file);
         }}
       />
       <Button size="sm" variant="ghost" icon={<Upload size={13} />} aria-label={t('up.tls.uploadLabel', { label })} onClick={() => fileRef.current?.click()}>
@@ -249,12 +249,43 @@ export function PemField({
   const locked = useLocked();
   /** Session flag: the box was opened with Replace (it ends with the editing session, and on a remount). */
   const [replacing, setReplacing] = useEditingState(false);
+  // A file is read asynchronously (final wave F1, as the SSL boxes do, PemInput.tsx): what it finds
+  // goes through the handler as it is when the read finishes, so it lands on the draft as it is then,
+  // and a read is stale (ignored) once anything later happened to the field: it was typed in, given
+  // another file or changed from outside, it locked (a save in flight included) or unlocked, the
+  // editing session ended, or it went away.
+  const now = useRef({ onChange, value });
+  useLayoutEffect(() => {
+    now.current = { onChange, value };
+  });
+  const gestures = useRef(0);
+  const [session] = useEditingState(() => ({}));
+  useEffect(
+    () => () => {
+      gestures.current++;
+    },
+    [session, locked],
+  );
+  const read = (file: File) => {
+    if (locked) return;
+    const mine = ++gestures.current;
+    const at = now.current.value;
+    void file.text().then((text) => {
+      if (gestures.current !== mine || now.current.value !== at) return;
+      now.current.onChange(text.trim() === '' ? undefined : text);
+    });
+  };
+  const type = (v: string | undefined) => {
+    gestures.current++;
+    onChange(v);
+  };
   // Keep the stored key: wherever a new key stands, or a replacement box is open over the stored one.
   const keep = secret && stored !== undefined && (value !== stored || replacing) && (
     <Button
       size="sm"
       variant="ghost"
       onClick={() => {
+        gestures.current++;
         onChange(stored);
         setReplacing(false);
       }}
@@ -263,7 +294,7 @@ export function PemField({
     </Button>
   );
   const parsed = secret ? undefined : certLine(value);
-  const upload = <UploadButton label={label} onText={(text) => onChange(text.trim() === '' ? undefined : text)} />;
+  const upload = <UploadButton label={label} onFile={read} />;
 
   if (locked) {
     return (
@@ -287,6 +318,7 @@ export function PemField({
           <Button
             size="sm"
             onClick={() => {
+              gestures.current++;
               setReplacing(true);
               // An empty replacement means the stored key (or none): rule 3 of a secret field.
               if (value !== stored) onChange(stored);
@@ -312,7 +344,7 @@ export function PemField({
         rows={4}
         value={value === undefined || (replacing && value === stored) ? '' : value}
         placeholder="-----BEGIN …-----"
-        onChange={(text) => onChange(text === '' ? (replacing ? stored : undefined) : text)}
+        onChange={(text) => type(text === '' ? (replacing ? stored : undefined) : text)}
       />
       {secret && replacing && <p className="up-help">{stored !== undefined ? t('up.tls.emptyStored') : t('up.tls.emptyNone')}</p>}
       <span className="up-pem__bar">
