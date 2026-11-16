@@ -314,3 +314,43 @@ describe('a busy or unavailable Button used as a menu trigger', () => {
     expect(await screen.findByRole('menu')).toBeInTheDocument();
   });
 });
+
+// Last step, fix round 1, F7: an inert Button blocks its own activations, not the page around it.
+describe('an inert Button and the page around it (F7)', () => {
+  it('pressed while busy: the press still reaches the document (where an open non-modal popover listens, to close), and the button does nothing', async () => {
+    const user = userEvent.setup();
+    const onClick = vi.fn();
+    const onPointerDown = vi.fn();
+    render(<Button aria-label="Refresh" icon={icon} loading onClick={onClick} onPointerDown={onPointerDown} />);
+    const heard = vi.fn();
+    // Radix's DismissableLayer listens for pointerdown on the document, in the bubble phase.
+    document.addEventListener('pointerdown', heard);
+    try {
+      fireEvent.pointerDown(screen.getByRole('button', { name: 'Refresh' }), { button: 0 });
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('pointerdown', heard);
+    }
+    await user.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(onClick).not.toHaveBeenCalled();
+    expect(onPointerDown).not.toHaveBeenCalled();
+  });
+
+  it('ArrowUp and ArrowDown are left to the page (it may scroll) unless the button opens something (aria-haspopup)', () => {
+    render(
+      <>
+        <Button loading>Save</Button>
+        <Button loading aria-haspopup="menu">
+          More
+        </Button>
+      </>,
+    );
+    const plain = screen.getByRole('button', { name: 'Save' });
+    const trigger = screen.getByRole('button', { name: 'More' });
+    // fireEvent returns false when the event was prevented.
+    expect(fireEvent.keyDown(plain, { key: 'ArrowDown' })).toBe(true);
+    expect(fireEvent.keyDown(plain, { key: 'ArrowUp' })).toBe(true);
+    expect(fireEvent.keyDown(trigger, { key: 'ArrowDown' })).toBe(false);
+    expect(fireEvent.keyDown(plain, { key: 'Enter' })).toBe(false);
+  });
+});

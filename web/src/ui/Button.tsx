@@ -21,6 +21,11 @@ export type ButtonProps = Omit<ComponentProps<'button'>, 'children'> &
     loading?: boolean;
   };
 
+/** The keys an inert button never acts on: Enter and Space (which click). */
+const PRESS_KEYS = new Set(['Enter', ' ']);
+/** The keys a trigger also opens on (a menu: ArrowDown; a list: ArrowUp too): blocked only on one (aria-haspopup). */
+const TRIGGER_KEYS = new Set(['ArrowDown', 'ArrowUp']);
+
 /**
  * A button. An icon-only one shows its label (`title`, else `aria-label`) as a tooltip on hover and
  * keyboard focus, wherever a TooltipProvider is above it; elsewhere as its native title. Busy
@@ -29,9 +34,6 @@ export type ButtonProps = Omit<ComponentProps<'button'>, 'children'> &
  * but keeps focus where a keyboard user is: give an unavailable one the reason (aria-describedby).
  * `disabled` is for a button the user is never on when it turns so.
  */
-/** The keys a trigger opens on (a menu: Enter, Space, ArrowDown; a list: ArrowUp too), blocked while inert. */
-const ACTIVATION_KEYS = new Set(['Enter', ' ', 'ArrowDown', 'ArrowUp']);
-
 export function Button({ variant = 'secondary', size = 'md', icon, loading, children, className, type = 'button', disabled, title, onClick, onKeyDown, onPointerDown, ...native }: ButtonProps) {
   const tooltips = useTooltipsAvailable();
   const iconOnly = children === undefined || children === null;
@@ -60,11 +62,14 @@ export function Button({ variant = 'secondary', size = 'md', icon, loading, chil
           : onClick
       }
       // A trigger (a menu's, through asChild) opens on a key or a pointer press, not on the click: those
-      // are blocked as well. Every other key (Tab, Escape) goes on as usual.
+      // reach no handler either. The arrows are kept from the page only on a trigger (elsewhere they
+      // scroll it); every other key (Tab, Escape) goes on as usual. The press itself still reaches the
+      // document, so an open popover closes as on any press outside it.
       onKeyDown={
         inert
           ? (e) => {
-              if (!ACTIVATION_KEYS.has(e.key)) return onKeyDown?.(e);
+              const trigger = native['aria-haspopup'] !== undefined && native['aria-haspopup'] !== false && native['aria-haspopup'] !== 'false';
+              if (!PRESS_KEYS.has(e.key) && !(trigger && TRIGGER_KEYS.has(e.key))) return onKeyDown?.(e);
               e.preventDefault();
               e.stopPropagation();
             }
@@ -73,8 +78,7 @@ export function Button({ variant = 'secondary', size = 'md', icon, loading, chil
       onPointerDown={
         inert
           ? (e) => {
-              if (e.button !== 0) return onPointerDown?.(e);
-              e.stopPropagation();
+              if (e.button !== 0) onPointerDown?.(e);
             }
           : onPointerDown
       }
