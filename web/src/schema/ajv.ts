@@ -330,37 +330,49 @@ function emptyTables(value: unknown): number {
   return items.length === 0 ? 1 : items.reduce((n: number, item) => n + emptyTables(item), 0);
 }
 
-/** Whether the JSON pointer `path` is `at` or below it. */
-const atOrBelow = (path: string, at: string): boolean => path === at || path.startsWith(`${at}/`);
+/** Keywords whose subschema applies or not depending on the value: an error inside one can go away when another place is read anew. */
+const WEIGHING = new Set(['anyOf', 'oneOf', 'not', 'if', 'then', 'else', 'contains']);
+/** Keywords whose next schemaPath segment is a name (a property's, a definition's), never a keyword. */
+const NAMING = new Set(['properties', 'patternProperties', 'definitions', '$defs', 'dependencies', 'dependentSchemas']);
+
+/**
+ * Whether an error's schemaPath lies inside an anyOf, oneOf, not, if / then / else or contains. A path
+ * that starts at a definition is a `$ref` target's own (Ajv reports one from the target): where it is
+ * used is not known, so it may be inside one.
+ */
+function weighed(schemaPath: string): boolean {
+  const segments = schemaPath.replace(/^#/, '').split('/').slice(1);
+  if (segments[0] === 'definitions' || segments[0] === '$defs') return true;
+  for (let i = 0; i < segments.length; i += 1) {
+    const segment = segments[i] ?? '';
+    if (NAMING.has(segment)) i += 1;
+    else if (WEIGHING.has(segment)) return true;
+  }
+  return false;
+}
 
 /**
  * `value` (defaults applied) with each empty table read as the type its schema position asks for,
  * `[]` as `{}` where an object is wanted and `{}` as `[]` where a list is, as APISIX's validator reads
  * an empty Lua table: then minItems, required and the rest apply to it as APISIX applies them. Each
  * place is turned once (a branch of a combinator may want the other type), by the first error there.
- * Every round turns each place an error then asks for, however many (Codex final pass, X4: the 16
- * rounds of one place each stopped at the 17th), except where a failing anyOf / oneOf weighs its
- * branches (a place at or below its own): there one place a round, as a branch may want the other
- * type at another place (fix round 1, Y3). A place is an empty table of `value` and turning one leaves
- * an empty table, so there are no more rounds than empty tables, and one that finds none.
+ * A round turns together every place whose error lies outside every anyOf, oneOf, not, if / then / else
+ * and contains, however many (Codex final pass, X4: the 16 rounds of one place each stopped at the
+ * 17th); a place whose error lies inside one is turned only in a round with no place of the first kind,
+ * and then alone, so that the schema is read again before it is judged (fix round 1, Y3; final pass
+ * 2b, V4: an `if` decided anew). A place is an empty table of `value` and turning one leaves an empty
+ * table, so there are no more rounds than empty tables, and one that finds none.
  */
 function asLuaTables(schema: Obj, value: unknown, opts: CheckOptions): unknown {
   let current = withDefaults(schema, value);
   const turned = new Set<string>();
   const places = emptyTables(current);
   for (let round = 0; round <= places; round += 1) {
-    const all = schemaErrors(schema, current, opts) ?? [];
-    const errors = all.filter((e) => !turned.has(e.instancePath) && emptyTableTypeError(e, current));
+    const errors = (schemaErrors(schema, current, opts) ?? []).filter((e) => !turned.has(e.instancePath) && emptyTableTypeError(e, current));
     if (errors.length === 0) break;
-    // Ajv reports a branch's errors only with its anyOf / oneOf failing, at or below that one's place.
-    const weighed = all.filter((e) => e.keyword === 'anyOf' || e.keyword === 'oneOf').map((e) => e.instancePath);
-    let combinatorPlace = false;
-    for (const error of errors) {
+    const plain = errors.filter((e) => !weighed(e.schemaPath));
+    for (const error of plain.length > 0 ? plain : errors.slice(0, 1)) {
       if (turned.has(error.instancePath)) continue;
-      if (weighed.some((at) => atOrBelow(error.instancePath, at))) {
-        if (combinatorPlace) continue;
-        combinatorPlace = true;
-      }
       turned.add(error.instancePath);
       const wanted = String((error.params as Record<string, unknown>).type).split(',');
       const at = valueAt(current, error.instancePath);

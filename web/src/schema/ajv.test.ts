@@ -308,6 +308,19 @@ describe('fieldErrors with luaTables (as APISIX validates: an empty table is a l
     // A non-empty value of the wrong type is still refused.
     expect(fieldErrors(either, { a: { x: 1 }, b: { y: 1 } }, { luaTables: true })?.length).toBeGreaterThan(0);
   });
+
+  // Codex final pass 2b, V4: a place whose error lies inside an anyOf, oneOf, not, if / then / else or
+  // contains waits for a round with no other place, and is then turned alone: the schema is read again
+  // (here, `if` decided anew) before it is judged.
+  it('an if / then / else that depends on another place (a custom plugin’s schema): taken, as APISIX takes it, in either order', () => {
+    const conditional: Obj = { if: { properties: { a: { type: 'array' } } }, then: { properties: { b: { type: 'object' } } }, else: { properties: { b: { type: 'array' } } } };
+    const first: Obj = { allOf: [{ properties: { a: { type: 'array' } } }, conditional] };
+    expect(fieldErrors(first, { a: {}, b: {} }, { luaTables: true })).toEqual([]);
+    const last: Obj = { allOf: [conditional, { properties: { a: { type: 'array' } } }] };
+    expect(fieldErrors(last, { a: {}, b: {} }, { luaTables: true })).toEqual([]);
+    // What the branch that applies refuses is still refused.
+    expect(fieldErrors(first, { a: {}, b: [1] }, { luaTables: true })).toEqual([{ path: 'b', message: 'must be object' }]);
+  });
 });
 
 describe('specificErrors', () => {
