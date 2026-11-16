@@ -209,9 +209,29 @@ describe('a local refusal on another tab (F1)', () => {
 // the user was (the field, else the button pressed, else Save), and the dialog's own return of focus
 // does not undo it.
 describe('a conflict, then the dialog closed without overwriting (F2)', () => {
-  async function conflicted(from: 'field' | 'save') {
+  // Fix round 2, G1: Overwrite is a save of its own; refused by APISIX, focus goes where the first save
+  // came from, not to the main region the dialog's own return falls back to.
+  it('Cmd/Ctrl-S from a field, a conflict, Overwrite, refused by APISIX: focus is back in that field', async () => {
+    const { user, dialog, admin } = await conflicted('field', true);
+    await user.click(within(dialog).getByRole('button', { name: t('editor.conflict.overwrite') }));
+    expect(await within(screen.getByRole('main')).findByRole('alert')).toHaveTextContent(REFUSED);
+    expect(writesOf(admin)).toHaveLength(1);
+    await waitFor(() => expect(document.activeElement).toBe(main().getByRole('textbox', { name: 'URI' })));
+  });
+
+  it('Save pressed, a conflict, Overwrite, refused by APISIX: focus is on Save', async () => {
+    const { user, dialog } = await conflicted('save', true);
+    await user.click(within(dialog).getByRole('button', { name: t('editor.conflict.overwrite') }));
+    expect(await within(screen.getByRole('main')).findByRole('alert')).toHaveTextContent(REFUSED);
+    await waitFor(() => expect(document.activeElement).toBe(saveButton()));
+  });
+
+  async function conflicted(from: 'field' | 'save', putRefused = false) {
     undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
-    const app = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] } });
+    const app = await openEditor('#/routes/r1', {
+      objects: { routes: [ROUTE] },
+      ...(putRefused ? { replies: { 'routes/r1': (req: { method: string }) => (req.method === 'PUT' ? json(400, { error_msg: REFUSED }) : undefined) } } : {}),
+    });
     await main().findByRole('heading', { level: 1, name: 'web' });
     await app.user.keyboard('e');
     const uri = await main().findByRole('textbox', { name: 'URI' });

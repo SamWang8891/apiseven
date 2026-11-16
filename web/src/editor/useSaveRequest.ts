@@ -11,17 +11,30 @@ import { placeOf, type Place } from './focusBack';
  * button), for the same purpose (focusBack.ts returnFocus). `anyway` is Save anyway (SaveAnyway.tsx),
  * judged by `save` like the rest after the field is left.
  */
+/** Where a save came from: the field it left (and that field's place), else the control pressed. */
+export interface SaveFrom {
+  left?: HTMLElement;
+  place?: Place;
+  pressed?: HTMLElement;
+}
+
 export function useSaveRequest(
   body: RefObject<HTMLElement | null>,
   save: (force: boolean, left?: HTMLElement, anyway?: boolean, pressed?: HTMLElement, place?: Place) => Promise<void>,
   enabled: boolean,
-): (force?: boolean, anyway?: boolean) => void {
+): (force?: boolean, anyway?: boolean, from?: SaveFrom) => void {
   const latest = useRef(save);
   useLayoutEffect(() => {
     latest.current = save;
   });
-  return (force = false, anyway = false) => {
+  return (force = false, anyway = false, from?: SaveFrom) => {
     if (!enabled) return;
+    // A save that goes on from an earlier one (Overwrite, after a conflict) keeps where that one came
+    // from: what has focus now is the dialog's button, which goes with the dialog.
+    if (from) {
+      void latest.current(force, from.left, anyway, from.pressed, from.place);
+      return;
+    }
     const focused = document.activeElement;
     const left = focused instanceof HTMLElement && body.current?.contains(focused) ? focused : undefined;
     const pressed = !left && focused instanceof HTMLElement && focused !== document.body ? focused : undefined;

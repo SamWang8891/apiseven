@@ -260,10 +260,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     refocusNext.current = undefined;
     clearTimeout(refocusTimer.current);
     // Only focus the save lost is given back: if the user has gone on meanwhile (another control, a
-    // field), it stays where they went.
+    // field), it stays where they went. The main region counts as lost: it is where a closing dialog
+    // parks focus that had nowhere else to go (ui/dialogFocus.ts), never a place the user chose (G1).
     const lost = () => {
       const at = document.activeElement;
-      return !at || at === document.body || at === next.pressed;
+      return !at || at === document.body || at === next.pressed || at.tagName === 'MAIN';
     };
     const back = () => returnFocus(next.left, next.place, next.pressed, next.anyway ? anywayRef.current : undefined, saveRef.current);
     if (!lost()) return;
@@ -554,7 +555,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         conflict={conflict?.item}
         onOverwrite={() => {
           setConflict(undefined);
-          requestSave(true, conflict?.anyway);
+          // A save of its own, from where the first one came (G1): refused, focus goes back there.
+          requestSave(true, conflict?.anyway, conflict?.from);
         }}
         anyway={saveAnyway}
         onReload={reloadTheirs}
