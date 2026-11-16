@@ -15,7 +15,7 @@ import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
 import { holdsKeyMaterial, mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
 import { hideNeverShown, redactSecrets } from '../schema/secrets';
-import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
+import { Button, CodeEditor, useEditingState, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
 import { maskConfig } from './secrets';
 
@@ -60,8 +60,12 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
   onHeld: (held: boolean) => void;
 }) {
   const locked = useLocked();
-  /** `error` (shown) and `held` (for Save) are set while the text is not emitted. */
-  const [state, setState] = useState(() => stateOf(conf, newKeyNotes()));
+  /**
+   * `error` (shown) and `held` (for Save) are set while the text is not emitted. The text and its notes
+   * are editing state, as the JSON tab's: they start over from the config when the editing session
+   * ends (a save, Discard, a lock), so no note of an earlier session resolves (schema/keyNotes.ts rule 2).
+   */
+  const [state, setState] = useEditingState(() => stateOf(conf, newKeyNotes()));
   const [revealed, setRevealed] = useReveal();
   // A config changed elsewhere replaces the text, unless the text holds Save: what was typed stays.
   let current = state;

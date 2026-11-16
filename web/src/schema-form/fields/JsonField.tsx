@@ -2,7 +2,7 @@ import { Eye, EyeOff } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
-import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '../../ui';
+import { CodeEditor, Field, Textarea, useEditingState, useLocked, usePending, useReveal } from '../../ui';
 import { inexactNumberIn } from '../../ui/decimal';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
@@ -71,16 +71,19 @@ export function JsonField({
   const help = useFieldHelp(prop, node, value);
   const fieldName = useFieldName(path);
   // While editing, what is never shown (a PEM private key, a client_key) is a note in the text (fix round 1, R1).
+  // The text, its notes, why it is not emitted and the value it was synced with are editing state, as the
+  // JSON tab's: they start over from the value when the editing session ends (a save, Discard, a lock),
+  // so no note of an earlier session resolves (schema/keyNotes.ts rule 2; Codex final pass, X2).
   const under = keyPath(path).at(-1);
-  const [shownText, setShownText] = useState(() => veiledText(value, newKeyNotes(), under));
+  const [shownText, setShownText] = useEditingState(() => veiledText(value, newKeyNotes(), under));
   const { text, notes } = shownText;
   /** Private-key text was in the editor since its undo history was last emptied (schema/keyNotes.ts rule 3). */
   const sawKey = useRef(false);
   const [historyEpoch, setHistoryEpoch] = useState(0);
   /** Why the text typed is not emitted: shown on the field, and held for Save. */
-  const [invalid, setInvalid] = useState<{ error: string; held: string }>();
+  const [invalid, setInvalid] = useEditingState<{ error: string; held: string } | undefined>(undefined);
   usePending(locked ? undefined : invalid?.held);
-  const [synced, setSynced] = useState(value);
+  const [synced, setSynced] = useEditingState(value);
   const [revealed, setRevealed] = useReveal();
   const encrypt = useEncryptPaths();
   // A never-shown value (a client_key, at or below this field) stays masked when the rest is shown.
