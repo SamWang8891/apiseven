@@ -382,6 +382,9 @@ Known limitations:
   [Security notes](#security-notes)). Dropping it needs a validator that checks schemas without
   generating code.
 
+[docs/known-issues.md](docs/known-issues.md) lists what is known to be wrong, incomplete or
+surprising in this release, with workarounds, including where private keys are and are not hidden.
+
 ## Development
 
 You need Node.js 22, Go 1.27 and Docker.
