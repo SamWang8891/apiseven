@@ -355,7 +355,8 @@ export const en: Record<string, string> = {
   'delete.breaksWarning': 'These use it too, and stop working without it (APISIX does not check them):',
   'delete.done': 'Deleted {name}',
   'delete.reset.title': 'Reset the {kind} of {name}?',
-  'delete.reset.body': 'This removes the settings stored for {name} from APISIX. The plugin stays wherever it is configured, and runs without them.',
+  // What a plugin does without its metadata is its own: opentelemetry returns at once (apisix/plugins/opentelemetry.lua 378–382).
+  'delete.reset.body': 'This removes the settings stored for {name} from APISIX. The plugin stays configured wherever it is; what it does without these settings depends on the plugin, and some do nothing without them.',
   'delete.reset.done': 'Reset {name}',
   'bulk.delete.title': 'Delete {count} {plural}?',
   'bulk.delete.more': 'and {count} more',
