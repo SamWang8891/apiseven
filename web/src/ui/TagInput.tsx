@@ -20,10 +20,18 @@ export type TagInputProps = Omit<ComponentProps<'input'>, 'value' | 'onChange' |
     fieldName?: string;
   };
 
+/** What a paste is split on. */
+const SEPARATORS = /[\s,]+/;
+const SEPARATED = /[\s,]/;
+
 /**
- * A list of short strings. Enter, comma, Tab or leaving the box adds what was typed; a paste is split
- * on whitespace and commas; Backspace in the empty box removes the last tag; duplicates are skipped.
- * Text `validate` refuses stays in the box, flagged, and holds Save (usePending) until it is changed.
+ * A list of short strings. Enter, comma, Tab or leaving the box adds what was typed; a paste replaces
+ * the selection (or goes in at the caret) and the box's text is then split on whitespace and commas
+ * (final wave O2); Backspace in the empty box removes the last tag; duplicates are skipped. Text
+ * `validate` refuses stays in the box, flagged, and holds Save (usePending) until it is changed. When a
+ * part of a paste is refused, the parts before it are added, and it and every part after it stay in
+ * the box, so nothing pasted is lost; that text is split the same way when it is next committed, once
+ * the refused part is corrected (final wave O1). Text typed is one tag, spaces and all.
  */
 export function TagInput({
   label, help, error, required, htmlFor, id, value, onChange, validate, mono, placeholder, className, disabled, onBlur, fieldName, ...native
@@ -31,6 +39,8 @@ export function TagInput({
   const locked = useLocked();
   const [draft, setDraft] = useEditingState('');
   const [rejected, setRejected] = useEditingState<string | undefined>(undefined);
+  /** Editing state: the box holds several parts of a paste, left after a refused one: committed, they are split again (O1). */
+  const [parts, setParts] = useEditingState(false);
   // Text still being typed is added when the box is left (an editor's Save leaves it first); text
   // that was refused cannot be, so Save waits for it.
   const text = draft.trim();
@@ -61,16 +71,20 @@ export function TagInput({
     );
   }
 
-  /** Adds the candidates that pass; returns the text to leave in the box (the first refused one). */
+  /**
+   * Adds the candidates that pass, in order, up to the first one refused; returns the text to leave in
+   * the box: that one and every one after it, not looked at yet (O1), or '' when all were taken.
+   */
   function add(candidates: string[]): string {
     const next = [...value];
-    for (const tag of candidates.map((c) => c.trim()).filter(Boolean)) {
+    const tags = candidates.map((c) => c.trim()).filter(Boolean);
+    for (const [i, tag] of tags.entries()) {
       if (next.includes(tag)) continue;
       const message = validate?.(tag);
       if (message) {
         setRejected(message);
         if (next.length > value.length) onChange(next);
-        return tag;
+        return tags.slice(i).join(' ');
       }
       next.push(tag);
     }
@@ -79,8 +93,17 @@ export function TagInput({
     return '';
   }
 
+  /** Splits `text` as a paste is split, adds what passes, and leaves the rest in the box. */
+  function addParts(text: string): string {
+    const left = add(text.split(SEPARATORS));
+    setDraft(left);
+    setParts(SEPARATED.test(left));
+    return left;
+  }
+
   function commit(): boolean {
     if (!draft.trim()) return true;
+    if (parts) return addParts(draft) === '';
     const left = add([draft]);
     setDraft(left);
     return left === '';
@@ -101,9 +124,14 @@ export function TagInput({
 
   function onPaste(e: ClipboardEvent<HTMLInputElement>) {
     const text = e.clipboardData.getData('text');
-    if (!/[\s,]/.test(text)) return;
+    // One word: the browser puts it where the selection is, as typing would.
+    if (!SEPARATED.test(text)) return;
     e.preventDefault();
-    setDraft(add((draft + text).split(/[\s,]+/)));
+    // Several: the paste replaces the selection (or goes in at the caret) first, then the box's text is split (O2).
+    const { selectionStart, selectionEnd } = e.currentTarget;
+    const start = selectionStart ?? draft.length;
+    const end = selectionEnd ?? start;
+    addParts(draft.slice(0, start) + text + draft.slice(end));
   }
 
   const classes = ['ui-tags', shownError && 'ui-tags--error', disabled && 'ui-tags--disabled', className].filter(Boolean).join(' ');
@@ -147,6 +175,8 @@ export function TagInput({
           onChange={(e) => {
             setDraft(e.target.value);
             setRejected(undefined);
+            // Emptied, the box holds no part of a paste any more: what is typed next is one tag.
+            if (e.target.value === '') setParts(false);
           }}
           onKeyDown={onKeyDown}
           onPaste={onPaste}

@@ -368,6 +368,27 @@ describe('what the Matching tab shows is what gets saved', () => {
     expect(writesOf(admin)[0]?.body).not.toHaveProperty('uri');
   });
 
+  it('URIs pasted with a refused one between: the ones after it stay in the box and Save is held; corrected, Save sends all of them (final wave O1)', async () => {
+    const { user, admin } = await openRoute(SHOP, '#/routes/shop?tab=matching');
+    await settled();
+    await user.keyboard('e');
+    const uris = main().getByRole<HTMLInputElement>('textbox', { name: `${t('rt.match.uris')} (${t('ui.required')})` });
+    await user.click(uris);
+    await user.paste('/first invalid /last');
+    expect(uris).toHaveValue('invalid /last');
+    saveKeys();
+    const held = t('ui.pending.tag', { field: t('rt.match.uris'), text: 'invalid /last', reason: t('rt.issue.uriSlash', { uri: 'invalid' }) });
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixHeld', { fix: t('editor.fixOne'), message: held })));
+    expect(writesOf(admin)).toEqual([]);
+
+    await user.click(uris);
+    uris.setSelectionRange(0, 'invalid'.length);
+    await user.keyboard('/fixed');
+    saveKeys();
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.uris).toEqual(['/*', '/first', '/fixed', '/last']);
+  });
+
   it('a condition row that holds input blocks Save; fixed, the PUT has exactly the rows shown', async () => {
     const { user, admin } = await openRoute(API_V1, '#/routes/api-v1?tab=matching');
     await settled();
