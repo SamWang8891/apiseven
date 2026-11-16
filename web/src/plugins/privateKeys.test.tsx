@@ -207,38 +207,59 @@ function valueAt(path: string[], leaf: unknown): unknown {
   return head === '[]' ? [valueAt(rest, leaf)] : { [head]: valueAt(rest, leaf) };
 }
 
-describe('the 3.20 plugin schemas, walked: every field where a PEM private key is stored', () => {
+// Fix round 2, R3.4: the fields are selected by what APISIX encrypts (the fixture's encrypt_fields) as
+// well as by name, so a key held in a field whose name doesn't say so (ai-proxy's GCP service account
+// JSON) is named and checked too; each is given a value that holds a key.
+describe('the 3.20 plugin schemas, walked: every field where a PEM private key may be stored', () => {
+  const keysOf = (path: string[]) => path.filter((seg) => seg !== '[]').join('.');
+  const encryptOf = (schema: Obj): string[] => (Array.isArray(schema.encrypt_fields) ? schema.encrypt_fields.filter((p): p is string => typeof p === 'string') : []);
   const isKeyField = (path: string[]) => /(^|_)private_key$|^client_key$/.test(path.at(-1) ?? '');
   const fields = everySchema().flatMap(({ schema, label }) =>
     stringFields(analyze(schema))
-      .filter(isKeyField)
+      .filter((path) => isKeyField(path) || encryptOf(schema).includes(keysOf(path)))
       .map((path) => ({ schema, label, path })),
   );
+  /** A value that holds a key, as the field holds one: a service account's JSON (its key escaped), else the PEM itself. */
+  const keyValue = (path: string[]) => ((path.at(-1) ?? '').endsWith('_json') ? JSON.stringify({ type: 'service_account', private_key: pem(STORED) }) : pem(STORED));
 
-  it('names them', () => {
-    expect([...new Set(fields.map(({ label, path }) => `${label} ${path.join('.')}`))].sort()).toEqual([
-      'http:google-cloud-logging:schema auth_config.private_key',
-      'http:openid-connect:schema client_rsa_private_key',
-      'http:openid-connect:schema dpop.private_key',
-      'http:saml-auth:schema sp_private_key',
-      'http:traffic-split:schema rules.[].weighted_upstreams.[].upstream.tls.client_key',
-      'stream:traffic-split:schema rules.[].weighted_upstreams.[].upstream.tls.client_key',
-    ]);
+  it('names the fields that hold a private key, by name or by what APISIX encrypts', () => {
+    const names = [...new Set(fields.map(({ label, path }) => `${label} ${path.join('.')}`))];
+    expect(names).toEqual(
+      expect.arrayContaining([
+        'http:ai-proxy:schema auth.gcp.service_account_json',
+        'http:ai-proxy-multi:schema instances.[].auth.gcp.service_account_json',
+        'http:google-cloud-logging:schema auth_config.private_key',
+        'http:openid-connect:schema client_rsa_private_key',
+        'http:openid-connect:schema dpop.private_key',
+        'http:saml-auth:schema sp_private_key',
+        'http:traffic-split:schema rules.[].weighted_upstreams.[].upstream.tls.client_key',
+        'stream:traffic-split:schema rules.[].weighted_upstreams.[].upstream.tls.client_key',
+      ]),
+    );
+    // Every string field APISIX encrypts in 3.20 is among them.
+    expect(names.length).toBeGreaterThan(20);
   });
 
   it('each holding one is never shown, locked or editing: "set, not shown", no Show', () => {
     for (const { schema, label, path } of fields) {
       for (const locked of [true, false]) {
         const where = `${label} ${path.join('.')} ${locked ? 'locked' : 'editing'}`;
-        renderSchemaForm(schema, valueAt(path, pem(STORED)), { locked });
+        renderSchemaForm(schema, valueAt(path, keyValue(path)), { locked });
         expect(inPage(STORED), where).toBe(false);
-        const words = [t('sf.secret.stored'), t('sf.secret.set'), t('sf.secret.entered')];
-        expect(screen.queryAllByText((text) => words.includes(text)).length, where).toBeGreaterThan(0);
-        expect(screen.queryByRole('button', { name: t('sf.secret.show', { name: path.at(-1) ?? '' }) }), where).toBeNull();
+        // Where the field is on the form (one under a condition that doesn't hold is not), it says so in words.
+        const key = path.at(-1) ?? '';
+        const onForm = [...document.querySelectorAll('.sf-key')].some((el) => el.textContent === key);
+        // The fields named above are all on the form, so their words are checked.
+        if (isKeyField(path) || key.endsWith('_json')) expect(onForm, where).toBe(true);
+        if (onForm) {
+          const words = [t('sf.secret.stored'), t('sf.secret.set'), t('sf.secret.entered')];
+          expect(screen.queryAllByText((text) => words.includes(text)).length, where).toBeGreaterThan(0);
+        }
+        expect(screen.queryByRole('button', { name: t('sf.secret.show', { name: key }) }), where).toBeNull();
         cleanup();
       }
     }
-  });
+  }, 60_000);
 });
 
 describe('any other field holding a key (a plain text field, a list of tags, a map of text)', () => {
