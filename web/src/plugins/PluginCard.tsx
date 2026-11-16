@@ -17,7 +17,7 @@ import { ConfigJson } from './ConfigJson';
 import { MetaForm } from './MetaForm';
 import { signInOf, signInRole } from './auth';
 import { formSchemaOf, isDisabled, META, metaOf, setDisabled, withMeta, withoutMeta } from './meta';
-import { schemaFor, subsystemOf, type Scope } from './scope';
+import { runsForInstance, schemaFor, subsystemOf, type Scope } from './scope';
 import { runOptionsNote, signInBadge, signInNote } from './signInText';
 import { pluginSummary } from './summary';
 import { configErrors } from './validate';
@@ -85,9 +85,23 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
   // doesn't know is not used at all; one that can't be classified yet gets no switch and no claim.
   const role = signInRole(scope, name, info, list === 'loaded');
   const signIn = useMemo(() => (role === 'signIn' ? signInOf(name, conf) : undefined), [role, name, conf]);
-  const badge = signIn ? signInBadge(name, signIn.state) : role === 'unused' ? signInBadge(name, 'unused') : undefined;
-  const note = signIn ? signInNote(name, signIn) : role === 'unused' ? t('pl.card.signIn.unusedNote', { name }) : undefined;
-  const runNote = role === 'signIn' && (scope === 'consumer' || scope === 'credential') ? runOptionsNote(scope, name) : undefined;
+  // A plugin APISIX runs for the whole instance (scope.ts): this entry does nothing, on or off, so it has
+  // no switch and says so (final wave D5).
+  const instance = runsForInstance(name, info);
+  const badge = instance
+    ? { label: t('pl.card.instance'), className: 'pl-card__signin' }
+    : signIn
+      ? signInBadge(name, signIn.state)
+      : role === 'unused'
+        ? signInBadge(name, 'unused')
+        : undefined;
+  const note = instance ? t('pl.card.instanceNote', { name }) : signIn ? signInNote(name, signIn) : role === 'unused' ? t('pl.card.signIn.unusedNote', { name }) : undefined;
+  const runNote = instance
+    ? t('pl.meta.instance', { name })
+    : role === 'signIn' && (scope === 'consumer' || scope === 'credential')
+      ? runOptionsNote(scope, name)
+      : undefined;
+  const switchless = role !== undefined || instance;
   // Until the plugin list says which fields are secret, there is no summary to leak one; a plugin
   // this APISIX does not know shows none either (any of its values may be a secret).
   const summary = list === 'loading' || !info ? '' : config ? pluginSummary(name, config, encrypt) : (JSON.stringify(conf) ?? '');
@@ -96,7 +110,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
   const unchecked = useMemo(() => (off && info ? configErrors(conf, info, scope) : []), [off, info, conf, scope]);
 
   return (
-    <div ref={ref} role="group" aria-labelledby={nameId} className={['pl-card', open && 'pl-card--open', off && !role && 'pl-card--off', problems > 0 && 'pl-card--error'].filter(Boolean).join(' ')}>
+    <div ref={ref} role="group" aria-labelledby={nameId} className={['pl-card', open && 'pl-card--open', off && !switchless && 'pl-card--off', problems > 0 && 'pl-card--error'].filter(Boolean).join(' ')}>
       <div className="pl-card__head">
         <button
           type="button"
@@ -129,7 +143,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
               {badge.label}
             </span>
           )}
-          {config && !role && (
+          {config && !switchless && (
             <Switch
               aria-label={t('pl.card.enable', { name })}
               checked={!off}
@@ -161,7 +175,7 @@ export const PluginCard = memo(function PluginCard({ name, conf, stored, info, l
               note={note}
               danger={signIn?.state === 'stillSignsIn'}
               runNote={runNote}
-              switchless={role !== undefined}
+              switchless={switchless}
               errorResponseIgnored={subsystemOf(scope) === 'stream' ? 'stream' : role !== undefined ? 'signIn' : undefined}
               unchecked={unchecked}
               onChange={onChange}
