@@ -4,7 +4,9 @@
 import { CircleAlert, Upload } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
-import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, useEditingState, useLocked, type InputProps, type NumberInputProps } from '../ui';
+import { shown } from '../resources/ssls/pemBox';
+import { holdsPrivateKey, MASK } from '../schema/secrets';
+import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, useEditingState, useLocked, usePending, type InputProps, type NumberInputProps } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import { certLine } from './values';
 
@@ -218,8 +220,19 @@ function UploadButton({ label, onFile }: { label: string; onFile: (file: File) =
 }
 
 /**
+ * Why a certificate field doesn't take `text`: it holds private-key material, or the marker left where
+ * some was masked (the SSL editor's CA box, pemBox.ts heldWhy, detects both the same way).
+ */
+function keyWhy(text: string): string | undefined {
+  if (holdsPrivateKey(text)) return t('ssl.pem.hasKey');
+  return text.includes(MASK.slice(0, 1)) ? t('ssl.pem.markerCert') : undefined;
+}
+
+/**
  * PEM text: pasted, or read from a file. Locked, a certificate that parses reads as its subject and
- * expiry. A `secret` (a private key) is never shown once set: it reads "set, not shown" (the stored
+ * expiry. A certificate field never shows private-key material: a value holding some reads "holds a
+ * private key, not shown" (an empty box stands over it and keeps it), and text or a file holding
+ * some is refused there. A `secret` (a private key) is never shown once set: it reads "set, not shown" (the stored
  * key) or "a new key was entered, not shown", with Replace (APISIX hands back only its encrypted form
  * anyway). `stored` is the key as the editor last loaded it (from the frame, never what the field saw
  * when it mounted, so a tab switch changes nothing): an empty replacement keeps it, and "Keep the
@@ -266,18 +279,46 @@ export function PemField({
     },
     [session, locked],
   );
+  // A certificate field (not `secret`) never shows private-key material (final wave F3, as the SSL
+  // editor's CA box): a value holding some (APISIX checks only the length of `ca_certs` entries) is
+  // `hidden`, the box empty over it and keeping it; text holding some, or the marker left where some
+  // was masked, is not taken: the box holds it (Save refused, naming the field) while the value stays
+  // as it was, and its key blocks are masked when the box is left; a file holding some changes nothing,
+  // and says why until the box next changes. Editing state: they end with the editing session.
+  const hidden = !secret && holdsPrivateKey(value);
+  const [held, setHeld] = useEditingState<string | undefined>(undefined);
+  const [fileWhy, setFileWhy] = useEditingState<string | undefined>(undefined);
+  const heldWhy = held === undefined ? undefined : keyWhy(held);
+  usePending(locked || heldWhy === undefined ? undefined : t('ui.pending.problem', { field: label, problem: heldWhy }));
   const read = (file: File) => {
     if (locked) return;
     const mine = ++gestures.current;
     const at = now.current.value;
     void file.text().then((text) => {
       if (gestures.current !== mine || now.current.value !== at) return;
+      if (!secret && holdsPrivateKey(text)) {
+        setFileWhy(t('ssl.pem.fileHasKey'));
+        return;
+      }
+      setHeld(undefined);
+      setFileWhy(undefined);
       now.current.onChange(text.trim() === '' ? undefined : text);
     });
   };
   const type = (v: string | undefined) => {
     gestures.current++;
     onChange(v);
+  };
+  const typeCert = (text: string) => {
+    gestures.current++;
+    setFileWhy(undefined);
+    if (keyWhy(text) !== undefined) {
+      setHeld(text);
+      return;
+    }
+    setHeld(undefined);
+    // An empty box over a value it can't show keeps that value.
+    if (!(text === '' && hidden)) onChange(text === '' ? undefined : text);
   };
   // Keep the stored key: wherever a new key stands, or a replacement box is open over the stored one.
   const keep = secret && stored !== undefined && (value !== stored || replacing) && (
@@ -293,10 +334,18 @@ export function PemField({
       {t('up.tls.keepKey')}
     </Button>
   );
-  const parsed = secret ? undefined : certLine(value);
+  // Key material is detected before any parsing.
+  const parsed = secret || hidden ? undefined : certLine(value);
   const upload = <UploadButton label={label} onFile={read} />;
 
   if (locked) {
+    if (hidden) {
+      return (
+        <Field label={label} error={error}>
+          <ReadOnlyValue>{t('up.tls.keyInCert')}</ReadOnlyValue>
+        </Field>
+      );
+    }
     return (
       <Field label={label} error={error}>
         {secret || parsed !== undefined || !value ? (
@@ -331,6 +380,30 @@ export function PemField({
           {keep}
         </span>
       </Field>
+    );
+  }
+
+  if (!secret) {
+    const problems = [fileWhy, heldWhy ?? error].filter((m): m is string => m !== undefined && m !== '');
+    return (
+      <div className="up-pem">
+        <Textarea
+          label={label}
+          help={hidden && held === undefined ? t('up.tls.keyInCertKept') : (parsed ?? help)}
+          error={problems.length > 0 ? problems.join(' ') : undefined}
+          mono
+          rows={4}
+          value={held ?? (hidden || value === undefined ? '' : value)}
+          placeholder="-----BEGIN …-----"
+          onChange={typeCert}
+          // Leaving masks the key blocks of text that was not taken; it stays held.
+          onBlur={() => held !== undefined && setHeld(shown('cert', held, false))}
+        />
+        <span className="up-pem__bar">
+          {upload}
+          {extra}
+        </span>
+      </div>
     );
   }
 

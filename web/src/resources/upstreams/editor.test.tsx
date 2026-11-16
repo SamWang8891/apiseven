@@ -10,6 +10,7 @@ import { newPathFor } from '../../router/paths';
 import { main, openEditor, writesOf } from '../../test/editor';
 import { editableControls } from '../../test/schemaForm';
 import { upstreamSchema } from '../../test/upstreamSchema';
+import { EC_SEC1_KEY, RSA_PKCS1_KEY } from '../../test/pairs';
 import { getToasts } from '../../ui/toast';
 
 /** The accessible name of a field marked required. */
@@ -138,6 +139,31 @@ describe('the upstream editor', () => {
     await user.click(tab(t('up.section.tls')));
     expect(await main().findByText(t('up.tls.mode.none'))).toBeInTheDocument();
     expect(main().queryByText(t('up.tls.mode.inline'))).not.toBeInTheDocument();
+  });
+
+  // Final wave F3: key material where a certificate belongs is never shown, refused when typed, kept when stored.
+  it('a CA certificate entry holding a private key: not on the page, kept by a save of another field; key text pasted there holds Cmd/Ctrl-S, naming the field', async () => {
+    const KEYED: Obj = { ...POOL, tls: { ca_certs: [RSA_PKCS1_KEY] } };
+    const { user, admin } = await openEditor('#/upstreams/web-pool?tab=tls', { objects: { upstreams: [KEYED] } });
+    await main().findByText(t('up.tls.keyInCert'));
+    expect(document.body.innerHTML).not.toContain('BEGIN RSA PRIVATE KEY');
+    await user.keyboard('e');
+    const box = await main().findByRole('textbox', { name: t('up.tls.caN', { n: 1 }) });
+    expect(box).toHaveValue('');
+    await user.click(box);
+    await user.paste(EC_SEC1_KEY);
+    fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+    // The save blurs the box first, which masks the key: the toast names the field, and why it holds.
+    await waitFor(() => expect(getToasts().at(-1)?.message).toContain(t('ui.pending.problem', { field: t('up.tls.caN', { n: 1 }), problem: t('ssl.pem.markerCert') })));
+    expect(document.body.innerHTML).not.toContain('BEGIN EC PRIVATE KEY');
+    expect(writesOf(admin)).toEqual([]);
+    await user.clear(box);
+    await user.click(tab(t('up.tab.general')));
+    await user.type(await main().findByRole('textbox', { name: t('up.general.name') }), '-2');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.tls).toEqual({ ca_certs: [RSA_PKCS1_KEY] });
+    expect(document.body.innerHTML).not.toContain('BEGIN RSA PRIVATE KEY');
   });
 
   // Fix round 1, F3/F4: the node table on the page: what a save sends is what the host fields show.
