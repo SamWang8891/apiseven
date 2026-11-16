@@ -2,18 +2,22 @@
 // remote_addr/remote_addrs. The form edits each as one list; on write, one value goes in the
 // single key and several in the plural one, and the other key of the pair is always removed
 // (APISIX refuses both, "only one of host or hosts is allowed"). One value the single key's schema
-// refuses stays in the plural key, where it is legal.
+// refuses stays in the plural key, where it stays shown and flagged (a single key holding it may not
+// be shown at all: readPair skips an empty one).
 import type { Obj } from '../../api/types';
+import { hostProblem, schemaAddress } from './validate';
 
 /**
- * Whether one value may stand in the single key, for the pairs whose single key is stricter than the
- * plural one's items: `uri` is a string of 1–4096 characters, `uris` items any string (APISIX 3.20
- * schema_def.lua 642–650). `host`/`hosts` (host_def, 58–61, 659–665), `remote_addr`/`remote_addrs`
- * (remote_addr_def, 91, 666–672) and `sni`/`snis` (host_def_pat, 922–932, 1100–1112) share one
- * definition, so a value one of them refuses the other refuses too.
+ * Whether one value may stand in the single key, by the single key's schema (APISIX 3.20
+ * schema_def.lua): `uri` a string of 1–4096 characters (642; `uris` items any string, 643–650);
+ * `host` host_def (58–61, 659) and `sni` the same pattern (922–925, 1100–1104); `remote_addr`
+ * remote_addr_def (91–95, 666). A value it refuses is kept in the plural key.
  */
 const FITS_SINGLE: Record<string, (value: string) => boolean> = {
   uri: (value) => value.length >= 1 && value.length <= 4096,
+  host: (value) => hostProblem(value) === undefined,
+  sni: (value) => hostProblem(value) === undefined,
+  remote_addr: (value) => schemaAddress(value),
 };
 
 /** The list, from whichever key is set; the single key wins when (invalidly) both are. */

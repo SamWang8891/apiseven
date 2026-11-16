@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
+import { ctxOf, itemOf } from '../../test/ctx';
 import { readPair, writePair } from './pairs';
+import { routeIssues } from './validate';
+
+const ENV = { isNew: false, ctx: ctxOf({ upstreams: [itemOf('u1')] }) };
 
 const PAIRS = [
   ['host', 'hosts', 'a.example', 'b.example'],
@@ -63,9 +67,22 @@ describe('one value the single key would refuse stays in the plural key', () => 
     expect(writePair({ uris: ['/a', long] }, 'uri', 'uris', [`/${'a'.repeat(4095)}`])).toEqual({ uri: `/${'a'.repeat(4095)}` });
   });
 
-  it('host, remote_addr and sni share one definition with their plural items: one value goes to the single key', () => {
-    expect(writePair({ hosts: ['a', ''] }, 'host', 'hosts', [''])).toEqual({ host: '' });
-    expect(writePair({ remote_addrs: ['10.0.0.1', 'x'] }, 'remote_addr', 'remote_addrs', ['x'])).toEqual({ remote_addr: 'x' });
+  // Fix round 1, R1.2 (this expectation changed): host, remote_addr and sni follow the same rule, so a
+  // value the single key refuses stays in the plural key, shown and flagged, instead of `host: ''`,
+  // which readPair would not show.
+  it('host, remote_addr and sni: one value the single key refuses stays in the plural key; one it takes goes to the single key', () => {
+    expect(writePair({ hosts: ['a', ''] }, 'host', 'hosts', [''])).toEqual({ hosts: [''] });
+    expect(writePair({ hosts: ['a', 'bad host'] }, 'host', 'hosts', ['bad host'])).toEqual({ hosts: ['bad host'] });
+    expect(writePair({ hosts: ['a', 'b.test'] }, 'host', 'hosts', ['b.test'])).toEqual({ host: 'b.test' });
+    expect(writePair({ remote_addrs: ['10.0.0.1', 'x'] }, 'remote_addr', 'remote_addrs', ['x'])).toEqual({ remote_addrs: ['x'] });
+    expect(writePair({ remote_addrs: ['x', '10.0.0.0/8'] }, 'remote_addr', 'remote_addrs', ['10.0.0.0/8'])).toEqual({ remote_addr: '10.0.0.0/8' });
+    expect(writePair({ snis: ['a.test', ''] }, 'sni', 'snis', [''])).toEqual({ snis: [''] });
     expect(writePair({ snis: ['a.test', 'b.test'] }, 'sni', 'snis', ['b.test'])).toEqual({ sni: 'b.test' });
+  });
+
+  it("a host kept in hosts that way stays shown and flagged by the route's check", () => {
+    const next = writePair({ uri: '/x', hosts: ['a', ''] }, 'host', 'hosts', ['']);
+    expect(readPair(next, 'host', 'hosts')).toEqual(['']);
+    expect(routeIssues({ ...next, upstream_id: 'u1' }, ENV).map((issue) => issue.path)).toContain('hosts.0');
   });
 });
