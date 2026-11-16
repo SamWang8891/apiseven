@@ -3,12 +3,14 @@ import {
   ECHO,
   addPlugin,
   codeText,
+  echoUpstream,
   expect,
   expectSameQuietly,
   gateway,
   gatewayAnswers,
   eventually,
   openEditor,
+  openList,
   pluginCard,
   recordWrites,
   save,
@@ -173,4 +175,37 @@ test('every plugin the picker offers for a route can be added and its card opene
   if (await ask.isVisible()) await ask.getByRole('button', { name: t('editor.leave.confirm') }).click();
   await expect(main.getByRole('button', { name: t('editor.edit'), exact: true })).toBeVisible();
   expect((await admin.value(`routes/${id}`))?.plugins).toBeUndefined();
+});
+
+// Final wave E1: a route whose service runs a script runs that script instead of every plugin (its own,
+// its plugin config's and its service's), and says so.
+test('a route whose service runs a script: the Plugins tab says the script runs instead, the list marks its plugin not run, and the gateway does not run it', async ({ page, admin }) => {
+  const service = `${PREFIX}svc-script-${uid()}`;
+  await admin.put(`services/${service}`, { name: service, script: 'local _M = {} return _M', upstream: echoUpstream() });
+  const { id, host } = await storedRoute(admin, { upstream: undefined, service_id: service, plugins: { 'limit-count': { count: 1, time_window: 60, rejected_code: 503 } } });
+  // limit-count would refuse the second request; the service's script runs instead of it.
+  await gatewayAnswers(host, 200);
+  for (let i = 0; i < 3; i++) expect((await gateway(ECHO.path, { host })).status).toBe(200);
+  const main = await openEditor(page, `routes/${id}?tab=plugins`);
+  await expect(main.getByRole('tabpanel')).toContainText(t('rt.pl.serviceScriptNote'));
+  const list = await openList(page, 'routes');
+  await expect(list.getByRole('row').filter({ hasText: id })).toContainText(t('cell.plugin.notRun'));
+  await admin.del(`routes/${id}`);
+  await admin.del(`services/${service}`);
+});
+
+// Final wave D5: a plugin APISIX runs for the whole instance (inspect) does nothing in an object's
+// plugins, so its entry says so and offers no switch.
+test('a plugin APISIX runs for the whole instance (inspect): its card reads No effect here, with no switch, locked or editing, and the list says no effect here', async ({ page, admin }) => {
+  const { id } = await storedRoute(admin, { plugins: { inspect: {} } });
+  await openEditor(page, `routes/${id}?tab=plugins`);
+  const card = pluginCard(page, 'inspect');
+  await expect(card).toContainText(t('pl.card.instance'));
+  await unlock(page);
+  await expect(card).toContainText(t('pl.card.instance'));
+  await expect(card.getByRole('switch', { name: t('pl.card.enable', { name: 'inspect' }) })).toHaveCount(0);
+  await page.getByRole('main').getByRole('button', { name: t('editor.discard'), exact: true }).click();
+  const list = await openList(page, 'routes');
+  await expect(list.getByRole('row').filter({ hasText: id })).toContainText(t('cell.plugin.noEffect'));
+  await admin.del(`routes/${id}`);
 });

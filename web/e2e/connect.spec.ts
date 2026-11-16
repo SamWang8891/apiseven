@@ -1,4 +1,4 @@
-import { banner, env, expect, goto, openEditor, openList, saveConnections, t, test, toast } from './fixtures';
+import { afterFrames, banner, env, expect, goto, openEditor, openList, recordRequests, recordWrites, saveConnections, sentWrites, settled, t, test, toast } from './fixtures';
 import { freePort } from './servers';
 
 /** A key is never an argument of an assertion that could print it: only whether it is there. */
@@ -69,7 +69,7 @@ test.describe('the Connect page', () => {
 });
 
 test.describe('a viewer (read-only) key', () => {
-  test.use({ connectAs: 'viewer', allowConsole: /^40[13] (PUT|PATCH) .*\/apisix\/admin\/routes\// });
+  test.use({ connectAs: 'viewer', allowConsole: /^40[13] (PUT|PATCH|DELETE) .*\/apisix\/admin\/routes\// });
 
   test('lists load; a status toggle shows APISIX’s refusal and the read-only banner; Edit is then disabled', async ({ page, admin }) => {
     const main = await openList(page, 'routes');
@@ -95,6 +95,61 @@ test.describe('a viewer (read-only) key', () => {
     await main.getByRole('button', { name: t('editor.save'), exact: true }).click();
     await expect(banner(page, t('editor.rejected'))).toContainText('invalid method for role viewer');
     await expect(page.getByRole('status').filter({ hasText: t('readOnly.banner') })).toBeVisible();
+    expect(await admin.value('routes/old-wiki')).toEqual(before);
+  });
+
+  test('once the key is known read-only a Save sends nothing: by the button, Enter or Cmd/Ctrl-S; Save keeps focus and says why, and the draft stays', async ({ page, admin }) => {
+    const before = await admin.value('routes/old-wiki');
+    const main = await openEditor(page, 'routes/old-wiki');
+    await main.getByRole('button', { name: t('editor.edit'), exact: true }).click();
+    const desc = main.getByRole('textbox', { name: t('rt.general.desc') });
+    await desc.fill('a viewer cannot save this');
+    const saveButton = main.getByRole('button', { name: t('editor.save'), exact: true });
+    await saveButton.click();
+    await expect(page.getByRole('status').filter({ hasText: t('readOnly.banner') })).toBeVisible();
+    await settled(page);
+    // From here the key is known read-only: no request for the route, read or write, and no write at all.
+    const sent = recordRequests(page);
+    await expect(saveButton).toHaveAttribute('aria-disabled', 'true');
+    await expect(saveButton).toHaveAccessibleDescription(t('editor.readOnlySave'));
+    await saveButton.focus();
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('ControlOrMeta+s');
+    await saveButton.click({ force: true });
+    await afterFrames(page);
+    await expect(saveButton).toBeFocused();
+    await expect(desc).toHaveValue('a viewer cannot save this');
+    expect(sent.filter((r) => r.includes('routes/old-wiki') || !r.startsWith('GET '))).toEqual([]);
+    expect(await admin.value('routes/old-wiki')).toEqual(before);
+  });
+
+  test('a row’s Delete refused for the key: the confirm stays open, says why, keeps focus, and sends nothing more; the row menu then offers Delete no more', async ({ page, admin }) => {
+    const before = await admin.value('routes/old-wiki');
+    const list = await openList(page, 'routes');
+    await list.getByRole('button', { name: t('table.actionsFor', { name: 'old-wiki' }) }).click();
+    await page.getByRole('menuitem', { name: t('action.delete') }).click();
+    const ask = page.getByRole('alertdialog');
+    const confirm = ask.getByRole('button', { name: t('delete.confirm', { kind: t('kind.routes.singular') }), exact: true });
+    const writes = recordWrites(page);
+    await confirm.focus();
+    await page.keyboard.press('Enter');
+    // The banner is behind the modal dialog, hidden from the accessibility tree meanwhile.
+    await expect(page.getByRole('status', { includeHidden: true }).filter({ hasText: t('readOnly.banner') })).toBeVisible();
+    expect(sentWrites(writes)).toEqual(['DELETE routes/old-wiki']);
+    // Known read-only now: the confirm is unavailable, with the reason, and pressing it sends nothing.
+    await expect(confirm).toHaveAttribute('aria-disabled', 'true');
+    await expect(confirm).toHaveAccessibleDescription(t('readOnly.unavailable'));
+    await page.keyboard.press('Enter');
+    await confirm.click({ force: true });
+    await afterFrames(page);
+    await expect(confirm).toBeFocused();
+    await expect(ask).toBeVisible();
+    expect(sentWrites(writes)).toEqual(['DELETE routes/old-wiki']);
+    await ask.getByRole('button', { name: t('ui.cancel'), exact: true }).click();
+    await list.getByRole('button', { name: t('table.actionsFor', { name: 'old-wiki' }) }).click();
+    await expect(page.getByRole('menuitem', { name: t('action.delete') })).toHaveAttribute('aria-disabled', 'true');
+    await page.keyboard.press('Escape');
+    expect(sentWrites(writes)).toEqual(['DELETE routes/old-wiki']);
     expect(await admin.value('routes/old-wiki')).toEqual(before);
   });
 });

@@ -210,7 +210,9 @@ export async function unlock(page: Page): Promise<void> {
   await settled(page);
 }
 
-const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** `text` as a regular expression that matches it literally. */
+export const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escape = escapeRegExp;
 
 /** A tab by its label; a tab's name may go on with its problem badge ("Upstream 1 to fix"). */
 export function tabNamed(page: Page, label: string): Locator {

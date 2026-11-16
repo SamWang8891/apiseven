@@ -10,6 +10,7 @@ import { MASK } from '../src/schema/secrets';
 import { EC_PAIR, RSA_PAIR } from '../src/test/pairs';
 import {
   Admin,
+  ECHO,
   codeText,
   echoRoute,
   echoUpstream,
@@ -286,3 +287,55 @@ test.describe('search', () => {
   });
 });
 
+// Final wave D1: APISIX keeps a plugin's own upstream's tls.client_key in clear (it encrypts only a
+// route's or service's own upstream), so the app never shows it: not locked, not editing, not in the
+// JSON tab or View JSON, not in what Copy puts on the clipboard. A Save leaves it as stored.
+test.describe('a private key in a plugin’s own upstream (traffic-split)', () => {
+  test.use({ permissions: ['clipboard-read', 'clipboard-write'] });
+  const lines = [EC_PAIR.key.split('\n')[2]!, EC_PAIR.key.split('\n')[3]!];
+
+  test('is never in the page, locked or editing, in the card, the JSON tab, View JSON or Copy; a Save keeps it', async ({ page, admin }) => {
+    const id = `${PREFIX}split-${uid()}`;
+    const split = {
+      rules: [
+        {
+          weighted_upstreams: [
+            { upstream: { type: 'roundrobin', scheme: 'https', nodes: { [`${ECHO.host}:${ECHO.port}`]: 1 }, tls: { client_cert: EC_PAIR.cert, client_key: EC_PAIR.key } }, weight: 1 },
+            { weight: 1 },
+          ],
+        },
+      ],
+    };
+    await admin.put(`routes/${id}`, echoRoute(id, `${id}.e2e.test`, { plugins: { 'traffic-split': split } }));
+    const stored = await admin.must(`routes/${id}`);
+    expectSameQuietly(stored.plugins, { 'traffic-split': split }, 'the stored plugins (the key in clear)');
+
+    const main = await openEditor(page, `routes/${id}?tab=plugins`);
+    const card = await openCard(page, 'traffic-split');
+    await expect(card).toContainText(t('sf.secret.stored'));
+    await expectNotInPage(page, lines, 'the card, locked');
+    await openTab(page, t('editor.json.tab'));
+    await expectNotInPage(page, lines, 'the JSON tab, locked', { codeEditor: true });
+    await main.getByRole('button', { name: t('editor.more') }).click();
+    await page.getByRole('menuitem', { name: t('action.viewJson') }).click();
+    const view = page.getByRole('dialog', { name: t('json.title', { kind: t('kind.routes.singular'), name: id }) });
+    await expect(view).toBeVisible();
+    await expectNotInPage(page, lines, 'View JSON', { codeEditor: true });
+    await view.getByRole('button', { name: t('json.copy') }).click();
+    await expect(toast(page, t('json.copiedNoKey'))).toBeVisible();
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText());
+    expect(lines.some((line) => clipboard.includes(line)), 'the copied JSON holds the key').toBe(false);
+    await view.getByRole('button', { name: t('ui.close') }).first().click();
+
+    await unlock(page);
+    await expectNotInPage(page, lines, 'the JSON tab, editing', { codeEditor: true });
+    await openTab(page, t('pl.tab'));
+    await openCard(page, 'traffic-split');
+    await expectNotInPage(page, lines, 'the card, editing');
+    await openTab(page, t('rt.tab.general'));
+    await page.getByRole('main').getByRole('textbox', { name: t('rt.general.desc') }).fill('saved with the key kept');
+    await save(page);
+    await expectNotInPage(page, lines, 'locked again after the Save');
+    expectSameQuietly(await admin.value(`routes/${id}`), { ...stored, desc: 'saved with the key kept' }, 'the stored route after the Save');
+  });
+});
