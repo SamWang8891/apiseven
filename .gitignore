@@ -3,6 +3,8 @@
 
 # Dependencies and build output
 node_modules/
+# make's stamp of the last finished `npm ci` (Makefile, WEB_DEPS)
+web/.npm-installed
 web/dist/
 web/dist-single/
 # make static: the single file and the zip of web/dist

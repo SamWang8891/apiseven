@@ -395,10 +395,11 @@ make dev-down   # stop the dev stack and drop its data
 ```
 
 Every `make` target that runs npm (`web`, `check`, `test`, `build`, `single`, `static`) first
-runs `cd web && npm ci` unless an earlier install finished (it leaves `web/node_modules/.installed`);
-an existing install is left as it is, and one that failed or was interrupted is redone.
-Run `cd web && npm ci` yourself after a pull that changes `web/package-lock.json`, and before you
-use `npm` or `npx` in `web/` directly.
+runs `cd web && npm ci` when `web/package-lock.json` is newer than the last install `make` finished
+(its stamp, `web/.npm-installed`), or when there is none; an install that failed or was interrupted is
+redone. So after a pull that changes `web/package-lock.json`, the next `make` target installs again.
+Run `cd web && npm ci` yourself before you use `npm` or `npx` in `web/` directly; that leaves the stamp
+alone, so a `make` target after a changed lock file still installs once more.
 
 The dev APISIX uses the admin key `apiseven-dev-admin-key` (and `apiseven-dev-viewer-key` for a
 viewer), from `dev/apisix-config.yaml`; these are public test values. `make web` cannot use the

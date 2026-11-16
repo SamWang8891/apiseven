@@ -9,13 +9,14 @@ dev-down:
 seed:
 	node dev/seed.mjs
 
-# The web app's dependencies. Every target that runs npm in web/ installs them first unless an install
-# has finished: its stamp, web/node_modules/.installed, is written only after `npm ci` succeeds
-# (order-only: an existing install is left as it is). An install that failed or was interrupted
-# (Ctrl-C) leaves no stamp, so the next run installs again; npm ci starts from an empty node_modules.
-WEB_DEPS := web/node_modules/.installed
-$(WEB_DEPS):
-	cd web && npm ci && touch node_modules/.installed
+# The web app's dependencies. Every target that runs npm in web/ installs them first (`npm ci`) when the
+# stamp of the last install make finished, web/.npm-installed (git-ignored), is missing or older than
+# web/package-lock.json. The stamp sits outside node_modules, so an `npm ci` run by hand removes nothing.
+# It is removed before an install and written only after `npm ci` succeeds, so an install that failed or
+# was interrupted (Ctrl-C) is redone by the next target.
+WEB_DEPS := web/.npm-installed
+$(WEB_DEPS): web/package-lock.json
+	cd web && rm -f .npm-installed && npm ci && touch .npm-installed
 
 # The web app's dev server (needs a running APISIX; see dev-up).
 web: | $(WEB_DEPS)
