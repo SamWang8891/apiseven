@@ -5,7 +5,7 @@ import { t } from '../../i18n';
 import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '../../ui';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
-import { redactSecrets } from '../../schema/secrets';
+import { hideNeverShown, isNeverShownName, keyPath, redactSecrets } from '../../schema/secrets';
 import { jsonType } from '../node';
 import { FieldLabel } from './chrome';
 import { useFieldHelp } from './help';
@@ -68,7 +68,13 @@ export function JsonField({
   const [synced, setSynced] = useState(value);
   const [revealed, setRevealed] = useReveal();
   const encrypt = useEncryptPaths();
-  const hidden = useMemo(() => (locked ? redactSecrets(value, path, encrypt) : undefined), [locked, value, path, encrypt]);
+  // A never-shown value (a client_key, at or below this field) stays masked when the rest is shown.
+  const hidden = useMemo(() => {
+    if (!locked) return undefined;
+    const never = hideNeverShown(value, keyPath(path).some(isNeverShownName));
+    const masked = redactSecrets(never.value, path, encrypt);
+    return { value: masked.value, revealed: never.value, redacted: masked.redacted || never.hidden, revealable: masked.redacted };
+  }, [locked, value, path, encrypt]);
   // A new value from outside replaces the text, unless the text holds Save: what was typed stays.
   if (!Object.is(value, synced)) {
     setSynced(value);
@@ -88,11 +94,11 @@ export function JsonField({
 
   if (locked) {
     // The stored value, never text typed before the lock (it could hold a secret in clear).
-    const shown = hidden && !revealed ? toText(hidden.value) : toText(value);
+    const shown = hidden?.redacted ? toText(revealed ? hidden.revealed : hidden.value) : toText(value);
     return (
       <div className="sf-reveal">
         <Textarea id={id} label={label} help={fullHelp} error={placed} required={required} mono rows={2} value={shown} onChange={() => {}} />
-        {hidden?.redacted && (
+        {hidden?.revealable && (
           <button
             type="button"
             className="sf-reveal__toggle"

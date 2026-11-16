@@ -20,10 +20,14 @@
 // 4. Every keystroke is the value; nothing is held; leaving the box changes nothing (addendum 20).
 // The session's flags (useEditingState: the box's text, revealed) start over with each editing
 // session and are lost on a remount; nothing shown depends on their surviving one.
+// 5. A never-shown secret (`neverShown`: a client_key, schema/secrets.ts) has no Show anywhere: locked,
+//    "Set, not shown" in words; editing, the same words as above without Show, and a box only for
+//    text typed in this session (Replace opens it empty), as the upstream editor's key field does.
 import { Eye, EyeOff, Replace, Undo2 } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { t } from '../../i18n';
 import { Button, Field, Input, Textarea, useBusy, useEditingState, useLocked } from '../../ui';
+import { ReadOnlyValue } from '../../ui/ReadOnly';
 
 export interface SecretTextProps {
   /** The field's common props, as StringField builds them. */
@@ -38,6 +42,8 @@ export interface SecretTextProps {
   storedKnown?: boolean;
   mono: boolean;
   rows: number;
+  /** Never shown, not even on request (rule 5). */
+  neverShown?: boolean;
   /** The next value ('' clears the field). */
   onText: (text: string) => void;
 }
@@ -51,16 +57,25 @@ const helpWith = (help: ReactNode, empty: string): ReactNode => (
   </>
 );
 
-export function SecretText({ common, name, value, stored, storedKnown = true, mono, rows, onText }: SecretTextProps) {
+export function SecretText({ common, name, value, stored, storedKnown = true, mono, rows, neverShown = false, onText }: SecretTextProps) {
   const locked = useLocked();
   const busy = useBusy();
   /** Session flag: the text typed in the open box this session (undefined: no box opened by typing or Replace). */
   const [boxText, setBoxText] = useEditingState<string | undefined>(undefined);
-  /** Session flag: the value is shown. */
-  const [revealed, setRevealed] = useEditingState(false);
+  /** Session flag: the value is shown (never for a never-shown one). */
+  const [shownFlag, setRevealed] = useEditingState(false);
+  const revealed = shownFlag && !neverShown;
 
-  // Not editing: the masked input of the locked view (its own reveal), whatever a refresh brought.
-  if (locked && !busy) return <Input {...common} mono={mono} secret value={value} />;
+  // Not editing: the masked input of the locked view (its own reveal), whatever a refresh brought; a
+  // never-shown value only in words.
+  if (locked && !busy) {
+    if (!neverShown) return <Input {...common} mono={mono} secret value={value} />;
+    return (
+      <Field label={common.label} help={common.help} error={common.error} required={common.required}>
+        <ReadOnlyValue>{value !== '' ? t('sf.secret.stored') : undefined}</ReadOnlyValue>
+      </Field>
+    );
+  }
 
   const acting = !locked;
   const has = value !== '';
@@ -116,7 +131,7 @@ export function SecretText({ common, name, value, stored, storedKnown = true, mo
     <Field label={common.label} help={common.help} error={common.error} required={common.required}>
       <div className="sf-secret__set">
         <span className="sf-secret__stored">{words}</span>
-        {acting && has && (
+        {acting && has && !neverShown && (
           <Button size="sm" variant="ghost" icon={<Eye size={13} />} aria-label={t('sf.secret.show', { name })} onClick={() => setRevealed(true)}>
             {t('sf.secret.showShort')}
           </Button>

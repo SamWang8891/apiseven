@@ -39,6 +39,8 @@ export interface StringNode {
   enum?: string[];
   multiline: boolean;
   secret: boolean;
+  /** A secret no view shows, not even on request (schema/secrets.ts isNeverShownName: a client_key). */
+  neverShown?: boolean;
   /** Hosts, URIs, IDs, addresses, code: shown in monospace. */
   mono: boolean;
   pattern?: string;

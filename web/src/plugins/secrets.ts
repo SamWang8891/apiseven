@@ -19,12 +19,9 @@
 import { isObj } from '../api/sanitize';
 import type { Kind, Obj, PluginInfo } from '../api/types';
 import { t } from '../i18n';
-import { holdsPrivateKey, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
+import { holdsPrivateKey, isNeverShownName, MASK, redactSecrets, withoutPrivateKeys } from '../schema/secrets';
 import { schemaFor, scopeOfKind } from './scope';
 import { managerOf, SCHEMAS, SECRET_FIELDS } from '../resources/secrets/schemas';
-
-/** Keys whose value no view shows (see the head comment). */
-const NEVER_SHOWN = new Set(['client_key']);
 
 export interface Redacted {
   /** Every secret masked. */
@@ -135,7 +132,7 @@ function maskPlugins(plugins: Obj, kind: Kind, all: Record<string, PluginInfo> |
  */
 export function redactObject(value: Obj, kind: Kind, all: Record<string, PluginInfo> | undefined, id?: string): Redacted {
   const ownId = typeof value.id === 'string' ? value.id : id;
-  const clientKeys = mask(value, (k) => NEVER_SHOWN.has(k));
+  const clientKeys = mask(value, isNeverShownName);
   const never = kind === 'ssls' ? maskSslKeys(clientKeys.value as Obj) : { value: clientKeys.value as Obj, redacted: false };
   never.redacted ||= clientKeys.redacted;
   const revealed = never.redacted ? never.value : value;

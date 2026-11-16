@@ -2,7 +2,7 @@
 import type { Obj } from '../api/types';
 import { json, num, strings, text, type Ctx } from './analyze-ctx';
 import type { Node, NumberNode, StringNode } from './node';
-import { isSecretName } from '../schema/secrets';
+import { isNeverShownName, isSecretName } from '../schema/secrets';
 
 // --- Heuristics on property names ------------------------------------------------------------
 
@@ -24,18 +24,22 @@ export function stringNode(s: Obj, ctx: Ctx, enumValues?: string[]): StringNode 
   const format = typeof s.format === 'string' ? s.format : undefined;
   const maxLength = num(s.maxLength);
   const encrypted = ctx.encrypt.has(ctx.path.join('.'));
-  const secret = !enumValues && (encrypted || isSecretName(key));
+  // A private key no view shows (a plugin's own upstream's tls.client_key): a multi-line secret, never revealed.
+  const neverShown = !enumValues && isNeverShownName(key);
+  const secret = !enumValues && (encrypted || isSecretName(key) || neverShown);
   const oneLine = ONE_LINE_KEY.test(key) || (format !== undefined && MONO_FORMATS.has(format));
   const multiline =
-    !enumValues &&
-    !oneLine &&
-    (MULTILINE_KEY.test(key) || MULTILINE_DESCRIPTION.test(description) || (maxLength !== undefined && maxLength > 256 && !secret));
+    neverShown ||
+    (!enumValues &&
+      !oneLine &&
+      (MULTILINE_KEY.test(key) || MULTILINE_DESCRIPTION.test(description) || (maxLength !== undefined && maxLength > 256 && !secret)));
   const node: StringNode = {
     kind: 'string',
     multiline,
     secret,
     mono: !enumValues && (MONO_KEY.test(key) || (format !== undefined && MONO_FORMATS.has(format)) || (multiline && /pem|cert|key|lua|function|script/i.test(key))),
   };
+  if (neverShown) node.neverShown = true;
   if (enumValues) node.enum = enumValues;
   if (typeof s.pattern === 'string') node.pattern = s.pattern;
   if (num(s.minLength) !== undefined) node.minLength = num(s.minLength);

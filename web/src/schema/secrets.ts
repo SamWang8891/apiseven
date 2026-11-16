@@ -16,6 +16,36 @@ export function isSecretName(key: string): boolean {
   return SECRET_KEY.test(key) && !NOT_SECRET_KEY.test(key);
 }
 
+/**
+ * Keys whose value no view shows, not even on "Show secrets": a PEM private key APISIX may return as
+ * stored, an upstream's `tls.client_key`, also in a plugin's own upstream (traffic-split's, which no
+ * encrypt_conf reaches: apisix/upstream.lua 748–753 runs for a route's or service's own upstream only).
+ */
+const NEVER_SHOWN = new Set(['client_key']);
+
+/** Whether a property's value is never shown (NEVER_SHOWN). */
+export const isNeverShownName = (key: string): boolean => NEVER_SHOWN.has(key);
+
+/**
+ * `value` with the text of every never-shown key at any depth masked (`under`: the value itself sits
+ * at such a key, all of its text then masked); `hidden` says whether anything was. What every view
+ * of a value starts from, "Show secrets" included.
+ */
+export function hideNeverShown(value: unknown, under = false): { value: unknown; hidden: boolean } {
+  let hidden = false;
+  const walk = (v: unknown, never: boolean): unknown => {
+    if (typeof v === 'string') {
+      if (!never) return v;
+      hidden = true;
+      return MASK;
+    }
+    if (Array.isArray(v)) return v.map((x) => walk(x, never));
+    return isObj(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x, never || isNeverShownName(k))])) : v;
+  };
+  const out = walk(value, under);
+  return hidden ? { value: out, hidden } : { value, hidden };
+}
+
 /** The object keys of a dotted field path, array indices left out (as APISIX's encrypt_fields write paths). */
 export const keyPath = (path: string): string[] => (path === '' ? [] : path.split('.').filter((seg) => !/^\d+$/.test(seg)));
 

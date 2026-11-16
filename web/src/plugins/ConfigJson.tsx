@@ -12,7 +12,7 @@ import { deepEqual } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
-import { redactSecrets } from '../schema/secrets';
+import { hideNeverShown, redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
 import { maskConfig } from './secrets';
 
@@ -47,8 +47,14 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
     current = state.held !== undefined || says(state.text, conf) ? { ...state, synced: conf } : { text: pretty(conf), synced: conf, error: undefined, held: undefined };
     setState(current);
   }
-  // A plugin whose schema isn't known (not loaded on this APISIX, or the list still loading) has every value masked.
-  const hidden = useMemo(() => (locked ? (schema ? redactSecrets(conf, '', encrypt, schema) : maskConfig(conf)) : undefined), [locked, conf, encrypt, schema]);
+  // A plugin whose schema isn't known (not loaded on this APISIX, or the list still loading) has every value
+  // masked. A never-shown value (a client_key in the plugin's own upstream) stays masked when the rest is shown.
+  const hidden = useMemo(() => {
+    if (!locked) return undefined;
+    const never = hideNeverShown(conf);
+    const masked = schema ? redactSecrets(never.value, '', encrypt, schema) : maskConfig(never.value);
+    return { value: masked.value, revealed: never.value, redacted: masked.redacted || never.hidden, revealable: masked.redacted };
+  }, [locked, conf, encrypt, schema]);
   const holding = !locked && current.held !== undefined;
   usePending(holding ? current.held : undefined);
   useLayoutEffect(() => onHeld(holding), [onHeld, holding]);
@@ -72,10 +78,10 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
   }
 
   // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.
-  const text = locked ? pretty(hidden?.redacted && !revealed ? hidden.value : conf) : current.text;
+  const text = locked ? pretty(hidden?.redacted ? (revealed ? hidden.revealed : hidden.value) : conf) : current.text;
   return (
     <div className="pl-json">
-      {locked && hidden?.redacted && (
+      {locked && hidden?.revealable && (
         <div className="pl-json__bar">
           <Button size="sm" variant="ghost" icon={revealed ? <EyeOff size={13} /> : <Eye size={13} />} aria-pressed={revealed} onClick={() => setRevealed((r) => !r)}>
             {revealed ? t('pl.card.secrets.hide') : t('pl.card.secrets.show')}

@@ -47,6 +47,7 @@ export function StringField({ node, value, name, path, onChange, prop, required,
         storedKnown={storedKnown}
         mono={node.mono}
         rows={node.mono ? 6 : 3}
+        neverShown={node.neverShown}
         onText={emit}
       />
     );
