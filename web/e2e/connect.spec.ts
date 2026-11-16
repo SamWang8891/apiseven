@@ -1,4 +1,4 @@
-import { afterFrames, banner, env, expect, goto, openEditor, openList, recordRequests, recordWrites, saveConnections, sentWrites, settled, t, test, toast } from './fixtures';
+import { Admin, afterFrames, banner, echoRoute, env, expect, goto, openEditor, openList, recordRequests, recordWrites, saveConnections, sentWrites, settled, t, test, toast, uid } from './fixtures';
 import { freePort } from './servers';
 
 /** A key is never an argument of an assertion that could print it: only whether it is there. */
@@ -71,11 +71,22 @@ test.describe('the Connect page', () => {
 test.describe('a viewer (read-only) key', () => {
   test.use({ connectAs: 'viewer', allowConsole: /^40[13] (PUT|PATCH|DELETE) .*\/apisix\/admin\/routes\// });
 
+  // Each test writes (and expects a refusal) only to a route made for it with the admin key, removed
+  // after it whatever happened: a viewer key that could in fact write changes nothing of the seed.
+  let id = '';
+  test.beforeEach(async () => {
+    id = `e2e-viewer-${uid()}`;
+    await new Admin().put(`routes/${id}`, echoRoute(id, `${id}.e2e.test`));
+  });
+  test.afterEach(async () => {
+    await new Admin().del(`routes/${id}`);
+  });
+
   test('lists load; a status toggle from the keyboard is refused: the read-only banner, and the switch stays, focused and unavailable with the reason (final wave J2); Edit is then disabled', async ({ page, admin }) => {
     const main = await openList(page, 'routes');
-    await expect(main.getByRole('link', { name: 'old-wiki', exact: true })).toBeVisible();
-    const before = await admin.value('routes/old-wiki');
-    const toggle = main.getByRole('switch', { name: t('table.status.toggle', { name: 'old-wiki' }) });
+    await expect(main.getByRole('link', { name: id, exact: true })).toBeVisible();
+    const before = await admin.value(`routes/${id}`);
+    const toggle = main.getByRole('switch', { name: t('table.status.toggle', { name: id }) });
     const checked = await toggle.getAttribute('aria-checked');
     const writes = recordWrites(page);
     await toggle.focus();
@@ -91,29 +102,29 @@ test.describe('a viewer (read-only) key', () => {
     await page.keyboard.press('Space');
     await afterFrames(page);
     await expect(toggle).toBeFocused();
-    expect(sentWrites(writes)).toEqual(['PATCH routes/old-wiki']);
+    expect(sentWrites(writes)).toEqual([`PATCH routes/${id}`]);
     // Nothing changed in APISIX, and the list offers no New.
-    expect(await admin.value('routes/old-wiki')).toEqual(before);
+    expect(await admin.value(`routes/${id}`)).toEqual(before);
     await expect(main.getByRole('link', { name: t('page.new', { kind: t('kind.routes.singular') }) })).toHaveCount(0);
     // Editors open, but cannot be unlocked.
-    const editor = await openEditor(page, 'routes/old-wiki');
+    const editor = await openEditor(page, `routes/${id}`);
     await expect(editor.getByRole('button', { name: t('editor.edit'), exact: true })).toBeDisabled();
   });
 
   test('a Save from an editor shows APISIX’s refusal and the read-only banner; nothing is stored', async ({ page, admin }) => {
-    const before = await admin.value('routes/old-wiki');
-    const main = await openEditor(page, 'routes/old-wiki');
+    const before = await admin.value(`routes/${id}`);
+    const main = await openEditor(page, `routes/${id}`);
     await main.getByRole('button', { name: t('editor.edit'), exact: true }).click();
     await main.getByRole('textbox', { name: t('rt.general.desc') }).fill('a viewer cannot save this');
     await main.getByRole('button', { name: t('editor.save'), exact: true }).click();
     await expect(banner(page, t('editor.rejected'))).toContainText('invalid method for role viewer');
     await expect(page.getByRole('status').filter({ hasText: t('readOnly.banner') })).toBeVisible();
-    expect(await admin.value('routes/old-wiki')).toEqual(before);
+    expect(await admin.value(`routes/${id}`)).toEqual(before);
   });
 
   test('once the key is known read-only a Save sends nothing: by the button, Enter or Cmd/Ctrl-S; Save keeps focus and says why, and the draft stays', async ({ page, admin }) => {
-    const before = await admin.value('routes/old-wiki');
-    const main = await openEditor(page, 'routes/old-wiki');
+    const before = await admin.value(`routes/${id}`);
+    const main = await openEditor(page, `routes/${id}`);
     await main.getByRole('button', { name: t('editor.edit'), exact: true }).click();
     const desc = main.getByRole('textbox', { name: t('rt.general.desc') });
     await desc.fill('a viewer cannot save this');
@@ -132,14 +143,14 @@ test.describe('a viewer (read-only) key', () => {
     await afterFrames(page);
     await expect(saveButton).toBeFocused();
     await expect(desc).toHaveValue('a viewer cannot save this');
-    expect(sent.filter((r) => r.includes('routes/old-wiki') || !r.startsWith('GET '))).toEqual([]);
-    expect(await admin.value('routes/old-wiki')).toEqual(before);
+    expect(sent.filter((r) => r.includes(`routes/${id}`) || !r.startsWith('GET '))).toEqual([]);
+    expect(await admin.value(`routes/${id}`)).toEqual(before);
   });
 
   test('a row’s Delete refused for the key: the confirm stays open, says why, keeps focus, and sends nothing more; the row menu then offers Delete no more', async ({ page, admin }) => {
-    const before = await admin.value('routes/old-wiki');
+    const before = await admin.value(`routes/${id}`);
     const list = await openList(page, 'routes');
-    await list.getByRole('button', { name: t('table.actionsFor', { name: 'old-wiki' }) }).click();
+    await list.getByRole('button', { name: t('table.actionsFor', { name: id }) }).click();
     await page.getByRole('menuitem', { name: t('action.delete') }).click();
     const ask = page.getByRole('alertdialog');
     const confirm = ask.getByRole('button', { name: t('delete.confirm', { kind: t('kind.routes.singular') }), exact: true });
@@ -148,7 +159,7 @@ test.describe('a viewer (read-only) key', () => {
     await page.keyboard.press('Enter');
     // The banner is behind the modal dialog, hidden from the accessibility tree meanwhile.
     await expect(page.getByRole('status', { includeHidden: true }).filter({ hasText: t('readOnly.banner') })).toBeVisible();
-    expect(sentWrites(writes)).toEqual(['DELETE routes/old-wiki']);
+    expect(sentWrites(writes)).toEqual([`DELETE routes/${id}`]);
     // Known read-only now: the confirm is unavailable, with the reason, and pressing it sends nothing.
     await expect(confirm).toHaveAttribute('aria-disabled', 'true');
     await expect(confirm).toHaveAccessibleDescription(t('readOnly.unavailable'));
@@ -157,13 +168,13 @@ test.describe('a viewer (read-only) key', () => {
     await afterFrames(page);
     await expect(confirm).toBeFocused();
     await expect(ask).toBeVisible();
-    expect(sentWrites(writes)).toEqual(['DELETE routes/old-wiki']);
+    expect(sentWrites(writes)).toEqual([`DELETE routes/${id}`]);
     await ask.getByRole('button', { name: t('ui.cancel'), exact: true }).click();
-    await list.getByRole('button', { name: t('table.actionsFor', { name: 'old-wiki' }) }).click();
+    await list.getByRole('button', { name: t('table.actionsFor', { name: id }) }).click();
     await expect(page.getByRole('menuitem', { name: t('action.delete') })).toHaveAttribute('aria-disabled', 'true');
     await page.keyboard.press('Escape');
-    expect(sentWrites(writes)).toEqual(['DELETE routes/old-wiki']);
-    expect(await admin.value('routes/old-wiki')).toEqual(before);
+    expect(sentWrites(writes)).toEqual([`DELETE routes/${id}`]);
+    expect(await admin.value(`routes/${id}`)).toEqual(before);
   });
 });
 
