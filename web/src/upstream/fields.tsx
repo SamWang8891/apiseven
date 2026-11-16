@@ -4,8 +4,7 @@
 import { CircleAlert, Upload } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
-import { shown } from '../resources/ssls/pemBox';
-import { holdsPrivateKey, MASK } from '../schema/secrets';
+import { holdsPrivateKey, MASK, withoutPrivateKeys } from '../schema/secrets';
 import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, useEditingState, useLocked, usePending, type InputProps, type NumberInputProps } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import { certLine } from './values';
@@ -396,8 +395,8 @@ export function PemField({
           value={held ?? (hidden || value === undefined ? '' : value)}
           placeholder="-----BEGIN …-----"
           onChange={typeCert}
-          // Leaving masks the key blocks of text that was not taken; it stays held.
-          onBlur={() => held !== undefined && setHeld(shown('cert', held, false))}
+          // Leaving masks the key blocks of text that was not taken (the SSL boxes' marker line); it stays held.
+          onBlur={() => held !== undefined && setHeld(withoutPrivateKeys(held, t('ssl.pem.marker')))}
         />
         <span className="up-pem__bar">
           {upload}
