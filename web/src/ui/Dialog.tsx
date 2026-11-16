@@ -39,6 +39,7 @@ export function Dialog({ open, onClose, title, children, footer, size = 'md' }: 
             aria-describedby={undefined}
             onKeyDown={escapeFallback(onClose)}
             onOpenAutoFocus={returnFocus.onOpenAutoFocus}
+            onFocusCapture={returnFocus.onFocusCapture}
             onCloseAutoFocus={returnFocus.onCloseAutoFocus}
           >
             <header className="ui-dialog__header">

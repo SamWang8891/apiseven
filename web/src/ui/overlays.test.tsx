@@ -154,6 +154,31 @@ describe('Dialog', () => {
     await user.keyboard('{Escape}');
     await waitFor(() => expect(screen.getByRole('main', { name: 'page' })).toHaveFocus());
   });
+
+  // Fix round 1, F2: a field that takes focus as the dialog mounts (autoFocus) keeps Radix from
+  // reporting the opening; the opener is taken from that first focus instead.
+  it('with a field that takes focus at mount, closing it still puts focus back on the opener', async () => {
+    function Search() {
+      const [open, setOpen] = useState(false);
+      return (
+        <main tabIndex={-1} aria-label="page">
+          <Button onClick={() => setOpen(true)}>Add plugin</Button>
+          {open && (
+            <Dialog open title="Add a plugin" onClose={() => setOpen(false)}>
+              <input aria-label="Search plugins" autoFocus />
+            </Dialog>
+          )}
+        </main>
+      );
+    }
+    const user = userEvent.setup();
+    render(<Search />);
+    const opener = screen.getByRole('button', { name: 'Add plugin' });
+    await user.click(opener);
+    expect(await screen.findByRole('textbox', { name: 'Search plugins' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
 });
 
 describe('Tabs', () => {

@@ -3,7 +3,7 @@
 // where it was opened from as its focus moves in, and when it closes puts focus back there: on the
 // menu's trigger when it came from a menu item (the item is gone), else on what had focus; never on
 // `body`. Where the caller has already put focus on purpose (the field to fix, another dialog), it stays.
-import { useRef } from 'react';
+import { useRef, type FocusEvent } from 'react';
 
 /** Where a dialog was opened from: what had focus, the trigger of the menu it was in, the table around it. */
 interface Opener {
@@ -48,12 +48,23 @@ function focusBack(opener: Opener | null) {
   candidates.find(usable)?.focus({ preventScroll: true });
 }
 
-/** The Radix content handlers of a kit dialog: remember the opener as focus moves in; put focus back when it closes. */
-export function useReturnFocus(): { onOpenAutoFocus: () => void; onCloseAutoFocus: (e: Event) => void } {
+/**
+ * The content handlers of a kit dialog: remember the opener as focus moves in; put focus back when it
+ * closes. Radix reports the opening (onOpenAutoFocus) only when the content does not hold focus yet; a
+ * field that takes focus as the dialog mounts (autoFocus: the plugin picker's search box) holds it
+ * first, so then the opener is taken from that first focus into the content, as what had focus before
+ * it (the event's relatedTarget; final wave, fix round 1, F2).
+ */
+export function useReturnFocus(): { onOpenAutoFocus: () => void; onFocusCapture: (e: FocusEvent<HTMLElement>) => void; onCloseAutoFocus: (e: Event) => void } {
   const returnTo = useRef<Opener | null>(null);
   return {
     onOpenAutoFocus: () => {
       returnTo.current = openedFrom(document.activeElement);
+    },
+    onFocusCapture: (e) => {
+      if (returnTo.current !== null) return;
+      const before = e.relatedTarget;
+      returnTo.current = openedFrom(before instanceof Element && !e.currentTarget.contains(before) ? before : null);
     },
     onCloseAutoFocus: (e) => {
       e.preventDefault();

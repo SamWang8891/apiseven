@@ -48,6 +48,7 @@ export function ConfirmDialog({ open, title, body, confirmLabel, cancelLabel, da
             onEscapeKeyDown={(e) => busy && e.preventDefault()}
             onKeyDown={escapeFallback(() => !busy && onCancel())}
             onOpenAutoFocus={returnFocus.onOpenAutoFocus}
+            onFocusCapture={returnFocus.onFocusCapture}
             onCloseAutoFocus={returnFocus.onCloseAutoFocus}
           >
             <header className="ui-dialog__header">

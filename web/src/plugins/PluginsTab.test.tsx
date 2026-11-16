@@ -27,6 +27,17 @@ async function replaceCode(user: ReturnType<typeof renderPluginsTab>['user'], bo
 }
 
 describe('adding a plugin', () => {
+  it('the picker closed with Escape gives focus back to "Add plugin" (fix round 1, F2: its search box takes focus at mount)', async () => {
+    const { user } = renderPluginsTab({ scope: 'route' });
+    const add = await screen.findByRole('button', { name: t('pl.add') });
+    await user.click(add);
+    const dialog = await screen.findByRole('dialog', { name: t('pl.picker.title') });
+    expect(within(dialog).getByRole('combobox', { name: t('pl.picker.search') })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await waitFor(() => expect(add).toHaveFocus());
+  });
+
   it('limit-count from the picker: a card with an empty form and a required-field error on count; count and time_window clear it', async () => {
     const { user, value } = renderPluginsTab({ scope: 'route' });
     const dialog = await openPicker(user);
