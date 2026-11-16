@@ -1,7 +1,7 @@
 // Pure lookups over the Ctx lists: no React, no hooks. Each rule follows how APISIX itself resolves
 // the object at request time (file names below are in the APISIX source).
 import { isObj } from '../api/sanitize';
-import type { Item, Kind, Obj } from '../api/types';
+import type { Item, Kind, Obj, PluginInfo } from '../api/types';
 import { t } from '../i18n';
 import { entryEffect } from '../plugins/entryEffect';
 import { runsOnStream } from '../plugins/stream';
@@ -234,8 +234,10 @@ export function upstreamSummary(object: Obj, ctx: Ctx, subsystem: Subsystem = 'h
  * The plugins that run for a route, one per name. APISIX fills the route's plugins from its plugin
  * config, then lays them over the service's (apisix/plugin_config.lua merge, then
  * merge_service_route), so the route wins over the plugin config, which wins over the service.
+ * `all` is the plugin list where it is in hand, for entryEffect (a custom plugin it reports as
+ * `scope: "global"` has no effect as an entry); without it the built-in names decide.
  */
-export function effectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
+export function effectivePlugins(route: Obj, ctx: Ctx, all?: Record<string, PluginInfo>): EffectivePlugin[] {
   const layers: [EffectivePlugin['from'], unknown][] = [
     ['route', route.plugins],
     ['plugin_config', find(ctx.pluginConfigs, idOf(route.plugin_config_id))?.value.plugins],
@@ -246,7 +248,7 @@ export function effectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
     if (!isObj(plugins)) continue;
     for (const [name, conf] of Object.entries(plugins)) {
       if (byName.has(name)) continue;
-      const effect = entryEffect(name, conf);
+      const effect = entryEffect(name, conf, all?.[name]);
       byName.set(name, effect === 'noEffect' ? { name, from, disabled: false, noEffect: true } : { name, from, disabled: effect === 'off' });
     }
   }
@@ -288,8 +290,8 @@ export function asStreamRoute(route: Obj): Obj {
  * doesn't set (asStreamRoute), of those only what the stream subsystem runs (plugin.stream_filter,
  * apisix/plugin.lua 675–702: runsOnStream), sorted by name.
  */
-export function streamEffectivePlugins(route: Obj, ctx: Ctx): EffectivePlugin[] {
-  return effectivePlugins(asStreamRoute(route), ctx).filter((p) => runsOnStream(p.name));
+export function streamEffectivePlugins(route: Obj, ctx: Ctx, all?: Record<string, PluginInfo>): EffectivePlugin[] {
+  return effectivePlugins(asStreamRoute(route), ctx, all).filter((p) => runsOnStream(p.name));
 }
 
 /** An SNI as APISIX compares it: lower case, without a trailing dot (ssl.lua 68–69; radixtree_sni.lua 293–301 for stored ones). */

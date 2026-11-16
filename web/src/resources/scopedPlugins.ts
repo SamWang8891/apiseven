@@ -15,7 +15,7 @@ export type PluginOwner = 'consumer' | 'credential' | 'consumer_group';
 /** The plugins by name; `all` is the plugin list when loaded (else the source's lists decide what they can). */
 export function scopedPlugins(value: Obj, owner: PluginOwner, all?: Record<string, PluginInfo>): PluginChip[] {
   const confs = isObj(value.plugins) ? value.plugins : {};
-  return servicePlugins(value).map((p) => {
+  return servicePlugins(value, all).map((p) => {
     if (owner === 'consumer_group') {
       const auth = authPluginOrUnknown(p.name, all);
       return auth === undefined ? { ...p, unclassified: true } : auth ? { ...p, notApplied: true } : p;

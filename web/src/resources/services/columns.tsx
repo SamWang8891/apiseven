@@ -1,7 +1,7 @@
 // The services list columns. Accessors return plain values for sorting (strings, numbers, string
 // arrays); cells present them (../cells.tsx). A service has no status, so there is no status column.
 import { isObj } from '../../api/sanitize';
-import type { Item, Obj } from '../../api/types';
+import type { Item, Obj, PluginInfo } from '../../api/types';
 import { t } from '../../i18n';
 import { HostsCell, IdCell, LabelChips, NameDescCell, PluginChips, TimeCell, UpstreamCell, UsedByCell, type PluginChip } from '../cells';
 import type { Ctx } from '../ctx';
@@ -18,12 +18,14 @@ function strings(value: unknown): string[] {
 /**
  * The service's own plugins, by name, each saying whether it is off (`_meta.disable`), or that it has
  * no effect here (a plugin APISIX runs for the whole instance: entryEffect), which is never "off".
+ * `all` is the plugin list where it is in hand (a custom plugin it reports as `scope: "global"`
+ * counts); without it the built-in names decide.
  */
-export function servicePlugins(service: Obj): PluginChip[] {
+export function servicePlugins(service: Obj, all?: Record<string, PluginInfo>): PluginChip[] {
   if (!isObj(service.plugins)) return [];
   return Object.entries(service.plugins)
     .map(([name, conf]): PluginChip => {
-      const effect = entryEffect(name, conf);
+      const effect = entryEffect(name, conf, all?.[name]);
       return effect === 'noEffect' ? { name, noEffect: true } : { name, disabled: effect === 'off' };
     })
     .sort((a, b) => a.name.localeCompare(b.name));

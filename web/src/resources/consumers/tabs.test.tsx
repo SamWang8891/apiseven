@@ -5,6 +5,8 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { ctxOf, itemOf } from '../../test/ctx';
+import { json } from '../../test/fakeAdmin';
+import { pluginFixture } from '../../test/pluginFixture';
 import { editableControls } from '../../test/schemaForm';
 import { renderTab, type TabOptions } from '../../test/tab';
 import { DraftPluginsTab } from '../../plugins/PluginsTab';
@@ -105,6 +107,15 @@ describe('General', () => {
     const overview = screen.getByRole('region', { name: t('cs.overview') });
     expect(overview).toHaveTextContent(`${t('rt.overview.pluginOff', { name: 'key-auth' })}, ${t('cs.overview.offIgnored', { name: 'multi-auth' })}`);
     expect(overview).not.toHaveTextContent(t('cs.overview.stillSignsIn'));
+  });
+
+  // Fix round 2, item 2: with the plugin list in hand, a custom plugin it reports as scope global has no effect here.
+  it('at a glance, a custom plugin the list reports as scope global reads "no effect here", not "(off)"', async () => {
+    const replies = { plugins: () => json(200, { ...pluginFixture().http, 'my-global': { schema: {}, scope: 'global' } }) };
+    tab(GeneralTab, { username: 'jo', plugins: { 'my-global': { _meta: { disable: true } } } }, { locked: true, admin: { replies } });
+    const overview = screen.getByRole('region', { name: t('cs.overview') });
+    await waitFor(() => expect(overview).toHaveTextContent(t('rt.overview.pluginNoEffect', { name: 'my-global' })));
+    expect(overview).not.toHaveTextContent(t('rt.overview.pluginOff', { name: 'my-global' }));
   });
 
   it("at a glance, a group's auth plugin reads as not applied", () => {

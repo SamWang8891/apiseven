@@ -2,8 +2,9 @@
 // (what it matches, where its connections go, its plugins and the rest), each line linking to its
 // tab. Locked, this is the stream route's spec sheet.
 import type { ReactNode } from 'react';
+import { usePluginsIfLoaded } from '../../api/hooks';
 import { isObj } from '../../api/sanitize';
-import type { Obj } from '../../api/types';
+import type { Obj, PluginInfo } from '../../api/types';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -64,9 +65,9 @@ function upstream(draft: Obj, ctx: Ctx): ReactNode {
  * The plugins that run for the stream route (streamEffectivePlugins, as the list's column): its own,
  * then what it takes from its service. Until a service it merges with has loaded, that part says so.
  */
-function plugins(draft: Obj, ctx: Ctx): ReactNode {
+function plugins(draft: Obj, ctx: Ctx, list: Record<string, PluginInfo> | undefined): ReactNode {
   const label = pluginName;
-  const all = streamEffectivePlugins(draft, ctx);
+  const all = streamEffectivePlugins(draft, ctx, list);
   const own = all.filter((p) => p.from === 'route').map(label);
   const ownPart = own.length > 0 ? [<Mono key="own" values={own} />] : [];
   if (inheritLoading(asStreamRoute(draft), ctx).service) return <Parts parts={[...ownPart, t('rt.overview.inheritedLoading')]} />;
@@ -86,6 +87,8 @@ function advanced(draft: Obj): ReactNode {
 }
 
 export function GeneralTab({ draft, setDraft, issues, ctx }: TabProps) {
+  // The stream plugin list when the editor has it (a custom global-scope plugin then reads "no effect here").
+  const list = usePluginsIfLoaded('stream');
   const locked = useLocked();
   // Labels with a value that isn't text can't be edited here; they are kept as they are.
   const labels = isObj(draft.labels) ? draft.labels : {};
@@ -112,7 +115,7 @@ export function GeneralTab({ draft, setDraft, issues, ctx }: TabProps) {
         rows={[
           { tab: 'matching', label: t('sr.tab.matching'), value: matching(draft) },
           { tab: 'upstream', label: t('rt.tab.upstream'), value: upstream(draft, ctx) },
-          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft, ctx) },
+          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft, ctx, list) },
           { tab: 'advanced', label: t('sr.tab.advanced'), value: advanced(draft) },
         ]}
       />

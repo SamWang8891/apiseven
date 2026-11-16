@@ -2,8 +2,9 @@
 // glance: one line per other tab (what it matches, where it goes, its plugins, the rest), each
 // linking to that tab. Locked, this is the spec sheet of the route.
 import { useId, type ReactNode } from 'react';
+import { usePluginsIfLoaded } from '../../api/hooks';
 import { isObj } from '../../api/sanitize';
-import type { Obj } from '../../api/types';
+import type { Obj, PluginInfo } from '../../api/types';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -75,7 +76,7 @@ function upstream(draft: Obj, ctx: Ctx): ReactNode {
   return <Parts parts={[label, ...(target.nodes.length > 0 ? [<Mono key="nodes" values={target.nodes} />] : [])]} />;
 }
 
-function plugins(draft: Obj, ctx: Ctx): ReactNode {
+function plugins(draft: Obj, ctx: Ctx, list: Record<string, PluginInfo> | undefined): ReactNode {
   // A script runs instead of every plugin: the route's own, or its service's (routeScript).
   const script = routeScript(draft, ctx);
   if (script === 'route') return t('rt.overview.script');
@@ -84,7 +85,7 @@ function plugins(draft: Obj, ctx: Ctx): ReactNode {
   // in the Plugins tab's words (the list says "loading…" / "unknown" too).
   if (script === 'loading') return t('rt.pl.serviceScriptLoading');
   if (script === 'unknown') return t('rt.pl.serviceScriptUnknown');
-  const names = effectivePlugins(draft, ctx).map(pluginName);
+  const names = effectivePlugins(draft, ctx, list).map(pluginName);
   // The plugin config's aren't known yet: show the route's and the service's, and say the rest is loading.
   if (inheritLoading(draft, ctx).pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), t('rt.overview.inheritedLoading')]} />;
   return names.length > 0 ? <Mono values={names} /> : t('rt.overview.noPlugins');
@@ -113,10 +114,12 @@ function advanced(draft: Obj): ReactNode {
 
 function Overview({ draft, ctx }: { draft: Obj; ctx: Ctx }) {
   const id = useId();
+  // The plugin list when the editor has it (a custom global-scope plugin then reads "no effect here").
+  const list = usePluginsIfLoaded();
   const rows: [tab: string, label: string, value: ReactNode][] = [
     ['matching', t('rt.tab.matching'), matching(draft, ctx)],
     ['upstream', t('rt.tab.upstream'), upstream(draft, ctx)],
-    ['plugins', t('pl.tab'), plugins(draft, ctx)],
+    ['plugins', t('pl.tab'), plugins(draft, ctx, list)],
     ['advanced', t('rt.tab.advanced'), advanced(draft)],
   ];
   return (

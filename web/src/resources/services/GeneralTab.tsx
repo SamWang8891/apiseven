@@ -1,8 +1,9 @@
 // The service editor's General tab: name, description, labels, the hosts its routes inherit and
 // WebSocket, then the service at a glance (its upstream, plugins and the routes using it), each line
 // linking to its tab. Locked, this is the service's spec sheet.
+import { usePluginsIfLoaded } from '../../api/hooks';
 import { isObj } from '../../api/sanitize';
-import type { Obj } from '../../api/types';
+import type { Obj, PluginInfo } from '../../api/types';
 import { setPath } from '../../editor/draft';
 import { issueAt, issuesUnder } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -25,8 +26,8 @@ function upstream(draft: Obj, ctx: Ctx) {
   return <Parts parts={[target.label, ...(target.nodes.length > 0 ? [<Mono key="nodes" values={target.nodes} />] : [])]} />;
 }
 
-function plugins(draft: Obj) {
-  const names = servicePlugins(draft).map(pluginName);
+function plugins(draft: Obj, all: Record<string, PluginInfo> | undefined) {
+  const names = servicePlugins(draft, all).map(pluginName);
   const parts = [...(names.length > 0 ? [<Mono key="own" values={names} />] : [t('svc.overview.noPlugins')])];
   // A service's script is inherited by its routes and runs instead of their plugins (merge_service_route, apisix/init.lua).
   if (draft.script !== undefined) parts.push(t('svc.overview.script'));
@@ -53,6 +54,8 @@ function routesLine(id: string | undefined, ctx: Ctx) {
 
 export function GeneralTab({ draft, setDraft, issues, ctx, isNew, original }: TabProps) {
   const locked = useLocked();
+  // The plugin list when the editor has it (a custom global-scope plugin then reads "no effect here").
+  const all = usePluginsIfLoaded();
   // Labels with a value that isn't text can't be edited here; they are kept as they are.
   const labels = isObj(draft.labels) ? draft.labels : {};
   const textLabels = Object.fromEntries(Object.entries(labels).filter((e): e is [string, string] => typeof e[1] === 'string'));
@@ -106,7 +109,7 @@ export function GeneralTab({ draft, setDraft, issues, ctx, isNew, original }: Ta
         title={t('svc.overview')}
         rows={[
           { tab: 'upstream', label: t('rt.tab.upstream'), value: upstream(draft, ctx) },
-          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft) },
+          { tab: 'plugins', label: t('pl.tab'), value: plugins(draft, all) },
           { tab: 'routes', label: t('svc.tab.routes'), value: routes },
         ]}
       />

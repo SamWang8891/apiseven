@@ -6,11 +6,23 @@ import { t } from '../i18n';
 import { pluginFixture } from '../test/pluginFixture';
 import { PluginChips } from './cells';
 import { scopedPlugins } from './scopedPlugins';
+import { servicePlugins } from './services/columns';
 
 const off = { _meta: { disable: true } };
 const myAuth = { schema: {}, type: 'auth', consumer_schema: { type: 'object' } };
 
 describe('scopedPlugins', () => {
+  // Fix round 2, item 2: entryEffect gets the plugin's info where the list is in hand, so a custom plugin
+  // this APISIX reports as `scope: "global"` reads "no effect here", never "off".
+  it('a custom plugin the list reports as scope global has no effect here, stored off or not; without the list the built-in names decide', () => {
+    const all = { ...pluginFixture().http, 'my-global': { schema: {}, scope: 'global' } };
+    const value = { plugins: { 'my-global': { ...off }, cors: { ...off } } };
+    expect(scopedPlugins(value, 'consumer', all)).toEqual([{ name: 'cors', disabled: true }, { name: 'my-global', noEffect: true }]);
+    expect(scopedPlugins(value, 'consumer_group', all)).toEqual([{ name: 'cors', disabled: true }, { name: 'my-global', noEffect: true }]);
+    expect(servicePlugins(value, all)).toEqual([{ name: 'cors', disabled: true }, { name: 'my-global', noEffect: true }]);
+    expect(servicePlugins(value)).toEqual([{ name: 'cors', disabled: true }, { name: 'my-global', disabled: true }]);
+  });
+
   it("a credential's built-in auth plugin needs no lookup; a custom one is an auth plugin APISIX may not know: nothing definite before the list loads, \"not used\" if it doesn't know it (consumer.lua 166–167)", () => {
     const value = { plugins: { 'my-auth': { token: 't', ...off } } };
     expect(scopedPlugins({ plugins: { 'key-auth': { key: 'k', ...off } } }, 'credential')).toEqual([{ name: 'key-auth', stillSignsIn: true }]);
