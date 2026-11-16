@@ -11,10 +11,12 @@ import {
   eventually,
   openEditor,
   openList,
+  openCard,
   pluginCard,
   recordWrites,
   save,
   sentWrites,
+  setCode,
   t,
   tabNamed,
   test,
@@ -209,4 +211,26 @@ test('a plugin APISIX runs for the whole instance (inspect): its card reads No e
   const list = await openList(page, 'routes');
   await expect(list.getByRole('row').filter({ hasText: id })).toContainText(t('cell.plugin.noEffect'));
   await admin.del(`routes/${id}`);
+});
+
+// C7: Form → JSON → Form before saving: an edit made in the card's JSON view is what the form shows
+// when it comes back, a later form edit adds to it, and a field the form does not know survives both.
+test('a value edited in the card’s JSON view shows in the form back again; another edited there; Save stores both and the field the form does not know', async ({ page, admin }) => {
+  const { id, stored } = await storedRoute(admin, { plugins: { 'limit-count': { count: 5, time_window: 60, rejected_code: 503, x_e2e: 'kept' } } });
+  await openEditor(page, `routes/${id}?tab=plugins`);
+  await unlock(page);
+  const card = await openCard(page, 'limit-count');
+  const views = card.getByRole('group', { name: t('pl.card.view', { name: 'limit-count' }) });
+  await views.getByRole('button', { name: t('pl.card.json') }).click();
+  const json = card.getByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'limit-count' }) });
+  expect(JSON.parse(await codeText(json))).toEqual({ count: 5, time_window: 60, rejected_code: 503, x_e2e: 'kept' });
+  await setCode(page, json, JSON.stringify({ count: 7, time_window: 60, rejected_code: 503, x_e2e: 'kept' }, null, 2));
+  // Back to the form before saving: it shows the JSON view's edit.
+  await views.getByRole('button', { name: t('pl.card.form') }).click();
+  const count = card.getByRole('textbox', { name: /^count\b/ });
+  await expect(count).toHaveValue('7');
+  await card.getByRole('textbox', { name: /^time_window\b/ }).fill('120');
+  const write = await save(page);
+  expect((write.body?.plugins as Record<string, unknown>)['limit-count']).toEqual({ count: 7, time_window: 120, rejected_code: 503, x_e2e: 'kept' });
+  expect(await admin.value(`routes/${id}`)).toEqual({ ...stored, plugins: { 'limit-count': { count: 7, time_window: 120, rejected_code: 503, x_e2e: 'kept' } } });
 });
