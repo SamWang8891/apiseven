@@ -205,6 +205,30 @@ describe('the Content tab', () => {
       expect(main().queryByText(t('pr.file.readFailed'))).not.toBeInTheDocument();
     });
 
+    it('while a save is in flight (the page locked, the session the same), changes nothing once APISIX refuses late (fix round 1, F3)', async () => {
+      let answer: (r: Response) => void = () => {};
+      const { user, admin } = await openEditor('#/protos/hello?tab=content', {
+        objects: { protos: [HELLO], routes: [], services: [] },
+        replies: { 'protos/hello': (req) => (req.method === 'PUT' ? new Promise<Response>((done) => (answer = done)) : undefined) },
+      });
+      await main().findByRole('heading', { level: 1, name: 'hello' });
+      await settled();
+      await user.keyboard('e');
+      await user.click(await editor());
+      await user.keyboard('{Control>}a{/Control}');
+      await user.paste(PASTED);
+      const late = slowProto(LATE, 'late.proto');
+      await user.upload(fileInput(), late.file);
+      fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+      await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+      act(() => answer(json(400, { error_msg: 'refused late by the test' })));
+      expect(await main().findAllByText('refused late by the test')).not.toHaveLength(0);
+      // Editable again, in the same editing session: the read that began before the save is stale.
+      await late.release();
+      expect((await editor()).textContent).toBe('syntax = "proto3";package pasted;');
+      expect(writesOf(admin)[0]?.body?.content).toBe(PASTED);
+    });
+
     it('after the tab went away, or the page locked, changes nothing', async () => {
       const { user } = await editing();
       const gone = slowProto(LATE, 'gone.proto');
