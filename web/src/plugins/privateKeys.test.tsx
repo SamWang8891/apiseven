@@ -511,6 +511,38 @@ describe.each(views)('R1.4: after leaving $name, undo and redo never bring a key
   });
 });
 
+// Fix round 4, F1: leaving veils what the shared detection (schema/secrets.ts withoutPrivateKeys) calls
+// private-key text wherever it stands in the raw text, whether or not the text parses: between strings,
+// in a property name, a block with no END line or with another label's END line.
+describe.each(views)('F1: after leaving $name, no private-key text is in the page (nor, in the JSON tab, in what Copy copies)', ({ name, open: openView }) => {
+  const BODY = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAAleftAfterLeaving';
+  /** The view's text with an earlier string's closing quote taken away. */
+  const unbalanced: Record<string, (text: string) => string> = {
+    'the JSON tab': (text) => text.replace('"name":"split"', '"name":"split'),
+    'a plugin card’s JSON view': (text) => text.replace('"uri": "/x"', '"uri": "/x'),
+    'a schema-form JSON field': (text) => text.replace('{"k"', '{"a": "abc, "k"'),
+  };
+  const inputs: [string, (text: string) => string][] = [
+    ['a raw PEM where a value goes, without quotes', (text) => text.replace('"§"', pem(BODY))],
+    ['a key in a valid string after an unbalanced quote earlier in the text', (text) => (unbalanced[name]?.(text) ?? text).replace('"§"', JSON.stringify(pem(BODY)))],
+    ['a key with no END line', (text) => text.replace('"§"', JSON.stringify(`-----BEGIN PRIVATE KEY-----\n${BODY}${'A'.repeat(100)}`))],
+    ['a key whose END label differs from its BEGIN label', (text) => text.replace('"§"', JSON.stringify(pem(BODY).replace('BEGIN PRIVATE', 'BEGIN RSA PRIVATE')))],
+    ['a key used as a property name', (text) => text.replace('"§"', `{${JSON.stringify(pem(BODY))}: 1}`)],
+  ];
+
+  it.each(inputs)('%s', async (_what, probe) => {
+    const { user, box, text, leave } = await openView();
+    await replaceText(user, box, probe(text));
+    expect(inPage(BODY)).toBe(true);
+    await leave();
+    await waitFor(() => expect(inPage(BODY)).toBe(false));
+    if (name !== 'the JSON tab') return;
+    await user.click(main().getByRole('button', { name: t('json.copy') }));
+    await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('json.copiedNoKey')));
+    expect(await navigator.clipboard.readText()).not.toContain(BODY);
+  });
+});
+
 describe('R4.1: a whole-key place with text around the key is veiled whole on leaving, and saved exactly as entered', () => {
   const BAG = 'Bag Attributes\n    localKeyID: 01 00 00 00\nKey Attributes: <No Attributes>\n';
 

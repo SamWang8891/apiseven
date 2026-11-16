@@ -1,5 +1,5 @@
 // Private keys in JSON text that is being edited (the editor's JSON tab, a plugin card's JSON view, a
-// schema-form JSON field). The rule this module implements (final wave, fix round 3):
+// schema-form JSON field). The rule this module implements (final wave, fix rounds 3 and 4):
 //  1. A key text is the whole text of a whole-key place (an SSL's `key` and each of its `keys`, any
 //     text under a never-shown name such as client_key), or each PEM private-key block of any other
 //     text (schema/secrets.ts holdsPrivateKey / withoutPrivateKeys: the SSL editor's detection).
@@ -8,8 +8,10 @@
 //     (the user's own key) until it is first taken somewhere.
 //  3. Veiling turns key texts into notes: a whole-key place's text into one note, a block into a note
 //     in place. A value shown for editing is veiled (veilValue). Leaving a view veils its raw text,
-//     string by string, whether or not it parses (veilTypedText): a block never crosses the end of the
-//     string it starts in, and only a whole block (BEGIN to its END line) is veiled.
+//     whether or not it parses (veilTypedText), with rule 1's detection: string by string first,
+//     property names included, so a block never crosses the end of the string it starts in (one with
+//     no END line ends with its string); then any block still in the raw text (between strings, where
+//     the text is broken) is veiled where it stands, to an END line or to the end of the text.
 //  4. Taking text back (unveilValue) resolves every note in every text, in place, to its key text when
 //     it is a note of this session, appears once in the text, and stands where it may: at its own path;
 //     anywhere in the caller's group with it (an SSL's key and certificate slots); or at any path that
@@ -311,16 +313,16 @@ function decode(raw: string): string {
   return raw.replace(/\\(u[0-9a-fA-F]{4}|.)/g, (all, esc: string) => (esc.length === 5 ? String.fromCharCode(parseInt(esc.slice(1), 16)) : (ESCAPES[esc] ?? all)));
 }
 
-/** Whole PEM private-key blocks in a text, each from its BEGIN line to its own END line. */
-const TYPED_KEY_BLOCKS = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?-----END \1PRIVATE KEY-----/g;
-
 /**
  * Raw text being typed in an editing JSON view, which may not parse, with its key texts veiled (rule 3),
- * for leaving the view: read string by string, so a block never crosses the end of the string it starts
- * in (and an escaped one is seen as what it says); a whole-key place's text that holds a key, or no note,
- * becomes one note; any other string's whole blocks become notes in place; only those strings are
- * rewritten, the rest of the text is left as typed. Such notes are made in typed text: they stand for
- * the user's own keys, bound to where they are first taken. A block with no END line is left as typed.
+ * for leaving the view. Read string by string, so a block never crosses the end of the string it starts
+ * in (and an escaped one is seen as what it says): a whole-key place's text that holds a key, or no
+ * note, becomes one note; in any other string, property names included, each block becomes a note in
+ * place, found as rule 1 finds it (withoutPrivateKeys: to an END line, or to the end of that string).
+ * Then any block still in the raw text (between strings, where the text is broken) becomes a note
+ * there, to an END line or to the end of the text. Only those strings and blocks are rewritten, the rest
+ * of the text is left as typed. Such notes are made in typed text: they stand for the user's own keys,
+ * bound to where they are first taken.
  */
 export function veilTypedText(
   text: string,
@@ -337,21 +339,23 @@ export function veilTypedText(
   let out = '';
   let from = 0;
   for (const literal of literalsOf(text)) {
-    if (!literal.path) continue;
     const value = decode(literal.raw);
     const path = literal.path;
     // The property it is under, as the value walks read it (an array's items under the array's name).
-    const key = [...path].reverse().find((seg): seg is string => typeof seg === 'string') ?? opts.under;
+    const key = path && ([...path].reverse().find((seg): seg is string => typeof seg === 'string') ?? opts.under);
     let next = value;
-    if (isWhole(opts.whole, path, key)) {
+    if (path && isWhole(opts.whole, path, key)) {
       // A whole key place: veiled as a whole when it holds a key, or holds text and no note.
       const hasNote = value.includes(MASK.slice(0, 1)) && notePattern().test(value);
       if (value !== '' && (holdsPrivateKey(value) || !hasNote)) next = mint(value);
-    } else if (holdsPrivateKey(value)) next = value.replace(TYPED_KEY_BLOCKS, mint);
+    } else if (holdsPrivateKey(value)) next = withoutPrivateKeys(value, mint);
     if (next === value) continue;
     out += text.slice(from, literal.start) + JSON.stringify(next);
     from = literal.end;
   }
-  if (from === 0) return { text, notes, veiled: false };
-  return { text: out + text.slice(from), notes: { session: notes.session, keys, at: notes.at }, veiled: true };
+  out += text.slice(from);
+  // What the reading above could not place: a block between strings, or in strings read wrongly.
+  if (holdsPrivateKey(out)) out = withoutPrivateKeys(out, (block) => mint(decode(block)));
+  if (out === text) return { text, notes, veiled: false };
+  return { text: out, notes: { session: notes.session, keys, at: notes.at }, veiled: true };
 }
