@@ -37,7 +37,8 @@ const TAKEN_OUT = '•';
  * the refused part is corrected (final wave O1). Text typed is one tag, spaces and all, also when it
  * is typed over the whole of such text (fix round 1, F4). A private key in text left refused is taken
  * out of the page when the box is left, its words in its place, which are never added as a tag; the
- * held message never quotes a key (Codex final pass, fix round 1, Y2).
+ * held message never quotes a key, nor does a refusal message kept for the field (Codex final pass,
+ * fix rounds 1 and 2, Y2, Z1).
  */
 export function TagInput({
   label, help, error, required, htmlFor, id, value, onChange, validate, mono, placeholder, className, disabled, onBlur, fieldName, ...native
@@ -90,7 +91,9 @@ export function TagInput({
       if (next.includes(tag)) continue;
       const message = tag.includes(TAKEN_OUT) ? t('ui.tags.keyOut') : validate?.(tag);
       if (message) {
-        setRejected(message);
+        // Kept with any private key it quotes taken out: the field's error and the held message (a
+        // refused Save's toast) never hold one (fix round 2, Z1).
+        setRejected(holdsPrivateKey(message) ? withoutPrivateKeys(message, t('ssl.pem.marker')) : message);
         if (next.length > value.length) onChange(next);
         return tags.slice(i).join(' ');
       }

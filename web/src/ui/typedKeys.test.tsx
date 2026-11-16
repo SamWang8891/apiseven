@@ -3,7 +3,7 @@
 // the words for a key taken out of the page, the text stays held, and the held message (a refused
 // Save's toast) is built from the replaced text, never from the key. While the user is in the box,
 // nothing changes.
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -116,5 +116,41 @@ describe('TagInput: a key pasted in, refused by validate', () => {
     expect(screen.getByRole('status', { name: 'tags' })).toHaveTextContent(/^ok$/);
     expect(held()).toEqual([t('ui.pending.tag', { field: 'Hosts', text: `${MARKER} more`, reason: t('ui.tags.keyOut') })]);
     expect(inPage(BODY)).toBe(false);
+  });
+});
+
+// Fix round 2, Z1: a validate message that quotes the text it refuses is kept with the key taken out,
+// so neither the field's error nor the held message (a refused Save's toast) ever holds the key.
+describe('TagInput: a validate message that quotes the refused text', () => {
+  const isPath = (tag: string) => (tag.startsWith('/') ? undefined : `"${tag}" is not a path`);
+  const entries: [string, (user: ReturnType<typeof userEvent.setup>, input: HTMLElement) => Promise<void>][] = [
+    ['typed', (user, input) => user.type(input, KEY)],
+    [
+      'dropped (one change, no paste)',
+      (_user, input) => {
+        fireEvent.change(input, { target: { value: KEY } });
+        return Promise.resolve();
+      },
+    ],
+  ];
+
+  it.each(entries)('%s, then left: the key is in no text of the page, nor in the held message', async (_how, enter) => {
+    const { user, held, leave } = withProvider(<Tags validate={isPath} />);
+    const input = screen.getByRole('textbox', { name: 'Hosts' });
+    await user.click(input);
+    await enter(user, input);
+    await leave();
+    expect(inPage(BODY)).toBe(false);
+    expect(input).toHaveValue(MARKER);
+    expect(screen.getByText(`"${MARKER}" is not a path`)).toBeInTheDocument();
+    expect(held()).toEqual([t('ui.pending.tag', { field: 'Hosts', text: MARKER, reason: `"${MARKER}" is not a path` })]);
+  });
+
+  it('a message about key-free text is kept as it came', async () => {
+    const { user, held, leave } = withProvider(<Tags validate={isPath} />);
+    await user.type(screen.getByRole('textbox', { name: 'Hosts' }), 'abc');
+    await leave();
+    expect(screen.getByText('"abc" is not a path')).toBeInTheDocument();
+    expect(held()).toEqual([t('ui.pending.tag', { field: 'Hosts', text: 'abc', reason: '"abc" is not a path' })]);
   });
 });
