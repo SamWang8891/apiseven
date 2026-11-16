@@ -7,7 +7,11 @@ import { t } from '../i18n';
 import { redactPair } from '../plugins/secrets';
 import { Button, Dialog, useReveal } from '../ui';
 import { hunks, lineDiff, type Hunk } from './diff';
+import { deepEqual } from './draft';
 import { canonical, pretty } from './json';
+
+/** Above this many changed or context lines the diff is not drawn: a summary says which fields differ. */
+const MAX_DRAWN = 2000;
 
 export interface ConflictDialogProps {
   /** Kind singular and object name, for the title. */
@@ -70,7 +74,26 @@ export function ConflictDialog({ kind, name, resource, plugins, id, loaded, thei
   const pair = useMemo(() => redactPair(stripTimestamps(loaded), stripTimestamps(theirs), resource, plugins, id), [loaded, theirs, resource, plugins, id]);
   const [revealed, setRevealed] = useReveal();
   const [mine, others] = revealed ? pair.revealed : pair.masked;
-  const lines = useMemo(() => hunks(lineDiff(pretty(canonical(mine)), pretty(canonical(others)))), [mine, others]);
+  const diff = useMemo(() => {
+    const a = pretty(canonical(mine));
+    const b = pretty(canonical(others));
+    const lines = hunks(lineDiff(a, b));
+    // Too many lines to draw (a huge object changed at both ends cannot be aligned and reads as all
+    // removed, all added): the top-level fields that differ, by name only, instead.
+    const drawn = lines.filter((line) => line.op !== 'skip').length;
+    const tooLarge =
+      drawn > MAX_DRAWN
+        ? {
+            lines: Math.max(a.split('\n').length, b.split('\n').length).toLocaleString('en-US'),
+            fields: [...new Set([...Object.keys(mine), ...Object.keys(others)])]
+              .filter((key) => !deepEqual(mine[key], others[key]))
+              .sort()
+              .join(', '),
+          }
+        : undefined;
+    return { lines, tooLarge };
+  }, [mine, others]);
+  const { lines, tooLarge } = diff;
   const changed = lines.some((line) => line.op === 'add' || line.op === 'del');
   return (
     <Dialog
@@ -102,11 +125,15 @@ export function ConflictDialog({ kind, name, resource, plugins, id, loaded, thei
                 </Button>
               )}
             </div>
-            <div className="ed-diff mono">
-              {lines.map((hunk, i) => (
-                <DiffLine key={i} hunk={hunk} />
-              ))}
-            </div>
+            {tooLarge ? (
+              <p className="ed-conflict__legend">{t('editor.conflict.tooLarge', tooLarge)}</p>
+            ) : (
+              <div className="ed-diff mono">
+                {lines.map((hunk, i) => (
+                  <DiffLine key={i} hunk={hunk} />
+                ))}
+              </div>
+            )}
           </>
         ) : (
           <p className="ed-conflict__legend">{t('editor.conflict.timeOnly')}</p>

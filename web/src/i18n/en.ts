@@ -454,6 +454,7 @@ export const en: Record<string, string> = {
   'editor.conflict.legend': 'Lines marked − are only in the version you loaded; + only in theirs.',
   'editor.conflict.timeOnly': 'Only its update time changed; the content is the same.',
   'editor.conflict.skipped': '{count} unchanged lines',
+  'editor.conflict.tooLarge': 'Too large to compare line by line ({lines} lines). These top-level fields differ: {fields}.',
   'editor.conflict.overwrite': 'Overwrite with mine',
   'editor.conflict.reload': 'Reload theirs',
   'editor.conflict.reloaded': 'Loaded the latest version of {name}',

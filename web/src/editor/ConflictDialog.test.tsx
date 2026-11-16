@@ -46,6 +46,18 @@ describe('ConflictDialog', () => {
     }
   });
 
+  // Fix round 1, R2.2: changed at both ends, the labels between them cannot be aligned (too many
+  // lines to compare): a summary instead of 280,000 removed and added lines.
+  it('a route with 140,000 labels changed at both ends: a summary naming the fields that differ, and the choices', () => {
+    const labels = Object.fromEntries(Array.from({ length: 140_000 }, (_, i) => [`k${i}`, 'v']));
+    const dialog = show({ id: 'r1', host: 'a.example', labels, uri: '/a' }, { id: 'r1', host: 'b.example', labels, uri: '/b' });
+    expect(within(dialog).getByText(t('editor.conflict.tooLarge', { lines: '140,007', fields: 'host, uri' }))).toBeInTheDocument();
+    expect(dialog.querySelectorAll('.ed-diff__line').length).toBe(0);
+    for (const name of [t('editor.conflict.overwrite'), t('editor.conflict.reload'), t('ui.cancel')]) {
+      expect(within(dialog).getAllByRole('button', { name }).length).toBeGreaterThan(0);
+    }
+  });
+
   it('offers overwrite, reload and cancel', () => {
     const dialog = show({ a: 1 }, { a: 2 });
     for (const name of [t('editor.conflict.overwrite'), t('editor.conflict.reload'), t('ui.cancel')]) {
