@@ -12,9 +12,9 @@
 //     string it starts in, and only a whole block (BEGIN to its END line) is veiled.
 //  4. Taking text back (unveilValue) resolves every note in every text, in place, to its key text when
 //     it is a note of this session, appears once in the text, and stands where it may: at its own path;
-//     anywhere in the caller's group with it (an SSL's key and certificate slots); or at a path that
-//     differs from its own only in array indices, when no note stands at its own path any more. A note
-//     made in typed text resolves where it stands.
+//     anywhere in the caller's group with it (an SSL's key and certificate slots); or at any path that
+//     differs from its own only in array indices (fix round 4, F2: a reorder, a removal or a swap of
+//     list elements carries each key with its note). A note made in typed text resolves where it stands.
 //  5. Anything else holds the text (Save is refused, nothing is sent): a note of no key of this session,
 //     one used twice, one out of place (the message names the path it belongs to), what is left of a
 //     note (a whole mask run, its words with an id, an id with its tail, an id of this session) in a text
@@ -109,7 +109,7 @@ export function mayHoldKeys(text: string, session?: string): boolean {
 /** Whether a note made at `made` (JSON) may stand at `path` for being in the caller's group with it. */
 const sameGroup = (group: PlaceGroup | undefined, made: Path, path: Path): boolean => group !== undefined && group(made) && group(path);
 
-/** Whether two paths differ only in array indices (rule 4: an element before them removed or moved). */
+/** Whether two paths differ only in array indices (rule 4: list elements removed, reordered or swapped). */
 const sameButIndices = (a: Path, b: Path): boolean => a.length === b.length && a.every((seg, i) => (typeof seg === 'number' ? typeof b[i] === 'number' : seg === b[i]));
 
 /** How a message names a path. */
@@ -184,22 +184,18 @@ function textsOf(value: unknown, out = new Set<string>()): Set<string> {
   return out;
 }
 
-/** Every note in `value`'s texts: how often each appears, and the paths (JSON) whose text holds one. */
-function notesIn(value: unknown): { count: Map<string, number>; at: Set<string> } {
+/** How often each note appears in `value`'s texts. */
+function notesIn(value: unknown): Map<string, number> {
   const count = new Map<string, number>();
-  const at = new Set<string>();
-  const walk = (v: unknown, path: (string | number)[]) => {
+  const walk = (v: unknown) => {
     if (typeof v === 'string') {
       if (!v.includes(MASK.slice(0, 1))) return;
-      for (const [note] of v.matchAll(notePattern())) {
-        count.set(note, (count.get(note) ?? 0) + 1);
-        at.add(JSON.stringify(path));
-      }
-    } else if (Array.isArray(v)) v.forEach((x, i) => walk(x, [...path, i]));
-    else if (isObj(v)) for (const [k, x] of Object.entries(v)) walk(x, [...path, k]);
+      for (const [note] of v.matchAll(notePattern())) count.set(note, (count.get(note) ?? 0) + 1);
+    } else if (Array.isArray(v)) v.forEach(walk);
+    else if (isObj(v)) Object.values(v).forEach(walk);
   };
-  walk(value, []);
-  return { count, at };
+  walk(value);
+  return count;
 }
 
 /**
@@ -222,11 +218,10 @@ export function unveilValue(
     const text = notes.keys.get(note);
     const made = notes.at.get(note);
     if (text === undefined) problem ??= t('json.note.unknown');
-    else if ((found.count.get(note) ?? 0) > 1) problem ??= t('json.note.twice');
+    else if ((found.get(note) ?? 0) > 1) problem ??= t('json.note.twice');
     else if (made !== undefined && made !== JSON.stringify(path)) {
       const own = JSON.parse(made) as Path;
-      const moved = !sameGroup(opts.group, own, path) && !(sameButIndices(own, path) && !found.at.has(made));
-      if (moved) problem ??= t('json.note.moved', { path: pathName(own) });
+      if (!sameGroup(opts.group, own, path) && !sameButIndices(own, path)) problem ??= t('json.note.moved', { path: pathName(own) });
     }
     return text ?? note;
   };

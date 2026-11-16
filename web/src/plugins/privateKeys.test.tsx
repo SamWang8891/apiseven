@@ -588,6 +588,64 @@ describe('R4.2: a note moved only by an array edit stays its key', () => {
   });
 });
 
+// Fix round 4, F2: a note of this session used once may stand at any path that differs from its own
+// only in array indices, whether or not a note stands at its own path: each key goes with its note.
+describe('F2: in a list holding two keys, each note carries its key across a reorder, a removal or a swap', () => {
+  const K1 = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAAfirstListKey';
+  const K2 = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAAsecondListKey';
+  const keyed = (body: string, weight: number): Obj => ({
+    upstream: { type: 'roundrobin', scheme: 'https', nodes: { [`10.0.0.${weight}:443`]: 1 }, tls: { client_cert: CERT, client_key: pem(body) } },
+    weight,
+  });
+  const THREE: Obj = { ...ROUTE, plugins: { 'traffic-split': { rules: [{ weighted_upstreams: [{ weight: 1 }, keyed(K1, 2), keyed(K2, 3)] }] } } };
+  const ups = (o: Obj) => (((o.plugins as Obj)['traffic-split'] as Obj).rules as Obj[])[0]?.weighted_upstreams as Obj[];
+  const withUps = (o: Obj, list: Obj[]): Obj => ({ ...o, plugins: { 'traffic-split': { rules: [{ weighted_upstreams: list }] } } });
+  const keyOf = (el: Obj | undefined) => ((el?.upstream as Obj).tls as Obj).client_key;
+  const withKey = (el: Obj | undefined, key: unknown): Obj => ({ ...el, upstream: { ...(el?.upstream as Obj), tls: { ...((el?.upstream as Obj).tls as Obj), client_key: key } } });
+  const [plain, first, second] = ups(THREE);
+
+  async function editThree() {
+    const app = await open('#/routes/r1?tab=json', THREE);
+    await app.user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent?.match(new RegExp(note.source, 'g'))).toHaveLength(2));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    return { ...app, box, shown, list: ups(shown) };
+  }
+
+  async function saved(user: UserEvent, admin: Parameters<typeof writesOf>[0]) {
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    return ups(writesOf(admin)[0]?.body as Obj);
+  }
+
+  it('the two keyed elements reordered: saved, each stored key sent at its new index', async () => {
+    const { user, admin, box, shown, list } = await editThree();
+    await replaceText(user, box, JSON.stringify(withUps(shown, [list[0] as Obj, list[2] as Obj, list[1] as Obj])));
+    expect(await saved(user, admin)).toEqual([plain, second, first]);
+  });
+
+  it('the keyless element in front of the two keyed ones removed: saved, each stored key sent at its new index', async () => {
+    const { user, admin, box, shown, list } = await editThree();
+    await replaceText(user, box, JSON.stringify(withUps(shown, [list[1] as Obj, list[2] as Obj])));
+    expect(await saved(user, admin)).toEqual([first, second]);
+  });
+
+  it('the notes of the two keyed elements swapped: saved, the keys swapped with them', async () => {
+    const { user, admin, box, shown, list } = await editThree();
+    await replaceText(user, box, JSON.stringify(withUps(shown, [list[0] as Obj, withKey(list[1], keyOf(list[2])), withKey(list[2], keyOf(list[1]))])));
+    expect(await saved(user, admin)).toEqual([plain, withKey(first, pem(K2)), withKey(second, pem(K1))]);
+  });
+
+  it('a note copied over the other keyed element’s note: refused as used twice, nothing sent', async () => {
+    const { user, admin, box, shown, list } = await editThree();
+    await replaceText(user, box, JSON.stringify(withUps(shown, [list[0] as Obj, list[1] as Obj, withKey(list[2], keyOf(list[1]))])));
+    expect(await main().findByText(t('json.note.twice'))).toBeInTheDocument();
+    await user.keyboard('{Control>}s{/Control}');
+    expect(writesOf(admin)).toEqual([]);
+  });
+});
+
 describe('R4.3–R4.5: escapes, blocks across strings, what is left of a note', () => {
   it('an escaped mask run is refused like a typed one; a key with escaped dashes is a note once left (a route with no key, so no note in the text)', async () => {
     const PLAIN: Obj = { id: 'r1', name: 'split', uri: '/s', upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] } };
