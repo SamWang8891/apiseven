@@ -9,6 +9,7 @@ import type { NewIdProps, TabDef } from '../resources/registry';
 import { resetApp } from '../test/app';
 import { main, openEditor, overrideDef, writesOf } from '../test/editor';
 import { getToasts } from '../ui/toast';
+import { newPathFor } from '../router/paths';
 
 const undo: (() => void)[] = [];
 afterEach(() => {
@@ -38,7 +39,7 @@ const ID_TAB: TabDef = { id: 'general', label: 'General', fields: ['started'], r
 describe('ResourceDef.NewId', () => {
   it("replaces the frame's ID field; its id is created under, given to the tabs, and its draft change kept", async () => {
     undo.push(overrideDef('consumer_groups', { NewId: PairId, tabs: [ID_TAB], validate: () => [] }));
-    const { user, admin } = await openEditor('#/consumer_groups/new', { objects: { consumer_groups: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('consumer_groups')}`, { objects: { consumer_groups: [] } });
     await main().findByRole('button', { name: t('editor.create') });
     expect(main().queryByRole('textbox', { name: /^ID/ })).not.toBeInTheDocument();
     await user.type(main().getByRole('textbox', { name: 'first part' }), 'a');
@@ -51,7 +52,7 @@ describe('ResourceDef.NewId', () => {
 
   it("idProblem refuses an id the kind can't take: shown at the control, Save and Cmd/Ctrl-S send nothing, the toast names it", async () => {
     undo.push(overrideDef('consumer_groups', { NewId: PairId, tabs: [ID_TAB], validate: () => [], idProblem: (id) => (id.startsWith('x') ? `ID: "${id}" starts with x` : undefined) }));
-    const { user, admin } = await openEditor('#/consumer_groups/new', { objects: { consumer_groups: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('consumer_groups')}`, { objects: { consumer_groups: [] } });
     await main().findByRole('button', { name: t('editor.create') });
     await user.type(main().getByRole('textbox', { name: 'first part' }), 'x');
     expect(main().getByRole('note')).toHaveTextContent('ID: "x-" starts with x');

@@ -16,6 +16,7 @@ import { getToasts, toastsRaised } from '../ui/toast';
 import { ApiError } from '../api/errors';
 import { saveFailure } from './failure';
 import { newIdState, segmentProblem } from './newId';
+import { newPathFor } from '../router/paths';
 
 const undo: (() => void)[] = [];
 afterEach(() => {
@@ -96,7 +97,7 @@ describe('a consumer whose username is not an id: no request, and no Save anyway
     ['..', '..'],
   ])('%s', async (_, username) => {
     undo.push(overrideDef('consumers', { validate: (d: Obj, env: ValidateEnv) => [...consumerIssues(d, env), { path: 'desc', message: STRICT }] }));
-    const { user, admin } = await openEditor('#/consumers/new', { objects: { consumers: [] }, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}`, { objects: { consumers: [] }, replies: pluginReplies() });
     const field = await main().findByRole('textbox', { name: /^Username/ });
     if (username !== '') await user.type(field, username);
     const before = toastsRaised();
@@ -115,7 +116,7 @@ describe('a typed id that is not one path segment (routes)', () => {
     ['..', '..'],
   ])('%s: a plain Create is refused, the ID field says why; with a local issue too, no Save anyway (the idRefused exclusion)', async (_, id) => {
     undo.push(overrideDef('routes', { tabs: [GENERAL_TAB], validate: (d) => (d.name === 'strict' ? [{ path: 'name', message: STRICT }] : []) }));
-    const { user, admin } = await openEditor('#/routes/new?upstream_id=u1', { objects: { routes: [], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] } });
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?upstream_id=u1`, { objects: { routes: [], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] } });
     const idField = await main().findByRole('textbox', { name: 'ID' });
     await user.type(idField, id);
     expect(idField).toHaveAccessibleDescription(expect.stringContaining(t('editor.id.segment', { id })) as string);

@@ -12,6 +12,7 @@ import { GENERAL_TAB, main, openEditor, overrideDef, PROBE_TAB, writesOf } from 
 import { json } from '../test/fakeAdmin';
 import { renderWithProviders } from '../test/providers';
 import { EditorPage } from '../pages/EditorPage';
+import { newPathFor } from '../router/paths';
 
 const undo: (() => void)[] = [];
 afterEach(() => {
@@ -31,7 +32,7 @@ const ROUTE: Obj = {
 };
 
 /** A new route that has something to do (APISIX needs an upstream, a service, plugins or a script). */
-const NEW_ROUTE = '#/routes/new?upstream_id=u1';
+const NEW_ROUTE = `#${newPathFor('routes')}?upstream_id=u1`;
 const UPSTREAMS = [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }];
 
 /** An existing route r1 opened with a General tab (name, uri) before the JSON tab. */
@@ -293,7 +294,7 @@ describe('save', () => {
   });
 
   it('a 401 on the create check is the same: no write, not read-only, Connect', async () => {
-    const { user, admin } = await openEditor('#/upstreams/new', {
+    const { user, admin } = await openEditor(`#${newPathFor('upstreams')}`, {
       replies: { 'upstreams/u9': (req) => (req.method === 'GET' ? json(401, { error_msg: 'failed to check token', description: 'wrong apikey' }) : undefined) },
     });
     await user.type(await main().findByRole('textbox', { name: /^ID/ }), 'u9');
@@ -424,7 +425,7 @@ describe('JSON tab', () => {
 
 describe('ID on create', () => {
   it("idMode 'required' with an empty ID: no API call, the ID field shows the problem", async () => {
-    const { user, admin } = await openEditor('#/global_rules/new', { objects: { global_rules: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('global_rules')}`, { objects: { global_rules: [] } });
     await user.click(await main().findByRole('button', { name: t('editor.create') }));
     expect(await main().findByRole('textbox', { name: /^ID/ })).toHaveAccessibleDescription(t('editor.id.required'));
     expect(getToasts().at(-1)?.message).toBe(t('editor.fixOne'));
@@ -446,7 +447,7 @@ describe('ID on create', () => {
   });
 
   it('a new object starts unlocked, with no Edit button and no menu', async () => {
-    await openEditor('#/routes/new', { objects: { routes: [] } });
+    await openEditor(`#${newPathFor('routes')}`, { objects: { routes: [] } });
     expect(await main().findByRole('heading', { level: 1, name: t('page.new', { kind: 'Route' }) })).toBeInTheDocument();
     expect(main().queryByRole('button', { name: t('editor.edit') })).not.toBeInTheDocument();
     expect(main().queryByRole('button', { name: t('editor.more') })).not.toBeInTheDocument();
@@ -705,7 +706,7 @@ describe('APISIX errors about plugins', () => {
 
 describe('kinds whose id is a field of the body (consumers: username)', () => {
   it('create with PUT …/<username>, and land on the new consumer', async () => {
-    const { user, admin } = await openEditor('#/consumers/new?tab=json', { objects: { consumers: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}?tab=json`, { objects: { consumers: [] } });
     await main().findByRole('button', { name: t('editor.create') });
     expect(main().queryByRole('textbox', { name: /^ID/ })).not.toBeInTheDocument();
     await user.click(await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Consumer' }) }));

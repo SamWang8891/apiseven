@@ -15,6 +15,7 @@ import { Section } from '../resources/Section';
 import { SchemaForm } from '../schema-form/SchemaForm';
 import { Input, NumberInput, TagInput, usePending } from '../ui';
 import { getToasts } from '../ui/toast';
+import { newPathFor } from '../router/paths';
 
 const undo: (() => void)[] = [];
 afterEach(() => {
@@ -236,7 +237,7 @@ describe('pending input and the URL', () => {
 
   it('a change of ?from= (a different copy) is leaving the page: unsaved work asks', async () => {
     undo.push(overrideDef('routes', { tabs: [GENERAL_TAB, HOLD_TAB] }));
-    const { user } = await openEditor('#/routes/new?from=r1', { objects: { routes: [ROUTE] } });
+    const { user } = await openEditor(`#${newPathFor('routes')}?from=r1`, { objects: { routes: [ROUTE] } });
     await main().findByRole('textbox', { name: 'Name' });
     await user.type(main().getByRole('textbox', { name: 'URI' }), '2');
     await user.click(tab(/^Hold/));

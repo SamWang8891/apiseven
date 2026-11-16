@@ -12,6 +12,7 @@ import { main, openEditor, writesOf } from '../test/editor';
 import { json, type FakeAdminOptions } from '../test/fakeAdmin';
 import { pluginReplies } from '../test/plugins';
 import { getToasts } from '../ui/toast';
+import { newPathFor } from '../router/paths';
 
 beforeAll(async () => {
   await import('../resources/consumers/bodies');
@@ -44,7 +45,7 @@ async function settled() {
 const CASES: { kind: string; hash: string; typeId: (user: UserEvent, id: string) => Promise<void>; taken: string; free: string; field: () => HTMLElement; stored: Obj; storedOf: (admin: { stored: (kind: Kind, consumer?: string) => Obj[] }) => Obj[]; singular: string; inline: boolean }[] = [
   {
     kind: 'consumers',
-    hash: '#/consumers/new',
+    hash: `#${newPathFor('consumers')}`,
     typeId: async (user, id) => user.type(main().getByRole('textbox', { name: /^Username/ }), id),
     taken: 'alice',
     free: 'bob',
@@ -56,7 +57,7 @@ const CASES: { kind: string; hash: string; typeId: (user: UserEvent, id: string)
   },
   {
     kind: 'credentials',
-    hash: '#/consumers/jo/credentials/new',
+    hash: `#${newPathFor('credentials', { consumer: 'jo' })}`,
     typeId: async (user, id) => user.type(main().getByRole('textbox', { name: /^ID/ }), id),
     taken: 'c1',
     free: 'c2',
@@ -69,7 +70,7 @@ const CASES: { kind: string; hash: string; typeId: (user: UserEvent, id: string)
   },
   {
     kind: 'consumer_groups',
-    hash: '#/consumer_groups/new',
+    hash: `#${newPathFor('consumer_groups')}`,
     typeId: async (user, id) => user.type(main().getByRole('textbox', { name: /^ID/ }), id),
     taken: 'partners',
     free: 'staff',
@@ -81,7 +82,7 @@ const CASES: { kind: string; hash: string; typeId: (user: UserEvent, id: string)
   },
   {
     kind: 'routes',
-    hash: '#/routes/new?upstream_id=u1',
+    hash: `#${newPathFor('routes')}?upstream_id=u1`,
     typeId: async (user, id) => user.type(main().getByRole('textbox', { name: /^ID/ }), id),
     taken: 'r1',
     free: 'r2',
@@ -142,7 +143,7 @@ describe.each(CASES)('$kind', (c) => {
 
 describe('the check itself fails', () => {
   it('a GET that fails for another reason than 404 refuses the create too, and says why', async () => {
-    const { user, admin } = await openEditor('#/consumers/new', { ...OPTS, replies: { ...OPTS.replies, 'consumers/bob': (req) => (req.method === 'GET' ? json(503, { error_msg: 'etcd unavailable' }) : undefined) } });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}`, { ...OPTS, replies: { ...OPTS.replies, 'consumers/bob': (req) => (req.method === 'GET' ? json(503, { error_msg: 'etcd unavailable' }) : undefined) } });
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'bob');
@@ -154,7 +155,7 @@ describe('the check itself fails', () => {
 
 describe("a copy's id", () => {
   it('Duplicate of a route and the same ID typed: refused like any other', async () => {
-    const { user, admin } = await openEditor('#/routes/new?from=r1&tab=json', OPTS);
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?from=r1&tab=json`, OPTS);
     await main().findByRole('button', { name: t('editor.create') });
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'r1');
     await user.click(main().getByRole('button', { name: t('editor.create') }));

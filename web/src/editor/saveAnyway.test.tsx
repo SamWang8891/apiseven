@@ -20,6 +20,7 @@ import { renderWithProviders } from '../test/providers';
 import { EditorPage } from '../pages/EditorPage';
 import { usePending } from '../ui';
 import { getToasts, toastsRaised } from '../ui/toast';
+import { newPathFor } from '../router/paths';
 
 const undo: (() => void)[] = [];
 afterEach(() => {
@@ -262,7 +263,7 @@ describe('Save anyway', () => {
 
   it('a new object: Create anyway is a POST of the draft as it is', async () => {
     undo.push(overrideDef('routes', { tabs: [GENERAL_TAB], validate: strict }));
-    const { user, admin } = await openEditor('#/routes/new?upstream_id=u1', { objects: { routes: [], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] } });
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?upstream_id=u1`, { objects: { routes: [], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] } });
     await setUri(user, '/strict');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     await user.click(await main().findByRole('button', { name: t('editor.anyway.action') }));
@@ -287,7 +288,7 @@ describe('Save anyway', () => {
 
   it("not for the frame's own refusals: a required id missing", async () => {
     undo.push(overrideDef('global_rules', { validate: () => [{ path: 'plugins', message: STRICT }] }));
-    const { user, admin } = await openEditor('#/global_rules/new', { objects: { global_rules: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('global_rules')}`, { objects: { global_rules: [] } });
     await user.click(await main().findByRole('button', { name: t('editor.create') }));
     await waitFor(() => expect(getToasts().at(-1)?.message).toBe(t('editor.fixMany', { count: 2 })));
     expect(offer()).toBeNull();
