@@ -1,7 +1,6 @@
 // The Upstream editor's General tab: name, description, labels, and an overview of every section
 // in one line each, which is what a locked upstream reads as at a glance.
 import { useId } from 'react';
-import { Link } from 'react-router';
 import { isObj } from '../../api/sanitize';
 import type { Obj } from '../../api/types';
 import { setPath } from '../../editor/draft';
@@ -10,6 +9,7 @@ import { t } from '../../i18n';
 import { Input, KeyValueInput, useLocked } from '../../ui';
 import { SECTION_META } from '../../upstream/meta';
 import { SUMMARIES } from '../../upstream/summary';
+import { TabLink } from '../Overview';
 import type { TabProps } from '../registry';
 import '../resources.css';
 
@@ -27,9 +27,7 @@ function Overview({ draft }: { draft: Obj }) {
         {SECTION_META.map((meta) => (
           <div key={meta.id} className="res-overview__row">
             <dt>
-              <Link className="res-overview__link" to={`?tab=${meta.id}`} replace>
-                {meta.label}
-              </Link>
+              <TabLink tab={meta.id}>{meta.label}</TabLink>
             </dt>
             <dd>{SUMMARIES[meta.id](draft)}</dd>
           </div>

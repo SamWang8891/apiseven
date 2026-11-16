@@ -34,7 +34,8 @@ export function Parts({ parts }: { parts: ReactNode[] }) {
 
 /**
  * A link to another tab of this page: only `tab` changes, every other search parameter (a Duplicate
- * page's `from`, a create page's prefill) stays, so following it never leaves the page.
+ * page's `from`, a create page's prefill) stays, so following it never leaves the page. Every in-page
+ * tab link uses it (the overviews of routes, services, stream routes, upstreams and consumers).
  */
 export function TabLink({ tab, children }: { tab: string; children: ReactNode }) {
   const [params] = useSearchParams();
