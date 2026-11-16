@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { Obj } from '../api/types';
 import { everySchema, schemaOf } from '../test/pluginFixture';
-import { analyze, type Node, type ObjectNode, type Prop } from './analyze';
+import { isObj } from '../schema/refs';
+import { analyze, type Node, type ObjectNode, type ObjectPart, type Prop } from './analyze';
 import { fallbackStats } from './stats';
 
 function objectOf(node: Node): ObjectNode {
@@ -276,5 +277,58 @@ describe('analyze: hostile schemas', () => {
     const start = performance.now();
     analyze(structuredClone(nested));
     expect(performance.now() - start).toBeLessThan(500);
+  });
+});
+
+// Fix round 1, R2.4: ObjectBody refuses a change that would hide a condition's field holding input by
+// not emitting it (ObjectField.tsx onChild). That undoes the change on screen only when the field that
+// changed shows the value it is given (a select, a switch, a text box, a list of tags). A field that
+// keeps its own text (a number box, a JSON box, a secret's box, a map's rows) would go on showing the
+// refused change. No 3.20 condition is keyed on one; this fails if one ever is.
+describe('what the 3.20 schemas’ conditions are keyed on', () => {
+  const CONTROLLED = (node: Node): boolean =>
+    node.kind === 'boolean' || node.kind === 'enum' || node.kind === 'array-scalar' || (node.kind === 'string' && !node.secret && !node.multiline);
+
+  function subjects(when: Obj | null): string[] {
+    if (!when) return [];
+    const props = isObj(when.properties) ? Object.keys(when.properties) : [];
+    const required = Array.isArray(when.required) ? when.required.filter((k): k is string => typeof k === 'string') : [];
+    return [...new Set([...props, ...required])];
+  }
+
+  /** Every object's conditions with the props they may be keyed on, through branches, lists, maps and variants. */
+  function walk(node: Node, out: { key: string; node: Node | undefined }[]): void {
+    if (node.kind === 'object') {
+      const props: Prop[] = [];
+      const parts: ObjectPart[] = [];
+      const collect = (part: ObjectPart) => {
+        parts.push(part);
+        props.push(...part.props);
+        for (const c of part.conditionals) for (const b of [c.then, c.else]) if (b) collect(b);
+      };
+      collect(node);
+      for (const part of parts) for (const c of part.conditionals) for (const key of subjects(c.when)) out.push({ key, node: props.find((p) => p.key === key)?.node });
+      for (const p of props) walk(p.node, out);
+    } else if (node.kind === 'array-object' || node.kind === 'array-scalar') walk(node.item, out);
+    else if (node.kind === 'map') walk(node.value, out);
+    else if (node.kind === 'variant') for (const o of node.options) walk(o.node, out);
+  }
+
+  it('every subject is a field that shows the value it is given', () => {
+    const seen: string[] = [];
+    for (const { schema, label } of everySchema()) {
+      const found: { key: string; node: Node | undefined }[] = [];
+      walk(analyze(schema), found);
+      for (const { key, node } of found) {
+        if (!node) continue;
+        seen.push(`${label}:${key}`);
+        expect(CONTROLLED(node), `${label}: ${key} is a ${node.kind}`).toBe(true);
+      }
+    }
+    expect(seen.length).toBeGreaterThan(10);
+    // The check itself: a condition keyed on a number field is caught.
+    const keyedOnNumber: { key: string; node: Node | undefined }[] = [];
+    walk(analyze({ type: 'object', properties: { port: { type: 'integer' } }, if: { properties: { port: { const: 1 } } }, then: { properties: { tls: { type: 'boolean' } } } }), keyedOnNumber);
+    expect(keyedOnNumber.map(({ key, node }) => [key, node && CONTROLLED(node)])).toEqual([['port', false]]);
   });
 });

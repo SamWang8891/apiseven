@@ -124,6 +124,10 @@ export function ObjectBody({ node, value, path, emit }: { node: ObjectNode; valu
     if (entries.length > 0) holding.current.set(key, entries);
     else holding.current.delete(key);
   }, []);
+  // A refused change is simply not emitted. That undoes it on screen only because the field that
+  // changed shows the value it is given (a select, a switch, a text box, tags): every 3.20 condition is
+  // keyed on such a field (analyze.test.ts "what the 3.20 schemas' conditions are keyed on" fails
+  // otherwise). A field keeping its own text (a number box, JSON) would go on showing the refused value.
   const onChild = useCallback(
     (key: Key, v: unknown) => {
       const next = setKey(latestRef.current, String(key), v);
