@@ -52,6 +52,7 @@ afterEach(() => {
 
 const newHost = () => main().getByRole('textbox', { name: t('up.nodes.new') });
 const hostN = (n: number) => main().getByRole('textbox', { name: t('up.nodes.hostN', { n }) });
+const priorityN = (n: number) => main().getByRole('spinbutton', { name: t('up.nodes.priorityN', { n }) });
 const save = () => main().getByRole('button', { name: t('editor.save') });
 const newNode = () => t('up.pending.newNode');
 const node = (n: number) => t('up.pending.node', { n });
@@ -251,6 +252,65 @@ const HELD: [string, HeldCase][] = [
       pending: t('up.pending.unsaved', { node: newNode(), addr: 'a' }),
     },
   ],
+  // Final wave F2/F6: a change that turns the map into an array (a priority, "Keep both") ends no other row's hold.
+  [
+    'a duplicate held in a row, then a priority set on another row (the list becomes an array)',
+    {
+      nodes: { 'a:80': 1, 'b:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a', true);
+        await typeInto(u, priorityN(1), '1');
+      },
+      field: () => hostN(2),
+      typed: 'a',
+      message: t('up.nodes.heldNotYet'),
+      pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
+    },
+  ],
+  [
+    'a duplicate held in a row, then a priority set on that row',
+    {
+      nodes: { 'a:80': 1, 'b:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a', true);
+        await typeInto(u, priorityN(2), '1');
+      },
+      field: () => hostN(2),
+      typed: 'a',
+      message: t('up.nodes.heldNotYet'),
+      pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
+    },
+  ],
+  [
+    '"Add a node" holding digits, then "Keep both" on a row',
+    {
+      nodes: { 'a:80': 1, 'b:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, newHost(), '42');
+        await typeInto(u, hostN(2), 'a', true);
+        await u.click(main().getByRole('button', { name: t('up.nodes.keepBothN', { n: 2 }) }));
+      },
+      field: newHost,
+      typed: '42',
+      message: t('up.nodes.heldNotYet'),
+      pending: t('up.pending.unsaved', { node: newNode(), addr: '42' }),
+    },
+  ],
+  [
+    'a stray colon held in a row, then "Keep both" on another row',
+    {
+      nodes: { 'a:80': 1, 'b:80': 1, 'c:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(3), '10:', true);
+        await typeInto(u, hostN(2), 'a', true);
+        await u.click(main().getByRole('button', { name: t('up.nodes.keepBothN', { n: 2 }) }));
+      },
+      field: () => hostN(3),
+      typed: '10:',
+      message: t('up.nodes.heldNotYet'),
+      pending: t('up.pending.unsaved', { node: node(3), addr: '10:' }),
+    },
+  ],
 ];
 
 const saveKeys = (u: UserEvent) => u.keyboard('{Control>}s{/Control}');
@@ -401,6 +461,40 @@ const COMMITS: [string, CommitCase][] = [
   [
     'a paste of two addresses into "Add a node" (a map)',
     { nodes: { '10.0.0.5:8080': 1 }, reach: (u) => u.click(newHost()), commit: (u) => u.paste('10.0.0.7:9090\n10.0.0.8:80'), expected: { '10.0.0.5:8080': 1, '10.0.0.7:9090': 1, '10.0.0.8:80': 1 } },
+  ],
+  [
+    'Enter in a row still held after a priority made the list an array (F2)',
+    {
+      nodes: { 'a:80': 1, 'b:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, hostN(2), 'a', true);
+        await typeInto(u, priorityN(1), '1');
+        await u.click(hostN(2));
+      },
+      commit: enter,
+      expected: [
+        { host: 'a', port: 80, weight: 1, priority: 1 },
+        { host: 'a', port: 80, weight: 1 },
+      ],
+    },
+  ],
+  [
+    'Enter in "Add a node" still held after "Keep both" made the list an array (F6)',
+    {
+      nodes: { 'a:80': 1, 'b:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, newHost(), '42');
+        await typeInto(u, hostN(2), 'a', true);
+        await u.click(main().getByRole('button', { name: t('up.nodes.keepBothN', { n: 2 }) }));
+        await u.click(newHost());
+      },
+      commit: enter,
+      expected: [
+        { host: 'a', port: 80, weight: 1 },
+        { host: 'a', port: 80, weight: 1 },
+        { host: '42', weight: 1 },
+      ],
+    },
   ],
   [
     'a paste into an array row',

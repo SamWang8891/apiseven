@@ -86,7 +86,9 @@ const pastedTexts = (text: string): string[] => text.split(/[\s,]+/).filter(Bool
  * explicit commit: in a host holding a port it moves the port to Port, in a held map row it takes what
  * the row holds (an all-digit host as the host name), in "Add a node" it adds the node; "Move <port> to
  * Port" and a paste do what Enter does. A result another row has is not written: the field stays as
- * typed, held as a duplicate.
+ * typed, held as a duplicate. A change that turns the map into an array (a priority other than 0, "Keep
+ * both") ends no other row's hold: what a row holds stays held in the array, which takes it on Enter or
+ * when more is typed (a hold ends only when its own text is resolved).
  */
 export function NodesTable({ value, onChange, issues }: SectionProps) {
   const locked = useLocked();
@@ -112,10 +114,13 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   /** The rows' ids, then the new-node row's. */
   const [ids, setIds] = useRowIds(rows.length + 1);
   const idOf = (i: number): number => ids[i] ?? -1;
-  /** The row that already has the address row `i` holds (computed from the rows now, so it follows removals); -1 if none. */
+  /**
+   * The row that already has the address row `i` holds (computed from the rows now, so it follows
+   * removals); -1 if none, and always in an array, which holds one address twice.
+   */
   const otherOf = (i: number): number => {
     const h = held[idOf(i)];
-    if (!h) return -1;
+    if (!h || !isObj(value.nodes)) return -1;
     const at = judged(h);
     // A host with a stray colon is no address yet: nothing can have it.
     if (strayColon(at.host)) return -1;
@@ -219,8 +224,12 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
       return false;
     }
     if (!map) {
+      // An array takes any host. What the field held (from before the list became an array) ends here;
+      // Enter reads `host:port` as a paste reads it.
+      const at = commit ? judged(commitOf({ host: text, port: undefined })) : { host: text, port: undefined };
+      hold(fresh, undefined);
       appendedFromNew(1);
-      write(addNodes(value, [{ host: text, weight: NEW_WEIGHT }]).up);
+      write(addNodes(value, [{ host: at.host, port: at.port, weight: NEW_WEIGHT }]).up);
       return true;
     }
     const typed: Address = { host: text, port: undefined };
@@ -246,10 +255,11 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     if (!held[id]) delete start.current[id];
   }
 
+  /** "Keep both": the list becomes an array with the row at what it holds. Only that row's hold ends; another row's stays. */
   function keep(i: number) {
     const h = held[idOf(i)];
     if (!h) return;
-    setHeld({});
+    hold(i, undefined);
     start.current = {};
     if (i === fresh) appendedFromNew(1);
     write(keepBoth(value, i, judged(h)));
@@ -281,17 +291,29 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     return map && as && rows[i]?.addr === as.key ? as.text : (rows[i]?.host ?? '');
   };
 
+  /** Host text typed into an array row: written at once (an array takes any host), which ends a hold the row had. */
+  function editArrayHost(i: number, text: string) {
+    hold(i, undefined);
+    write(setNodeField(value, i, 'host', text));
+  }
+
   /**
    * Enter in a row's host field, the explicit commit: a host holding a port (`10.0.0.5:8080`,
    * `[::1]:9000`) does exactly what "Move <port> to Port" does, in either form; a held map row is placed
-   * as it is judged (an all-digit host taken as the host name, an address whose clash has gone added).
+   * as it is judged (an all-digit host taken as the host name, an address whose clash has gone added);
+   * a row still held from before the list became an array takes its host as it is judged, the port its
+   * field shows (or the one Enter moved off the text).
    */
   const enterCommits = (i: number) => (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== 'Enter') return;
-    const h = map ? held[idOf(i)] : undefined;
+    const h = held[idOf(i)];
     if (portInHost(hostText(i)) !== undefined) movePort(i);
-    else if (h) editAddress(i, h, true);
-    else return;
+    else if (h && map) editAddress(i, h, true);
+    else if (h) {
+      const at = judged(h);
+      hold(i, undefined);
+      write(setNodeField(setNodeField(value, i, 'host', at.host), i, 'port', h.as ? at.port : rows[i]?.port));
+    } else return;
     e.preventDefault();
   };
 
@@ -307,6 +329,7 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
       return;
     }
     const split = committed({ host: text, port: rows[i]?.port });
+    hold(i, undefined);
     write(setNodeField(setNodeField(value, i, 'host', split.host), i, 'port', split.port));
   }
 
@@ -380,6 +403,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
   const heldMessage = (i: number): string | undefined => {
     const h = held[idOf(i)];
     if (!h) return undefined;
+    // Held from before the list became an array (a priority, "Keep both"), which can take it: Enter does.
+    if (!map) return t('up.nodes.heldNotYet');
     const at = judged(h);
     const other = otherOf(i);
     if (other >= 0) return t('up.nodes.dupOf', { n: other + 1 });
@@ -423,10 +448,10 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
         <td className="up-table__host">
           <HostInput
             aria-label={t('up.nodes.hostN', { n })}
-            value={map ? hostText(i) : (row.host ?? '')}
+            value={hostText(i)}
             error={heldMessage(i) ?? issue(i, 'host')}
             help={hostHint(i)}
-            onChange={(e) => (map ? editAddress(i, { host: e.target.value, port: address.port }) : onChange(setNodeField(value, i, 'host', e.target.value)))}
+            onChange={(e) => (map ? editAddress(i, { host: e.target.value, port: address.port }) : editArrayHost(i, e.target.value))}
             onKeyDown={enterCommits(i)}
             onBlur={() => map && leave(i)}
             onPaste={(e) => paste(e, i)}
@@ -468,11 +493,8 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
             onChange={(v) => {
               const next = setNodeField(value, i, 'priority', v);
               if (next === value) return;
-              // A priority turned the map into an array: what was held for the map no longer applies.
-              if (map && Array.isArray(next.nodes)) {
-                setHeld({});
-                start.current = {};
-              }
+              // A priority turns a map into an array; what any row holds stays held, its hold ending only
+              // when its own text is resolved (an array takes it on Enter or more typing).
               write(next);
             }}
           />
