@@ -201,3 +201,60 @@ describe('a local refusal on another tab (F1)', () => {
     expect(writesOf(admin)).toEqual([]);
   });
 });
+
+// F2: a save that meets a conflict, then the dialog closed without overwriting: focus goes back where
+// the user was (the field, else the button pressed, else Save), and the dialog's own return of focus
+// does not undo it.
+describe('a conflict, then the dialog closed without overwriting (F2)', () => {
+  async function conflicted(from: 'field' | 'save') {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
+    const app = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await app.user.keyboard('e');
+    const uri = await main().findByRole('textbox', { name: 'URI' });
+    await app.user.clear(uri);
+    await app.user.type(uri, '/b');
+    app.admin.touch('routes', 'r1', { uri: '/elsewhere' });
+    if (from === 'field') pressCtrlS();
+    else {
+      saveButton().focus();
+      await app.user.keyboard('{Enter}');
+    }
+    const dialog = await screen.findByRole('dialog', { name: t('editor.conflict.title', { kind: 'Route', name: 'web' }) });
+    return { ...app, dialog };
+  }
+
+  for (const how of ['Cancel', 'Escape'] as const) {
+    it(`Cmd/Ctrl-S from a field, a conflict, then ${how}: focus is back in that field`, async () => {
+      const { user, dialog, admin } = await conflicted('field');
+      if (how === 'Cancel') await user.click(within(dialog).getByRole('button', { name: t('ui.cancel') }));
+      else {
+        // The dialog's Close button took focus from a key press, so its tooltip shows, and an open
+        // tooltip takes the first Escape (the kit's rule); the next one closes the dialog.
+        await user.keyboard('{Escape}');
+        if (screen.queryByRole('dialog')) await user.keyboard('{Escape}');
+      }
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(main().getByRole('textbox', { name: 'URI' })));
+      // And it stays there once the dialog's own return of focus has run.
+      await new Promise((r) => setTimeout(r, 50));
+      expect(document.activeElement).toBe(main().getByRole('textbox', { name: 'URI' }));
+      expect(writesOf(admin)).toEqual([]);
+    });
+
+    it(`Save pressed, a conflict, then ${how}: focus is on Save`, async () => {
+      const { user, dialog } = await conflicted('save');
+      if (how === 'Cancel') await user.click(within(dialog).getByRole('button', { name: t('ui.cancel') }));
+      else {
+        // The dialog's Close button took focus from a key press, so its tooltip shows, and an open
+        // tooltip takes the first Escape (the kit's rule); the next one closes the dialog.
+        await user.keyboard('{Escape}');
+        if (screen.queryByRole('dialog')) await user.keyboard('{Escape}');
+      }
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await waitFor(() => expect(document.activeElement).toBe(saveButton()));
+      await new Promise((r) => setTimeout(r, 50));
+      expect(document.activeElement).toBe(saveButton());
+    });
+  }
+});

@@ -107,7 +107,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const [saving, setSaving] = useState(false);
   const [failure, setFailure] = useState<Failure>();
   /** The server's item when a save found it changed; `anyway`: that save was a Save anyway, and Overwrite goes on as one. */
-  const [conflict, setConflict] = useState<{ item: Item; anyway: boolean }>();
+  // `from`: where the save came from, for focus when the dialog closes without overwriting (F2).
+  const [conflict, setConflict] = useState<{ item: Item; anyway: boolean; from: Refocus }>();
   const [dialog, setDialog] = useState<'json' | 'delete' | 'discard'>();
   /**
    * Bumped by Discard (and reloading theirs): remounts the tab area, so nothing a field held without
@@ -371,7 +372,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       // memory of it goes, so nothing says "nothing else stops the save"; the session's yes stays
       // (Task 16b, item 151). Overwrite goes on anyway through `conflict.anyway`.
       saveAnyway.refused(false);
-      setConflict({ item: result.conflict, anyway });
+      setConflict({ item: result.conflict, anyway, from: { left, pressed, anyway } });
     } else if ('exists' in result || 'unchecked' in result) {
       saveAnyway.refused(false);
       refocusNext.current = { left, pressed, anyway };
@@ -544,7 +545,12 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         }}
         anyway={saveAnyway}
         onReload={reloadTheirs}
-        onCancelConflict={() => setConflict(undefined)}
+        onCancelConflict={() => {
+          // Closed without overwriting (Cancel, Escape, Close): focus goes back where the save came from,
+          // before the dialog's own return of focus, which leaves focus that is not on body alone.
+          refocusNext.current = conflict?.from;
+          setConflict(undefined);
+        }}
         onDeleted={() => {
           guard.leaveFreely();
           void navigate(listPath);
