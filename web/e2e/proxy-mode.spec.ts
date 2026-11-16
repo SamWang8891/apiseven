@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process';
 import { request as httpRequest } from 'node:http';
 import type { Browser, Page } from '@playwright/test';
 import { expectIconsServed, expectMarkBesideName } from './brand';
-import { Admin, env, expect, openTab, t, test } from './fixtures';
+import { Admin, echoRoute, env, expect, openTab, save, t, test, uid, unlock } from './fixtures';
 import { freePort, servePage } from './servers';
 
 const LABEL = 'apiseven-e2e';
@@ -189,6 +189,31 @@ test.describe('proxy mode (the Docker image)', () => {
       const req = await admin;
       expect(req.headers()['x-apiseven-request']).toBe('1');
       expect(req.headers()['x-api-key'] === undefined, 'the browser sends no key: the server holds it').toBe(true);
+    });
+
+    // C5: a save goes through the container to APISIX, and APISIX holds it.
+    test('an edit saved through the container is stored in APISIX', async ({ page }) => {
+      const admin = new Admin();
+      const id = `e2e-proxy-save-${uid()}`;
+      await admin.put(`routes/${id}`, echoRoute(id, `${id}.e2e.test`));
+      try {
+        const stored = await admin.must(`routes/${id}`);
+        await page.goto(`${box!.url}/#/routes/${id}`);
+        const main = page.getByRole('main');
+        await expect(main.getByRole('heading', { level: 1, name: id })).toBeVisible();
+        await unlock(page);
+        await main.getByRole('textbox', { name: t('rt.general.desc') }).fill('saved through the container');
+        // The PUT goes to the container (which adds the key), not to APISIX directly.
+        const through = page.waitForRequest((r) => r.method() === 'PUT' && r.url() === `${box!.url}/apisix/admin/routes/${id}`);
+        const write = await save(page);
+        expect(write.status).toBeLessThan(300);
+        const put = await through;
+        expect(put.headers()['x-apiseven-request']).toBe('1');
+        expect(put.headers()['x-api-key'] === undefined, 'the browser sends no key: the server holds it').toBe(true);
+        expect(await admin.value(`routes/${id}`)).toEqual({ ...stored, desc: 'saved through the container' });
+      } finally {
+        await admin.del(`routes/${id}`);
+      }
     });
 
     // C2: the image ships the licence, the notice and the bundled libraries' licences, served as text.
