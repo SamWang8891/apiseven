@@ -19,11 +19,11 @@ const FromProps = Annotation.define<boolean>();
 const languageSlot = new Compartment();
 const readOnlySlot = new Compartment();
 const labelSlot = new Compartment();
+const historySlot = new Compartment();
 
 const base: Extension = [
   lineNumbers(),
   highlightActiveLineGutter(),
-  history(),
   drawSelection(),
   indentOnInput(),
   bracketMatching(),
@@ -55,6 +55,7 @@ export default function CodeEditorImpl({
   readOnly = false,
   'aria-label': ariaLabel,
   'aria-invalid': invalid = false,
+  historyEpoch = 0,
   takeFocus,
 }: CodeEditorProps & { takeFocus?: () => boolean }) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -76,6 +77,7 @@ export default function CodeEditorImpl({
       state: EditorState.create({
         extensions: [
           base,
+          historySlot.of(history()),
           languageSlot.of([]),
           readOnlySlot.of([]),
           labelSlot.of([]),
@@ -104,6 +106,17 @@ export default function CodeEditorImpl({
       annotations: [FromProps.of(true), Transaction.addToHistory.of(false)],
     });
   }, [value]);
+
+  // A new history epoch: the undo history is dropped (its field taken out, then a fresh one put back),
+  // so nothing typed before can be undone or redone back into the text.
+  const epochSeen = useRef(historyEpoch);
+  useLayoutEffect(() => {
+    const view = viewRef.current;
+    if (!view || epochSeen.current === historyEpoch) return;
+    epochSeen.current = historyEpoch;
+    view.dispatch({ effects: historySlot.reconfigure([]) });
+    view.dispatch({ effects: historySlot.reconfigure(history()) });
+  }, [historyEpoch]);
 
   // Language support arrives asynchronously (its own chunk); until then the text is plain.
   useEffect(() => {

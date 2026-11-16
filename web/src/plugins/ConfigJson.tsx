@@ -6,7 +6,7 @@
 // pattern JavaScript can't compile, the keys and conditions that depend on one, or a schema Ajv
 // can't compile) refuses nothing (schema/prepare.ts): a quiet note says what APISIX checks on save.
 import { Eye, EyeOff } from 'lucide-react';
-import { useLayoutEffect, useMemo, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { isObj } from '../api/sanitize';
 import type { Obj } from '../api/types';
 import { deepEqual } from '../editor/draft';
@@ -82,8 +82,13 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
   useLayoutEffect(() => onHeld(holding), [onHeld, holding]);
   useLayoutEffect(() => () => onHeld(false), [onHeld]);
 
+  /** Private-key text was in the editor since its undo history was last emptied (schema/keyNotes.ts rule 3). */
+  const sawKey = useRef(false);
+  const [historyEpoch, setHistoryEpoch] = useState(0);
+
   /** `text` from the editor (`notes`: those it was written with, new ones on leaving). */
   function change(text: string, notes: KeyNotes = current.notes) {
+    if (text.includes('-----BEGIN') || text.includes('\\u')) sawKey.current = true;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
@@ -116,12 +121,16 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
   /**
    * Leaving the editor: every key text typed or pasted here becomes a note (schema/keyNotes.ts rule 3),
    * whether or not the text parses or is held; the text then goes the usual way, and nothing else about
-   * it changes.
+   * it changes. Once key text was in it, the editor's undo history goes too.
    */
   function leave() {
     if (locked) return;
     const typed = veilTypedText(current.text, current.notes);
     if (typed.veiled) change(typed.text, typed.notes);
+    if (sawKey.current) {
+      sawKey.current = false;
+      setHistoryEpoch((n) => n + 1);
+    }
   }
 
   // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.
@@ -145,6 +154,7 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
           maxLines={24}
           aria-label={t('pl.card.jsonLabel', { name })}
           aria-invalid={!locked && current.held !== undefined}
+          historyEpoch={historyEpoch}
         />
       </div>
       <div aria-live="polite">{!locked && current.error !== undefined && <p className="pl-json__error mono">{current.error}</p>}</div>

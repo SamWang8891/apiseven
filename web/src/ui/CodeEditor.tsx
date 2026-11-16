@@ -18,6 +18,11 @@ export interface CodeEditorProps {
   'aria-label'?: string;
   /** The text is not accepted (it doesn't parse): marked for assistive tech, and found by a refused Save. */
   'aria-invalid'?: boolean;
+  /**
+   * Each change empties the undo history (what undo and redo could bring back), the text staying as it
+   * is: a JSON view drops it once a private key that was typed or pasted has left the page.
+   */
+  historyEpoch?: number;
 }
 // A file dropped on the editor is never read into its text (codemirror/CodeEditorImpl.tsx): the drop
 // event goes on to the page, so a field that takes files listens around the editor.

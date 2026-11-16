@@ -100,8 +100,13 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
   // What the editor shows, and what Copy copies.
   const shown = hidden?.redacted ? pretty(revealed ? hidden.revealed : hidden.value) : current.text;
 
+  /** Private-key text was in the editor since its undo history was last emptied (rule 3 of schema/keyNotes.ts, fix round 3). */
+  const sawKey = useRef(false);
+  const [historyEpoch, setHistoryEpoch] = useState(0);
+
   /** `text` from the editor (`notes`: those it was written with, new ones on leaving); taken when it parses and says a draft. */
   function change(text: string, notes: KeyNotes = current.notes) {
+    if (text.includes('-----BEGIN') || text.includes('\\u')) sawKey.current = true;
     const field = t('editor.json.tab');
     const parsed = parse(text);
     if (!parsed.ok) {
@@ -173,10 +178,15 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
         onBlur={(e) => {
           // Leaving the editor: every key text typed or pasted here becomes a note (schema/keyNotes.ts
           // rule 3), whether or not the text parses or is held; the text then goes the usual way, and
-          // nothing else about it changes.
+          // nothing else about it changes. Once key text was in it, the editor's undo history goes too,
+          // so neither undo nor redo can bring a key back.
           if (locked || e.currentTarget.contains(e.relatedTarget)) return;
           const typed = veilTypedKeys(kind, current.text, current.notes);
           if (typed.veiled) change(typed.text, typed.notes);
+          if (sawKey.current) {
+            sawKey.current = false;
+            setHistoryEpoch((n) => n + 1);
+          }
         }}
       >
         <CodeEditor
@@ -187,6 +197,7 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
           maxLines={maxLines}
           aria-label={t('editor.json.label', { kind: singular })}
           aria-invalid={!locked && current.held !== undefined}
+          historyEpoch={historyEpoch}
         />
       </div>
       <div className={locked ? undefined : 'ed-json__status'} aria-live="polite">

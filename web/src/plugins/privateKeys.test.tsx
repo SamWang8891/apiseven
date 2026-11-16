@@ -441,6 +441,76 @@ describe('ordinary text with dots', () => {
 // ---------------------------------------------------------------------------------------------
 // Fix round 3: the note rule (schema/keyNotes.ts, rules 1–6), held against R1.4 and R4.1–R4.5.
 
+const KEY_A = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAAhistoryKeyA';
+const KEY_B = 'MIIEvQIBADANBgkqhkiG9w0BAQEFAAhistoryKeyB';
+const rawIn = (json: string, body: string) => json.replace('"§"', `"${pem(body)}"`);
+const escapedIn = (json: string, body: string) => json.replace('"§"', JSON.stringify(pem(body)));
+
+/** The three editing JSON views, each opened on a text with a `§` string where a key goes, and a way to leave it. */
+const views: { name: string; open: () => Promise<{ user: UserEvent; box: HTMLElement; text: string; leave: () => Promise<void> }> }[] = [
+  {
+    name: 'the JSON tab',
+    open: async () => {
+      const { user } = await open('#/routes/r1?tab=json');
+      await user.keyboard('e');
+      const box = await jsonTab();
+      await waitFor(() => expect(box.textContent).toMatch(note));
+      const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+      return { user, box, text: JSON.stringify({ ...shown, desc: '§' }), leave: () => user.click(main().getByRole('heading', { level: 1, name: 'split' })) };
+    },
+  },
+  {
+    name: 'a plugin card’s JSON view',
+    open: async () => {
+      const { renderPluginsTab } = await import('../test/plugins');
+      const harness = renderPluginsTab({ scope: 'route', value: { 'proxy-rewrite': { uri: '/x' } }, validate: false });
+      await waitFor(() => expect(screen.queryByText(t('pl.loading'))).not.toBeInTheDocument());
+      const card = screen.getByRole('group', { name: 'proxy-rewrite' });
+      await harness.user.click(within(card).getByRole('button', { name: 'proxy-rewrite' }));
+      await harness.user.click(within(card).getByRole('button', { name: t('pl.card.json') }));
+      const box = await within(card).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'proxy-rewrite' }) });
+      return { user: harness.user, box, text: '{"uri": "/x", "headers": {"set": {"X-K": "§"}}}', leave: () => harness.user.click(document.body) };
+    },
+  },
+  {
+    name: 'a schema-form JSON field',
+    open: async () => {
+      const form = renderSchemaForm({ type: 'object', properties: { body_schema: { type: 'object' } } }, {});
+      const box = await screen.findByRole('textbox', { name: t('sf.json.label', { key: 'body_schema' }) });
+      return { user: form.user, box, text: '{"k": "§"}', leave: () => form.user.click(document.body) };
+    },
+  },
+];
+
+/** Undo and redo, several times each, in the editor: after every step none of `bodies` is in the page. */
+async function undoRedo(user: UserEvent, box: HTMLElement, bodies: string[]) {
+  await user.click(box);
+  const steps = [...Array<string>(4).fill('{Control>}z{/Control}'), ...Array<string>(4).fill('{Control>}{Shift>}z{/Shift}{/Control}'), ...Array<string>(4).fill('{Control>}y{/Control}')];
+  for (const [i, step] of steps.entries()) {
+    await user.keyboard(step);
+    for (const body of bodies) expect(inPage(body), `after step ${i + 1} (${step})`).toBe(false);
+  }
+}
+
+describe.each(views)('R1.4: after leaving $name, undo and redo never bring a key back', ({ open: openView }) => {
+  it('a raw key pasted, then pasted over with another raw key, then left', async () => {
+    const { user, box, text, leave } = await openView();
+    await replaceText(user, box, rawIn(text, KEY_A));
+    await replaceText(user, box, rawIn(text, KEY_B));
+    await leave();
+    await waitFor(() => expect(inPage(KEY_B)).toBe(false));
+    await undoRedo(user, box, [KEY_A, KEY_B]);
+  });
+
+  it('a key pasted, then replaced by text with none, then left (no veil)', async () => {
+    const { user, box, text, leave } = await openView();
+    await replaceText(user, box, escapedIn(text, KEY_A));
+    await replaceText(user, box, text.replace('"§"', '"x"'));
+    await leave();
+    await undoRedo(user, box, [KEY_A]);
+  });
+});
+
 describe('R4.1: a whole-key place with text around the key is veiled whole on leaving, and saved exactly as entered', () => {
   const BAG = 'Bag Attributes\n    localKeyID: 01 00 00 00\nKey Attributes: <No Attributes>\n';
 

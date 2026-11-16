@@ -1,5 +1,5 @@
 import { Eye, EyeOff } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '../../ui';
@@ -74,6 +74,9 @@ export function JsonField({
   const under = keyPath(path).at(-1);
   const [shownText, setShownText] = useState(() => veiledText(value, newKeyNotes(), under));
   const { text, notes } = shownText;
+  /** Private-key text was in the editor since its undo history was last emptied (schema/keyNotes.ts rule 3). */
+  const sawKey = useRef(false);
+  const [historyEpoch, setHistoryEpoch] = useState(0);
   /** Why the text typed is not emitted: shown on the field, and held for Save. */
   const [invalid, setInvalid] = useState<{ error: string; held: string }>();
   usePending(locked ? undefined : invalid?.held);
@@ -127,6 +130,7 @@ export function JsonField({
 
   /** `next` from the editor (`withNotes`: the notes it was written with, new ones on leaving). */
   function edit(next: string, withNotes: KeyNotes = notes) {
+    if (next.includes('-----BEGIN') || next.includes('\\u')) sawKey.current = true;
     setShownText({ text: next, notes: withNotes });
     if (next.trim() === '') {
       setInvalid(undefined);
@@ -165,11 +169,15 @@ export function JsonField({
   /**
    * Leaving the editor: every key text typed or pasted here becomes a note (schema/keyNotes.ts rule 3),
    * whether or not the text parses or is held; the text then goes the usual way, and nothing else about
-   * it changes.
+   * it changes. Once key text was in it, the editor's undo history goes too.
    */
   function leave() {
     const typed = veilTypedText(text, notes, { under });
     if (typed.veiled) edit(typed.text, typed.notes);
+    if (sawKey.current) {
+      sawKey.current = false;
+      setHistoryEpoch((n) => n + 1);
+    }
   }
 
   return (
@@ -184,6 +192,7 @@ export function JsonField({
           maxLines={16}
           aria-label={t('sf.json.label', { key })}
           aria-invalid={invalid !== undefined}
+          historyEpoch={historyEpoch}
         />
       </div>
     </Field>
