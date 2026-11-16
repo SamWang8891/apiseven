@@ -395,7 +395,8 @@ make dev-down   # stop the dev stack and drop its data
 ```
 
 Every `make` target that runs npm (`web`, `check`, `test`, `build`, `single`, `static`) first
-runs `cd web && npm ci` when `web/node_modules` is missing; an existing install is left as it is.
+runs `cd web && npm ci` unless an earlier install finished (it leaves `web/node_modules/.installed`);
+an existing install is left as it is, and one that failed or was interrupted is redone.
 Run `cd web && npm ci` yourself after a pull that changes `web/package-lock.json`, and before you
 use `npm` or `npx` in `web/` directly.
 
