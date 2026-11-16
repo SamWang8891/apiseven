@@ -51,9 +51,12 @@ const notePattern = (): RegExp => new RegExp(escape(t('json.keyNote', { id: '\u0
 /** A note's words with a session and number ("private key abcdefgh.1"), made once. */
 let noteWords: RegExp | undefined;
 
-/** What is left of a note changed by hand: two of its mask dots, or its words with a session and number. */
+/**
+ * What is left of a note changed by hand: its words with a session and number, or a whole mask run
+ * (what a note and a masked value start with). Fewer dots are ordinary text ("steps •• done").
+ */
 function leftOfNote(text: string): boolean {
-  if (text.includes('••')) return true;
+  if (text.includes(MASK)) return true;
   if (!noteWords) {
     const words = t('json.keyNote', { id: '\u0000' }).replace(MASK, '').split('\u0000')[0]?.trim() ?? '';
     noteWords = new RegExp(`${escape(words)} [0-9a-z]{8}\\.\\d+`);

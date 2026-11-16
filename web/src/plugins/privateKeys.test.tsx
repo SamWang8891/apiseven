@@ -396,3 +396,21 @@ describe('a raw key pasted into JSON text that does not parse', () => {
     expect(form.value()).toEqual({ body_schema: { k: pem(NEW) } });
   });
 });
+
+// Fix round 2, R3.1: ordinary dots are ordinary text; only a note's own words or a whole mask run are a damaged note.
+describe('ordinary text with dots', () => {
+  it('"steps •• done" in a route’s JSON tab is taken and saved as typed; a whole mask run typed there is refused', async () => {
+    const { user, admin } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    await replaceText(user, box, JSON.stringify({ ...shown, desc: '•••••••• here' }));
+    expect(await main().findByText(t('json.note.unknown'))).toBeInTheDocument();
+    await replaceText(user, box, JSON.stringify({ ...shown, desc: 'steps •• done' }));
+    await waitFor(() => expect(main().queryByText(t('json.note.unknown'))).not.toBeInTheDocument());
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ desc: 'steps •• done', plugins: { 'traffic-split': split(pem(STORED)) } });
+  });
+});
