@@ -1,7 +1,7 @@
 // The single-file export (web/dist-single/apiseven.html, `npm run build:single` or `make single`),
 // opened straight from disk. When the file has not been built the spec is skipped and the reason is
 // printed; with E2E_REQUIRE_SINGLE=1 (which `make e2e` sets, after building it) that is a failure.
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Page } from '@playwright/test';
 import { expectMarkBesideName } from './brand';
@@ -31,6 +31,19 @@ test.describe('the single file, opened from disk', () => {
     // Under file:// the app's probe for server mode (./config.json) cannot be fetched; it goes on in
     // static mode, as Task 17 found.
     allowConsole: /config\.json/,
+  });
+
+  // C2: the file carries the notice and names the licence; the three licence files are beside it.
+  test('starts with a comment holding the NOTICE, the licence, and where the bundled libraries\' licences are', () => {
+    const text = readFileSync(FILE, 'utf8');
+    const notice = readFileSync(fileURLToPath(new URL('../../NOTICE', import.meta.url)), 'utf8').trim().split('\n')[0]!;
+    expect(text.startsWith('<!--\n')).toBe(true);
+    const comment = text.slice(0, text.indexOf('-->'));
+    expect(comment).toContain(notice);
+    expect(comment).toContain('Apache-2.0');
+    expect(comment).toContain('THIRD-PARTY-LICENSES.txt');
+    expect(text.slice(text.indexOf('-->') + 3).trimStart().toLowerCase().startsWith('<!doctype html>')).toBe(true);
+    for (const file of ['LICENSE.txt', 'NOTICE.txt', 'THIRD-PARTY-LICENSES.txt']) expect(existsSync(fileURLToPath(new URL(file, URL_))), file).toBe(true);
   });
 
   test('connects to APISIX, the routes list loads, an editor opens, and nothing else is fetched', async ({ page }) => {

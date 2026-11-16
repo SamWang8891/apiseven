@@ -483,3 +483,13 @@ Dockerfile, compose.yaml, Makefile
 
 Apache License 2.0; see [LICENSE](LICENSE). The plugin descriptions and categories come from the
 Apache APISIX documentation; see [NOTICE](NOTICE).
+
+Every build ships the licence, the notice and the licences of the libraries it bundles
+(`THIRD-PARTY-LICENSES.txt`, written by Vite):
+
+- **The Docker image and `bin/apiseven`:** served by the app at `/LICENSE.txt`, `/NOTICE.txt` and
+  `/THIRD-PARTY-LICENSES.txt`; the image also holds them under `/licenses/`.
+- **The static zip** (`dist/apiseven-static.zip`): `LICENSE.txt`, `NOTICE.txt` and
+  `THIRD-PARTY-LICENSES.txt` at its root, beside `index.html`.
+- **The single file** (`dist/apiseven.html`): it starts with a comment holding the notice and naming the
+  licence; `make single` puts the three files beside it in `dist/`.

@@ -12,7 +12,7 @@ export default defineConfig(
   mergeConfig(
     { ...shared, test: undefined },
     {
-      plugins: [singleFile(fileURLToPath(new URL('public/favicon-32x32.png', import.meta.url)))],
+      plugins: [singleFile(fileURLToPath(new URL('public/favicon-32x32.png', import.meta.url)), fileURLToPath(new URL('../NOTICE', import.meta.url)))],
       // The favicon set and the manifest stay out: a file:// page could not load them (singleFile.ts).
       publicDir: false,
       build: {

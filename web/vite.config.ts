@@ -1,11 +1,17 @@
+import { fileURLToPath } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { configDefaults, defineConfig } from 'vitest/config';
+import { licenseFiles, THIRD_PARTY_FILE } from './licenseFiles.ts';
+
+const root = (file: string) => fileURLToPath(new URL(`../${file}`, import.meta.url));
 
 export default defineConfig({
   // Relative asset URLs so the build runs from any path or a plain file server.
   base: './',
-  plugins: [react()],
+  plugins: [react(), licenseFiles(root('LICENSE'), root('NOTICE'))],
   build: {
+    // The bundled dependencies' licences, beside LICENSE.txt and NOTICE.txt (licenseFiles.ts).
+    license: { fileName: THIRD_PARTY_FILE },
     rolldownOptions: {
       output: {
         // React, the router and the UI strings in chunks of their own: they change less often than

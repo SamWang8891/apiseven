@@ -5,6 +5,7 @@
 // left over or any src/href in the page still names one.
 import { readFileSync } from 'node:fs';
 import type { Plugin, Rolldown } from 'vite';
+import { LICENSE_FILES, THIRD_PARTY_FILE } from './licenseFiles.ts';
 
 export const SINGLE_FILE_NAME = 'apiseven.html';
 
@@ -41,12 +42,27 @@ export function markup(html: string): string {
   return html.replace(/<script\b([^>]*)>[\s\S]*?<\/script>/gi, '<script$1></script>').replace(/<style\b([^>]*)>[\s\S]*?<\/style>/gi, '<style$1></style>');
 }
 
+/**
+ * The comment the file starts with (C2): the NOTICE text, the licence, and where the bundled
+ * libraries' licences are. No "--" may stand inside a comment (it would end it early, or be an error),
+ * so each "-" followed by another is written "- "; nor may its text end with "-".
+ */
+export function noticeComment(notice: string): string {
+  const text = [
+    notice.trim(),
+    '',
+    'apiseven is licensed under the Apache License, Version 2.0 (Apache-2.0): LICENSE.txt.',
+    `The licences of the libraries bundled in this file: ${THIRD_PARTY_FILE}, beside it (make single puts both in dist/).`,
+  ].join('\n');
+  return `<!--\n${text.replace(/-(?=-)/g, '- ').replace(/-$/, '- ')}\n-->`;
+}
+
 /** The src and href values in the page's markup that are not data: URLs or # links. */
 export function fileReferences(html: string): string[] {
   return [...markup(html).matchAll(/\b(?:src|href)\s*=\s*["']?([^"'\s>]*)/gi)].map((m) => m[1] ?? '').filter((value) => !/^(data:|#)/i.test(value));
 }
 
-export function singleFile(iconPath: string): Plugin {
+export function singleFile(iconPath: string, noticePath: string): Plugin {
   return {
     name: 'apiseven-single-file',
     enforce: 'post',
@@ -60,7 +76,7 @@ export function singleFile(iconPath: string): Plugin {
       handler(_options, bundle) {
         let html: string;
         try {
-          html = inlineBundle(bundle);
+          html = `${noticeComment(readFileSync(noticePath, 'utf8'))}\n${inlineBundle(bundle)}`;
         } catch (err) {
           return this.error(err instanceof Error ? err.message : String(err));
         }
@@ -89,7 +105,8 @@ function inlineBundle(bundle: Rolldown.OutputBundle): string {
     }
   }
   delete bundle['index.html'];
-  const left = Object.keys(bundle);
+  // The licence files stay beside the page (licenseFiles.ts); nothing else may.
+  const left = Object.keys(bundle).filter((name) => !(LICENSE_FILES as readonly string[]).includes(name));
   if (left.length > 0) throw new Error(`not inlined: ${left.join(', ')}`);
   const refs = fileReferences(html);
   if (refs.length > 0) throw new Error(`the page still names files: ${refs.join(', ')}`);

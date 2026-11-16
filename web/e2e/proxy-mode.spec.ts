@@ -191,6 +191,21 @@ test.describe('proxy mode (the Docker image)', () => {
       expect(req.headers()['x-api-key'] === undefined, 'the browser sends no key: the server holds it').toBe(true);
     });
 
+    // C2: the image ships the licence, the notice and the bundled libraries' licences, served as text.
+    test('serves LICENSE.txt, NOTICE.txt and THIRD-PARTY-LICENSES.txt as text, at the root', async () => {
+      const files: [string, RegExp][] = [
+        ['LICENSE.txt', /Apache License\s+Version 2\.0/],
+        ['NOTICE.txt', /This product includes material from Apache APISIX/],
+        ['THIRD-PARTY-LICENSES.txt', /^## react - \d/m],
+      ];
+      for (const [file, holds] of files) {
+        const res = await fetch(`${box!.url}/${file}`);
+        expect(res.status, file).toBe(200);
+        expect(res.headers.get('content-type'), file).toBe('text/plain; charset=utf-8');
+        expect(await res.text(), file).toMatch(holds);
+      }
+    });
+
     test('no Content-Security-Policy violation on the list, an editor, a plugin form and the JSON tab', async ({ page }) => {
       const violations = await watchCsp(page);
       await page.goto(`${box!.url}/#/routes`);

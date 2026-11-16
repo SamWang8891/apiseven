@@ -20,5 +20,5 @@
     "noUncheckedSideEffectImports": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["vite.config.ts", "vite.single.config.ts", "singleFile.ts", "singleFile.test.ts"]
+  "include": ["vite.config.ts", "vite.single.config.ts", "singleFile.ts", "singleFile.test.ts", "licenseFiles.ts"]
 }

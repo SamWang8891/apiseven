@@ -1,4 +1,4 @@
-# Keep the build context to what the Dockerfile copies: web/ and server/.
+# Keep the build context to what the Dockerfile copies: web/, server/, LICENSE and NOTICE.
 **/node_modules
 **/.npm-installed
 .git
@@ -21,4 +21,3 @@ Dockerfile
 compose.yaml
 Makefile
 README.md
-NOTICE

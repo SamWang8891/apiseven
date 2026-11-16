@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { build } from 'vite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { fileReferences, inlineIcon, markup, scriptText, SINGLE_FILE_NAME } from './singleFile';
+import { LICENSE_FILES } from './licenseFiles';
+import { fileReferences, inlineIcon, markup, noticeComment, scriptText, SINGLE_FILE_NAME } from './singleFile';
 
 const here = (path: string) => fileURLToPath(new URL(path, import.meta.url));
 const base64 = (path: string) => readFileSync(here(path)).toString('base64');
@@ -31,6 +32,20 @@ describe('scriptText', () => {
 
   it('refuses <!--, which has no safe rewrite', () => {
     expect(() => scriptText('x="<!--"')).toThrow('<!--');
+  });
+});
+
+describe('noticeComment', () => {
+  it('is one HTML comment holding the notice, the licence and where the third-party list is, with no "--" inside to end it early', () => {
+    const comment = noticeComment('A -- B --- C\nD-\n');
+    expect(comment.startsWith('<!--\n')).toBe(true);
+    expect(comment.endsWith('\n-->')).toBe(true);
+    const inside = comment.slice('<!--'.length, -'-->'.length);
+    expect(inside).not.toContain('--');
+    expect(inside.endsWith('-')).toBe(false);
+    expect(inside).toContain('A - - B - - - C');
+    expect(inside).toContain('Apache-2.0');
+    expect(inside).toContain('THIRD-PARTY-LICENSES.txt');
   });
 });
 
@@ -64,8 +79,16 @@ describe('the built file', () => {
     if (outDir) rmSync(outDir, { recursive: true, force: true });
   });
 
-  it('is apiseven.html and nothing else', () => {
-    expect(readdirSync(outDir)).toEqual([SINGLE_FILE_NAME]);
+  it('is apiseven.html, beside the licence, the notice and the third-party licences (C2)', () => {
+    expect(readdirSync(outDir).sort()).toEqual([...LICENSE_FILES, SINGLE_FILE_NAME].sort());
+    expect(readFileSync(join(outDir, 'LICENSE.txt'), 'utf8')).toBe(readFileSync(here('../LICENSE'), 'utf8'));
+    expect(readFileSync(join(outDir, 'NOTICE.txt'), 'utf8')).toBe(readFileSync(here('../NOTICE'), 'utf8'));
+    // Vite's list of the bundled dependencies' licences (build.license): React's among them.
+    expect(readFileSync(join(outDir, 'THIRD-PARTY-LICENSES.txt'), 'utf8')).toMatch(/^## react - \d/m);
+  });
+
+  it('starts with the notice, before the doctype: the NOTICE text, the licence, and where the third-party list is', () => {
+    expect(html.startsWith(`${noticeComment(readFileSync(here('../NOTICE'), 'utf8'))}\n<!doctype html>`)).toBe(true);
   });
 
   // Checked on the markup (script and style text left out), which is short enough to print on failure.

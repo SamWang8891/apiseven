@@ -57,7 +57,7 @@ docker:
 single: | $(WEB_DEPS)
 	cd web && npm run build:single
 	mkdir -p dist
-	cp web/dist-single/apiseven.html dist/apiseven.html
+	cp web/dist-single/apiseven.html web/dist-single/LICENSE.txt web/dist-single/NOTICE.txt web/dist-single/THIRD-PARTY-LICENSES.txt dist/
 
 # Both static exports: dist/apiseven.html and dist/apiseven-static.zip (web/dist, for any file server).
 static: single
