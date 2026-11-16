@@ -285,10 +285,13 @@ Paths are relative to the repository root.
   (`insertText` / `insertCompositionText` with the whole value selected). The component's doc
   ("Text typed is one tag, spaces and all") also says more than it does: text typed inside a
   paste's leftover is split with it.
-- `asLuaTables` (`web/src/schema/ajv.ts`) turns every empty-table place the errors ask for in one
-  round, and only one a round at or below a failing `anyOf` / `oneOf`. A failing `contains` also
-  reports every item's errors (Ajv resets them only when it passes), and the places under it are
-  batched like any other; no case is known where that reads a value wrongly, and none is tested.
+- `asLuaTables` (`web/src/schema/ajv.ts`) turns together the empty-table places whose error lies
+  outside every `anyOf`, `oneOf`, `not`, `if` / `then` / `else` and `contains`, and turns a place
+  inside one of those alone, in a round that has none of the first kind. A value with many empty
+  tables under a failing combinator therefore costs one check per place.
+- `web/src/schema-form/fields/EnumField.tsx` treats a stored `""` as no stored value: for an enum
+  that has `""` as a member, a field whose draft holds a private key offers no "Keep the stored
+  value", and Replace with the box left empty removes the property instead of restoring `""`.
 
 **Lists and tables**
 - `expiryTone` and `daysLeft` (`web/src/resources/expiry.tsx`) each call `Date.now()` when no `now`
