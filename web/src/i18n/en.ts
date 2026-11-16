@@ -1695,7 +1695,8 @@ export const en: Record<string, string> = {
   'sc.config.unknown': 'APISIX has no secret manager named "{manager}": edit the entry on the JSON tab.',
   'sc.ref.title': 'Use it from a plugin',
   'sc.ref.vault': 'In a plugin field, write {prefix}<path>/<key>: APISIX reads <key> of the secret at <path> under the prefix.',
-  'sc.ref.aws': 'In a plugin field, write {prefix}<secret name>, or {prefix}<secret name>/<key> for one key of a JSON secret.',
+  // apisix/secret/aws.lua get() 118–158: the whole path is tried as a secret name first; only on ResourceNotFoundException is the part after the last / taken as a key, then the part after the one before, and so on.
+  'sc.ref.aws': 'In a plugin field, write {prefix}<secret name>, or {prefix}<secret name>/<key> for one key of a JSON secret. APISIX first reads the whole path after the prefix as a secret name; only when no secret has that name does it take the part after the last / as the key (then the part after the / before it, and so on). So a secret named <secret name>/<key> is read instead of that key.',
   'sc.ref.gcp': 'In a plugin field, write {prefix}<secret>, or {prefix}<secret>/<key> for one key of a JSON secret.',
   'sc.ref.where': 'It works in any text field of a plugin, a consumer’s sign-in settings, and an SSL’s certificate and key.',
   'sc.ref.copy': 'Copy prefix',
