@@ -54,6 +54,7 @@ afterEach(() => {
 const newHost = () => main().getByRole('textbox', { name: t('up.nodes.new') });
 const hostN = (n: number) => main().getByRole('textbox', { name: t('up.nodes.hostN', { n }) });
 const priorityN = (n: number) => main().getByRole('spinbutton', { name: t('up.nodes.priorityN', { n }) });
+const weightN = (n: number) => main().getByRole('spinbutton', { name: t('up.nodes.weightN', { n }) });
 const save = () => main().getByRole('button', { name: t('editor.save') });
 const newNode = () => t('up.pending.newNode');
 const node = (n: number) => t('up.pending.node', { n });
@@ -85,6 +86,12 @@ interface HeldCase {
   message: string;
   /** What a refused Save names. */
   pending: string;
+  /**
+   * The draft's nodes once the hold is reached, checked before any way out (final wave F8): what the
+   * gesture that reached it wrote. A duplicate an explicit commit (Enter, Move) or a paste reached writes
+   * nothing, so these are the stored nodes.
+   */
+  after?: unknown;
 }
 
 const HELD: [string, HeldCase][] = [
@@ -138,6 +145,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10.0.0.5:8080',
       message: t('up.nodes.dupOf', { n: 1 }),
       pending: t('up.pending.duplicate', { node: newNode(), addr: '10.0.0.5:8080' }),
+      after: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 },
     },
   ],
   [
@@ -152,6 +160,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10.0.0.5:8080',
       message: t('up.nodes.dupOf', { n: 1 }),
       pending: t('up.pending.duplicate', { node: node(2), addr: '10.0.0.5:8080' }),
+      after: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 },
     },
   ],
   [
@@ -167,6 +176,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10:9090',
       message: t('up.nodes.dupOf', { n: 1 }),
       pending: t('up.pending.duplicate', { node: newNode(), addr: '10:9090' }),
+      after: { '10:9090': 1 },
     },
   ],
   [
@@ -181,6 +191,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10:9090',
       message: t('up.nodes.dupOf', { n: 1 }),
       pending: t('up.pending.duplicate', { node: newNode(), addr: '10:9090' }),
+      after: { '10:9090': 1 },
     },
   ],
   [
@@ -195,6 +206,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10.0.0.5:8080',
       message: t('up.nodes.dupOf', { n: 1 }),
       pending: t('up.pending.duplicate', { node: node(2), addr: '10.0.0.5:8080' }),
+      after: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 },
     },
   ],
   // Final wave F7 (these expectations changed): one pasted address goes in as typed, then is judged as typed text.
@@ -210,6 +222,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10.0.0.5:8080',
       message: t('up.nodes.colonHeld'),
       pending: t('up.pending.unsaved', { node: newNode(), addr: '10.0.0.5:8080' }),
+      after: { '10.0.0.5:8080': 1 },
     },
   ],
   [
@@ -224,6 +237,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10.0.0.5:8080',
       message: t('up.nodes.colonHeld'),
       pending: t('up.pending.unsaved', { node: node(2), addr: '10.0.0.5:8080' }),
+      after: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 },
     },
   ],
   [
@@ -239,6 +253,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10.0.0.5:9090',
       message: t('up.nodes.colonHeld'),
       pending: t('up.pending.unsaved', { node: node(1), addr: '10.0.0.5:9090' }),
+      after: { '10.0.0.5:80': 1 },
     },
   ],
   [
@@ -269,6 +284,24 @@ const HELD: [string, HeldCase][] = [
       pending: t('up.pending.unsaved', { node: newNode(), addr: 'a' }),
     },
   ],
+  // Final wave F8 (re-review 3, minor 2): a row this edit added keeps a weight typed into it when Enter finds a duplicate.
+  [
+    'a row added in this edit, a weight typed into it, then Enter on a duplicate: the row stays, with its weight',
+    {
+      nodes: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1 },
+      reach: async (u) => {
+        await typeInto(u, newHost(), '10.0.0.5:8080');
+        await typeInto(u, weightN(3), '5', true);
+        await u.click(hostN(3));
+        await u.keyboard('{Enter}');
+      },
+      field: () => hostN(3),
+      typed: '10.0.0.5:8080',
+      message: t('up.nodes.dupOf', { n: 1 }),
+      pending: t('up.pending.duplicate', { node: node(3), addr: '10.0.0.5:8080' }),
+      after: { '10.0.0.5:8080': 1, '10.0.0.6:80': 1, '10.0.0.5': 5 },
+    },
+  ],
   // Final wave F2/F6: a change that turns the map into an array (a priority, "Keep both") ends no other row's hold.
   [
     'a duplicate held in a row, then a priority set on another row (the list becomes an array)',
@@ -282,6 +315,7 @@ const HELD: [string, HeldCase][] = [
       typed: 'a',
       message: t('up.nodes.heldNotYet'),
       pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
+      after: [{ host: 'a', port: 80, weight: 1, priority: 1 }, { host: 'b', port: 80, weight: 1 }],
     },
   ],
   [
@@ -296,6 +330,7 @@ const HELD: [string, HeldCase][] = [
       typed: 'a',
       message: t('up.nodes.heldNotYet'),
       pending: t('up.pending.unsaved', { node: node(2), addr: 'a:80' }),
+      after: [{ host: 'a', port: 80, weight: 1 }, { host: 'b', port: 80, weight: 1, priority: 1 }],
     },
   ],
   [
@@ -311,6 +346,7 @@ const HELD: [string, HeldCase][] = [
       typed: '42',
       message: t('up.nodes.heldNotYet'),
       pending: t('up.pending.unsaved', { node: newNode(), addr: '42' }),
+      after: [{ host: 'a', port: 80, weight: 1 }, { host: 'a', port: 80, weight: 1 }],
     },
   ],
   [
@@ -326,6 +362,7 @@ const HELD: [string, HeldCase][] = [
       typed: '10:',
       message: t('up.nodes.heldNotYet'),
       pending: t('up.pending.unsaved', { node: node(3), addr: '10:' }),
+      after: [{ host: 'a', port: 80, weight: 1 }, { host: 'a', port: 80, weight: 1 }, { host: '10', port: 80, weight: 1 }],
     },
   ],
 ];
@@ -352,7 +389,10 @@ describe('the node table: a held field changes nothing on any way out', () => {
   describe.each(HELD)('%s', (_, c) => {
     it.each(WAYS_OUT)('%s: the draft as it was, no request, the toast names the node, the field as typed and flagged', async (_way, way) => {
       const { user, admin } = await edit(c.nodes);
+      expect(nodesNow()).toEqual(c.nodes);
       await c.reach(user);
+      // What the gesture that reached the hold wrote, before any way out (final wave F8).
+      if (c.after !== undefined) expect(nodesNow()).toEqual(c.after);
       await user.click(c.field());
       expect(c.field()).toHaveValue(c.typed);
       expect(c.field()).toHaveAttribute('aria-invalid', 'true');

@@ -82,7 +82,8 @@ const NOTHING_SKIPPED: Skipped = { dup: [], bad: [] };
  * in an array; in a map, an address that is a valid key and that no other row has. Text a map can't
  * hold is held in the row's fields exactly as typed, flagged with why and what to do, and Save is refused
  * naming the node: an address another row has (the row goes back to its address from before the edit, a
- * row this edit added back to "Add a node"; the user changes it or keeps both, which stores an array); an
+ * row this edit added back to "Add a node" while nothing else was typed into it; the user changes it or
+ * keeps both, which stores an array); an
  * all-digit host without a port (JavaScript would move an integer key to the top of the map under the
  * cursor); a host with a stray colon (not an IPv6 address); a held address whose clash another row's edit
  * resolved. Leaving a field writes nothing and never splits or rewrites what it shows. Enter is the
@@ -197,12 +198,14 @@ export function NodesTable({ value, onChange, issues }: SectionProps) {
     hold(i, h);
     if (edit.reason === 'duplicate') {
       const before = start.current[id];
-      if (before === 'new') {
-        // A node this edit added goes back to being the new-node row, which shows what it holds.
+      // A node this edit added goes back to being the new-node row, which shows what it holds, only while
+      // nothing else was typed into it (it has no port and the default weight): otherwise it stays, at its
+      // last good address, holding the text, so the port or weight typed into it is not lost.
+      if (before === 'new' && h.port === undefined && rows[i]?.weight === NEW_WEIGHT) {
         setIds((prev) => [...withoutId(prev.slice(0, -1), i), id]);
         return { up: removeNode(value, i), ok: false };
       }
-      if (before) {
+      if (before && before !== 'new') {
         const back = setMapAddress(value, i, before, { commitDigits: true });
         if (back.ok && !deepEqual(back.up.nodes, value.nodes)) return { up: back.up, ok: false };
       }
