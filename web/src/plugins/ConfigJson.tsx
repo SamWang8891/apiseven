@@ -14,6 +14,7 @@ import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
 import { hideNeverShown, redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
+import { inexactNumberIn } from '../ui/decimal';
 import { maskConfig } from './secrets';
 
 const pretty = (v: unknown): string => JSON.stringify(v, null, 2) ?? '';
@@ -71,6 +72,12 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
     }
     if (!isObj(parsed)) {
       setState((s) => ({ ...s, text, error: t('pl.card.notObject'), held: t('ui.pending.jsonType', { field: name, type: 'object' }) }));
+      return;
+    }
+    // A number JSON.parse would round is not taken: what the text shows is what would be sent.
+    const inexact = inexactNumberIn(text);
+    if (inexact !== undefined) {
+      setState((s) => ({ ...s, text, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field: name, text: inexact }) }));
       return;
     }
     setState({ text, synced: parsed, error: undefined, held: undefined });

@@ -333,6 +333,7 @@ export const en: Record<string, string> = {
   'json.note.twice': 'the same private-key note is used twice: each stands for one key',
   'json.copiedMasked': 'Copied the JSON with its secrets masked. To copy them too, choose Show secrets first.',
   'json.copyFailed': "Couldn't copy: {error}",
+  'json.inexact': 'The number {number} has more digits than can be saved exactly.',
   'delete.title': 'Delete {kind} "{name}" ({id})?',
   'delete.titleUnnamed': 'Delete {kind} "{id}"?',
   'delete.body': 'This removes it from APISIX and cannot be undone.',

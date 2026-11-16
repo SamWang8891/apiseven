@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '../../ui';
+import { inexactNumberIn } from '../../ui/decimal';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
 import { hideNeverShown, isNeverShownName, keyPath, redactSecrets } from '../../schema/secrets';
@@ -125,6 +126,12 @@ export function JsonField({
       parsed = JSON.parse(next);
     } catch (e) {
       setInvalid({ error: t('sf.json.invalid', { error: e instanceof Error ? e.message : String(e) }), held: t('ui.pending.json', { field: fieldName }) });
+      return;
+    }
+    // A number JSON.parse would round is not taken: what the text shows is what would be sent.
+    const inexact = inexactNumberIn(next);
+    if (inexact !== undefined) {
+      setInvalid({ error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field: fieldName, text: inexact }) });
       return;
     }
     const types = typesOf(node);

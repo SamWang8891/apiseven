@@ -27,3 +27,30 @@ function decimalOf(text: string): string {
  * integers a double holds exactly (2^53, 1e19).
  */
 export const exactly = (s: string, n: number): boolean => decimalOf(s) === decimalOf(String(n));
+
+/**
+ * The first number in JSON text that a double cannot hold exactly (JSON.parse would round it), as
+ * written; undefined when there is none. It reads the text's own tokens, so digits inside a string (a
+ * key or a value) are text and never count. For text JSON.parse takes: what is not a string or a
+ * number is passed over.
+ */
+export function inexactNumberIn(json: string): string | undefined {
+  const NUMBER = /-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+  let i = 0;
+  while (i < json.length) {
+    const c = json[i];
+    if (c === '"') {
+      // A string: to its closing quote, past escaped characters.
+      i += 1;
+      while (i < json.length && json[i] !== '"') i += json[i] === '\\' ? 2 : 1;
+      i += 1;
+    } else if (c === '-' || (c !== undefined && c >= '0' && c <= '9')) {
+      NUMBER.lastIndex = i;
+      const token = NUMBER.exec(json)?.[0];
+      if (token === undefined) return undefined;
+      if (!exactly(token, Number(token))) return token;
+      i += token.length;
+    } else i += 1;
+  }
+  return undefined;
+}

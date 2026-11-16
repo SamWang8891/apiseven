@@ -9,6 +9,7 @@ import type { Kind, Obj } from '../api/types';
 import { copiedWithout, copiedWithoutKey, newKeyNotes, redactObject, unveilKeys, veilKeys, type KeyNotes } from '../plugins/secrets';
 import { registry, type TabProps } from '../resources/registry';
 import { Button, CodeEditor, toast, useEditingState, useLocked, usePending, useReveal } from '../ui';
+import { inexactNumberIn } from '../ui/decimal';
 import { deepEqual } from './draft';
 import { parse, pretty } from './json';
 
@@ -102,6 +103,12 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
     if (!parsed.ok) {
       const held = parsed.notObject ? t('ui.pending.jsonType', { field, type: 'object' }) : t('ui.pending.json', { field });
       setState((s) => ({ ...s, text, error: parsed.error, held }));
+      return;
+    }
+    // A number JSON.parse would round is not taken: what the text shows is what would be sent.
+    const inexact = inexactNumberIn(text);
+    if (inexact !== undefined) {
+      setState((s) => ({ ...s, text, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field, text: inexact }) }));
       return;
     }
     const back = unveilKeys(kind, parsed.value, current.notes);
