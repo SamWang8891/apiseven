@@ -13,6 +13,9 @@ import { t } from '../i18n';
 import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
 import { json } from '../test/fakeAdmin';
+import { pluginReplies } from '../test/plugins';
+import type { TabDef, TabProps } from '../resources/registry';
+import { issueAt } from './issues';
 
 const undo: (() => void)[] = [];
 afterEach(() => {
@@ -157,5 +160,44 @@ describe('focus after a refused save (I1)', () => {
     expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(main().getByRole('textbox', { name: 'URI' })).toHaveValue('/strict');
     expect(discard).not.toHaveAttribute('aria-disabled');
+  });
+});
+
+// Last step, fix round 1, F1: a local refusal whose first problem is on another tab shows that tab; once
+// it shows, its first flagged control has focus (never body).
+function ExtraFields({ issues }: TabProps) {
+  const problem = issueAt(issues, 'desc');
+  return <input aria-label="Extra" aria-invalid={problem ? true : undefined} defaultValue="" />;
+}
+const EXTRA_TAB: TabDef = { id: 'extra', label: 'Extra', fields: ['desc'], render: (p) => <ExtraFields {...p} /> };
+const needsDesc = (d: Obj) => (typeof d.desc === 'string' && d.desc !== '' ? [] : [{ path: 'desc', message: 'a description is needed' }]);
+
+describe('a local refusal on another tab (F1)', () => {
+  it('Cmd/Ctrl-S from a field, refused for a problem on another tab: that tab shows, and its flagged control has focus', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB, EXTRA_TAB], validate: needsDesc }));
+    const { user, admin } = await openEditor('#/routes/r1', { objects: { routes: [ROUTE] } });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    const uri = await main().findByRole('textbox', { name: 'URI' });
+    await user.clear(uri);
+    await user.type(uri, '/b');
+    pressCtrlS();
+    await waitFor(() => expect(main().getByRole('tab', { name: /^Extra/ })).toHaveAttribute('aria-selected', 'true'));
+    await waitFor(() => expect(document.activeElement).toBe(main().getByRole('textbox', { name: 'Extra' })));
+    expect(writesOf(admin)).toEqual([]);
+  });
+
+  it('on the real route editor: Cmd/Ctrl-S from Description with limit-count missing its count shows the Plugins tab and focuses a flagged control there, never body', async () => {
+    const route: Obj = { ...ROUTE, plugins: { 'limit-count': { time_window: 60 } } };
+    const { user, admin } = await openEditor('#/routes/r1', { objects: { routes: [route], upstreams: [] }, replies: pluginReplies() });
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    await user.keyboard('e');
+    const desc = await main().findByRole('textbox', { name: t('rt.general.desc') });
+    await user.type(desc, 'x');
+    pressCtrlS();
+    await waitFor(() => expect(main().getByRole('tab', { name: new RegExp(`^${t('pl.tab')}`) })).toHaveAttribute('aria-selected', 'true'));
+    await waitFor(() => expect(document.activeElement).not.toBe(document.body));
+    await waitFor(() => expect(document.activeElement?.getAttribute('aria-invalid')).toBe('true'));
+    expect(writesOf(admin)).toEqual([]);
   });
 });

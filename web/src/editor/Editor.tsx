@@ -46,6 +46,15 @@ import { useRequiredValues } from './untouched';
 import { useEdit } from './useEdit';
 import { returnFocus } from './focusBack';
 
+/** Where focus goes back after a refused save (final wave I1): what the save left, what was pressed. */
+interface Refocus {
+  left?: HTMLElement;
+  pressed?: HTMLElement;
+  anyway: boolean;
+  /** A local refusal that showed another tab: its first flagged control comes first (F1). */
+  toProblem?: boolean;
+}
+
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
 const valueOf = (item: Item): Obj => stripTimestamps(item.value);
 
@@ -121,7 +130,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
    * page shows it (a tab switched to, the fields shown again after the saving state), so what it
    * focuses is what stays.
    */
-  const refocusNext = useRef<{ left?: HTMLElement; pressed?: HTMLElement; anyway: boolean } | undefined>(undefined);
+  const refocusNext = useRef<Refocus | undefined>(undefined);
+  /** A refocus waiting for a tab to show (F1): cleared when the page goes. */
+  const refocusTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(refocusTimer.current), []);
   const idRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   /** Where focus goes after the next lock change made by the user. */
@@ -233,11 +245,37 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     const next = refocusNext.current;
     if (!next) return;
     refocusNext.current = undefined;
+    clearTimeout(refocusTimer.current);
     // Only focus the save lost is given back: if the user has gone on meanwhile (another control, a
     // field), it stays where they went.
-    const at = document.activeElement;
-    if (at && at !== document.body && at !== next.pressed) return;
-    returnFocus(next.left, next.pressed, next.anyway ? anywayRef.current : undefined, saveRef.current);
+    const lost = () => {
+      const at = document.activeElement;
+      return !at || at === document.body || at === next.pressed;
+    };
+    const back = () => returnFocus(next.left, next.pressed, next.anyway ? anywayRef.current : undefined, saveRef.current);
+    if (!lost()) return;
+    if (!next.toProblem) {
+      back();
+      return;
+    }
+    // A local refusal showed the tab with the first problem (F1): its first flagged control takes focus
+    // once it is there. The tab may still be loading (LazyPanel's busy status), and a card may open for
+    // the refusal a render later; while that lasts it is waited for, then where the user was.
+    let tries = 0;
+    const attempt = () => {
+      if (!lost()) return;
+      const panel = bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])');
+      const flagged = panel?.querySelector<HTMLElement>('[aria-invalid="true"]');
+      flagged?.focus();
+      if (flagged && document.activeElement === flagged) return;
+      const loading = !panel || panel.querySelector('[role="status"][aria-busy="true"]') !== null;
+      if (tries++ < (loading ? 60 : 5)) {
+        refocusTimer.current = setTimeout(attempt, 50);
+        return;
+      }
+      back();
+    };
+    attempt();
   });
 
   // --- Save --------------------------------------------------------------------------------------
@@ -273,8 +311,11 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       // Input this tab holds comes first: stay here, on the field that holds it (the one the toast names).
       const holding = pending.length > 0 ? heldField(pending[0], bodyRef.current?.querySelector<HTMLElement>('[role="tabpanel"]:not([hidden])')) : undefined;
       const first = pending.length > 0 ? active : tabIds.find((tab) => byTabAll.has(tab));
-      if (first !== undefined && first !== active) goTab(first);
-      else if (holding) holding.focus();
+      if (first !== undefined && first !== active) {
+        goTab(first);
+        // Once that tab shows, its first flagged control takes focus; else where the user was (F1).
+        refocusNext.current = { left, pressed, anyway, toProblem: true };
+      } else if (holding) holding.focus();
       else if (first === undefined && (idMissing || idRefused)) idRef.current?.focus();
       else returnFocus(left, pressed, anyway ? anywayRef.current : undefined, saveRef.current);
       return;
