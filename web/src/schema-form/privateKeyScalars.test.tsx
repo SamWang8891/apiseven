@@ -79,6 +79,37 @@ describe('limit-count’s count (a number that also takes text)', () => {
   });
 });
 
+// Fix round 1, Y4: Keep, and an emptied box, give back the stored value itself, with its type.
+describe('limit-count’s count stored as text ("5", which APISIX takes)', () => {
+  it('a key typed in and left: Keep gives back "5", text; so does Replace (its box empty: the stored value)', async () => {
+    const conf: Obj = { count: '5', time_window: 60 };
+    const form = renderSchemaForm(schemaOf('limit-count'), conf, { baseline: conf, name: 'limit-count' });
+    const typeKey = async () => {
+      const box = screen.getByRole('textbox', { name: /^count/ });
+      await form.user.click(box);
+      await form.user.keyboard('{Control>}a{/Control}');
+      await form.user.paste(pem(TYPED).replace(/\n/g, ' '));
+      await form.user.click(screen.getByRole('textbox', { name: /^time_window/ }));
+      await waitFor(() => expect(inPage(TYPED)).toBe(false));
+    };
+    await typeKey();
+    await form.user.click(screen.getByRole('button', { name: t('sf.secret.keep') }));
+    expect(form.value()).toEqual(conf);
+    expect(screen.getByRole('textbox', { name: /^count/ })).toHaveValue('5');
+
+    await typeKey();
+    await form.user.click(screen.getByRole('button', { name: t('sf.secret.replace', { name: 'count' }) }));
+    expect(form.value()).toEqual(conf);
+    // No key stands any more: the plain box, the stored text in it; typed numerals are a number again.
+    const box = screen.getByRole('textbox', { name: /^count/ });
+    expect(box).toHaveValue('5');
+    await form.user.clear(box);
+    await form.user.type(box, '7');
+    expect(form.value()).toEqual({ ...conf, count: 7 });
+    expect(form.held()).toEqual([]);
+  });
+});
+
 describe('a route with all three, in the editor', () => {
   const ROUTE: Obj = {
     id: 'r1',

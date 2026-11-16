@@ -93,6 +93,12 @@ function NumberOrText({ common, fieldName, path, name, value, integer, locked, o
     if (v !== INEXACT) onChange(v);
   };
   const storedText = textOf(stored) === '' ? undefined : textOf(stored);
+  /** Text from SecretText's box: the stored value's own text (Keep, an emptied box) is the stored value itself, with its type (fix round 1, Y4). */
+  const fromBox = (next: string) => {
+    if (storedText === undefined || next !== storedText) return take(next);
+    setTyped(undefined);
+    onChange(stored as number | string);
+  };
   if ((holdsPrivateKey(storedText) || holdsPrivateKey(value)) && !typing) {
     return (
       <SecretText
@@ -104,7 +110,7 @@ function NumberOrText({ common, fieldName, path, name, value, integer, locked, o
         mono={false}
         rows={3}
         neverShown
-        onText={take}
+        onText={fromBox}
       />
     );
   }
