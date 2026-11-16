@@ -2,8 +2,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { EC_IPV6, FAR, NO_SAN, RSA_CA, RSA_LEAF, STRINGS, V1 } from '../../test/certs';
+import { fingerprintOf, knownFingerprint } from './fingerprint';
 import { fingerprintSha256, parseCert } from './parseCert';
 
 // Vite refuses imports from outside web/, so read the seed script from disk.
@@ -191,5 +192,54 @@ describe('fingerprintSha256', () => {
     expect(await fingerprintSha256('')).toBeUndefined();
     expect(await fingerprintSha256(PRIVATE_KEY)).toBeUndefined();
     expect(await fingerprintSha256('-----BEGIN CERTIFICATE-----\n*&%$\n-----END CERTIFICATE-----')).toBeUndefined();
+  });
+});
+
+// Final wave M3: a certificate text that also holds a private key (a combined PEM) never becomes a key
+// of the readers' module caches, which outlive the field and the draft: they are keyed by the
+// certificate block alone.
+describe('the caches of parseCert and fingerprintOf', () => {
+  /** Every key a Map was given while `run` ran. */
+  async function keysSetDuring(run: () => unknown): Promise<unknown[]> {
+    const set = vi.spyOn(Map.prototype as Map<unknown, unknown>, 'set');
+    try {
+      await run();
+      return set.mock.calls.map(([key]): unknown => key);
+    } finally {
+      set.mockRestore();
+    }
+  }
+  const keyLine = PRIVATE_KEY.split('\n')[1] ?? '';
+
+  it('never take a combined PEM, or any text around the certificate block, as a key; the same block gives the same result', async () => {
+    expect(keyLine.length).toBeGreaterThan(40);
+    const combined = `${RSA_LEAF}${PRIVATE_KEY}`;
+    const keyFirst = `${PRIVATE_KEY}${EC_IPV6}`;
+    const keys = await keysSetDuring(async () => {
+      parseCert(combined);
+      parseCert(keyFirst);
+      await fingerprintOf(combined);
+      await fingerprintOf(keyFirst);
+      knownFingerprint(combined);
+    });
+    expect(keys.length).toBeGreaterThan(0);
+    for (const key of keys) {
+      if (typeof key !== 'string') continue;
+      expect(key).not.toContain('PRIVATE KEY');
+      expect(key).not.toContain(keyLine);
+    }
+    expect(parseCert(combined)).toBe(parseCert(RSA_LEAF));
+    expect(parseCert(keyFirst)).toBe(parseCert(EC_IPV6));
+    expect(knownFingerprint(combined)).toEqual({ value: await fingerprintSha256(RSA_LEAF) });
+    expect(knownFingerprint(RSA_LEAF)).toEqual(knownFingerprint(combined));
+  });
+
+  it('text with no certificate block is read as nothing, and cached under nothing', async () => {
+    const keys = await keysSetDuring(async () => {
+      expect(parseCert(PRIVATE_KEY)).toBeUndefined();
+      expect(await fingerprintOf(PRIVATE_KEY)).toBeUndefined();
+      expect(knownFingerprint(PRIVATE_KEY)).toEqual({ value: undefined });
+    });
+    expect(keys.filter((key) => typeof key === 'string' && key.includes(keyLine))).toEqual([]);
   });
 });

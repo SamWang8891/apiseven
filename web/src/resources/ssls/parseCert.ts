@@ -183,25 +183,38 @@ function parseDer(der: Uint8Array): CertInfo {
 
 const PEM_BLOCK = /-----BEGIN CERTIFICATE-----([^-]*)-----END CERTIFICATE-----/;
 
-/** The DER bytes of the first certificate block, or undefined when there is none or its base64 is broken. */
-function firstDer(pem: string): Uint8Array<ArrayBuffer> | undefined {
-  const body = PEM_BLOCK.exec(pem)?.[1]?.replace(/\s+/g, '');
+/**
+ * The base64 of the first certificate block in `pem`, without its white space, or undefined when
+ * there is none: all that the readers here read of a text, and so the key their caches use. Never the
+ * text around the block, which may hold a private key (a combined PEM): a module cache outlives the
+ * field and the draft (final wave M3).
+ */
+export function certBlockOf(pem: string): string | undefined {
+  return PEM_BLOCK.exec(pem)?.[1]?.replace(/\s+/g, '');
+}
+
+/** The DER bytes of a certificate block's base64, or undefined when it is missing or broken. */
+function derOf(body: string | undefined): Uint8Array<ArrayBuffer> | undefined {
   if (!body || body.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(body)) return undefined;
   return Uint8Array.from(atob(body), (c) => c.charCodeAt(0));
 }
 
 const CACHE_SIZE = 200;
+/** By certificate block (certBlockOf), never by the whole text. */
 const cache = new Map<string, CertInfo | undefined>();
 
 /**
  * The first certificate in `pem`, or undefined for anything it cannot read. Never throws. Results
- * are memoised per PEM string (lists call this per row on every render) and frozen: don't mutate them.
+ * are memoised per certificate block (lists call this per row on every render) and frozen: don't
+ * mutate them.
  */
 export function parseCert(pem: string): CertInfo | undefined {
-  if (cache.has(pem)) return cache.get(pem);
+  const block = certBlockOf(pem);
+  if (block === undefined) return undefined;
+  if (cache.has(block)) return cache.get(block);
   let info: CertInfo | undefined;
   try {
-    const der = firstDer(pem);
+    const der = derOf(block);
     info = der && parseDer(der);
   } catch {
     info = undefined;
@@ -213,17 +226,21 @@ export function parseCert(pem: string): CertInfo | undefined {
     Object.freeze(info);
   }
   if (cache.size >= CACHE_SIZE) cache.delete(cache.keys().next().value as string);
-  cache.set(pem, info);
+  cache.set(block, info);
   return info;
 }
 
 /**
  * SHA-256 of the first certificate's DER, as uppercase hex pairs joined by `:` (openssl's
  * `-fingerprint -sha256`). Undefined without a readable block, or where the browser offers no
- * crypto.subtle (it does only in secure contexts: https or localhost).
+ * crypto.subtle (it does only in secure contexts: https or localhost). Only the block's bytes wait
+ * for the digest, not the text they came from.
  */
-export async function fingerprintSha256(pem: string): Promise<string | undefined> {
-  const der = firstDer(pem);
+export function fingerprintSha256(pem: string): Promise<string | undefined> {
+  return sha256Of(derOf(certBlockOf(pem)));
+}
+
+async function sha256Of(der: Uint8Array<ArrayBuffer> | undefined): Promise<string | undefined> {
   const subtle = globalThis.crypto?.subtle as SubtleCrypto | undefined;
   if (!der || !subtle) return undefined;
   try {
