@@ -5,7 +5,9 @@
 //     text (schema/secrets.ts holdsPrivateKey / withoutPrivateKeys: the SSL editor's detection).
 //  2. A note is a token that stands for one key text, in one editing session of one view (`session`,
 //     random). It remembers the path it was made at (`at`); a note made from text being typed has none
-//     (the user's own key) until it is first taken somewhere.
+//     (the user's own key) until it is first taken somewhere, except one made on leaving for a whole-key
+//     place whose text took in a note that has a path (rule 3, F3): it is made at that place's path, so
+//     the stored key it holds may stand only where the note it took in could (fix round 5, G1).
 //  3. Veiling turns key texts into notes: a whole-key place's text into one note, a block into a note
 //     in place. A value shown for editing is veiled (veilValue). Leaving a view veils its raw text,
 //     whether or not it parses (veilTypedText), with rule 1's detection: string by string first,
@@ -366,7 +368,8 @@ function decode(raw: string): string {
  * (withoutPrivateKeys: to an END line, or to the end of that string). Then any block still in the raw
  * text (between strings, where the text is broken) becomes a note there, to an END line or to the end
  * of the text. Only those strings and blocks are rewritten, the rest of the text is left as typed. Such
- * notes are made in typed text: they stand for the user's own keys, bound to where they are first taken.
+ * notes are made in typed text: they stand for the user's own keys, bound to where they are first taken;
+ * one for a whole-key place that took in a note with a path is bound to that place (rule 2).
  */
 export function veilTypedText(
   text: string,
@@ -375,6 +378,7 @@ export function veilTypedText(
 ): { text: string; notes: KeyNotes; veiled: boolean } {
   if (!opts.whole && !mayHoldKeys(text, notes.session)) return { text, notes, veiled: false };
   const keys = new Map(notes.keys);
+  const at = new Map(notes.at);
   const mint = (secret: string): string => {
     const note = t('json.keyNote', { id: `${notes.session}.${keys.size + 1}` });
     keys.set(note, secret);
@@ -405,7 +409,11 @@ export function veilTypedText(
       const here = [...value.matchAll(notePattern())].map(([note]) => note);
       if (value !== '' && (holdsPrivateKey(value) || here.length === 0)) {
         const resolvable = here.every((note) => refusalOf(note, path, notes, countOf(note), opts.group) === undefined);
-        next = resolvable ? mint(value.replace(notePattern(), (note) => notes.keys.get(note) ?? note)) : withoutPrivateKeys(value, mint);
+        if (resolvable) {
+          next = mint(value.replace(notePattern(), (note) => notes.keys.get(note) ?? note));
+          // A stored key taken in keeps its place: the new note is bound here, as the one it took in (G1).
+          if (here.some((note) => notes.at.has(note))) at.set(next, JSON.stringify(path));
+        } else next = withoutPrivateKeys(value, mint);
       }
     } else if (holdsPrivateKey(value)) next = withoutPrivateKeys(value, mint);
     if (next === value) continue;
@@ -416,5 +424,5 @@ export function veilTypedText(
   // What the reading above could not place: a block between strings, or in strings read wrongly.
   if (holdsPrivateKey(out)) out = withoutPrivateKeys(out, (block) => mint(decode(block)));
   if (out === text) return { text, notes, veiled: false };
-  return { text: out, notes: { session: notes.session, keys, at: notes.at }, veiled: true };
+  return { text: out, notes: { session: notes.session, keys, at }, veiled: true };
 }

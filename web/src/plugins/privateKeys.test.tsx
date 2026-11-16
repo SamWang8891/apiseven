@@ -617,6 +617,35 @@ describe('F3: a stored note with a key pasted after it, in a whole-key place', (
   });
 });
 
+// Fix round 5, G1: the note F3 mints for a whole-key place that took in a stored note is bound to that
+// place, so the stored key can never be moved into another field through it.
+describe('G1: the note minted for a whole-key place that took in a stored note stays bound to that place', () => {
+  it.each([
+    ['response-rewrite’s body', (note: string): Obj => ({ 'response-rewrite': { body: note } })],
+    ['a proxy-rewrite header', (note: string): Obj => ({ 'proxy-rewrite': { headers: { set: { 'X-K': note } } } })],
+  ])('moved into %s: refused, nothing written, the stored key in no request', async (_where, elsewhere) => {
+    const { user, admin } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    const token = note.exec(JSON.stringify(shown))?.[0] ?? '';
+    await replaceText(user, box, JSON.stringify({ ...shown, plugins: { 'traffic-split': split(`${token}\n-----BEGIN PRIVATE KEY-----`) } }));
+    await user.click(main().getByRole('heading', { level: 1, name: 'split' }));
+    await waitFor(() => expect(box.textContent).not.toContain(token));
+    const left = JSON.parse(box.textContent ?? '{}') as Obj;
+    const minted = note.exec(JSON.stringify(left.plugins))?.[0] ?? '';
+    expect(minted).not.toBe('');
+    await replaceText(user, box, JSON.stringify({ ...left, plugins: { 'traffic-split': split(pem(NEW)), ...elsewhere(minted) } }));
+    expect(await main().findByText(t('json.note.moved', { path: KEY_PATH }))).toBeInTheDocument();
+    await user.keyboard('{Control>}s{/Control}');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    expect(writesOf(admin)).toEqual([]);
+    expect(JSON.stringify(admin.requests.map((r) => r.body ?? null))).not.toContain(STORED);
+    expect(inPage(STORED)).toBe(false);
+  });
+});
+
 // Fix round 4, F5: leaving reads a string as a whole-key place only where its name and colon stand
 // right before it; any other string is ordinary text (its blocks only).
 describe('F5: leaving mints only what the reader read as a whole-key place', () => {
