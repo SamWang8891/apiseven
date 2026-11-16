@@ -276,6 +276,17 @@ describe('plugins', () => {
     expect(within(el).getByText('cors').closest('.cell-plugin')).toHaveTextContent(/^cors$/);
   });
 
+  // Fix round 2, item 1: no script stops a plugin APISIX runs for the whole instance: never "not run", never dimmed.
+  it("an instance-wide plugin under a service's script reads no effect here, not \"not run\"; the others read not run", () => {
+    const ctx = ctxOf({ services: [itemOf('s6', { name: 'scripted', script: 'return {} -- service', plugins: { inspect: {}, cors: {} } })] });
+    const { el } = cell('plugins', route({ service_id: 's6' }), ctx);
+    const inspect = within(el).getByText('inspect').closest('.cell-plugin');
+    expect(inspect).toHaveTextContent(t('cell.plugin.noEffect'));
+    expect(inspect).not.toHaveTextContent(t('cell.plugin.notRun'));
+    expect(inspect).not.toHaveClass('cell-plugin--off');
+    expect(within(el).getByText('cors').closest('.cell-plugin')).toHaveTextContent(t('cell.plugin.notRun'));
+  });
+
   it('says off on a disabled plugin', () => {
     const { el } = cell('plugins', route({ plugins: { cors: { _meta: { disable: true } }, gzip: {} } }));
     expect(within(el).getByText('cors').closest('.cell-plugin')).toHaveTextContent(`cors${t('cell.plugin.off')}`);

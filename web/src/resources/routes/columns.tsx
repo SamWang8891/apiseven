@@ -87,11 +87,14 @@ export function refName(kind: 'services' | 'plugin_configs', field: unknown, ctx
 
 /**
  * The plugins that run (by default a route's, effectivePlugins), each saying where an inherited one
- * comes from; every one "not run" when `notRun` names whose script runs instead. Only an HTTP route
- * can have one (routeScript): the stream list passes none.
+ * comes from; every one "not run" when `script` names whose script runs instead (but one APISIX runs
+ * for the whole instance, which no script stops). Only an HTTP route can have one (routeScript): the
+ * stream list passes none.
  */
-export function pluginChips(route: Obj, ctx: Ctx, plugins: EffectivePlugin[] = effectivePlugins(route, ctx), notRun?: 'route' | 'service'): PluginChip[] {
+export function pluginChips(route: Obj, ctx: Ctx, plugins: EffectivePlugin[] = effectivePlugins(route, ctx), script?: 'route' | 'service'): PluginChip[] {
   return plugins.map(({ name, from, disabled, noEffect }): PluginChip => {
+    // A plugin APISIX runs for the whole instance is not stopped by a script either: never "not run".
+    const notRun = noEffect ? undefined : script;
     if (from === 'service') return { name, disabled, noEffect, notRun, from: t('cell.plugin.fromService', { name: refName('services', route.service_id, ctx) ?? '' }) };
     if (from === 'plugin_config') {
       return { name, disabled, noEffect, notRun, from: t('cell.plugin.fromPluginConfig', { name: refName('plugin_configs', route.plugin_config_id, ctx) ?? '' }) };
