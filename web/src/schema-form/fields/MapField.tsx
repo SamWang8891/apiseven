@@ -1,5 +1,5 @@
 import { Plus, X } from 'lucide-react';
-import { use, useCallback, useState, type FocusEvent, type ReactNode } from 'react';
+import { use, useCallback, useRef, useState, type FocusEvent, type ReactNode } from 'react';
 import type { Obj } from '../../api/types';
 import { t } from '../../i18n';
 import { isObj, testPattern } from '../../schema/refs';
@@ -56,6 +56,22 @@ const toMap = (node: MapNode, rows: Row[]): Obj => entriesOf(rows, rulesOf(node)
 /** The rows for a map that came from outside, keeping the rows that hold input (never dropped). */
 const rowsFor = (node: MapNode, map: Obj, rows: Row[]): Row[] => keepHeldRows(toRows(map), rows, rulesOf(node));
 
+/** An entry's text from the key/value editor as the map holds it, when it does (a number stays a number); else the text. */
+const typedAt = (map: Obj, key: string, text: string): unknown => (map[key] !== undefined && textOf(map[key]) === text ? map[key] : text);
+
+/**
+ * The key/value editor's rows as rows of this renderer, each as it was (its key, its value, the entry it
+ * last committed, held or not), so taking over from that editor loses no row's input (final wave D3).
+ */
+const rowsFromEditor = (map: Obj, rows: readonly EntryRow<string>[]): Row[] =>
+  rows.map((row) => ({
+    id: ++lastRow,
+    key: row.key,
+    value: typedAt(map, row.key, row.value),
+    last: row.last && { key: row.last.key, value: typedAt(map, row.last.key, row.last.value) },
+    carried: row.carried,
+  }));
+
 /**
  * What the rows hold that isn't in the map as shown, as one message: a value without a key, a
  * refused key, a key without a value. A new row with nothing typed in it holds nothing.
@@ -84,9 +100,10 @@ function sameMap(a: Obj, b: Obj): boolean {
  * Rows of key + field, for values a key/value editor cannot hold (numbers, lists, secrets, objects).
  * The rows are local, so a row being typed into (no key yet, a value cleared, a repeated key) stays
  * where it is while the map leaves it out, and holds Save meanwhile (usePending); a new value from
- * outside replaces them.
+ * outside replaces them. Taking over from the key/value editor (`from`: its rows), they start as that
+ * editor's rows.
  */
-function MapRows({ node, value, path, emit, label, labelId, help, error }: {
+function MapRows({ node, value, path, emit, label, labelId, help, error, from }: {
   node: MapNode;
   value: Obj;
   path: string;
@@ -95,11 +112,12 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   labelId: string;
   help: ReactNode;
   error: string | undefined;
+  from: readonly EntryRow<string>[] | undefined;
 }) {
   const locked = useLocked();
   // Rows being typed belong to the editing session (the locked view shows them): Save and Discard
   // start them over from the value.
-  const [rows, setRows] = useEditingState(() => toRows(value));
+  const [rows, setRows] = useEditingState(() => (from ? rowsFromEditor(value, from) : toRows(value)));
   // A value from outside replaces the rows, but for rows that hold something: those stay, as typed.
   const [synced, setSynced] = useState(value);
   if (value !== synced) {
@@ -219,13 +237,26 @@ function MapRows({ node, value, path, emit, label, labelId, help, error }: {
   );
 }
 
+interface MapModeState {
+  mode: MapMode;
+  track: (entries: PendingEntry[]) => void;
+  focus: { onFocus: () => void; onBlur: (e: FocusEvent) => void };
+  /** For the key/value editor: its rows as they stand. */
+  onRows: (rows: readonly EntryRow<string>[]) => void;
+  /** For the rows: the key/value editor's rows they take over from, when they did on leaving it. */
+  taken: readonly EntryRow<string>[] | undefined;
+}
+
 /**
  * Which renderer shows the map: the one its value asks for (mapMode), except that one holding input
  * stays on the page (final wave D3: a removed row could otherwise turn rows into the key/value editor
  * and unmount another row's unfinished edit). Kept that way, it stays for the editing session (it
  * still shows the value), so finishing the edit does not swap the field under the keyboard either.
+ * While the user is in the key/value editor it stays, whatever the value asks for (a private key typed
+ * or pasted there shows until it is left: fix round 1, R1), with nothing set as it renders (Codex final
+ * pass, X3: that looped); leaving it switches to the rows, which start from its rows, held ones too.
  */
-function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (entries: PendingEntry[]) => void; focus: { onFocus: () => void; onBlur: (e: FocusEvent) => void } } {
+function useMapMode(node: MapNode, value: unknown): MapModeState {
   const wanted = mapMode(node, value);
   /** Whether the renderer on the page holds input (its PendingScope). */
   const [holds, setHolds] = useState(false);
@@ -235,25 +266,44 @@ function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (ent
   const [kept, setKept] = useEditingState<MapMode | undefined>(undefined);
   /** The renderer on the page. */
   const [shown, setShown] = useState(wanted);
+  /** The key/value editor's rows as they stand (its onRows), read when it is left. */
+  const editorRows = useRef<readonly EntryRow<string>[] | undefined>(undefined);
+  const onRows = useCallback((rows: readonly EntryRow<string>[]) => {
+    editorRows.current = rows;
+  }, []);
+  /** The key/value editor's rows the rows took over from on leaving it: editing state, for the rows' start only. */
+  const [taken, setTaken] = useEditingState<readonly EntryRow<string>[] | undefined>(undefined);
   let mode = kept !== undefined && mapModeFits(node, value, kept) ? kept : wanted;
   if (mode !== shown) {
-    if ((holds && mapModeFits(node, value, shown)) || (typing && shown === 'kv')) {
+    if (typing && shown === 'kv') {
+      // In the key/value editor: it stays until it is left (focus.onBlur switches then).
+      mode = shown;
+    } else if (holds && mapModeFits(node, value, shown)) {
       setKept(shown);
       mode = shown;
     } else {
       // The renderer going away tells nothing as it unmounts (PendingContext): it holds nothing from here.
       setShown(mode);
       setHolds(false);
+      if (taken !== undefined) setTaken(undefined);
     }
   }
   const track = useCallback((entries: PendingEntry[]) => setHolds(entries.length > 0), []);
   const focus = {
     onFocus: () => setTyping(true),
     onBlur: (e: FocusEvent) => {
-      if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget)) setTyping(false);
+      if ((e.currentTarget as HTMLElement).contains(e.relatedTarget)) return;
+      setTyping(false);
+      // Left with an entry the key/value editor can't show (a private key): the rows take over now,
+      // from its rows as they stand, so another row's unfinished input stays on the page (D3).
+      if (shown === 'kv' && wanted === 'rows') {
+        setShown('rows');
+        setHolds(false);
+        setTaken(editorRows.current);
+      }
     },
   };
-  return { mode, track, focus };
+  return { mode, track, focus, onRows, taken };
 }
 
 /**
@@ -264,7 +314,7 @@ function useMapMode(node: MapNode, value: unknown): { mode: MapMode; track: (ent
  */
 export function MapField(props: FieldProps<MapNode>) {
   const { node, value, name, path, onChange, prop, required, ariaLabel } = props;
-  const { mode, track, focus } = useMapMode(node, value);
+  const { mode, track, focus, onRows, taken } = useMapMode(node, value);
   const id = useFieldId(path);
   const error = useFieldError(path);
   const help = useFieldHelp(prop, node, value);
@@ -302,7 +352,7 @@ export function MapField(props: FieldProps<MapNode>) {
   if (mode === 'rows') {
     return (
       <PendingScope onChange={track}>
-        <MapRows node={node} value={map} path={path} emit={emit} label={label} labelId={labelId} help={help} error={error} />
+        <MapRows node={node} value={map} path={path} emit={emit} label={label} labelId={labelId} help={help} error={error} from={taken} />
       </PendingScope>
     );
   }
@@ -321,6 +371,7 @@ export function MapField(props: FieldProps<MapNode>) {
           required={false}
           mono
           fieldName={fieldName}
+          onRows={onRows}
           value={text}
           onChange={(next) => {
             // Entries left as they were keep their stored type (a number stays a number).

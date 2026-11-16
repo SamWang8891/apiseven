@@ -24,6 +24,12 @@ export type KeyValueInputProps = FieldProps & {
   disabled?: boolean;
   /** How a refused Save names the field while a row holds input; default: the label (if text). */
   fieldName?: string;
+  /**
+   * The rows as they stand, after every change (before it renders too) and every render: what a
+   * renderer taking over from this one starts from, so a row holding input is not lost (the schema
+   * form's map, when a private key typed here needs its rows).
+   */
+  onRows?: (rows: readonly EntryRow<string>[]) => void;
 };
 
 type Row = EntryRow<string>;
@@ -78,7 +84,7 @@ function heldRows(rows: Row[], field: string): string | undefined {
  * Editable rows of key/value pairs (labels, headers, vars). Locked: a two-column list. A row the map
  * leaves out though it holds something (a value without a key, a repeated key) holds Save (usePending).
  */
-export function KeyValueInput({ label, help, error, required, value, onChange, keyPlaceholder, valuePlaceholder, mono, disabled, fieldName }: KeyValueInputProps) {
+export function KeyValueInput({ label, help, error, required, value, onChange, keyPlaceholder, valuePlaceholder, mono, disabled, fieldName, onRows }: KeyValueInputProps) {
   const locked = useLocked();
   // Rows being typed belong to the editing session: Save and Discard start them over from the value.
   const [rows, setRows] = useEditingState(() => toRows(value));
@@ -94,6 +100,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
   const latest = useRef({ rows, sent: value });
   useLayoutEffect(() => {
     latest.current = { rows, sent: value };
+    onRows?.(rows);
   });
   const [focus, setFocus] = useState<{ row: number } | { removedAt: number }>();
   const groupRef = useRef<HTMLDivElement>(null);
@@ -143,6 +150,7 @@ export function KeyValueInput({ label, help, error, required, value, onChange, k
     const map = toMap(next);
     const send = !sameMap(map, sent);
     latest.current = { rows: next, sent: send ? map : sent };
+    onRows?.(next);
     setRows(next);
     if (send) onChange(map);
   }
