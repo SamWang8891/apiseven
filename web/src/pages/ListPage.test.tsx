@@ -506,9 +506,15 @@ describe('read-only key', () => {
     await user.click(await toggle('alpha'));
     expect(await screen.findByText('invalid method for role viewer')).toBeInTheDocument();
     expect(await screen.findByText(t('readOnly.banner'))).toBeInTheDocument();
-    // Known item 1: once the key is read-only, the status is the badge alone, with no switch.
-    await waitFor(() => expect(main().queryByRole('switch', { name: t('table.status.toggle', { name: 'alpha' }) })).not.toBeInTheDocument());
-    expect(main().queryAllByRole('switch', { name: /enabled$/ })).toHaveLength(0);
+    // Final wave J2 (in place of known item 1's badge alone): once the key is read-only, every status
+    // switch stays, unavailable (aria-disabled, focusable) and saying why, at the stored state.
+    await waitFor(() => expect(main().getByRole('switch', { name: t('table.status.toggle', { name: 'alpha' }) })).toHaveAttribute('aria-disabled', 'true'));
+    for (const sw of main().getAllByRole('switch', { name: /enabled$/ })) {
+      expect(sw).toHaveAttribute('aria-disabled', 'true');
+      expect(sw).not.toBeDisabled();
+      expect(sw).toHaveAccessibleDescription(t('readOnly.unavailable'));
+    }
+    expect(main().getByRole('switch', { name: t('table.status.toggle', { name: 'alpha' }) })).toBeChecked();
     expect(within(await rowOf('alpha')).getByText(t('table.status.enabled'))).toBeInTheDocument();
     expect(within(await rowOf('gamma')).getByText(t('table.status.disabled'))).toBeInTheDocument();
     expect(window.location.hash).toBe('#/routes');
@@ -523,6 +529,27 @@ describe('read-only key', () => {
     const empty = await main().findByRole('region', { name: t('table.empty.title', { plural: t('kind.protos.plural') }) });
     expect(within(empty).getByText(t('kind.protos.about'))).toBeInTheDocument();
     expect(within(empty).queryByRole('link')).not.toBeInTheDocument();
+  });
+
+  it('toggled from the keyboard and refused for the key: the switch keeps focus, unavailable with the reason; a press sends nothing more (J2)', async () => {
+    const { user, admin } = await open('#/routes', {
+      replies: {
+        'routes/r1': (req) => (req.method === 'PATCH' ? json(401, { error_msg: 'invalid method for role viewer' }) : undefined),
+      },
+    });
+    (await toggle('alpha')).focus();
+    await user.keyboard(' ');
+    expect(await screen.findByText(t('readOnly.banner'))).toBeInTheDocument();
+    await waitFor(async () => expect(await toggle('alpha')).toHaveAttribute('aria-disabled', 'true'));
+    const sw = await toggle('alpha');
+    expect(sw).toHaveFocus();
+    expect(sw).toBeChecked();
+    expect(sw).toHaveAccessibleDescription(t('readOnly.unavailable'));
+    await user.keyboard(' ');
+    await user.click(sw);
+    expect(sw).toBeChecked();
+    expect(requestsTo(admin, 'PATCH')).toHaveLength(1);
+    expect(sw).toHaveFocus();
   });
 
   // Fix round 1, R3: Duplicate goes where New goes; both come back on a connection whose key can write.

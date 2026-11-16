@@ -21,9 +21,13 @@ export type BusySwitchProps = Omit<ComponentProps<'button'>, 'onChange' | 'value
  * It is not `disabled` while busy: Chromium takes focus away from a focused control that becomes
  * disabled (focus fixup), so a keyboard user would lose their place and not hear that it is saving.
  * It keeps focus through the write and after it, a refused one too.
+ *
+ * A caller's own `aria-disabled` makes it unavailable, as with the kit Button: still focusable, a
+ * change dropped, with the disabled look; the caller says why (aria-describedby, title).
  */
-export function BusySwitch({ checked, onCheckedChange, busy, busyText, className, title, 'aria-describedby': describedBy, ...native }: BusySwitchProps) {
+export function BusySwitch({ checked, onCheckedChange, busy, busyText, className, title, 'aria-describedby': describedBy, 'aria-disabled': unavailable, ...native }: BusySwitchProps) {
   const sayId = useId();
+  const inert = busy || unavailable === true || unavailable === 'true';
   // A caller's own description and title are kept; while busy, "saving" is added to the one and replaces the other.
   const description = [describedBy, busy ? sayId : undefined].filter(Boolean).join(' ') || undefined;
   return (
@@ -32,12 +36,12 @@ export function BusySwitch({ checked, onCheckedChange, busy, busyText, className
         {...native}
         className={['ui-switch', className].filter(Boolean).join(' ')}
         checked={checked}
-        aria-disabled={busy || undefined}
+        aria-disabled={inert || undefined}
         aria-busy={busy || undefined}
         aria-describedby={description}
         title={busy ? busyText : title}
         onCheckedChange={(next) => {
-          if (!busy) onCheckedChange(next);
+          if (!inert) onCheckedChange(next);
         }}
       >
         <RadixSwitch.Thumb className="ui-switch__thumb">{busy && <LoaderCircle className="ui-spin ui-switch__busy" size={10} aria-hidden="true" />}</RadixSwitch.Thumb>

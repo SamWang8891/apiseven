@@ -90,10 +90,11 @@ describe('ui CSS', () => {
     }
     const busy = toggle.find(([sel]) => sel === ".ui-switch[aria-busy='true']")?.[1] ?? '';
     expect(busy).toMatch(/cursor:\s*progress/);
-    // A busy switch is aria-disabled, not :disabled (it keeps focus), so hover leaves it out by itself.
+    // A busy switch is aria-disabled, not :disabled (it keeps focus), so hover leaves it out, by
+    // aria-disabled (which busy carries; an unavailable switch too) or by aria-busy.
     const hovers = toggle.filter(([sel]) => sel.includes('.ui-switch') && sel.includes(':hover'));
     expect(hovers.length).toBeGreaterThan(0);
-    for (const [sel] of hovers) expect(sel).toContain(":not([aria-busy='true'])");
+    for (const [sel] of hovers) expect(sel).toMatch(/:not\([^)]*\[aria-(disabled|busy)='true'\]/);
   });
 
   it('a loading button is aria-disabled, so its hover leaves it out (by aria-disabled, which busy carries), and busy shows progress', () => {

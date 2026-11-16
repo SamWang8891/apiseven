@@ -56,11 +56,11 @@
   color: var(--accent);
 }
 
-.ui-switch:hover:not(:disabled):not([aria-busy='true']) {
+.ui-switch:hover:not(:disabled, [aria-disabled='true']) {
   border-color: var(--text-2);
 }
 
-.ui-switch[data-state='checked']:hover:not(:disabled):not([aria-busy='true']) {
+.ui-switch[data-state='checked']:hover:not(:disabled, [aria-disabled='true']) {
   border-color: var(--accent);
 }
 
@@ -71,22 +71,26 @@
 }
 
 .ui-switch:disabled:not([aria-busy='true']),
+.ui-switch[aria-disabled='true']:not([aria-busy='true']),
 .ui-checkbox:disabled {
   border-color: var(--border);
   background: var(--bg-sunken);
   cursor: not-allowed;
 }
 
-.ui-switch:disabled:not([aria-busy='true']) .ui-switch__thumb {
+.ui-switch:disabled:not([aria-busy='true']) .ui-switch__thumb,
+.ui-switch[aria-disabled='true']:not([aria-busy='true']) .ui-switch__thumb {
   background: var(--border-strong);
 }
 
-.ui-switch:disabled:not([aria-busy='true'])[data-state='checked'] {
+.ui-switch:disabled:not([aria-busy='true'])[data-state='checked'],
+.ui-switch[aria-disabled='true']:not([aria-busy='true'])[data-state='checked'] {
   border-color: var(--text-2);
   background: var(--text-2);
 }
 
-.ui-switch:disabled:not([aria-busy='true'])[data-state='checked'] .ui-switch__thumb {
+.ui-switch:disabled:not([aria-busy='true'])[data-state='checked'] .ui-switch__thumb,
+.ui-switch[aria-disabled='true']:not([aria-busy='true'])[data-state='checked'] .ui-switch__thumb {
   background: var(--bg-sunken);
 }
 

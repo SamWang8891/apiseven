@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { Item, Kind } from '../api/types';
-import { useReadOnlyKey, useWrite } from '../api/write';
+import { useWrite, useWriteRefusal } from '../api/write';
 import { t } from '../i18n';
 import { registry } from '../resources/registry';
 import { isEnabled } from '../resources/resolve';
@@ -39,12 +39,14 @@ export function StatusBadge({ kind, item }: { kind: Kind; item: Item }) {
  * The status column: a switch and the state in words. Toggling PATCHes `{status}` at once and
  * shows the new state until the reloaded list confirms it; a refused write puts it back. While that
  * write is out the switch is busy (BusySwitch): it keeps focus, takes no change and says it is
- * saving; the state itself stays as readable as ever. With a key that turned out read-only there is
- * nothing to switch: the state in words only (StatusBadge).
+ * saving; the state itself stays as readable as ever. With a key that turned out read-only nothing
+ * is sent (api/write.ts): the switch stays where it is, focusable and unavailable (aria-disabled),
+ * and says why (final wave J2), so a keyboard user whose toggle was just refused keeps their place.
  */
 export function StatusCell({ kind, item }: { kind: Kind; item: Item }) {
   const write = useWrite();
-  const readOnly = useReadOnlyKey();
+  const refusal = useWriteRefusal();
+  const whyId = useId();
   // The state the user asked for: `saved` once APISIX accepted it, waiting for the list to catch up.
   const [pending, setPending] = useState<{ enabled: boolean; saved: boolean }>();
   const stored = isEnabled(item.value);
@@ -54,10 +56,9 @@ export function StatusCell({ kind, item }: { kind: Kind; item: Item }) {
   const name = registry[kind].nameOf(item);
   const ignored = registry[kind].statusIgnored?.(item.value);
   if (ignored !== undefined) return <StatusIgnored why={ignored} />;
-  if (readOnly) return <StatusBadge kind={kind} item={item} />;
 
   async function toggle(next: boolean) {
-    if (busy) return; // BusySwitch drops it too; a guard against a change from anywhere else.
+    if (busy || refusal !== undefined) return; // BusySwitch drops it too; a guard against a change from anywhere else.
     setPending({ enabled: next, saved: false });
     const result = await write((client) => client.patch(kind, item.id, { status: next ? 1 : 0 }), { invalidate: [{ kind }] });
     setPending(result.ok ? { enabled: next, saved: true } : undefined);
@@ -70,8 +71,16 @@ export function StatusCell({ kind, item }: { kind: Kind; item: Item }) {
         busy={busy}
         busyText={t('table.status.saving')}
         aria-label={t('table.status.toggle', { name })}
+        aria-disabled={refusal !== undefined || undefined}
+        aria-describedby={refusal !== undefined ? whyId : undefined}
+        title={refusal}
         onCheckedChange={(next) => void toggle(next)}
       />
+      {refusal !== undefined && (
+        <span className="ui-sr-only" id={whyId}>
+          {refusal}
+        </span>
+      )}
       <Badge tone={enabled ? 'ok' : 'neutral'}>{enabled ? t('table.status.enabled') : t('table.status.disabled')}</Badge>
     </span>
   );
