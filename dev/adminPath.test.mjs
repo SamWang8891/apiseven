@@ -2,7 +2,7 @@
 // instance's etcd prefix (deployment.etcd.prefix), for the seed's reset and the end-to-end cleanup.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { adminPathOfKey } from './adminPath.mjs';
+import { adminPathOfKey } from '../web/e2e/adminPath.mjs';
 
 const CASES = [
   // [key, the path the list was read at, the path, what follows the kind]

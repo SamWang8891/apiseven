@@ -7,7 +7,7 @@
 // Env: APISIX_ADMIN_URL (default http://127.0.0.1:19180), APISIX_ADMIN_KEY (default dev admin key).
 // Node 22+, no dependencies.
 
-import { adminPathOfKey } from './adminPath.mjs';
+import { adminPathOfKey } from '../web/e2e/adminPath.mjs';
 
 const ADMIN_URL = (process.env.APISIX_ADMIN_URL ?? 'http://127.0.0.1:19180').replace(/\/+$/, '');
 const ADMIN_KEY = process.env.APISIX_ADMIN_KEY ?? 'apiseven-dev-admin-key';

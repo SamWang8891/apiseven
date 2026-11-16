@@ -2,7 +2,7 @@
 // (what APISIX does with it). Plain Node, no browser; used by the fixtures and the global setup.
 import { request as httpRequest } from 'node:http';
 import { connect as tlsConnect, type PeerCertificate } from 'node:tls';
-import { adminPathOfKey } from '../../dev/adminPath.mjs';
+import { adminPathOfKey } from './adminPath.mjs';
 import { env } from './env';
 
 export type Json = Record<string, unknown>;

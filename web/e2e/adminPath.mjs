@@ -1,7 +1,8 @@
 // The Admin API path of an object a list returned, from its etcd key, whatever the instance's etcd
 // prefix (deployment.etcd.prefix; /apisix by default, any path otherwise): the path the list was read
-// at, then what follows it in the key. Shared by dev/seed.mjs and the end-to-end suite
-// (web/e2e/admin.ts, typed by adminPath.d.mts); tested by adminPath.test.mjs (node --test 'dev/*.test.mjs').
+// at, then what follows it in the key. Shared by the end-to-end suite (admin.ts, typed by
+// adminPath.d.mts) and dev/seed.mjs; tested by dev/adminPath.test.mjs (node --test 'dev/*.test.mjs').
+// It sits here, not in dev/, because the image's build type-checks the suite and has no dev/.
 
 /**
  * @param {string} key the object's etcd key: /apisix/routes/r1, /gateway/secrets/vault/my-id,
