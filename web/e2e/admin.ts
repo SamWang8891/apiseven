@@ -2,6 +2,7 @@
 // (what APISIX does with it). Plain Node, no browser; used by the fixtures and the global setup.
 import { request as httpRequest } from 'node:http';
 import { connect as tlsConnect, type PeerCertificate } from 'node:tls';
+import { adminPathOfKey } from '../../dev/adminPath.mjs';
 import { env } from './env';
 
 export type Json = Record<string, unknown>;
@@ -187,8 +188,8 @@ export class Admin {
       for (const { key, value } of await this.list(kind)) {
         const snis = Array.isArray(value.snis) ? (value.snis as unknown[]) : [];
         const names = [value.id, value.name, value.username, value.sni, ...snis].map((v) => (typeof v === 'string' ? v : ''));
-        const tail = key.replace(/^\/apisix\/[^/]+\//, '');
-        const path = key.replace(/^\/apisix\//, '').split('/').map(encodeURIComponent).join('/');
+        // From the key, whatever the instance's etcd prefix (deployment.etcd.prefix).
+        const { path, rest: tail } = adminPathOfKey(key, kind);
         if (names.some(matches) || tail.split('/').some(matches)) {
           await this.del(path);
         } else if (kind === 'consumers') {

@@ -7,6 +7,8 @@
 // Env: APISIX_ADMIN_URL (default http://127.0.0.1:19180), APISIX_ADMIN_KEY (default dev admin key).
 // Node 22+, no dependencies.
 
+import { adminPathOfKey } from './adminPath.mjs';
+
 const ADMIN_URL = (process.env.APISIX_ADMIN_URL ?? 'http://127.0.0.1:19180').replace(/\/+$/, '');
 const ADMIN_KEY = process.env.APISIX_ADMIN_KEY ?? 'apiseven-dev-admin-key';
 const API = `${ADMIN_URL}/apisix/admin`;
@@ -276,8 +278,8 @@ async function reset() {
   for (const type of RESET_ORDER) {
     const items = await list(type);
     for (const item of items) {
-      // item.key is the etcd key, e.g. /apisix/routes/1 or /apisix/secrets/vault/my-id.
-      const path = item.key.replace(/^\/apisix\//, '').split('/').map(encodeURIComponent).join('/');
+      // item.key is the etcd key, under the instance's etcd prefix: /apisix/routes/1, /gateway/secrets/vault/my-id.
+      const { path } = adminPathOfKey(item.key, type);
       await admin('DELETE', `${path}?force=true`);
     }
     if (items.length > 0) console.log(`deleted ${items.length} ${type}`);

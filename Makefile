@@ -25,11 +25,13 @@ web: | $(WEB_DEPS)
 # Type check, lint and tests for the web app; gofmt, vet and tests for the server.
 check: | $(WEB_DEPS)
 	cd web && npm run check
+	node --test 'dev/*.test.mjs'
 	@cd server && out="$$(gofmt -l .)" && if [ -n "$$out" ]; then echo "gofmt needed: $$out"; exit 1; fi
 	cd server && go vet ./... && go test ./...
 
 test: | $(WEB_DEPS)
 	cd web && npm test
+	node --test 'dev/*.test.mjs'
 	cd server && go test ./...
 
 # The Playwright suite against the dev stack (make dev-up first; Chromium: cd web && npx playwright
