@@ -3,6 +3,7 @@ import type { Item, Kind, Obj, Parent, PluginInfo } from '../api/types';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import type { FilterDef } from '../table/filter';
+import type { PendingEntry } from '../ui';
 import type { Ctx } from './ctx';
 import { nameOfValue } from './resolve';
 import { routeColumns } from './routes/columns';
@@ -149,6 +150,12 @@ export interface NewIdProps {
   error?: string;
   /** For the control that takes the id, so a refused Save can focus it. */
   inputRef?: Ref<HTMLInputElement>;
+  /**
+   * What the form tab's fields hold that is not in the draft (usePending): a change that starts the
+   * draft over discards it with them, so a switch asks about it as about the draft (final wave N2).
+   * Empty on the JSON tab, which keeps text it holds over a change from outside.
+   */
+  held?: PendingEntry[];
 }
 
 /** A way to group a list's rows (a toggle on the list page); one item can sit in several groups. */

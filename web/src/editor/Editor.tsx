@@ -437,6 +437,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
             missing={!required.idWaits && idMissing}
             refused={required.idWaits && required.idPartMissing ? undefined : idRefused}
             onTyped={required.idTyped}
+            // What a kind's own control would discard by starting the draft over (final wave N2): the form tab's held input, not the JSON tab's, which keeps its text.
+            held={active === JSON_TAB ? [] : pending}
             // A refused create's id while the field still holds it, else an object of a loaded list that has it (the GET decides).
             taken={createId !== undefined && failure?.taken === createId ? createId : createId !== undefined ? findInCtx(kind, createId, ctx)?.id : undefined}
           />

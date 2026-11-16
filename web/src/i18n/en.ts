@@ -439,6 +439,8 @@ export const en: Record<string, string> = {
   'editor.taken.open': 'Open {kind} {id}',
   'editor.switchId.title': 'Switch to {to}?',
   'editor.switchId.body': 'The settings entered for {from} are cleared: {to} takes others.',
+  'editor.switchId.held': "Input that isn't part of them yet is discarded too:",
+  'editor.switchId.heldOnly': "Input entered for {from} that isn't part of its settings yet is discarded: {to} takes others.",
   'editor.switchId.confirm': 'Switch',
   'editor.foundMeanwhile.title': 'Stored meanwhile',
   'editor.foundMeanwhile.body': 'A {kind} {id} was stored while this page was open: Create would be refused. What you entered stays here until you leave or show what is stored.',

@@ -8,7 +8,7 @@ import type { Kind, Obj, Parent } from '../api/types';
 import { t } from '../i18n';
 import { registry } from '../resources/registry';
 import { pathFor } from '../router/paths';
-import { Input } from '../ui';
+import { Input, type PendingEntry } from '../ui';
 
 export interface NewIdFieldProps {
   kind: Kind;
@@ -27,16 +27,18 @@ export interface NewIdFieldProps {
   taken?: string;
   /** The user typed in a text box of the field (the frame's "touched", Task 16b item 154). */
   onTyped?: () => void;
+  /** For a kind's own control (NewId): what the form tab's fields hold, which a change that starts the draft over discards (NewIdProps.held). */
+  held?: PendingEntry[];
 }
 
-export function NewIdField({ kind, parent, value, onChange, draft, setDraft, inputRef, missing, refused, taken, onTyped }: NewIdFieldProps) {
+export function NewIdField({ kind, parent, value, onChange, draft, setDraft, inputRef, missing, refused, taken, onTyped, held }: NewIdFieldProps) {
   const def = registry[kind];
   const error = missing ? t('editor.id.required') : (refused ?? (taken !== undefined ? t('editor.taken.message', { kind: def.singular, id: taken }) : undefined));
   const Own = def.NewId;
   return (
     <div className={Own ? 'ed-newid ed-newid--own' : 'ed-newid'} onInput={(e) => e.target instanceof HTMLInputElement && onTyped?.()}>
       {Own ? (
-        <Own value={value} onChange={onChange} draft={draft} setDraft={setDraft} error={error} inputRef={inputRef} />
+        <Own value={value} onChange={onChange} draft={draft} setDraft={setDraft} error={error} inputRef={inputRef} held={held} />
       ) : (
         <Input
           ref={inputRef}

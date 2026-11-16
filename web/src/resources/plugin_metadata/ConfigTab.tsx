@@ -26,7 +26,9 @@ export function ConfigTab({ draft, setDraft, issues, id, isNew, original }: TabP
     <div className="ed-stack">
       <p className="res-note">{isNew ? t('pm.config.notSet', { name: id }) : t('pm.config.help', { name: id })}</p>
       <SchemaGapsNote schema={schema} className="res-note" />
+      {/* One form per plugin: a switch to another (a new entry's picker) discards what this one's fields hold (final wave N2). */}
       <SchemaForm
+        key={id}
         schema={schema}
         value={withoutId(draft)}
         onChange={(next) => setDraft(withId(draft, next))}

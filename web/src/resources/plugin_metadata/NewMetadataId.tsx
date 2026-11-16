@@ -3,7 +3,9 @@
 // picker says so; when the plugin list can't load, the name is typed; when the stored entries can't
 // load, every plugin with metadata settings is offered, and the page says why. Switching from one plugin to
 // another clears the settings entered for the first (they are another plugin's), after asking when
-// there are any. Create still checks that nothing was stored meanwhile (editor/save.ts holderOf).
+// there are any, or when a field of the form holds input it has not put in them yet (`held`), which
+// the switch discards with them: the question lists it (final wave N2). Create still checks that
+// nothing was stored meanwhile (editor/save.ts holderOf).
 import { useState } from 'react';
 import { useAllPlugins, useList } from '../../api/hooks';
 import { t } from '../../i18n';
@@ -11,7 +13,7 @@ import { ConfirmDialog, Input, Select } from '../../ui';
 import type { NewIdProps } from '../registry';
 import '../resources.css';
 
-export function NewMetadataId({ value, onChange, draft, setDraft, error, inputRef }: NewIdProps) {
+export function NewMetadataId({ value, onChange, draft, setDraft, error, inputRef, held = [] }: NewIdProps) {
   const plugins = useAllPlugins();
   const stored = useList('plugin_metadata');
   /** View state: a switch of plugin waiting for the user's yes. */
@@ -21,10 +23,11 @@ export function NewMetadataId({ value, onChange, draft, setDraft, error, inputRe
     onChange(next);
     setDraft({});
   };
+  const entered = Object.keys(draft).some((key) => key !== 'id');
   const choose = (next: string | undefined) => {
     if (next === undefined || next === value) return;
     if (value === '') onChange(next);
-    else if (Object.keys(draft).some((key) => key !== 'id')) setAsking(next);
+    else if (entered || held.length > 0) setAsking(next);
     else switchTo(next);
   };
 
@@ -68,7 +71,21 @@ export function NewMetadataId({ value, onChange, draft, setDraft, error, inputRe
         <ConfirmDialog
           open
           title={t('editor.switchId.title', { to: asking })}
-          body={<p>{t('editor.switchId.body', { from: value, to: asking })}</p>}
+          body={
+            <>
+              <p>{entered ? t('editor.switchId.body', { from: value, to: asking }) : t('editor.switchId.heldOnly', { from: value, to: asking })}</p>
+              {held.length > 0 && (
+                <>
+                  {entered && <p>{t('editor.switchId.held')}</p>}
+                  <ul className="ed-pending">
+                    {held.map((entry) => (
+                      <li key={entry.id}>{entry.message}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </>
+          }
           confirmLabel={t('editor.switchId.confirm')}
           onConfirm={() => switchTo(asking)}
           onCancel={() => setAsking(undefined)}

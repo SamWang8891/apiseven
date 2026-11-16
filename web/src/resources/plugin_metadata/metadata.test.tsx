@@ -9,7 +9,7 @@ import { resetReadOnlyKeys } from '../../api/write';
 import { t } from '../../i18n';
 import { MASK } from '../../schema/secrets';
 import { resetApp } from '../../test/app';
-import { main, openEditor, writesOf } from '../../test/editor';
+import { jsonEditor, main, openEditor, writesOf } from '../../test/editor';
 import { json, type FakeAdminOptions } from '../../test/fakeAdmin';
 import { pluginFixture } from '../../test/pluginFixture';
 import { pluginReplies } from '../../test/plugins';
@@ -299,6 +299,71 @@ describe("a plugin's metadata page", () => {
     await settled();
     await create(user);
     await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'plugin_metadata/my-custom', body: {} }]));
+  });
+
+  it('New: choosing another plugin while a field holds unfinished input asks first, naming it; Cancel keeps it, Switch discards it (final wave N2)', async () => {
+    const { user, admin } = await open([], `#${newPathFor('plugin_metadata')}`);
+    const picker = await main().findByRole('combobox', { name: /^Plugin/ });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: 'http-logger' }));
+    await settled();
+    await user.type(await main().findByRole('spinbutton', { name: 'max_pending_entries' }), '-');
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: 'azure-functions' }));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.switchId.title', { to: 'azure-functions' }) });
+    expect(dialog).toHaveTextContent(t('editor.switchId.heldOnly', { from: 'http-logger', to: 'azure-functions' }));
+    const held = within(dialog).getByRole('listitem');
+    expect(held).toHaveTextContent('max_pending_entries');
+    expect(held).toHaveTextContent('"-"');
+    await user.click(within(dialog).getByRole('button', { name: t('ui.cancel') }));
+    expect(main().getByRole('spinbutton', { name: 'max_pending_entries' })).toHaveValue('-');
+    expect(picker).toHaveTextContent('http-logger');
+
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: 'azure-functions' }));
+    const again = await screen.findByRole('alertdialog', { name: t('editor.switchId.title', { to: 'azure-functions' }) });
+    await user.click(within(again).getByRole('button', { name: t('editor.switchId.confirm') }));
+    await settled();
+    expect(picker).toHaveTextContent('azure-functions');
+    expect(main().queryByRole('spinbutton', { name: 'max_pending_entries' })).not.toBeInTheDocument();
+    await create(user);
+    await waitFor(() => expect(writesOf(admin)).toEqual([{ method: 'PUT', path: 'plugin_metadata/azure-functions', body: {} }]));
+  });
+
+  it('New: with settings entered and a field holding input, the question names both (final wave N2)', async () => {
+    const { user } = await open([], `#${newPathFor('plugin_metadata')}`);
+    const picker = await main().findByRole('combobox', { name: /^Plugin/ });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: 'http-logger' }));
+    await settled();
+    await user.type(await main().findByRole('spinbutton', { name: 'max_pending_entries' }), '9');
+    await user.type(main().getByRole('spinbutton', { name: 'max_pending_entries' }), '-');
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: 'azure-functions' }));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.switchId.title', { to: 'azure-functions' }) });
+    expect(dialog).toHaveTextContent(t('editor.switchId.body', { from: 'http-logger', to: 'azure-functions' }));
+    expect(dialog).toHaveTextContent(t('editor.switchId.held'));
+    expect(within(dialog).getByRole('listitem')).toHaveTextContent('"9-"');
+    await user.click(within(dialog).getByRole('button', { name: t('ui.cancel') }));
+  });
+
+  it('New: text the JSON tab holds is not discarded by a switch (the tab keeps it), so it is not asked about (final wave N2)', async () => {
+    const { user } = await open([], `#${newPathFor('plugin_metadata')}?tab=json`);
+    const picker = await main().findByRole('combobox', { name: /^Plugin/ });
+    await waitFor(() => expect(picker).toBeEnabled());
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: 'http-logger' }));
+    const box = await jsonEditor(t('kind.plugin_metadata.singular'));
+    await user.click(box);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('{ "log_format": ');
+    await user.click(picker);
+    await user.click(await screen.findByRole('option', { name: 'azure-functions' }));
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+    expect(picker).toHaveTextContent('azure-functions');
+    expect((await jsonEditor(t('kind.plugin_metadata.singular'))).textContent).toBe('{ "log_format": ');
   });
 
   it('New picks a plugin with metadata settings and none stored, then creates it with PUT; one stored meanwhile is refused', async () => {
