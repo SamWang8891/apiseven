@@ -38,7 +38,8 @@ const split = (key: string): Obj => ({
   rules: [{ weighted_upstreams: [{ upstream: { type: 'roundrobin', scheme: 'https', nodes: { '10.0.0.9:443': 1 }, tls: { client_cert: CERT, client_key: key } }, weight: 1 }, { weight: 1 }] }],
 });
 const ROUTE: Obj = { id: 'r1', name: 'split', uri: '/s', plugins: { 'traffic-split': split(pem(STORED)) }, upstream: { type: 'roundrobin', nodes: [{ host: '10.0.0.1', port: 80, weight: 1 }] } };
-const inPage = (text: string) => document.body.innerHTML.includes(text);
+// In the markup or in the text a reader gets (CodeMirror can split a token over several elements).
+const inPage = (text: string) => document.body.innerHTML.includes(text) || (document.body.textContent ?? '').includes(text);
 const note = /•{8} private key [0-9a-z]{8}\.\d+, not shown/;
 
 async function open(hash = '#/routes/r1?tab=plugins', route: Obj = ROUTE) {
@@ -333,5 +334,65 @@ describe('a note moved to another field', () => {
     await user.click(main().getByRole('button', { name: t('editor.save') }));
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
     expect(writesOf(admin)[0]?.body).toMatchObject({ plugins: { 'traffic-split': split(pem(NEW)) } });
+  });
+});
+
+// Fix round 2, R1.4: a raw PEM pasted into a JSON string (real newlines: the JSON does not parse, the
+// text is held) is a note once the editor is left, in all three views; the text is then taken as usual.
+describe('a raw key pasted into JSON text that does not parse', () => {
+  const raw = (json: string) => json.replace('"§"', `"${pem(NEW)}"`);
+
+  it('the JSON tab: a note once left, nothing of it in the page or the undo history; the text is then taken and Save sends the key pasted', async () => {
+    const { user, admin } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    await replaceText(user, box, raw(JSON.stringify({ ...shown, desc: '§' })));
+    expect(await main().findByText(/^Not valid JSON/)).toBeInTheDocument();
+    expect(inPage(NEW)).toBe(true);
+    await user.click(main().getByRole('heading', { level: 1, name: 'split' }));
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+    await user.click(box);
+    // The text is now the JSON with a note in the key's place: valid, and taken.
+    const veiled = box.textContent ?? '';
+    expect(veiled).toMatch(note);
+    expect(main().queryByText(/^Not valid JSON/)).not.toBeInTheDocument();
+    // Undo never brings the key back.
+    await user.keyboard('{Control>}z{/Control}');
+    await user.keyboard('{Control>}z{/Control}');
+    expect(inPage(NEW)).toBe(false);
+    await replaceText(user, box, veiled);
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toMatchObject({ desc: pem(NEW), plugins: { 'traffic-split': split(pem(STORED)) } });
+  });
+
+  it('a plugin card’s JSON view: a note once left; the text is then taken', async () => {
+    const { renderPluginsTab } = await import('../test/plugins');
+    const harness = renderPluginsTab({ scope: 'route', value: { 'proxy-rewrite': { uri: '/x' } }, validate: false });
+    await waitFor(() => expect(screen.queryByText(t('pl.loading'))).not.toBeInTheDocument());
+    const card = screen.getByRole('group', { name: 'proxy-rewrite' });
+    await harness.user.click(within(card).getByRole('button', { name: 'proxy-rewrite' }));
+    await harness.user.click(within(card).getByRole('button', { name: t('pl.card.json') }));
+    const box = await within(card).findByRole('textbox', { name: t('pl.card.jsonLabel', { name: 'proxy-rewrite' }) });
+    await replaceText(harness.user, box, raw('{"uri": "/x", "headers": {"set": {"X-K": "§"}}}'));
+    expect(inPage(NEW)).toBe(true);
+    await harness.user.click(document.body);
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+    expect(box.textContent).toMatch(note);
+    expect(harness.held()).toEqual([]);
+    expect(harness.value()).toEqual({ 'proxy-rewrite': { uri: '/x', headers: { set: { 'X-K': pem(NEW) } } } });
+  });
+
+  it('a schema-form JSON field: a note once left; the text is then taken', async () => {
+    const form = renderSchemaForm({ type: 'object', properties: { body_schema: { type: 'object' } } }, {});
+    const box = await screen.findByRole('textbox', { name: t('sf.json.label', { key: 'body_schema' }) });
+    await replaceText(form.user, box, raw('{"k": "§"}'));
+    expect(inPage(NEW)).toBe(true);
+    await form.user.click(document.body);
+    await waitFor(() => expect(inPage(NEW)).toBe(false));
+    expect(form.held()).toEqual([]);
+    expect(form.value()).toEqual({ body_schema: { k: pem(NEW) } });
   });
 });

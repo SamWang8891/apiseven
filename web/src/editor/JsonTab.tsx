@@ -10,6 +10,7 @@ import { copiedWithout, copiedWithoutKey, newKeyNotes, redactObject, unveilKeys,
 import { registry, type TabProps } from '../resources/registry';
 import { Button, CodeEditor, toast, useEditingState, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
+import { veilTypedText } from '../schema/keyNotes';
 import { deepEqual } from './draft';
 import { parse, pretty } from './json';
 
@@ -99,27 +100,28 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
   // What the editor shows, and what Copy copies.
   const shown = hidden?.redacted ? pretty(revealed ? hidden.revealed : hidden.value) : current.text;
 
-  function change(text: string) {
+  /** `text` from the editor (`notes`: those it was written with, new ones on leaving); taken when it parses and says a draft. */
+  function change(text: string, notes: KeyNotes = current.notes) {
     const field = t('editor.json.tab');
     const parsed = parse(text);
     if (!parsed.ok) {
       const held = parsed.notObject ? t('ui.pending.jsonType', { field, type: 'object' }) : t('ui.pending.json', { field });
-      setState((s) => ({ ...s, text, error: parsed.error, held }));
+      setState((s) => ({ ...s, text, notes, error: parsed.error, held }));
       return;
     }
     // A number JSON.parse would round is not taken: what the text shows is what would be sent.
     const inexact = inexactNumberIn(text);
     if (inexact !== undefined) {
-      setState((s) => ({ ...s, text, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field, text: inexact }) }));
+      setState((s) => ({ ...s, text, notes, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field, text: inexact }) }));
       return;
     }
-    const back = unveilKeys(kind, parsed.value, current.notes, current.synced);
+    const back = unveilKeys(kind, parsed.value, notes, current.synced);
     if (!back.ok) {
       const { problem } = back;
-      setState((s) => ({ ...s, text, error: problem, held: t('ui.pending.problem', { field, problem }) }));
+      setState((s) => ({ ...s, text, notes, error: problem, held: t('ui.pending.problem', { field, problem }) }));
       return;
     }
-    setState((s) => ({ ...s, text, synced: back.value, error: undefined, held: undefined }));
+    setState((s) => ({ ...s, text, notes, synced: back.value, error: undefined, held: undefined }));
     setDraft(back.value);
   }
 
@@ -163,10 +165,14 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
       <div
         ref={hostRef}
         onBlur={(e) => {
-          // Leaving the editor: a key typed or pasted here (one with no note yet) becomes a note, so no key
-          // rests on the page outside the text being typed (fix round 1, R1). The draft is unchanged.
-          if (locked || current.held !== undefined || e.currentTarget.contains(e.relatedTarget)) return;
-          if (!veilKeys(kind, draft, current.notes, false).complete) setState(stateOf(kind, draft, current.notes));
+          // Leaving the editor: a key typed or pasted here becomes a note, so no key rests on the page
+          // outside the text being typed (fix round 1, R1): a whole key block in the raw text, whether or
+          // not it parses or is held (the text then goes the usual way); else a key the draft holds with
+          // no note yet. Nothing else about the text changes.
+          if (locked || e.currentTarget.contains(e.relatedTarget)) return;
+          const typed = veilTypedText(current.text, current.notes);
+          if (typed.veiled) change(typed.text, typed.notes);
+          else if (current.held === undefined && !veilKeys(kind, draft, current.notes, false).complete) setState(stateOf(kind, draft, current.notes));
         }}
       >
         <CodeEditor

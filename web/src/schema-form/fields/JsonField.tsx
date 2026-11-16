@@ -6,7 +6,7 @@ import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '.
 import { inexactNumberIn } from '../../ui/decimal';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
-import { newKeyNotes, unveilValue, veilValue, type KeyNotes } from '../../schema/keyNotes';
+import { newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../../schema/keyNotes';
 import { hideNeverShown, isNeverShownName, keyPath, redactSecrets } from '../../schema/secrets';
 import { jsonType } from '../node';
 import { FieldLabel } from './chrome';
@@ -74,7 +74,6 @@ export function JsonField({
   const under = keyPath(path).at(-1);
   const [shownText, setShownText] = useState(() => veiledText(value, newKeyNotes(), under));
   const { text, notes } = shownText;
-  const setText = (next: string) => setShownText((s) => ({ ...s, text: next }));
   /** Why the text typed is not emitted: shown on the field, and held for Save. */
   const [invalid, setInvalid] = useState<{ error: string; held: string }>();
   usePending(locked ? undefined : invalid?.held);
@@ -126,8 +125,9 @@ export function JsonField({
     );
   }
 
-  function edit(next: string) {
-    setText(next);
+  /** `next` from the editor (`withNotes`: the notes it was written with, new ones on leaving). */
+  function edit(next: string, withNotes: KeyNotes = notes) {
+    setShownText({ text: next, notes: withNotes });
     if (next.trim() === '') {
       setInvalid(undefined);
       onChange(name, undefined);
@@ -153,7 +153,7 @@ export function JsonField({
       return;
     }
     // Each note back to the key it stands for; a note that stands for none (or twice) holds the text.
-    const back = unveilValue(parsed, notes, { under, before: synced });
+    const back = unveilValue(parsed, withNotes, { under, before: synced });
     if (!back.ok) {
       setInvalid({ error: back.problem, held: t('ui.pending.problem', { field: fieldName, problem: back.problem }) });
       return;
@@ -162,10 +162,15 @@ export function JsonField({
     onChange(name, back.value);
   }
 
-  /** Leaving the editor: a key typed or pasted here (with no note yet) becomes a note; the value is unchanged. */
+  /**
+   * Leaving the editor: a key typed or pasted here becomes a note: a whole key block in the raw text,
+   * whether or not it parses or is held (the text then goes the usual way); else a key the value holds
+   * with no note yet. Nothing else about the text changes.
+   */
   function leave() {
-    if (invalid !== undefined) return;
-    if (!veilValue(value, notes, { mint: false, under }).complete) setShownText(veiledText(value, notes, under));
+    const typed = veilTypedText(text, notes);
+    if (typed.veiled) edit(typed.text, typed.notes);
+    else if (invalid === undefined && !veilValue(value, notes, { mint: false, under }).complete) setShownText(veiledText(value, notes, under));
   }
 
   return (

@@ -192,3 +192,35 @@ export function unveilValue(
   if (problem !== undefined) return { ok: false, problem };
   return { ok: true, value: changed ? out : edited };
 }
+
+/** Whole PEM private-key blocks in raw text, each from its BEGIN line to its own END line. */
+const TYPED_KEY_BLOCKS = /-----BEGIN ([A-Z0-9 ]*)PRIVATE KEY-----[\s\S]*?-----END \1PRIVATE KEY-----/g;
+
+/** The key text a block of raw JSON text stands for: written with JSON escapes (\n) inside a string, its unescaped text. */
+function keyTextOf(block: string): string {
+  if (block.includes('\n') || !block.includes('\\')) return block;
+  try {
+    const text: unknown = JSON.parse(`"${block}"`);
+    return typeof text === 'string' ? text : block;
+  } catch {
+    return block;
+  }
+}
+
+/**
+ * Raw text being typed in an editing JSON view, which may not parse, with every whole PEM private-key
+ * block replaced by a new note of this session (fix round 2, R1.4): for leaving the view, so no key
+ * rests on the page outside the text being typed, whether or not the text is taken. Such a note is
+ * made in typed text: it stands for the user's own key and is bound to the place where the text first
+ * puts it. A block with no END line is left as typed.
+ */
+export function veilTypedText(text: string, notes: KeyNotes): { text: string; notes: KeyNotes; veiled: boolean } {
+  if (!text.includes('-----BEGIN')) return { text, notes, veiled: false };
+  const keys = new Map(notes.keys);
+  const out = text.replace(TYPED_KEY_BLOCKS, (block) => {
+    const note = t('json.keyNote', { id: `${notes.session}.${keys.size + 1}` });
+    keys.set(note, keyTextOf(block));
+    return note;
+  });
+  return out === text ? { text, notes, veiled: false } : { text: out, notes: { session: notes.session, keys, at: notes.at }, veiled: true };
+}

@@ -13,7 +13,7 @@ import { deepEqual } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
-import { newKeyNotes, unveilValue, veilValue, type KeyNotes } from '../schema/keyNotes';
+import { newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
 import { hideNeverShown, redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
@@ -82,40 +82,47 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
   useLayoutEffect(() => onHeld(holding), [onHeld, holding]);
   useLayoutEffect(() => () => onHeld(false), [onHeld]);
 
-  function change(text: string) {
+  /** `text` from the editor (`notes`: those it was written with, new ones on leaving). */
+  function change(text: string, notes: KeyNotes = current.notes) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (e) {
       const error = t('pl.card.jsonInvalid', { error: e instanceof Error ? e.message : String(e) });
-      setState((s) => ({ ...s, text, error, held: t('ui.pending.json', { field: name }) }));
+      setState((s) => ({ ...s, text, notes, error, held: t('ui.pending.json', { field: name }) }));
       return;
     }
     if (!isObj(parsed)) {
-      setState((s) => ({ ...s, text, error: t('pl.card.notObject'), held: t('ui.pending.jsonType', { field: name, type: 'object' }) }));
+      setState((s) => ({ ...s, text, notes, error: t('pl.card.notObject'), held: t('ui.pending.jsonType', { field: name, type: 'object' }) }));
       return;
     }
     // A number JSON.parse would round is not taken: what the text shows is what would be sent.
     const inexact = inexactNumberIn(text);
     if (inexact !== undefined) {
-      setState((s) => ({ ...s, text, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field: name, text: inexact }) }));
+      setState((s) => ({ ...s, text, notes, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field: name, text: inexact }) }));
       return;
     }
     // Each note back to the key it stands for; a note that stands for none (or twice) holds the text.
-    const back = unveilValue(parsed, current.notes, { before: current.synced });
+    const back = unveilValue(parsed, notes, { before: current.synced });
     if (!back.ok) {
       const { problem } = back;
-      setState((s) => ({ ...s, text, error: problem, held: t('ui.pending.problem', { field: name, problem }) }));
+      setState((s) => ({ ...s, text, notes, error: problem, held: t('ui.pending.problem', { field: name, problem }) }));
       return;
     }
-    setState((s) => ({ ...s, text, synced: back.value, error: undefined, held: undefined }));
+    setState((s) => ({ ...s, text, notes, synced: back.value, error: undefined, held: undefined }));
     onChange(back.value);
   }
 
-  /** Leaving the editor: a key typed or pasted here (with no note yet) becomes a note; the config is unchanged. */
+  /**
+   * Leaving the editor: a key typed or pasted here becomes a note: a whole key block in the raw text,
+   * whether or not it parses or is held (the text then goes the usual way); else a key the config holds
+   * with no note yet. Nothing else about the text changes.
+   */
   function leave() {
-    if (locked || current.held !== undefined) return;
-    if (!veilValue(conf, current.notes, { mint: false }).complete) setState(stateOf(conf, current.notes));
+    if (locked) return;
+    const typed = veilTypedText(current.text, current.notes);
+    if (typed.veiled) change(typed.text, typed.notes);
+    else if (current.held === undefined && !veilValue(conf, current.notes, { mint: false }).complete) setState(stateOf(conf, current.notes));
   }
 
   // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.
