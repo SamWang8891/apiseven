@@ -151,6 +151,82 @@ describe('the Content tab', () => {
     expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
   });
 
+  // Final wave N1: a file read is stale once the content changed, the page locked, or the tab went away.
+  describe('a file read that finishes late', () => {
+    /** A .proto file whose bytes arrive only on `release` (or whose read fails on `fail`). */
+    function slowProto(text: string, name: string) {
+      const file = new File([text], name, { type: 'text/plain' });
+      let release = () => {};
+      let fail = () => {};
+      const bytes = new Promise<ArrayBuffer>((done, refuse) => {
+        release = () => done(new TextEncoder().encode(text).buffer);
+        fail = () => refuse(new Error('the file went away'));
+      });
+      Object.defineProperty(file, 'arrayBuffer', { value: () => bytes });
+      const settle = (go: () => void) =>
+        act(async () => {
+          go();
+          await bytes.catch(() => undefined);
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+      return { file, release: () => settle(release), fail: () => settle(fail) };
+    }
+    const LATE = 'syntax = "proto3";\npackage late;\n';
+    const PASTED = 'syntax = "proto3";\npackage pasted;\n';
+    async function editing() {
+      const app = await open('#/protos/hello?tab=content');
+      await main().findByRole('heading', { level: 1, name: 'hello' });
+      await settled();
+      await app.user.keyboard('e');
+      await editor();
+      return app;
+    }
+
+    it('after source was pasted, is ignored: the pasted source stays and Save sends it', async () => {
+      const { user, admin } = await editing();
+      const late = slowProto(LATE, 'late.proto');
+      await user.upload(fileInput(), late.file);
+      await user.click(await editor());
+      await user.keyboard('{Control>}a{/Control}');
+      await user.paste(PASTED);
+      await late.release();
+      expect((await editor()).textContent).toBe('syntax = "proto3";package pasted;');
+      fireEvent.keyDown(window, { key: 's', ctrlKey: true });
+      await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+      expect(writesOf(admin)[0]?.body?.content).toBe(PASTED);
+    });
+
+    it('a failed read after the content changed says nothing', async () => {
+      const { user } = await editing();
+      const late = slowProto(LATE, 'late.proto');
+      await user.upload(fileInput(), late.file);
+      await user.type(await editor(), '// typed');
+      await late.fail();
+      expect(main().queryByText(t('pr.file.readFailed'))).not.toBeInTheDocument();
+    });
+
+    it('after the tab went away, or the page locked, changes nothing', async () => {
+      const { user } = await editing();
+      const gone = slowProto(LATE, 'gone.proto');
+      await user.upload(fileInput(), gone.file);
+      await user.click(main().getByRole('tab', { name: new RegExp(`^${t('pr.tab.general')}`) }));
+      await settled();
+      await gone.release();
+      expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+      await user.click(main().getByRole('tab', { name: new RegExp(`^${t('pr.tab.content')}`) }));
+      await settled();
+      expect((await editor()).textContent).toContain('package hello;');
+
+      const locked = slowProto(LATE, 'locked.proto');
+      await user.upload(fileInput(), locked.file);
+      await user.click(main().getByRole('button', { name: t('editor.discard') }));
+      await locked.release();
+      await user.keyboard('e');
+      expect((await editor()).textContent).toContain('package hello;');
+      expect(screen.queryByText(/Unsaved changes/)).not.toBeInTheDocument();
+    });
+  });
+
   it("APISIX's \"invalid content: …\" lands on Content: the tab opens, badged, the field says it", async () => {
     const refusal = 'invalid content: [string "filename for loaded"]:1: syntax error';
     const { user } = await openEditor('#/protos/hello', {

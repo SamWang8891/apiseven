@@ -6,9 +6,13 @@
 // when a file is taken, never while typing, so the editor is never swapped out under the cursor. A
 // file uploaded or dropped anywhere on the field (the editor never reads a dropped file itself) goes
 // through readProtoFile; a refused file changes nothing, and its reason is shown without any of its
-// content. Dropped text is a paste into the editor.
+// content. Dropped text is a paste into the editor. A file is read asynchronously: a read is stale
+// once anything later happened (the content changed: typed, pasted, another file, the way back to
+// source; the page locked, a save in flight included, or unlocked; the editing session ended; the tab
+// went away), and a stale read's result and its failure are both ignored, as the PEM boxes do
+// (resources/ssls/PemInput.tsx; final wave N1). A fresh one goes into the draft as it is then.
 import { Download, FileCode, Upload } from 'lucide-react';
-import { useRef, type DragEvent } from 'react';
+import { useEffect, useRef, type DragEvent } from 'react';
 import { setPath } from '../../editor/draft';
 import { issueAt } from '../../editor/issues';
 import { t } from '../../i18n';
@@ -39,12 +43,26 @@ export function ContentTab({ draft, setDraft, issues, id }: TabProps) {
   const [fileProblem, setFileProblem] = useEditingState<string | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
   // A file is read asynchronously: its content goes into the draft as it is then.
-  const latest = useLatest({ draft, setDraft });
+  const latest = useLatest({ draft, setDraft, content });
+  /** Counts what makes a read in progress stale: a change of the content here, another file, and (below) a lock, the session's end, the tab going. */
+  const gestures = useRef(0);
+  // Editing state: one token per editing session; its effect's cleanup runs when the session ends, when the page locks or unlocks, and when the tab goes.
+  const [session] = useEditingState(() => ({}));
+  useEffect(
+    () => () => {
+      gestures.current++;
+    },
+    [session, locked],
+  );
 
   function take(file: File | undefined) {
-    if (!file) return;
+    if (!file || locked) return;
+    const mine = ++gestures.current;
+    const at = content;
+    const fresh = () => gestures.current === mine && latest.current.content === at;
     readProtoFile(file)
       .then((result) => {
+        if (!fresh()) return;
         if ('problem' in result) {
           setFileProblem(result.problem);
           return;
@@ -53,7 +71,9 @@ export function ContentTab({ draft, setDraft, issues, id }: TabProps) {
         setBinary(result.binary);
         latest.current.setDraft(setPath(latest.current.draft, ['content'], result.content));
       })
-      .catch(() => setFileProblem(t('pr.file.readFailed')));
+      .catch(() => {
+        if (fresh()) setFileProblem(t('pr.file.readFailed'));
+      });
   }
 
   /** A file dropped on the field: the same as an upload while editing (a drop zone the window's guard leaves alone); locked, nothing. */
@@ -73,6 +93,7 @@ export function ContentTab({ draft, setDraft, issues, id }: TabProps) {
       };
 
   const write = (next: string | undefined) => {
+    gestures.current++;
     setFileProblem(undefined);
     setDraft(setPath(draft, ['content'], next));
   };
