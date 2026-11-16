@@ -10,6 +10,7 @@ import { PluginsTab } from '../../plugins/PluginsTab';
 import { useLocked } from '../../ui';
 import type { TabProps } from '../registry';
 import { routeScript } from '../resolve';
+import { listNames } from '../protos/columns';
 import { ResourcePicker } from '../ResourcePicker';
 import { inheritLoading } from './inherit';
 import './routes.css';
@@ -52,7 +53,11 @@ export function RoutePluginsTab({ draft, setDraft, issues, ctx, saveAttempts, or
         inherited={inheritedPlugins(draft, ctx)}
         stored={isObj(original?.value.plugins) ? original.value.plugins : undefined}
       />
-      {(waiting.service || waiting.pluginConfig) && <p className="rt-note">{t('rt.pl.inheritedLoading')}</p>}
+      {waiting.failed.length > 0 ? (
+        <p className="rt-note rt-note--warn">{t('rt.pl.inheritedUnknown', { lists: listNames(waiting.failed) })}</p>
+      ) : (
+        (waiting.service || waiting.pluginConfig) && <p className="rt-note">{t('rt.pl.inheritedLoading')}</p>
+      )}
     </div>
   );
 }

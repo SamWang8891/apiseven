@@ -229,6 +229,14 @@ describe('General', () => {
     expect(overview).not.toHaveTextContent(t('rt.pl.serviceScriptNote'));
   });
 
+  // Fix round 2, item 6: a failed services read is unknown, naming the list, never "loading…" for ever.
+  it("the overview says the service's plugins are unknown once the services' read failed", () => {
+    tab(GeneralTab, { service_id: 'web', plugins: { 'ip-restriction': {} } }, { locked: true, ctx: ctxOf({ loaded: { services: false }, failed: { services: true } }) });
+    const overview = screen.getByRole('region', { name: t('sr.overview') });
+    expect(overview).toHaveTextContent(t('rt.overview.inheritedUnknown', { lists: t('kind.services.plural') }));
+    expect(overview).not.toHaveTextContent(t('rt.overview.inheritedLoading'));
+  });
+
   it('the overview shows a server address range apart from its port (known item 19)', () => {
     tab(GeneralTab, { server_addr: '10.0.0.0/8', server_port: 9100 }, { locked: true });
     tab(GeneralTab, { server_addr: 'fe80::/64', server_port: 9100 }, { locked: true });

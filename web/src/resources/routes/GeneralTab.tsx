@@ -13,6 +13,7 @@ import { ReadOnlyValue } from '../../ui/ReadOnly';
 import type { Ctx } from '../ctx';
 import type { TabProps } from '../registry';
 import { TabLink } from '../Overview';
+import { listNames } from '../protos/columns';
 import { pluginName } from '../pluginName';
 import { effectivePlugins, routeHosts, routeScript } from '../resolve';
 import { inheritLoading } from './inherit';
@@ -86,8 +87,11 @@ function plugins(draft: Obj, ctx: Ctx, list: Record<string, PluginInfo> | undefi
   if (script === 'loading') return t('rt.pl.serviceScriptLoading');
   if (script === 'unknown') return t('rt.pl.serviceScriptUnknown');
   const names = effectivePlugins(draft, ctx, list).map(pluginName);
-  // The plugin config's aren't known yet: show the route's and the service's, and say the rest is loading.
-  if (inheritLoading(draft, ctx).pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), t('rt.overview.inheritedLoading')]} />;
+  // The plugin config's aren't known yet, or at all (its list failed): show the route's and the
+  // service's, and say the rest is loading, or unknown.
+  const waiting = inheritLoading(draft, ctx);
+  const rest = waiting.failed.length > 0 ? t('rt.overview.inheritedUnknown', { lists: listNames(waiting.failed) }) : t('rt.overview.inheritedLoading');
+  if (waiting.pluginConfig) return <Parts parts={[...(names.length > 0 ? [<Mono key="own" values={names} />] : []), rest]} />;
   return names.length > 0 ? <Mono values={names} /> : t('rt.overview.noPlugins');
 }
 

@@ -13,6 +13,7 @@ import type { Ctx } from '../ctx';
 import { Mono, Overview, Parts } from '../Overview';
 import type { TabProps } from '../registry';
 import { asStreamRoute, streamEffectivePlugins } from '../resolve';
+import { listNames } from '../protos/columns';
 import { inheritLoading } from '../routes/inherit';
 import { targetOf } from '../upstreamSource';
 import { pluginName } from '../pluginName';
@@ -70,7 +71,11 @@ function plugins(draft: Obj, ctx: Ctx, list: Record<string, PluginInfo> | undefi
   const all = streamEffectivePlugins(draft, ctx, list);
   const own = all.filter((p) => p.from === 'route').map(label);
   const ownPart = own.length > 0 ? [<Mono key="own" values={own} />] : [];
-  if (inheritLoading(asStreamRoute(draft), ctx).service) return <Parts parts={[...ownPart, t('rt.overview.inheritedLoading')]} />;
+  const waiting = inheritLoading(asStreamRoute(draft), ctx);
+  if (waiting.service) {
+    const rest = waiting.failed.length > 0 ? t('rt.overview.inheritedUnknown', { lists: listNames(waiting.failed) }) : t('rt.overview.inheritedLoading');
+    return <Parts parts={[...ownPart, rest]} />;
+  }
   const inherited = all.filter((p) => p.from === 'service').map(label);
   const parts = [
     ...ownPart,

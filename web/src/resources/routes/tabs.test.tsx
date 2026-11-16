@@ -395,6 +395,17 @@ describe('Plugins', () => {
     renderRouteTab(RoutePluginsTab, { uri: '/x', service_id: 's3', plugins: { 'key-auth': {} } }, { locked: true, ctx: ctxOf({ loaded: { services: false }, failed: { services: true } }) });
     expect(screen.getByText(t('rt.pl.serviceScriptUnknown'))).toBeInTheDocument();
     expect(screen.queryByText(t('rt.pl.serviceScriptLoading'))).not.toBeInTheDocument();
+    // Fix round 2, item 6: the inherited plugins are unknown too, naming the list, never "loading…" for ever.
+    expect(screen.getByText(t('rt.pl.inheritedUnknown', { lists: t('kind.services.plural') }))).toBeInTheDocument();
+    expect(screen.queryByText(t('rt.pl.inheritedLoading'))).not.toBeInTheDocument();
+  });
+
+  it('the overview says the plugin config\'s plugins are unknown, naming the list, once its read failed', () => {
+    renderRouteTab(GeneralTab, { uri: '/x', upstream_id: 'u1', plugin_config_id: 'pc1', plugins: { cors: {} } }, { locked: true, ctx: ctxOf({ loaded: { pluginConfigs: false }, failed: { pluginConfigs: true } }) });
+    const row = within(screen.getByRole('region', { name: t('rt.overview') })).getByRole('link', { name: t('pl.tab') }).closest('div') as HTMLElement;
+    expect(row).toHaveTextContent(t('rt.overview.inheritedUnknown', { lists: t('kind.plugin_configs.plural') }));
+    expect(row).not.toHaveTextContent(t('rt.overview.inheritedLoading'));
+    expect(row).toHaveTextContent('cors');
   });
 
   // Fix round 1, R1.1: while the service is loading, or after its read failed, the overview says only
