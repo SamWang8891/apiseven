@@ -12,6 +12,7 @@ import { main, openEditor, writesOf } from '../../test/editor';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 import { EXPLAINER_KEY } from './PluginsBody';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -121,7 +122,7 @@ describe('a global rule', () => {
 
 describe('a new global rule', () => {
   it('asks for an ID; Create PUTs global_rules/<id> with an empty plugins object', async () => {
-    const { user, admin } = await open('#/global_rules/new', []);
+    const { user, admin } = await open(`#${newPathFor('global_rules')}`, []);
     await settled();
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     expect(writesOf(admin)).toEqual([]);
@@ -132,7 +133,7 @@ describe('a new global rule', () => {
   });
 
   it('Create never overwrites: an id that exists is refused and the stored rule is unchanged', async () => {
-    const { user, admin } = await open('#/global_rules/new');
+    const { user, admin } = await open(`#${newPathFor('global_rules')}`);
     await settled();
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'default');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
@@ -144,7 +145,7 @@ describe('a new global rule', () => {
 
 describe('a copy of a global rule', () => {
   it('says before Create which plugins APISIX will refuse while the original holds them', async () => {
-    await open('#/global_rules/new?from=default');
+    await open(`#${newPathFor('global_rules')}?from=default`);
     const notice = await main().findByRole('note', { name: t('editor.copyNotice.title') });
     expect(notice).toHaveTextContent(t('editor.copyNotice.globalRule', { from: 'default', list: 'request-id' }));
   });

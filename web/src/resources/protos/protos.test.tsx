@@ -16,6 +16,7 @@ import { editableControls } from '../../test/schemaForm';
 import { renderWithProviders } from '../../test/providers';
 import { protoColumns } from './columns';
 import { decodedSize, formatBytes, isDescriptorSet, toBase64 } from './content';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -44,7 +45,7 @@ async function settled() {
 
 describe('the Content tab', () => {
   it('an uploaded .proto text file fills `content`, and Create sends exactly it', async () => {
-    const { user, admin } = await open('#/protos/new?tab=content', []);
+    const { user, admin } = await open(`#${newPathFor('protos')}?tab=content`, []);
     await settled();
     await user.upload(fileInput(), new File([SOURCE], 'hello.proto', { type: 'text/plain' }));
     await waitFor(async () => expect((await editor()).textContent).toContain('package hello;'));
@@ -53,7 +54,7 @@ describe('the Content tab', () => {
   });
 
   it('an uploaded compiled descriptor set is stored as base64 and shown as one, with Download; back to source on request', async () => {
-    const { user, admin } = await open('#/protos/new?tab=content', []);
+    const { user, admin } = await open(`#${newPathFor('protos')}?tab=content`, []);
     await settled();
     await user.upload(fileInput(), new File([DESCRIPTOR], 'set.pb'));
     const summary = await main().findByText(t('pr.content.binary'));
@@ -191,7 +192,7 @@ describe('a proto', () => {
   });
 
   it('Create with a typed id that exists is refused, and the stored proto is unchanged', async () => {
-    const { user, admin } = await open('#/protos/new?tab=content');
+    const { user, admin } = await open(`#${newPathFor('protos')}?tab=content`);
     await settled();
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'hello');
     await user.upload(fileInput(), new File([SOURCE], 'other.proto'));

@@ -14,6 +14,7 @@ import { json } from '../../test/fakeAdmin';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 import { pluginConfigColumns } from './columns';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -125,7 +126,7 @@ describe('a plugin config', () => {
 
 describe('a new plugin config', () => {
   it('Create never overwrites: an id that exists is refused, linked, and the stored plugin config is unchanged', async () => {
-    const { user, admin } = await open('#/plugin_configs/new');
+    const { user, admin } = await open(`#${newPathFor('plugin_configs')}`);
     await settled();
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'common');
     await user.click(main().getByRole('button', { name: t('editor.create') }));

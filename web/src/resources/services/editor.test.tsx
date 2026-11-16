@@ -12,6 +12,7 @@ import { main, openEditor, writesOf } from '../../test/editor';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 import { getToasts } from '../../ui/toast';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -192,7 +193,7 @@ describe('a service with an inline upstream: unknown keys at every level survive
 
 describe('creating a service', () => {
   it('with an inline upstream and a plugin: the POST carries exactly those', async () => {
-    const { user, admin } = await openEditor('#/services/new', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('services')}`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     await user.type(main().getByRole('textbox', { name: t('svc.general.name') }), 'shop-api');
 
@@ -220,7 +221,7 @@ describe('creating a service', () => {
   });
 
   it('with nothing but a name: a service needs no upstream', async () => {
-    const { user, admin } = await openEditor('#/services/new', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('services')}`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     await user.type(main().getByRole('textbox', { name: t('svc.general.name') }), 'bare');
     await user.click(main().getByRole('button', { name: t('editor.create') }));

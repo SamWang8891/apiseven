@@ -16,6 +16,7 @@ import { pluginFixture } from '../../test/pluginFixture';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 import { getToasts } from '../../ui/toast';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -105,7 +106,7 @@ describe('the consumer editor', () => {
 
 describe('creating a consumer', () => {
   it('has no ID field: the username is the id; Create PUTs consumers/<username> with the username in the body', async () => {
-    const { user, admin } = await openEditor('#/consumers/new', { objects: { consumers: [], consumer_groups: GROUPS }, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}`, { objects: { consumers: [], consumer_groups: GROUPS }, replies: pluginReplies() });
     await settled();
     expect(main().queryByRole('textbox', { name: /^ID/ })).not.toBeInTheDocument();
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo');
@@ -116,7 +117,7 @@ describe('creating a consumer', () => {
   });
 
   it('without a username, Create is refused: General is badged and the field asks for one', async () => {
-    const { user, admin } = await openEditor('#/consumers/new', { objects: { consumers: [], consumer_groups: GROUPS }, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}`, { objects: { consumers: [], consumer_groups: GROUPS }, replies: pluginReplies() });
     await settled();
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     expect(writesOf(admin)).toEqual([]);
@@ -125,7 +126,7 @@ describe('creating a consumer', () => {
   });
 
   it('a username APISIX refuses blocks Create, named on the field', async () => {
-    const { user, admin } = await openEditor('#/consumers/new', { objects: { consumers: [] }, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}`, { objects: { consumers: [] }, replies: pluginReplies() });
     await settled();
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'jo e');
     fireEvent.keyDown(window, { key: 's', ctrlKey: true });
@@ -137,7 +138,7 @@ describe('creating a consumer', () => {
   });
 
   it('from a group\'s "New consumer in this group": starts in that group', async () => {
-    const { user, admin } = await openEditor('#/consumers/new?group_id=staff', { objects: { consumers: [], consumer_groups: GROUPS }, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}?group_id=staff`, { objects: { consumers: [], consumer_groups: GROUPS }, replies: pluginReplies() });
     await settled();
     await user.type(main().getByRole('textbox', { name: /^Username/ }), 'sam');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
@@ -217,7 +218,7 @@ describe("a consumer's own auth plugins sign in whatever \"off\" says; its other
 
 describe('Duplicate', () => {
   it("a copy of a consumer takes everything but its key; Create is refused until a new key is typed, then sends that", async () => {
-    const { user, admin } = await openEditor('#/consumers/new?from=jo&tab=plugins', { objects: { consumers: [JO], consumer_groups: GROUPS }, credentials: CREDENTIALS, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}?from=jo&tab=plugins`, { objects: { consumers: [JO], consumer_groups: GROUPS }, credentials: CREDENTIALS, replies: pluginReplies() });
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     expect(document.body.innerHTML).not.toContain(KEY);
@@ -272,7 +273,7 @@ describe('Duplicate on a cold cache (the plugin list not loaded yet when the cop
         return json(200, { ...pluginFixture().http, 'my-auth': myAuth });
       },
     };
-    const { user, admin } = await openEditor('#/consumers/new?from=src&tab=json', { objects: { consumers: [SOURCE] }, replies });
+    const { user, admin } = await openEditor(`#${newPathFor('consumers')}?from=src&tab=json`, { objects: { consumers: [SOURCE] }, replies });
     // The source has been read and the list asked for, and while the list loads there is no copy at
     // all: no editor (no Create), nothing of the source on the page.
     await waitFor(() => expect(admin.requests.map((r) => r.url.pathname)).toEqual(expect.arrayContaining([expect.stringMatching(/consumers\/src$/), expect.stringMatching(/plugins$/)]) as string[]));
@@ -293,7 +294,7 @@ describe('Duplicate on a cold cache (the plugin list not loaded yet when the cop
 
   it('the plugin list fails to load: fail closed (the built-in key-auth loses its key, a plugin not built in all of its settings) and the note says why', async () => {
     const replies = { plugins: () => json(503, { error_msg: 'down' }) };
-    await openEditor('#/consumers/new?from=src&tab=json', { objects: { consumers: [SOURCE] }, replies });
+    await openEditor(`#${newPathFor('consumers')}?from=src&tab=json`, { objects: { consumers: [SOURCE] }, replies });
     await main().findByRole('button', { name: t('editor.create') });
     const box = await jsonEditor(t('kind.consumers.singular'));
     await waitFor(() => expect(box.textContent).toContain('"my-auth": {}'));
@@ -312,7 +313,7 @@ describe('what a copy left out is shown where it cannot be missed', () => {
 
   it('the plugin list failed: the notice is on every tab from the start (General first), says why a plugin not built in was left out, and names the lookup fields the copy still shares', async () => {
     const replies = { plugins: () => json(503, { error_msg: 'down' }) };
-    const { user } = await openEditor('#/consumers/new?from=src', { objects: { consumers: [SOURCE] }, replies });
+    const { user } = await openEditor(`#${newPathFor('consumers')}?from=src`, { objects: { consumers: [SOURCE] }, replies });
     await main().findByRole('button', { name: t('editor.create') });
     const removed = [t('editor.copyNotice.secrets', { list: [t('editor.copyNotice.secretItem', { plugin: 'basic-auth', fields: 'password' }), t('editor.copyNotice.secretItem', { plugin: 'jwt-auth', fields: 'secret' })].join(', ') }), t('editor.copyNotice.whole', { list: t('editor.copyNotice.unloaded', { plugin: 'my-plugin' }) })];
     const shared = t('editor.copyNotice.shared', { list: 'basic-auth username, jwt-auth key' });
@@ -326,7 +327,7 @@ describe('what a copy left out is shown where it cannot be missed', () => {
   });
 
   it('the notes stay those of the draft they were made with: a refetch of the original with new secrets (window focus) changes neither', async () => {
-    const { admin } = await openEditor('#/consumers/new?from=src', { objects: { consumers: [SOURCE] }, replies: pluginReplies() });
+    const { admin } = await openEditor(`#${newPathFor('consumers')}?from=src`, { objects: { consumers: [SOURCE] }, replies: pluginReplies() });
     await main().findByRole('button', { name: t('editor.create') });
     const before = notice().textContent;
     expect(before).toContain(t('editor.copyNotice.unknown', { plugin: 'my-plugin' }));

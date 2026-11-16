@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
 import { DEV_CONN, renderApp, resetApp, saveConnections } from '../test/app';
 import { json } from '../test/fakeAdmin';
+import { newPathFor } from '../router/paths';
 
 // What follows the page the user is on: the browser tab's title (known item 11) and the toasts (item 8).
 
@@ -36,7 +37,7 @@ describe('document.title', () => {
   });
 
   it('a new object, a missing one and an unknown page say so', async () => {
-    const { unmount } = await open('#/routes/new');
+    const { unmount } = await open(`#${newPathFor('routes')}`);
     await main().findByRole('button', { name: t('editor.create') });
     expect(document.title).toBe('New Route · apiseven');
     unmount();
@@ -53,7 +54,7 @@ describe('document.title', () => {
 describe('document.title of a copy whose source failed to load (fix round 1, R4.6)', () => {
   it('is the create page\'s title, not the source\'s', async () => {
     saveConnections([DEV_CONN], DEV_CONN.id);
-    renderApp({ hash: '#/routes/new?from=r9', counts: {}, objects: { routes: [] }, replies: { 'routes/r9': () => json(500, { error_msg: 'etcd down' }) } });
+    renderApp({ hash: `#${newPathFor('routes')}?from=r9`, counts: {}, objects: { routes: [] }, replies: { 'routes/r9': () => json(500, { error_msg: 'etcd down' }) } });
     await screen.findByRole('main');
     await main().findByText(/etcd down/, {}, { timeout: 4000 });
     expect(document.title).toBe('New Route · apiseven');
@@ -62,7 +63,7 @@ describe('document.title of a copy whose source failed to load (fix round 1, R4.
 
 describe('toasts and pages (known item 8)', () => {
   it('a refusal raised on one page is gone once the user moves to the next', async () => {
-    const { user } = await open('#/routes/new');
+    const { user } = await open(`#${newPathFor('routes')}`);
     await user.click(await main().findByRole('button', { name: t('editor.create') }));
     const refusal = await screen.findByText(/^Fix \d+ problems? before saving/);
     expect(refusal).toBeInTheDocument();

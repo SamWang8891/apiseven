@@ -40,6 +40,7 @@ import { prng } from '../../test/prng';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
 import { getToasts } from '../../ui/toast';
 import { fingerprintOf } from './fingerprint';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -70,7 +71,7 @@ async function fill(user: UserEvent, label: string, text: string) {
 
 /** A new SSL with an SNI, back on the Certificate tab, its certificate and key as given. */
 async function newSsl(pair: { cert?: string; key?: string }) {
-  const app = await openEditor('#/ssls/new?tab=snis', { objects: NONE, replies: REPLIES });
+  const app = await openEditor(`#${newPathFor('ssls')}?tab=snis`, { objects: NONE, replies: REPLIES });
   await settled();
   await app.user.type(main().getByRole('textbox', { name: t('ssl.snis.label') }), 'p.apiseven.test{Enter}');
   await app.user.click(tab(t('ssl.tab.certificate')));
@@ -153,7 +154,7 @@ const PLACES: Place[] = [
     kind: 'cert',
     label: () => t('ssl.pem.cert'),
     setup: async () => {
-      const app = await openEditor('#/ssls/new', { objects: NONE, replies: REPLIES });
+      const app = await openEditor(`#${newPathFor('ssls')}`, { objects: NONE, replies: REPLIES });
       await settled();
       await app.user.click(tab(t('editor.json.tab')));
       const box = await jsonEditor(t('kind.ssls.singular'));

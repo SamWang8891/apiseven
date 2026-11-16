@@ -54,7 +54,7 @@ describe('the upstream editor', () => {
   });
 
   it('creates an upstream through the form with a body APISIX accepts', async () => {
-    const { user, admin } = await openEditor('#/upstreams/new', { objects: { upstreams: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('upstreams')}`, { objects: { upstreams: [] } });
     await user.type(await main().findByRole('textbox', { name: t('up.general.name') }), 'orders');
 
     await user.click(tab(t('up.section.nodes')));
@@ -325,7 +325,7 @@ describe('the upstream editor', () => {
   });
 
   it('an upstream without nodes saves, as APISIX stores it; the Nodes tab says requests fail until one is added (Ruling 1)', async () => {
-    const { user, admin } = await openEditor('#/upstreams/new?tab=nodes', { objects: { upstreams: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('upstreams')}?tab=nodes`, { objects: { upstreams: [] } });
     expect(await main().findByText(t('up.nodes.emptyNote'))).toBeInTheDocument();
     expect(tab(t('up.section.nodes'))).toHaveAccessibleName(t('up.section.nodes'));
     await user.click(main().getByRole('button', { name: t('editor.create') }));

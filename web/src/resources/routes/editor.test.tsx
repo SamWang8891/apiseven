@@ -123,7 +123,7 @@ describe('the route editor', () => {
   });
 
   it('a new route starts on Inline with the node table, and an empty one can\'t be created', async () => {
-    const { user, admin } = await openEditor('#/routes/new?tab=upstream', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?tab=upstream`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     expect(main().getByRole('radio', { name: t('rt.up.source.inline') })).toBeChecked();
     expect(main().getByRole('textbox', { name: t('up.nodes.new') })).toBeInTheDocument();
@@ -235,7 +235,7 @@ describe('a new route: a plugin card added is not all in red (Task 16b, item 154
 
 describe('an inline upstream emptied of its nodes (Ruling 1)', () => {
   it('is saved as APISIX stores it: the route has an upstream, with an empty node list', async () => {
-    const { user, admin } = await openEditor('#/routes/new?tab=upstream', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?tab=upstream`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     await user.click(main().getByRole('textbox', { name: t('up.nodes.new') }));
     await user.paste('10.0.0.5:8080');
@@ -282,7 +282,7 @@ describe("the overview's links keep the page's other search parameters", () => {
 
 describe('the create page copies the prefill params into the new route', () => {
   it('service_id and plugin_config_id; a param the kind does not list is ignored', async () => {
-    const { user, admin } = await openEditor('#/routes/new?service_id=web&plugin_config_id=common-headers&name=nope&tab=upstream', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?service_id=web&plugin_config_id=common-headers&name=nope&tab=upstream`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     // From a service's "New route" link: the service's upstream.
     expect(main().getByRole('radio', { name: t('rt.up.source.service') })).toBeChecked();

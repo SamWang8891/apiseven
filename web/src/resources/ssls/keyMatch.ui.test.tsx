@@ -17,6 +17,7 @@ import { renderTab } from '../../test/tab';
 import { CertificateTab } from './CertificateTab';
 import { fingerprintOf } from './fingerprint';
 import { sslIssues } from './validate';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -136,7 +137,7 @@ describe('the pair dialog', () => {
 
 describe('through the editor frame', () => {
   it('a mismatched pair warns and Create still sends it; the warning holds across a tab switch', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     const panel = await main().findByRole('tabpanel');
     await waitFor(() => expect(panel.querySelector('.ed-lazy__loading')).toBeNull());
     await paste(user, screen.getByRole('main'), t('ssl.pem.cert'), SEED_CERT);

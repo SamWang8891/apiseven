@@ -17,6 +17,7 @@ import { editableControls } from '../../test/schemaForm';
 import { SEED_CERT, SEED_KEY } from '../../test/sslSeed';
 import { getToasts } from '../../ui/toast';
 import { fingerprintOf } from './fingerprint';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -327,7 +328,7 @@ describe('what each save sends: a PATCH of what changed, unless a new key is in 
 
 describe('creating an SSL', () => {
   it('Create is refused until both certificate and key are there (an issue on Certificate), then POSTs them', async () => {
-    const { user, admin } = await openEditor('#/ssls/new?tab=snis', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}?tab=snis`, { objects: { ssls: [], routes: [], services: [] } });
     await settled();
     await user.type(main().getByRole('textbox', { name: t('ssl.snis.label') }), 'tls.apiseven.test{Enter}');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
@@ -357,7 +358,7 @@ describe('creating an SSL', () => {
   });
 
   it('a typed ID that is taken is refused without a write (create never overwrites)', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [STORED], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [STORED], routes: [], services: [] } });
     await settled();
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'apiseven-test');
     await user.click(main().getByRole('textbox', { name: t('ssl.pem.cert') }));
@@ -373,7 +374,7 @@ describe('creating an SSL', () => {
   });
 
   it('Duplicate: a notice above the tabs (on any tab) names the keys left out and the SNIs still shared; Create waits for a key', async () => {
-    const { user, admin } = await openEditor('#/ssls/new?from=apiseven-test&tab=snis', { objects: { ssls: [STORED], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}?from=apiseven-test&tab=snis`, { objects: { ssls: [STORED], routes: [], services: [] } });
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     const notice = main().getByRole('note', { name: t('editor.copyNotice.title') });
@@ -415,7 +416,7 @@ describe('N1: text a box did not take is held through Save, never swapped for th
   const COMBINED = RSA_LEAF + SEED_KEY;
 
   it('a combined text pasted over a new SSL certificate, then Create: refused, no request, the toast names the field', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     const box = main().getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.click(box);
@@ -451,7 +452,7 @@ describe('N1: text a box did not take is held through Save, never swapped for th
     // It offers the split, so its message points at that (fix round 1, R7).
     ['a key with a certificate', SEED_KEY + SEED_CERT, 'ssl.split.held'],
   ])('the key box: Replace key, %s pasted, then Create: refused, no request, the toast names the field', async (_, text, problem) => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
     await user.paste(text);
@@ -471,7 +472,7 @@ describe('O1: text dropped on a box that does not have focus is masked at once a
   const marked = (before: string) => `${before}${t('ssl.pem.marker')}\n`;
 
   it('the new SSL certificate box: a certificate plus a key dropped; Create sends nothing', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     const box = main().getByRole('textbox', { name: t('ssl.pem.cert') });
     expect(box).not.toHaveFocus();
@@ -487,7 +488,7 @@ describe('O1: text dropped on a box that does not have focus is masked at once a
   });
 
   it('the new SSL key box (no key entered yet): a key plus a certificate dropped; Create sends nothing', async () => {
-    const { user, admin } = await openEditor('#/ssls/new?tab=snis', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}?tab=snis`, { objects: { ssls: [], routes: [], services: [] } });
     await settled();
     await user.type(main().getByRole('textbox', { name: t('ssl.snis.label') }), 'tls.apiseven.test{Enter}');
     await user.click(tab(t('ssl.tab.certificate')));
@@ -526,7 +527,7 @@ describe('O1: text dropped on a box that does not have focus is masked at once a
   });
 
   it('the upload bar of the new SSL certificate box: the same', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     const box = main().getByRole('textbox', { name: t('ssl.pem.cert') });
     dropText(box.closest('.ssl-pem')?.querySelector('.ssl-pem__bar') as HTMLElement, RSA_LEAF + SEED_KEY);
@@ -540,7 +541,7 @@ describe('O1: text dropped on a box that does not have focus is masked at once a
 
 describe('O7: after Replace key, Upload file reaches the file picker', () => {
   it('Replace key → click Upload file → choose a file: the key is taken, and Create sends it', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
     const box = main().getByRole('textbox', { name: t('ssl.pem.key') });
@@ -562,7 +563,7 @@ describe('O7: after Replace key, Upload file reaches the file picker', () => {
 
 describe('O2: a reference is taken only when it is the whole text', () => {
   it('the key box: a reference followed by a whole key is held (its key block masked when left); Create sends nothing', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
     await user.paste(`$secret://vault/1/ssl\n${SEED_KEY}`);
@@ -574,7 +575,7 @@ describe('O2: a reference is taken only when it is the whole text', () => {
   });
 
   it('the certificate box: a reference followed by a certificate is held; Create sends nothing', async () => {
-    const { user, admin } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user, admin } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await newSsl(user);
     const box = main().getByRole('textbox', { name: t('ssl.pem.cert') });
     await user.click(box);
@@ -742,7 +743,7 @@ describe('a reference with white space around it (Task 16b, item 104)', () => {
 
 describe('a new SSL that is not a copy', () => {
   it('has no copy notice, and the key note is neutral', async () => {
-    const { user } = await openEditor('#/ssls/new', { objects: { ssls: [], routes: [], services: [] } });
+    const { user } = await openEditor(`#${newPathFor('ssls')}`, { objects: { ssls: [], routes: [], services: [] } });
     await settled();
     await user.click(main().getByRole('textbox', { name: t('ssl.pem.cert') }));
     await user.paste(SEED_CERT);

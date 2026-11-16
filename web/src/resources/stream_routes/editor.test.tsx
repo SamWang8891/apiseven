@@ -13,6 +13,7 @@ import { pluginFixture } from '../../test/pluginFixture';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 import { getToasts } from '../../ui/toast';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -93,7 +94,7 @@ describe('the stream route editor', () => {
   });
 
   it('the Plugins picker offers only the stream plugins', async () => {
-    const { user } = await openEditor('#/stream_routes/new?tab=plugins', { objects: objects([]), replies: pluginReplies() });
+    const { user } = await openEditor(`#${newPathFor('stream_routes')}?tab=plugins`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     await user.click(main().getByRole('button', { name: t('pl.add') }));
     const picker = await screen.findByRole('dialog', { name: t('pl.picker.title') });
@@ -125,7 +126,7 @@ describe('the inline upstream in the stream subsystem (Ruling 2)', () => {
 
 describe('creating a stream route', () => {
   it('on port 9100 with an existing upstream: the POST carries exactly those, the port a number', async () => {
-    const { user, admin } = await openEditor('#/stream_routes/new?tab=matching', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('stream_routes')}?tab=matching`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     await user.type(main().getByRole('spinbutton', { name: t('sr.match.serverPort') }), '9100');
     await user.click(tab(t('rt.tab.upstream')));
@@ -139,7 +140,7 @@ describe('creating a stream route', () => {
   });
 
   it('the create page copies service_id and upstream_id; a param the kind does not list is ignored', async () => {
-    const { user, admin } = await openEditor('#/stream_routes/new?service_id=web&upstream_id=api-backend&name=nope&tab=upstream', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('stream_routes')}?service_id=web&upstream_id=api-backend&name=nope&tab=upstream`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     expect(main().getByRole('radio', { name: t('rt.up.source.existing') })).toBeChecked();
     await user.click(main().getByRole('button', { name: t('editor.create') }));
@@ -148,7 +149,7 @@ describe('creating a stream route', () => {
   });
 
   it('from a service\'s link: starts on the service\'s upstream', async () => {
-    const { user, admin } = await openEditor('#/stream_routes/new?service_id=web&tab=upstream', { objects: objects([]), replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('stream_routes')}?service_id=web&tab=upstream`, { objects: objects([]), replies: pluginReplies() });
     await settled();
     expect(main().getByRole('radio', { name: t('rt.up.source.service') })).toBeChecked();
     await user.click(main().getByRole('button', { name: t('editor.create') }));

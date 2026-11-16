@@ -4,7 +4,7 @@ import type { Obj } from '../api/types';
 import { resetReadOnlyKeys } from '../api/write';
 import { t } from '../i18n';
 import { getToasts } from '../ui/toast';
-import { pathFor } from '../router/paths';
+import { newPathFor, pathFor } from '../router/paths';
 import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
 import { json } from '../test/fakeAdmin';
@@ -75,7 +75,7 @@ describe('tabs in the URL', () => {
 
 describe('create', () => {
   it('after a successful create, goes to the new object, locked', async () => {
-    const { user } = await openEditor('#/routes/new?upstream_id=u1', { objects: { routes: [], upstreams: [UPSTREAM] } });
+    const { user } = await openEditor(`#${newPathFor('routes')}?upstream_id=u1`, { objects: { routes: [], upstreams: [UPSTREAM] } });
     await user.type(await main().findByRole('textbox', { name: 'ID' }), 'fresh');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     await waitFor(() => expect(window.location.hash).toBe(`#${pathFor('routes', 'fresh')}`));
@@ -85,7 +85,7 @@ describe('create', () => {
   });
 
   it('Discard on a new object with changes asks, then returns to the list', async () => {
-    const { user } = await openEditor('#/routes/new', { objects: { routes: [] } });
+    const { user } = await openEditor(`#${newPathFor('routes')}`, { objects: { routes: [] } });
     await user.type(await main().findByRole('textbox', { name: 'ID' }), 'x');
     await user.click(main().getByRole('button', { name: t('editor.discard') }));
     const dialog = await screen.findByRole('alertdialog', { name: t('editor.leave.title') });
@@ -96,7 +96,7 @@ describe('create', () => {
 
 describe('duplicate', () => {
   it('…/new?from=r1 starts unlocked from a copy: no id, " copy" appended to the name', async () => {
-    const { user, admin } = await openEditor('#/routes/new?from=r1&tab=json', { objects: objects() });
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?from=r1&tab=json`, { objects: objects() });
     expect(await main().findByRole('heading', { level: 1, name: t('page.new', { kind: 'Route' }) })).toBeInTheDocument();
     expect(main().getByText(t('editor.unsaved'))).toBeInTheDocument();
     const editor = await screen.findByRole('textbox', { name: jsonLabel });
@@ -108,14 +108,14 @@ describe('duplicate', () => {
   });
 
   it('a consumer copy has its username cleared', async () => {
-    await openEditor('#/consumers/new?from=jo&tab=json', { objects: { consumers: [{ username: 'jo', desc: 'Jo', plugins: { 'key-auth': {} } }] } });
+    await openEditor(`#${newPathFor('consumers')}?from=jo&tab=json`, { objects: { consumers: [{ username: 'jo', desc: 'Jo', plugins: { 'key-auth': {} } }] } });
     const editor = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: 'Consumer' }) });
     expect(editor.textContent).not.toContain('username');
     expect(editor.textContent).toContain('"key-auth": {}');
   });
 
   it('a copy of something missing shows not found', async () => {
-    await openEditor('#/routes/new?from=gone', { objects: objects() });
+    await openEditor(`#${newPathFor('routes')}?from=gone`, { objects: objects() });
     expect(await main().findByRole('heading', { level: 1, name: t('editor.notFound.title', { kind: 'Route', id: 'gone' }) })).toBeInTheDocument();
   });
 });

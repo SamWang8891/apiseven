@@ -16,6 +16,7 @@ import { pluginFixture } from '../../test/pluginFixture';
 import { SIGN_IN_FIELD, signInOf } from '../../plugins/auth';
 import { signInNote } from '../../plugins/signInText';
 import { editableControls } from '../../test/schemaForm';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -328,7 +329,7 @@ describe('one auth plugin', () => {
   });
 
   it('with none, a note says nobody can sign in with it (APISIX stores it, so Save is not refused)', async () => {
-    const { user, admin } = await openEditor('#/consumers/jo/credentials/new?tab=plugins', { objects: { consumers: CONSUMERS }, credentials: {}, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('credentials', { consumer: 'jo' })}?tab=plugins`, { objects: { consumers: CONSUMERS }, credentials: {}, replies: pluginReplies() });
     await settled();
     expect(main().getByText(t('pl.credentialNone'))).toBeInTheDocument();
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'c2');
@@ -365,7 +366,7 @@ describe('Duplicate', () => {
 
 describe('creating a credential', () => {
   it('asks for an ID; key-auth from the picker, its key typed: Create PUTs under the consumer, then opens it', async () => {
-    const { user, admin } = await openEditor('#/consumers/jo/credentials/new', { objects: { consumers: CONSUMERS }, credentials: {}, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('credentials', { consumer: 'jo' })}`, { objects: { consumers: CONSUMERS }, credentials: {}, replies: pluginReplies() });
     await settled();
     await user.type(main().getByRole('textbox', { name: /^ID/ }), 'ci-key');
     await user.type(main().getByRole('textbox', { name: t('cr.general.name') }), 'CI');

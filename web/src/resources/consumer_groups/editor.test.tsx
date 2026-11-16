@@ -10,6 +10,7 @@ import { resetApp } from '../../test/app';
 import { main, openEditor, writesOf } from '../../test/editor';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -151,7 +152,7 @@ describe('a switched-off plugin with settings APISIX would refuse when on', () =
 
 describe('creating a consumer group', () => {
   it('asks for an ID; Create PUTs consumer_groups/<id> with an empty plugins object', async () => {
-    const { user, admin } = await openEditor('#/consumer_groups/new', { objects: { consumer_groups: [], consumers: [] }, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('consumer_groups')}`, { objects: { consumer_groups: [], consumers: [] }, replies: pluginReplies() });
     await settled();
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     expect(writesOf(admin)).toEqual([]);

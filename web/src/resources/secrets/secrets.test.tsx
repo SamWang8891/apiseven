@@ -15,6 +15,7 @@ import { json } from '../../test/fakeAdmin';
 import { editableControls, renderSchemaForm } from '../../test/schemaForm';
 import { getToasts } from '../../ui/toast';
 import { MANAGERS, SCHEMAS } from './schemas';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -52,7 +53,7 @@ const idBox = () => main().getByRole('textbox', { name: /^ID/ });
 
 describe('a new secret', () => {
   it('saves to /secrets/vault/<id> with the manager picked and the id typed, and its token is masked', async () => {
-    const { user, admin } = await open('#/secrets/new', []);
+    const { user, admin } = await open(`#${newPathFor('secrets')}`, []);
     await settled();
     expect(main().getByText(t('sc.config.choose'))).toBeInTheDocument();
     await pickManager(user, t('sc.manager.vault'));
@@ -309,7 +310,7 @@ describe('a stored secret', () => {
   });
 
   it('Duplicate keeps the manager and the credentials (masked) and says so; the copy is created under its own id', async () => {
-    const { user, admin } = await open('#/secrets/new?from=vault%2Fv1');
+    const { user, admin } = await open(`#${newPathFor('secrets')}?from=vault%2Fv1`);
     const notice = await main().findByRole('note', { name: t('editor.copyNotice.title') });
     expect(notice).toHaveTextContent(t('editor.copyNotice.credentials', { from: 'vault/v1', fields: 'token' }));
     expect(main().getByRole('combobox', { name: /^Secret manager/ })).toHaveTextContent(t('sc.manager.vault'));
@@ -350,13 +351,13 @@ describe('a new GCP secret', () => {
 
 describe("a copy's notice says what was copied", () => {
   it('a GCP entry that reads its credentials from a file: every setting copied, none stored here', async () => {
-    await open('#/secrets/new?from=gcp%2Fg2', [GCP_FILE]);
+    await open(`#${newPathFor('secrets')}?from=gcp%2Fg2`, [GCP_FILE]);
     const notice = await main().findByRole('note', { name: t('editor.copyNotice.title') });
     expect(notice).toHaveTextContent(t('editor.copyNotice.credentialsElsewhere', { from: 'gcp/g2' }));
   });
 
   it('an entry of a manager APISIX lacks: every setting copied, masked, which are credentials unknown', async () => {
-    await open('#/secrets/new?from=nope%2Fn1', [{ id: 'nope/n1', anything: 'x' }]);
+    await open(`#${newPathFor('secrets')}?from=nope%2Fn1`, [{ id: 'nope/n1', anything: 'x' }]);
     const notice = await main().findByRole('note', { name: t('editor.copyNotice.title') });
     expect(notice).toHaveTextContent(t('editor.copyNotice.unknownManager', { from: 'nope/n1', manager: 'nope' }));
   });

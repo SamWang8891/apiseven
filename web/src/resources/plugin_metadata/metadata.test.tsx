@@ -15,6 +15,7 @@ import { pluginFixture } from '../../test/pluginFixture';
 import { pluginReplies } from '../../test/plugins';
 import { editableControls } from '../../test/schemaForm';
 import { getToasts } from '../../ui/toast';
+import { newPathFor } from '../../router/paths';
 
 beforeAll(async () => {
   await import('./bodies');
@@ -276,7 +277,7 @@ describe("a plugin's metadata page", () => {
   });
 
   it('New when the stored entries fail to load: every plugin with metadata settings is offered, and the page says why', async () => {
-    const { user } = await open([], '#/plugin_metadata/new', { plugin_metadata: () => json(500, { error_msg: 'etcd down' }) });
+    const { user } = await open([], `#${newPathFor('plugin_metadata')}`, { plugin_metadata: () => json(500, { error_msg: 'etcd down' }) });
     const picker = await main().findByRole('combobox', { name: /^Plugin/ });
     await waitFor(() => expect(picker).toBeEnabled());
     expect(main().getByText(/The stored entries didn't load/)).toBeInTheDocument();
@@ -285,7 +286,7 @@ describe("a plugin's metadata page", () => {
   });
 
   it("New with the plugin list down: the plugin's name is typed; a slash is refused at once, Save and Cmd/Ctrl-S send nothing, the toast names it", async () => {
-    const { user, admin } = await open([], '#/plugin_metadata/new', { plugins: () => json(500, { error_msg: 'down' }) });
+    const { user, admin } = await open([], `#${newPathFor('plugin_metadata')}`, { plugins: () => json(500, { error_msg: 'down' }) });
     const name = await main().findByRole('textbox', { name: /^Plugin/ });
     await user.type(name, 'a/b');
     expect(name).toHaveAttribute('aria-invalid', 'true');
@@ -301,7 +302,7 @@ describe("a plugin's metadata page", () => {
   });
 
   it('New picks a plugin with metadata settings and none stored, then creates it with PUT; one stored meanwhile is refused', async () => {
-    const { user, admin } = await open([LOGGER], '#/plugin_metadata/new');
+    const { user, admin } = await open([LOGGER], `#${newPathFor('plugin_metadata')}`);
     const picker = await main().findByRole('combobox', { name: /^Plugin/ });
     await waitFor(() => expect(picker).toBeEnabled());
     await user.click(picker);
