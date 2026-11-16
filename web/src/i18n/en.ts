@@ -1025,7 +1025,9 @@ export const en: Record<string, string> = {
   'up.tls.uploadLabel': 'Upload {label}',
   'up.tls.parsed': '{subject}, expires {date}',
   'up.tls.keyInCert': 'Holds a private key, not shown',
-  'up.tls.keyInCertKept': 'The stored text holds a private key, so it is not shown here; it is kept until you put a certificate in its place.',
+  'up.tls.keyInCertKept': 'The stored text holds a private key, so it is not shown here. Anything typed or uploaded here replaces it; emptying the box puts it back.',
+  'up.tls.keyInCertHere': 'This text holds a private key, so it is not shown here. Anything typed or uploaded here replaces it.',
+  'up.tls.keyInCertBack': 'Emptying this box puts back the stored text, which holds a private key (not shown).',
 
   'up.health.active': 'Active',
   'up.health.both': 'Active + passive',

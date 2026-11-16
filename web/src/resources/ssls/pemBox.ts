@@ -29,7 +29,7 @@
 //     one action; only that action puts the certificates in the certificate box and gives the key to
 //     the key box, each through its own path (so 1–9 hold for both). Not for the CA box.
 import { t } from '../../i18n';
-import { holdsPrivateKey, MASK } from '../../schema/secrets';
+import { holdsPrivateKey, keyMaterialIn } from '../../schema/secrets';
 import { certProblem, keyProblem } from './pem';
 
 export type BoxKind = 'cert' | 'key';
@@ -108,8 +108,9 @@ function keyWhy(text: string): string | undefined {
 export function heldWhy(kind: BoxKind, text: string): string | undefined {
   const trimmed = text.trim();
   if (trimmed === '') return undefined;
-  if (text.includes(MASK.slice(0, 1))) return t(kind === 'cert' ? 'ssl.pem.markerCert' : 'ssl.pem.markerKey');
-  if (kind === 'cert' && holdsPrivateKey(text)) return t('ssl.pem.hasKey');
+  const material = keyMaterialIn(text);
+  if (material === 'marker') return t(kind === 'cert' ? 'ssl.pem.markerCert' : 'ssl.pem.markerKey');
+  if (kind === 'cert' && material === 'key') return t('ssl.pem.hasKey');
   if (LIKE_REF.test(trimmed)) return REF.test(trimmed) ? undefined : t('ssl.pem.refNotAlone');
   return kind === 'cert' ? certProblem(text) : keyWhy(text);
 }

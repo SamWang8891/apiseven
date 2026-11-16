@@ -151,6 +151,16 @@ const KEY_BLOCKS = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-
 /** Whether `text` holds a PEM private key anywhere (a combined certificate + key file does). */
 export const holdsPrivateKey = (text: unknown): boolean => typeof text === 'string' && KEY_BEGIN.test(text);
 
+/**
+ * Private-key material in a box's text, as every PEM box judges it (the SSL editor's, resources/ssls/
+ * pemBox.ts heldWhy; the upstream form's certificate fields, upstream/fields.tsx), in this order: the
+ * marker line left where a key was taken out of the page ('marker'), then a private key itself ('key').
+ */
+export function keyMaterialIn(text: string): 'marker' | 'key' | undefined {
+  if (text.includes(MASK.slice(0, 1))) return 'marker';
+  return holdsPrivateKey(text) ? 'key' : undefined;
+}
+
 /** `text` with each PEM private-key block replaced by `by` (or what it returns for the block); the rest, certificates included, kept. */
 export const withoutPrivateKeys = (text: string, by: string | ((block: string) => string)): string =>
   typeof by === 'string' ? text.replace(KEY_BLOCKS, () => by) : text.replace(KEY_BLOCKS, by);

@@ -7,6 +7,7 @@ import { RSA_CA, RSA_LEAF } from '../test/certs';
 import { deferredFile } from '../test/deferredFile';
 import { EC_SEC1_KEY, RSA_PKCS1_KEY } from '../test/pairs';
 import { renderUpstream } from '../test/upstream';
+import { getToasts } from '../ui/toast';
 
 /** The hidden file input beside the Upload button of the field labelled `label`. */
 function fileInput(label: string): HTMLInputElement {
@@ -80,22 +81,69 @@ describe('a PEM file read that finishes late (F1)', () => {
 });
 
 describe('private-key material where a certificate belongs (F3)', () => {
-  const KEY_MARK = 'MIIEowIBAAKCAQEA';
+  // Fix round 1, R2.1: text that is in the key, so "not in the page" means something.
+  const KEY_LINE = 'BEGIN RSA PRIVATE KEY';
+  const KEY_BODY = RSA_PKCS1_KEY.split('\n')[1]?.slice(0, 32) ?? '';
+  const keyNotIn = (html: string) => {
+    expect(KEY_BODY.length).toBe(32);
+    expect(RSA_PKCS1_KEY).toContain(KEY_BODY);
+    expect(html).not.toContain(KEY_LINE);
+    expect(html).not.toContain(KEY_BODY);
+  };
 
   it('a stored CA entry holding a key is never shown, locked or editing, and is kept by an unrelated edit', async () => {
     const stored = { tls: { verify: true, ca_certs: [RSA_PKCS1_KEY, RSA_CA] } };
     const locked = renderUpstream(stored, { section: 'tls', locked: true, subsystem: 'stream' });
-    expect(locked.container.textContent).not.toContain(KEY_MARK);
+    keyNotIn(locked.container.innerHTML);
     expect(screen.getByText(t('up.tls.keyInCert'))).toBeInTheDocument();
     locked.unmount();
 
     const h = renderUpstream(stored, { section: 'tls', subsystem: 'stream' });
-    expect(h.container.innerHTML).not.toContain(KEY_MARK);
+    keyNotIn(h.container.innerHTML);
     expect(screen.getByRole('textbox', { name: ca1() })).toHaveValue('');
-    expect(screen.getByText(t('up.tls.keyInCertKept'))).toBeInTheDocument();
+    // A CA row has no stored value of its own to go back to (rows move): the help says only what is true.
+    expect(screen.getByText(t('up.tls.keyInCertHere'))).toBeInTheDocument();
     await choose(h.user, t('up.tls.verify'), t('up.tls.verifyOff'));
     expect(h.value()).toEqual({ tls: { verify: false, ca_certs: [RSA_PKCS1_KEY, RSA_CA] } });
     expect(h.held()).toEqual([]);
+  });
+
+  // Fix round 1, R2.5: as the SSL CA box (pemBox rule 4), an emptied box puts back the stored value it can't show.
+  it('a stored client certificate holding a key: typed over, then emptied, the stored value is back, never shown', async () => {
+    const stored = { tls: { client_cert: RSA_PKCS1_KEY, client_key: 'KEY' } };
+    const h = renderUpstream(stored, { section: 'tls' });
+    const box = screen.getByRole('textbox', { name: t('up.tls.cert') });
+    expect(box).toHaveValue('');
+    expect(box).toHaveAccessibleDescription(t('up.tls.keyInCertKept'));
+    await h.user.type(box, 'x');
+    expect(h.value()).toEqual({ tls: { client_cert: 'x', client_key: 'KEY' } });
+    expect(box).toHaveAccessibleDescription(t('up.tls.keyInCertBack'));
+    await h.user.clear(box);
+    expect(h.value()).toEqual(stored);
+    expect(box).toHaveValue('');
+    expect(box).toHaveAccessibleDescription(t('up.tls.keyInCertKept'));
+    keyNotIn(h.container.innerHTML);
+  });
+
+  // Fix round 1, R2.4: the SSL boxes' order: the marker first, then a key (schema/secrets.ts keyMaterialIn).
+  it('text holding both the marker and a key reads as the marker, as in the SSL boxes', async () => {
+    const h = renderUpstream({ tls: { ca_certs: [''] } }, { section: 'tls' });
+    const box = screen.getByRole('textbox', { name: ca1() });
+    await h.user.click(box);
+    await h.user.paste(`${t('ssl.pem.marker')}\n${EC_SEC1_KEY}`);
+    expect(box).toHaveAccessibleDescription(t('ssl.pem.markerCert'));
+    expect(h.value()).toEqual({ tls: { ca_certs: [''] } });
+  });
+
+  // Fix round 1, R2.8: a file that can't be read is said, at the field and in a toast; nothing changes.
+  it('a file that cannot be read says so and changes nothing', async () => {
+    const h = renderUpstream({ tls: { ca_certs: [RSA_CA] } }, { section: 'tls' });
+    const file = new File(['x'], 'ca.pem', { type: 'text/plain' });
+    Object.defineProperty(file, 'text', { value: () => Promise.reject(new Error('unreadable')) });
+    await h.user.upload(fileInput(ca1()), file);
+    await waitFor(() => expect(screen.getByRole('textbox', { name: ca1() })).toHaveAccessibleDescription(t('ssl.pem.readFailed')));
+    expect(getToasts().at(-1)?.message).toBe(t('ssl.pem.readFailed'));
+    expect(h.value()).toEqual({ tls: { ca_certs: [RSA_CA] } });
   });
 
   it('a client certificate holding a key is not shown locked either', () => {

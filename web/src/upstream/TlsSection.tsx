@@ -84,7 +84,13 @@ export function TlsSection({ value, onChange, issues, ctx, subsystem, stored }: 
       />
       {mode === 'inline' && (
         <div className="ed-grid up-indent">
-          <PemField label={t('up.tls.cert')} value={str(tls.client_cert)} error={issue('client_cert')} onChange={(v) => set(['client_cert'], v)} />
+          <PemField
+            label={t('up.tls.cert')}
+            value={str(tls.client_cert)}
+            stored={str(obj(stored?.tls).client_cert)}
+            error={issue('client_cert')}
+            onChange={(v) => set(['client_cert'], v)}
+          />
           <PemField
             label={t('up.tls.key')}
             secret

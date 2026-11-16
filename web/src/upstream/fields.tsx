@@ -4,8 +4,8 @@
 import { CircleAlert, Upload } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { t } from '../i18n';
-import { holdsPrivateKey, MASK, withoutPrivateKeys } from '../schema/secrets';
-import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, useEditingState, useLocked, usePending, type InputProps, type NumberInputProps } from '../ui';
+import { holdsPrivateKey, keyMaterialIn, withoutPrivateKeys } from '../schema/secrets';
+import { Button, Field, Input, NumberInput, Select, Switch, TagInput, Textarea, toast, useEditingState, useLocked, usePending, type InputProps, type NumberInputProps } from '../ui';
 import { ReadOnlyValue } from '../ui/ReadOnly';
 import { certLine } from './values';
 
@@ -219,19 +219,20 @@ function UploadButton({ label, onFile }: { label: string; onFile: (file: File) =
 }
 
 /**
- * Why a certificate field doesn't take `text`: it holds private-key material, or the marker left where
- * some was masked (the SSL editor's CA box, pemBox.ts heldWhy, detects both the same way).
+ * Why a certificate field doesn't take `text` (keyMaterialIn, the rule every PEM box follows, in the
+ * SSL boxes' words): the marker left where a key was masked, or a private key itself.
  */
 function keyWhy(text: string): string | undefined {
-  if (holdsPrivateKey(text)) return t('ssl.pem.hasKey');
-  return text.includes(MASK.slice(0, 1)) ? t('ssl.pem.markerCert') : undefined;
+  const material = keyMaterialIn(text);
+  return material === 'marker' ? t('ssl.pem.markerCert') : material === 'key' ? t('ssl.pem.hasKey') : undefined;
 }
 
 /**
  * PEM text: pasted, or read from a file. Locked, a certificate that parses reads as its subject and
  * expiry. A certificate field never shows private-key material: a value holding some reads "holds a
  * private key, not shown" (an empty box stands over it and keeps it), and text or a file holding some is
- * refused there. A `secret` (a private key) is never shown once set: it reads "set, not shown" (the
+ * refused there; emptied, the box puts back a stored value (`stored`, the frame's) it cannot show. A
+ * `secret` (a private key) is never shown once set: it reads "set, not shown" (the
  * stored key) or "a new key was entered, not shown", with Replace (APISIX hands back only its encrypted
  * form anyway). `stored` is the key as the editor last loaded it (from the frame, never what the field saw
  * when it mounted, so a tab switch changes nothing): an empty replacement keeps it, and "Keep the
@@ -255,7 +256,11 @@ export function PemField({
   help?: ReactNode;
   /** More controls beside Upload (e.g. Remove). */
   extra?: ReactNode;
-  /** For a `secret`: its value as stored (the frame's); undefined when none is stored. */
+  /**
+   * The value as stored (the frame's, never what the field saw at mount); undefined when none is
+   * stored. For a `secret`, what an empty replacement keeps; for a certificate, what an emptied box
+   * puts back when it holds private-key material (it is never shown).
+   */
   stored?: string;
 }) {
   const locked = useLocked();
@@ -285,6 +290,8 @@ export function PemField({
   // as it was, and its key blocks are masked when the box is left; a file holding some changes nothing,
   // and says why until the box next changes. Editing state: they end with the editing session.
   const hidden = !secret && holdsPrivateKey(value);
+  /** A stored certificate value the box can't show: an emptied box puts it back (the PEM box rule's point 4). */
+  const hiddenStored = !secret && holdsPrivateKey(stored) ? stored : undefined;
   const [held, setHeld] = useEditingState<string | undefined>(undefined);
   const [fileWhy, setFileWhy] = useEditingState<string | undefined>(undefined);
   const heldWhy = held === undefined ? undefined : keyWhy(held);
@@ -293,16 +300,25 @@ export function PemField({
     if (locked) return;
     const mine = ++gestures.current;
     const at = now.current.value;
-    void file.text().then((text) => {
-      if (gestures.current !== mine || now.current.value !== at) return;
-      if (!secret && holdsPrivateKey(text)) {
-        setFileWhy(t('ssl.pem.fileHasKey'));
-        return;
-      }
-      setHeld(undefined);
-      setFileWhy(undefined);
-      now.current.onChange(text.trim() === '' ? undefined : text);
-    });
+    const fresh = () => gestures.current === mine && now.current.value === at;
+    file
+      .text()
+      .then((text) => {
+        if (!fresh()) return;
+        if (!secret && holdsPrivateKey(text)) {
+          setFileWhy(t('ssl.pem.fileHasKey'));
+          return;
+        }
+        setHeld(undefined);
+        setFileWhy(undefined);
+        now.current.onChange(text.trim() === '' ? undefined : text);
+      })
+      .catch(() => {
+        // Told as the SSL boxes tell it (PemInput.tsx): at the field and in a toast; nothing changes.
+        if (!fresh()) return;
+        setFileWhy(t('ssl.pem.readFailed'));
+        toast.error(t('ssl.pem.readFailed'), { pageBound: true });
+      });
   };
   const type = (v: string | undefined) => {
     gestures.current++;
@@ -316,8 +332,10 @@ export function PemField({
       return;
     }
     setHeld(undefined);
-    // An empty box over a value it can't show keeps that value.
-    if (!(text === '' && hidden)) onChange(text === '' ? undefined : text);
+    // An empty box over a value it can't show keeps that value; emptied over one it took, it puts back
+    // the stored value it can't show, if there is one.
+    if (text === '' && hidden) return;
+    onChange(text === '' ? hiddenStored : text);
   };
   // Keep the stored key: wherever a new key stands, or a replacement box is open over the stored one.
   const keep = secret && stored !== undefined && (value !== stored || replacing) && (
@@ -388,7 +406,13 @@ export function PemField({
       <div className="up-pem">
         <Textarea
           label={label}
-          help={hidden && held === undefined ? t('up.tls.keyInCertKept') : (parsed ?? help)}
+          help={
+            hidden && held === undefined
+              ? t(hiddenStored !== undefined && value === hiddenStored ? 'up.tls.keyInCertKept' : 'up.tls.keyInCertHere')
+              : hiddenStored !== undefined
+                ? t('up.tls.keyInCertBack')
+                : (parsed ?? help)
+          }
           error={problems.length > 0 ? problems.join(' ') : undefined}
           mono
           rows={4}
