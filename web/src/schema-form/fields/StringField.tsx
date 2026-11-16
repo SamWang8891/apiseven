@@ -32,21 +32,11 @@ export function StringField({ node, value, name, path, onChange, prop, required,
   // or entered, whatever the field; a key typed into a plain box from the moment the box is left.
   const neverShown = node.neverShown === true || holdsPrivateKey(storedText) || holdsPrivateKey(text);
 
-  if (node.enum) {
-    return (
-      <Select
-        {...common}
-        value={typeof value === 'string' ? value : undefined}
-        options={node.enum.map((v) => ({ value: v, label: v }))}
-        onChange={(v) => onChange(name, v)}
-        clearable={!required}
-        searchable={node.enum.length > SEARCHABLE}
-      />
-    );
-  }
   // A multi-line secret (a PEM private key): one component locked or not, so a save in flight keeps
-  // what it shows; a stored one is not put on the page until revealed or replaced (SecretText).
-  if ((node.multiline && node.secret) || (neverShown && !typing)) {
+  // what it shows; a stored one is not put on the page until revealed or replaced (SecretText). A value
+  // never shown is in words whatever renderer it would have had, an enum's select included (APISIX
+  // takes `$env://…` text there without checking the enum: Codex final pass, X1).
+  if ((node.multiline && node.secret && !node.enum) || (neverShown && !typing)) {
     return (
       <SecretText
         common={common}
@@ -58,6 +48,18 @@ export function StringField({ node, value, name, path, onChange, prop, required,
         rows={node.mono ? 6 : 3}
         neverShown={neverShown}
         onText={emit}
+      />
+    );
+  }
+  if (node.enum) {
+    return (
+      <Select
+        {...common}
+        value={typeof value === 'string' ? value : undefined}
+        options={node.enum.map((v) => ({ value: v, label: v }))}
+        onChange={(v) => onChange(name, v)}
+        clearable={!required}
+        searchable={node.enum.length > SEARCHABLE}
       />
     );
   }
