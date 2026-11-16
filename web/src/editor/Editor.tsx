@@ -44,7 +44,7 @@ import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle
 import { useShownTabs } from './useShownTabs';
 import { useRequiredValues } from './untouched';
 import { useEdit } from './useEdit';
-import { focusBack } from './focusBack';
+import { returnFocus } from './focusBack';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
 const valueOf = (item: Item): Obj => stripTimestamps(item.value);
@@ -114,6 +114,14 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
    */
   const [session, setSession] = useState(0);
   const editRef = useRef<HTMLButtonElement>(null);
+  const saveRef = useRef<HTMLButtonElement>(null);
+  const anywayRef = useRef<HTMLButtonElement>(null);
+  /**
+   * After a refused save (final wave I1), where focus goes back: set with the refusal, used once the
+   * page shows it (a tab switched to, the fields shown again after the saving state), so what it
+   * focuses is what stays.
+   */
+  const refocusNext = useRef<{ left?: HTMLElement; pressed?: HTMLElement; anyway: boolean } | undefined>(undefined);
   const idRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   /** Where focus goes after the next lock change made by the user. */
@@ -221,6 +229,13 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     else if (target === 'field') bodyRef.current?.querySelector<HTMLElement>('input, textarea, select, button[role="switch"], .cm-content')?.focus();
   }, [locked]);
 
+  useEffect(() => {
+    const next = refocusNext.current;
+    if (!next) return;
+    refocusNext.current = undefined;
+    returnFocus(next.left, next.pressed, next.anyway ? anywayRef.current : undefined, saveRef.current);
+  });
+
   // --- Save --------------------------------------------------------------------------------------
   // Save anyway's grounds: only the kind's own checks (which can be stricter than APISIX) refuse the
   // draft: nothing held, no problem with the id. useSaveAnyway remembers a refusal on them.
@@ -235,7 +250,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   const saveAnyway = useSaveAnyway({ session, grounds: !locked && anywayGrounds, checked, shown: shownTabs, tabFields, send: () => requestSave(false, true) });
 
   /** `anyway`: Save anyway, which sends the draft past the kind's own checks (only those). */
-  async function save(force = false, left?: HTMLElement, anyway = false) {
+  async function save(force = false, left?: HTMLElement, anyway = false, pressed?: HTMLElement) {
     if (saving || locked || inFlight.current) return;
     if (problems > 0 && !(anyway && onlyLocal)) {
       if (refusedNow.current) return;
@@ -257,7 +272,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       if (first !== undefined && first !== active) goTab(first);
       else if (holding) holding.focus();
       else if (first === undefined && (idMissing || idRefused)) idRef.current?.focus();
-      else focusBack(left);
+      else returnFocus(left, pressed, anyway ? anywayRef.current : undefined, saveRef.current);
       return;
     }
     if (!isNew && !dirty && !force) {
@@ -268,7 +283,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     // A key known to be read-only: refused here, before the saving state (which would remount every
     // field for a save that sends nothing); the field left for it gets its focus back.
     if (writeRefused(client.conn.id)) {
-      refuseReadOnly(left);
+      refuseReadOnly({ left, pressed, anyway });
       return;
     }
     inFlight.current = true;
@@ -282,7 +297,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     setSaving(false);
     if (!sent.ok) {
       // The key turned read-only meanwhile (another save of this connection was refused): the same refusal.
-      refuseReadOnly(left);
+      refuseReadOnly({ left, pressed, anyway });
       return;
     }
     const result = sent.value;
@@ -314,6 +329,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       setConflict({ item: result.conflict, anyway });
     } else if ('exists' in result || 'unchecked' in result) {
       saveAnyway.refused(false);
+      refocusNext.current = { left, pressed, anyway };
       // A create never overwrites: the id is taken, or could not be checked (saveResource).
       // On a page fixed to that id (a plugin's metadata), the stored object is shown on request instead of linked.
       const refusal = 'exists' in result ? takenFailure(kind, result.exists, parent, fixedId !== undefined) : uncheckedFailure(createId ?? '', result.unchecked);
@@ -322,6 +338,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       if (refusal.path !== undefined) goTab(tabOfIssue({ path: refusal.path, message: '' }, tabFields, JSON_TAB));
       if ('unchecked' in result && result.unchecked.kind === 'auth') toConnect(result.unchecked);
     } else {
+      // Refused by APISIX: focus goes back where the user was once the page shows why.
+      refocusNext.current = { left, pressed, anyway };
       const { error } = result;
       // Only a refused write says the key may not write; a refused read says the key is wrong.
       if (error.kind === 'auth') {
@@ -334,10 +352,10 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     }
   }
 
-  /** Not sent (the key is read-only): the draft stays, to be copied out (the JSON tab), the banner says why, and focus goes back to the field left. */
-  function refuseReadOnly(left: HTMLElement | undefined) {
+  /** Not sent (the key is read-only): the draft stays, to be copied out (the JSON tab), the banner says why, and focus goes back where the user was. */
+  function refuseReadOnly(from: { left?: HTMLElement; pressed?: HTMLElement; anyway: boolean }) {
+    refocusNext.current = from;
     setFailure({ title: t('editor.notSent'), message: t('editor.readOnlySave') });
-    focusBack(left);
   }
 
   /**
@@ -412,6 +430,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         saveBlocked={active === JSON_TAB && pending.length > 0}
         onSaveAnyway={saveAnyway.offered ? saveAnyway.press : undefined}
         editRef={editRef}
+        saveRef={saveRef}
+        anywayRef={anywayRef}
         onEdit={unlock}
         onSave={() => requestSave()}
         onDiscard={discard}

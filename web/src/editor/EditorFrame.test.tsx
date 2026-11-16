@@ -555,7 +555,7 @@ function gate() {
 }
 
 describe('a save in flight', () => {
-  it('locks the tab area, disables Discard and Delete, and lands on the saved value', async () => {
+  it('locks the tab area, makes Discard and Delete unavailable (Discard aria-disabled, not disabled: final wave I1), and lands on the saved value', async () => {
     const held = gate();
     const { user, admin } = await openRoute({ replies: { 'routes/r1': (req) => (req.method === 'PUT' ? held.promise : undefined) } });
     await unlockAndSetUri(user, '/b');
@@ -564,7 +564,8 @@ describe('a save in flight', () => {
     // Nothing can be typed while the request is out: the fields read as text.
     expect(inputsInMain()).toHaveLength(0);
     expect(main().getByText('/b')).toBeInTheDocument();
-    expect(button(t('editor.discard'))).toBeDisabled();
+    expect(button(t('editor.discard'))).toHaveAttribute('aria-disabled', 'true');
+    expect(button(t('editor.discard'))).not.toBeDisabled();
     expect(button(t('editor.save'))).toHaveAttribute('aria-busy', 'true');
     await user.click(button(t('editor.more')));
     expect(await screen.findByRole('menuitem', { name: t('action.delete') })).toHaveAttribute('aria-disabled', 'true');
@@ -617,7 +618,7 @@ describe('a save in flight', () => {
     await user.type(await main().findByRole('textbox', { name: 'ID' }), 'late');
     await user.click(main().getByRole('button', { name: t('editor.create') }));
     await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
-    expect(button(t('editor.discard'))).toBeDisabled();
+    expect(button(t('editor.discard'))).toHaveAttribute('aria-disabled', 'true');
     await user.click(screen.getByRole('link', { name: /^Upstreams/ }));
     await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: t('editor.leave.confirm') }));
     await waitFor(() => expect(window.location.hash).toBe('#/upstreams'));

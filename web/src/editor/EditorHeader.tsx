@@ -37,6 +37,9 @@ export interface EditorHeaderProps {
   /** Save anyway, beside Save, while the frame offers it (SaveAnyway.tsx). */
   onSaveAnyway?: () => void;
   editRef: Ref<HTMLButtonElement>;
+  /** Save and Save anyway, where focus goes back after a refused save when nothing nearer is there (focusBack.ts). */
+  saveRef?: Ref<HTMLButtonElement>;
+  anywayRef?: Ref<HTMLButtonElement>;
   onEdit: () => void;
   onSave: () => void;
   onDiscard: () => void;
@@ -76,7 +79,7 @@ function Times({ item }: { item: Item }) {
  * Save anyway between them while it is offered, so it stays in view however far down the refused
  * field is); the ⋯ menu for stored objects. Both states keep the same height, so unlocking moves nothing.
  */
-export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
+export function EditorHeader({ editRef, saveRef, anywayRef, ...p }: EditorHeaderProps) {
   const edit = (
     <Button
       ref={editRef}
@@ -171,7 +174,8 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
           )
         ) : (
           <>
-            <Button disabled={p.saving} onClick={p.onDiscard}>
+            {/* Unavailable while a save runs, never disabled: whoever just pressed it keeps focus (kit rule). */}
+            <Button aria-disabled={p.saving || undefined} onClick={p.onDiscard}>
               {t('editor.discard')}
             </Button>
             {/*
@@ -186,6 +190,7 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
             )}
             {p.onSaveAnyway && (
               <Button
+                ref={anywayRef}
                 aria-disabled={p.saving || p.readOnly || undefined}
                 onClick={p.onSaveAnyway}
                 aria-describedby={p.readOnly ? 'ed-readonly-why' : 'ed-anyway-why'}
@@ -194,6 +199,7 @@ export function EditorHeader({ editRef, ...p }: EditorHeaderProps) {
               </Button>
             )}
             <Button
+              ref={saveRef}
               variant="primary"
               loading={p.saving}
               disabled={p.saveBlocked}
