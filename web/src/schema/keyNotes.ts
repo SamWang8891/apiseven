@@ -362,12 +362,11 @@ function decode(raw: string): string {
  * for leaving the view. Read string by string, so a block never crosses the end of the string it starts
  * in (and an escaped one is seen as what it says): a whole-key place's text that holds a key, or no
  * note, becomes one note (the notes in it that may stand there resolved into its key text); in any
- * other string, property names included, each block becomes a note in
- * place, found as rule 1 finds it (withoutPrivateKeys: to an END line, or to the end of that string).
- * Then any block still in the raw text (between strings, where the text is broken) becomes a note
- * there, to an END line or to the end of the text. Only those strings and blocks are rewritten, the rest
- * of the text is left as typed. Such notes are made in typed text: they stand for the user's own keys,
- * bound to where they are first taken.
+ * other string, property names included, each block becomes a note in place, found as rule 1 finds it
+ * (withoutPrivateKeys: to an END line, or to the end of that string). Then any block still in the raw
+ * text (between strings, where the text is broken) becomes a note there, to an END line or to the end
+ * of the text. Only those strings and blocks are rewritten, the rest of the text is left as typed. Such
+ * notes are made in typed text: they stand for the user's own keys, bound to where they are first taken.
  */
 export function veilTypedText(
   text: string,
