@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { act, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
@@ -180,17 +180,33 @@ describe('a check still pending', () => {
     expect(sessionStorage.getItem(STORAGE_KEYS.sessionKeys)).toContain(KEY);
   });
 
+  // Fix round 1, R1.4: no fixed wait. The test waits until the stale answer has been handed back, then
+  // checks again with the fields as they are now: only that check decides what is saved.
   it('a connection field changed while the check runs: its answer is ignored, nothing is saved, the page stays', async () => {
-    const { replies, release } = gated();
+    let release = () => {};
+    const gate = new Promise<undefined>((done) => (release = () => done(undefined)));
+    /** How many checks were answered: an answer is counted as it is handed back. */
+    let answered = 0;
+    const replies = { routes: () => gate.then(() => void answered++) };
     const { user } = await openConnect({ key: KEY, replies });
     await fillAndSubmit(user, 'http://127.0.0.1:9180', KEY);
-    await user.type(screen.getByLabelText(t('connect.url')), '0');
+    await user.type(screen.getByLabelText(t('connect.name')), 'renamed');
     release();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await waitFor(() => expect(answered).toBe(1));
+    // Let the stale answer run through the client and the dropped check.
+    await act(async () => {
+      await gate;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
     expect(window.location.hash).toBe('#/connect');
     expect(localStorage.getItem(STORAGE_KEYS.connections) ?? '').not.toContain('127.0.0.1');
     expect(sessionStorage.getItem(STORAGE_KEYS.sessionKeys) ?? '').not.toContain(KEY);
-    expect(screen.getByLabelText(t('connect.url'))).toHaveValue('http://127.0.0.1:91800');
+    expect(screen.getByLabelText(t('connect.name'))).toHaveValue('renamed');
+    // The fields as they are now: a new check is what connects, and only its connection is kept.
+    await user.click(screen.getByRole('button', { name: t('connect.submit') }));
+    await waitFor(() => expect(window.location.hash).toBe('#/routes'));
+    const saved = (JSON.parse(localStorage.getItem(STORAGE_KEYS.connections) ?? '[]') as { name: string }[]).map((c) => c.name);
+    expect(saved).toEqual(['renamed']);
   });
 });
 

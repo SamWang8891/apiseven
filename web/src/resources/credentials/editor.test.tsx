@@ -352,7 +352,7 @@ describe('one auth plugin', () => {
 
 describe('Duplicate', () => {
   it('a copy of a credential takes its name and labels, not its key', async () => {
-    const { user, admin } = await openEditor('#/consumers/jo%20e/credentials/new?from=c%201&tab=plugins', { objects: { consumers: CONSUMERS }, credentials: { 'jo e': [C1] }, replies: pluginReplies() });
+    const { user, admin } = await openEditor(`#${newPathFor('credentials', { consumer: 'jo e' })}?from=c%201&tab=plugins`, { objects: { consumers: CONSUMERS }, credentials: { 'jo e': [C1] }, replies: pluginReplies() });
     await main().findByRole('button', { name: t('editor.create') });
     await settled();
     expect(document.body.innerHTML).not.toContain(KEY);
