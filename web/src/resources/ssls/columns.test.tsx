@@ -1,4 +1,4 @@
-import { screen, within } from '@testing-library/react';
+import { cleanup, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Item, Obj } from '../../api/types';
@@ -144,6 +144,17 @@ describe('SSL columns', () => {
     expect(value('used_by', CLIENT, CTX)).toBe(1);
     expect(within(cell('used_by', CLIENT, CTX).el).getByRole('button', { name: t('cell.usedBy', { count: 1 }) })).toBeInTheDocument();
     expect(value('used_by', CLIENT, ctxOf({ ...CTX, loaded: { upstreams: false } }))).toBeUndefined();
+  });
+
+  // Fix round 2, item 7: the column waits on the one table of lists (referenceUse), and a list that failed
+  // to load leaves it "unknown", never "loading…" for ever.
+  it('used_by: a list it depends on failed to load: "unknown", no sort value, for a client and a server certificate', () => {
+    for (const [list, item] of [['streamRoutes', CLIENT], ['upstreams', CLIENT], ['services', SEED]] as const) {
+      const failed = ctxOf({ ...CTX, loaded: { [list]: false }, failed: { [list]: true } });
+      expect(value('used_by', item, failed), list).toBeUndefined();
+      expect(cell('used_by', item, failed).el, list).toHaveTextContent(t('cell.usedBy.unknown'));
+      cleanup();
+    }
   });
 });
 

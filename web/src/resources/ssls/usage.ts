@@ -3,7 +3,7 @@
 // the upstreams that name it in tls.client_cert_id (upstream.lua 646–665, init.lua 683–700). Pure.
 import type { Item, Obj } from '../../api/types';
 import type { Ctx } from '../ctx';
-import { referencesTo, routeHosts, sslForHost, type Reference } from '../resolve';
+import { referenceUse, routeHosts, sslForHost, type Reference } from '../resolve';
 import { parseCert, type CertInfo } from './parseCert';
 import { isSecretRef } from './validate';
 
@@ -61,23 +61,29 @@ export function servedHosts(item: Item, ctx: Ctx): ServedHost[] | undefined {
   return servedMap(ctx).get(item.id) ?? [];
 }
 
-export type Usage = { type: 'server'; hosts: ServedHost[] } | { type: 'client'; refs: Reference[] };
+/** What uses it; `unknown` when a list it depends on could not be read. */
+export type Usage = { type: 'server'; hosts: ServedHost[] } | { type: 'client'; refs: Reference[] } | { type: 'unknown' };
 
-/** What uses the SSL (see the head comment); undefined while a list it depends on loads. */
+/**
+ * What uses the SSL (see the head comment); undefined while a list it depends on loads. A client
+ * certificate's users are referenceUse's, so they wait on the one table of lists (resolve.ts).
+ */
 export function usageOf(item: Item, ctx: Ctx): Usage | undefined {
   if (typeOf(item.value) === 'server') {
+    if (ctx.failed.routes || ctx.failed.services) return { type: 'unknown' };
     const hosts = servedHosts(item, ctx);
     return hosts && { type: 'server', hosts };
   }
-  const { loaded } = ctx;
-  if (!loaded.upstreams || !loaded.routes || !loaded.services || !loaded.streamRoutes) return undefined;
-  return { type: 'client', refs: referencesTo('ssls', item.id, ctx) };
+  const use = referenceUse('ssls', item.id, ctx);
+  if ('failed' in use) return { type: 'unknown' };
+  return 'refs' in use ? { type: 'client', refs: use.refs } : undefined;
 }
 
-/** How many things use it (route hosts, or referrers); undefined while loading. */
+/** How many things use it (route hosts, or referrers); undefined while loading or unknown. */
 export function usageCount(item: Item, ctx: Ctx): number | undefined {
   const usage = usageOf(item, ctx);
-  return usage && (usage.type === 'server' ? usage.hosts.length : usage.refs.length);
+  if (!usage || usage.type === 'unknown') return undefined;
+  return usage.type === 'server' ? usage.hosts.length : usage.refs.length;
 }
 
 /** A distinguished name's CN, else its O (`C=US, O=Let's Encrypt, CN=R3` → `R3`); the whole name when it has neither. */

@@ -45,6 +45,7 @@ const SHOWN_HOSTS = 8;
 export function UsageCell({ item, ctx }: { item: Item; ctx: Ctx }) {
   const usage = usageOf(item, ctx);
   if (!usage) return <span className="cell-muted">{t('picker.loading')}</span>;
+  if (usage.type === 'unknown') return <span className="cell-muted">{t('cell.usedBy.unknown')}</span>;
   if (usage.type === 'client') return <UsedByCell refs={usage.refs} />;
   const { hosts } = usage;
   if (hosts.length === 0) return <span className="cell-muted">{t('ssl.usedBy.noHost')}</span>;
