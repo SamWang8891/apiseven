@@ -3,7 +3,7 @@
 // and Discard lock it again. A new object (or a copy) starts unlocked.
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { queryKeys, scopedKey, useAllPlugins, useClient, useInvalidate } from '../api/hooks';
 import { stripTimestamps } from '../api/sanitize';
 import type { Item, Kind, Obj, Parent } from '../api/types';
@@ -244,6 +244,16 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
     else if (target === 'field') bodyRef.current?.querySelector<HTMLElement>('input, textarea, select, button[role="switch"], .cm-content')?.focus();
   }, [locked]);
 
+  // After a create moved the page here (F6): focus goes where a navigation puts it, the main region, as
+  // the command palette's navigation does; never body. Unless the user is on something already.
+  const location = useLocation();
+  useEffect(() => {
+    if ((location.state as { focusMain?: boolean } | null)?.focusMain !== true) return;
+    const at = document.activeElement;
+    if (at && at !== document.body && at.isConnected) return;
+    document.querySelector<HTMLElement>('main')?.focus({ preventScroll: true });
+  }, [location.key, location.state]);
+
   useEffect(() => {
     const next = refocusNext.current;
     if (!next) return;
@@ -361,7 +371,8 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
         if (mounted.current) {
           guard.leaveFreely();
           onStored?.(saved);
-          void navigate(pathFor(kind, saved.id, parent), { replace: true });
+          // The page moves to the stored object: focus goes where a navigation puts it (F6).
+          void navigate(pathFor(kind, saved.id, parent), { replace: true, state: { focusMain: true } });
         }
       } else {
         toast.success(t('editor.saved', { name: savedName }));

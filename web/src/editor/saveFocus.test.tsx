@@ -12,6 +12,7 @@ import { resetReadOnlyKeys } from '../api/write';
 import { t } from '../i18n';
 import { resetApp } from '../test/app';
 import { GENERAL_TAB, main, openEditor, overrideDef, writesOf } from '../test/editor';
+import { newPathFor } from '../router/paths';
 import { json } from '../test/fakeAdmin';
 import { pluginReplies } from '../test/plugins';
 import type { TabDef, TabProps } from '../resources/registry';
@@ -301,4 +302,20 @@ describe('a field remounted by the saving state is found again after a refusal (
       await waitFor(() => expect(document.activeElement).toBe(main().getByRole(role, { name })));
     });
   }
+});
+
+// F6: after a create, the page moves to the stored object; focus goes where a navigation puts it, the
+// main region (as the command palette's navigation does), never body.
+describe('focus after a create (F6)', () => {
+  it('a new route created with Cmd/Ctrl-S from Name: on the stored page, focus is on the main region', async () => {
+    undo.push(overrideDef('routes', { tabs: [GENERAL_TAB] }));
+    const { user, admin } = await openEditor(`#${newPathFor('routes')}?upstream_id=u1`, { objects: { routes: [], upstreams: [{ id: 'u1', name: 'pool', type: 'roundrobin', nodes: [] }] } });
+    const name = await main().findByRole('textbox', { name: 'Name' });
+    await user.type(name, 'hello');
+    expect(name).toHaveFocus();
+    pressCtrlS();
+    expect(await main().findByRole('button', { name: t('editor.edit') })).toBeInTheDocument();
+    expect(writesOf(admin)).toHaveLength(1);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('main')));
+  });
 });
