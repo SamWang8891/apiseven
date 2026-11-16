@@ -44,6 +44,7 @@ import { objectTitle, pageTitle, useDocumentTitle } from '../shell/documentTitle
 import { useShownTabs } from './useShownTabs';
 import { useRequiredValues } from './untouched';
 import { useEdit } from './useEdit';
+import { focusBack } from './focusBack';
 
 /** What the draft is made of: the stored value without the timestamps APISIX refuses on save. */
 const valueOf = (item: Item): Obj => stripTimestamps(item.value);
@@ -256,7 +257,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
       if (first !== undefined && first !== active) goTab(first);
       else if (holding) holding.focus();
       else if (first === undefined && (idMissing || idRefused)) idRef.current?.focus();
-      else if (left?.isConnected) left.focus();
+      else focusBack(left);
       return;
     }
     if (!isNew && !dirty && !force) {
@@ -336,7 +337,7 @@ export function Editor({ kind, id, parent, item, start, copyOf, notice, onStored
   /** Not sent (the key is read-only): the draft stays, to be copied out (the JSON tab), the banner says why, and focus goes back to the field left. */
   function refuseReadOnly(left: HTMLElement | undefined) {
     setFailure({ title: t('editor.notSent'), message: t('editor.readOnlySave') });
-    if (left?.isConnected) left.focus();
+    focusBack(left);
   }
 
   /**

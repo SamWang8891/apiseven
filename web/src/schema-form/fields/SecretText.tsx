@@ -160,6 +160,8 @@ export function SecretText({ common, name, value, stored, storedKnown = true, mo
             variant="ghost"
             icon={<Replace size={13} />}
             aria-label={t('sf.secret.replace', { name })}
+            // What takes the box's place once a key typed in it is masked: where focus goes back (editor/focusBack.ts).
+            data-replaces={common.id}
             onClick={() => {
               setRevealed(false);
               setBoxText('');

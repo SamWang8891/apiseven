@@ -167,3 +167,39 @@ describe('Delete with a key found read-only (G3)', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument());
   });
 });
+
+// Fix round 2, R3.2: the frame's blur can swap a field that just received a private key for its "not
+// shown" view; a refused save then gives focus to what took its place, never to body.
+describe('a refused save from a field swapped on leaving', () => {
+  it('a key pasted into a plugin form’s text field, Ctrl-S with a read-only key: no request, focus on the field’s Replace', async () => {
+    const { pluginReplies } = await import('../test/plugins');
+    await import('../resources/routes/bodies');
+    const ROUTE_PR: Obj = { ...ROUTE, plugins: { 'proxy-rewrite': { uri: '/x' } } };
+    const { admin } = await openEditor('#/routes/r1?tab=plugins', {
+      objects: { routes: [ROUTE_PR] },
+      replies: { ...pluginReplies(), 'routes/r1': (req) => (req.method === 'PUT' ? json(401, VIEWER) : undefined) },
+    });
+    const user = userEvent.setup();
+    await main().findByRole('heading', { level: 1, name: 'web' });
+    const card = await main().findByRole('group', { name: 'proxy-rewrite' });
+    await waitFor(() => expect(screen.queryByText(t('pl.loading'))).not.toBeInTheDocument());
+    await user.click(within(card).getByRole('button', { name: 'proxy-rewrite' }));
+    await user.keyboard('e');
+    const uri = await within(card).findByRole('textbox', { name: /^uri/ });
+    await user.type(uri, 'y');
+    await user.click(main().getByRole('button', { name: t('editor.save') }));
+    await screen.findByText(t('readOnly.banner'));
+    const sent = admin.requests.length;
+
+    const field = within(card).getByRole('textbox', { name: /^uri/ });
+    await user.click(field);
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste('-----BEGIN PRIVATE KEY----- MIIEvQIBADANBgkqhkiG9w0BAQEFAASwappedKey -----END PRIVATE KEY-----');
+    await user.keyboard('{Control>}s{/Control}');
+    await settle();
+    expect(admin.requests.length).toBe(sent);
+    expect(field.isConnected).toBe(false);
+    expect(document.body.innerHTML).not.toContain('SwappedKey');
+    expect(within(card).getByRole('button', { name: t('sf.secret.replace', { name: 'uri' }) })).toHaveFocus();
+  });
+});
