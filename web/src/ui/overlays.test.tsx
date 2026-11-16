@@ -1,9 +1,9 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { t } from '../i18n';
-import { ConfirmDialog, Input, LockProvider, Tabs, type TabsProps } from './index';
+import { Button, ConfirmDialog, Dialog, Input, LockProvider, Menu, Tabs, type TabsProps } from './index';
 
 describe('ConfirmDialog', () => {
   function setup(busy = false) {
@@ -95,6 +95,64 @@ describe('ConfirmDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Delete…' }));
     await user.click(await screen.findByRole('button', { name: 'Delete' }));
     expect(screen.getByRole('main', { name: 'page' })).toHaveFocus();
+  });
+});
+
+// Final wave O3: an ordinary dialog has no trigger of its own either; closing it puts focus back as
+// ConfirmDialog does: on what opened it, on a menu's trigger for a menu item, never on body.
+describe('Dialog', () => {
+  function Page({ removeOpener = false }: { removeOpener?: boolean }) {
+    const [open, setOpen] = useState(false);
+    const [gone, setGone] = useState(false);
+    const close = () => {
+      if (removeOpener) setGone(true);
+      setOpen(false);
+    };
+    return (
+      <main tabIndex={-1} aria-label="page">
+        {!gone && <Button onClick={() => setOpen(true)}>View JSON</Button>}
+        <Menu trigger={<Button aria-label="More actions" />} items={[{ id: 'json', label: 'View JSON…', onSelect: () => setOpen(true) }]} />
+        {open && (
+          <Dialog open title="Route as JSON" onClose={close}>
+            <p>{'{}'}</p>
+          </Dialog>
+        )}
+      </main>
+    );
+  }
+
+  it('closing it by Escape or Close puts focus back on the button that opened it', async () => {
+    const user = userEvent.setup();
+    render(<Page />);
+    const opener = screen.getByRole('button', { name: 'View JSON' });
+    await user.click(opener);
+    await screen.findByRole('dialog', { name: 'Route as JSON' });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(opener).toHaveFocus());
+    await user.click(opener);
+    await user.click(within(await screen.findByRole('dialog')).getByRole('button', { name: t('ui.close') }));
+    await waitFor(() => expect(opener).toHaveFocus());
+  });
+
+  it("opened from a menu item, closing it puts focus on the menu's trigger", async () => {
+    const user = userEvent.setup();
+    render(<Page />);
+    const trigger = screen.getByRole('button', { name: 'More actions' });
+    await user.click(trigger);
+    await user.click(await screen.findByRole('menuitem', { name: 'View JSON…' }));
+    await screen.findByRole('dialog', { name: 'Route as JSON' });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(document.activeElement).not.toBe(document.body);
+  });
+
+  it('when its opener is gone, focus goes to main, not body', async () => {
+    const user = userEvent.setup();
+    render(<Page removeOpener />);
+    await user.click(screen.getByRole('button', { name: 'View JSON' }));
+    await screen.findByRole('dialog');
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.getByRole('main', { name: 'page' })).toHaveFocus());
   });
 });
 

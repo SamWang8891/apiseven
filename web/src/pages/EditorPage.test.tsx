@@ -232,6 +232,21 @@ describe('the ⋯ menu', () => {
     expect(within(dialog).getByRole('button', { name: t('json.copy') })).toBeInTheDocument();
   });
 
+  it("View JSON closed, by Escape or Close, gives focus back to the menu's trigger, not body (final wave O3)", async () => {
+    const { user } = await openMenu();
+    const more = main().getByRole('button', { name: t('editor.more') });
+    await user.click(await screen.findByRole('menuitem', { name: t('action.viewJson') }));
+    await screen.findByRole('dialog', { name: t('json.title', { kind: 'Route', name: 'web' }) });
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(more).toHaveFocus());
+    await user.click(more);
+    await user.click(await screen.findByRole('menuitem', { name: t('action.viewJson') }));
+    const dialog = await screen.findByRole('dialog', { name: t('json.title', { kind: 'Route', name: 'web' }) });
+    // Its footer's Close (the header has the same button).
+    await user.click(within(dialog).getAllByRole('button', { name: t('ui.close') }).at(-1) as HTMLElement);
+    await waitFor(() => expect(more).toHaveFocus());
+  });
+
   it('Delete confirms, deletes and goes to the list', async () => {
     const { user, admin } = await openMenu();
     await user.click(await screen.findByRole('menuitem', { name: t('action.delete') }));
