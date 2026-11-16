@@ -479,5 +479,7 @@ describe('every PEM box follows one rule through the real editor frame (property
     expect(cov.get('a read pending at a save refused late, the box staying on the page')).toBeGreaterThan(2);
     // Fix round 3: the CA box that gave way to the stored CA's details is checked for what shows.
     expect(cov.get("the stored CA's details stand in for the box")).toBeGreaterThan(2);
+    // Final wave M4: a key box holds text over a value taken in it since editing began, which stays its value.
+    expect(cov.get('key held over a value taken in the box')).toBeGreaterThan(0);
   }, 300_000);
 });

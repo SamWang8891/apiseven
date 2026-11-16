@@ -616,6 +616,23 @@ describe('a file read that finishes while a save is in flight (Task 16b, item 14
   });
 });
 
+describe('a reference taken, then edited into something unfinished (final wave M4)', () => {
+  it('discarding only the unfinished text keeps the reference: Create sends it', async () => {
+    const { user, admin } = await openEditor('#/ssls/~new', { objects: { ssls: [], routes: [], services: [] } });
+    await newSsl(user);
+    await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
+    await user.paste('$env://KEY_A');
+    await user.type(main().getByRole('textbox', { name: t('ssl.pem.key') }), ' extra');
+    await user.click(tab(t('ssl.tab.general')));
+    const dialog = await screen.findByRole('alertdialog', { name: t('editor.pending.title') });
+    await user.click(within(dialog).getByRole('button', { name: t('editor.pending.discard') }));
+    await settled();
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body).toEqual({ status: 1, sni: 'tls.apiseven.test', cert: SEED_CERT, key: '$env://KEY_A' });
+  });
+});
+
 describe('a CA file read that finishes after another edit (final wave M1)', () => {
   it('upload CA B at depth 1, change the depth to 2, the read finishes: the PATCH carries both', async () => {
     const withCa = { ...STORED, client: { ca: SEED_CERT, depth: 1 } };

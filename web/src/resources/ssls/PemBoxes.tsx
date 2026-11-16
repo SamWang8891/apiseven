@@ -260,7 +260,9 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
     split.consider(next, 'text');
     setLeftOut(false);
     if (!stood) setStood(standing);
-    const v = valueAfter('key', box.show(next), { held: standing.key, stood: standing.key, hidden: undefined });
+    // While held, the value stays the last one taken (rule 3): a reference taken here a moment ago, not
+    // the key that stood, which an empty box and Keep go back to (rule 4; final wave M4).
+    const v = valueAfter('key', box.show(next), { held: value, stood: standing.key, hidden: undefined });
     if (v !== value) onValue(v);
   };
   useImperativeHandle(pair?.keyRef, () => ({ take: set }));

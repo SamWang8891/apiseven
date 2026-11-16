@@ -7,7 +7,10 @@
 // value from text a box holds (143); a refused file that offers nothing leaving the text's own offer
 // (144); the other box of a pair offering the split, which this box's messages then point at (145);
 // and file reads left pending across other actions, ignored when anything happened in the box since
-// (147). The model states the rule on its own; it imports nothing from the boxes' code.
+// (147). The final wave (M4) restates rule 3: while text is held, the value is the last accepted one
+// (a reference taken in a key box included), not the key that stood when editing began, which is what
+// an empty key box and Keep the entered key go back to. The model states the rule on its own; it
+// imports nothing from the boxes' code.
 import { act, fireEvent, within } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { expect } from 'vitest';
@@ -101,7 +104,7 @@ export interface Model {
   opened: boolean;
   /** The box's textarea is the focused element. */
   focused: boolean;
-  /** A key box: the key that stood when this opening's editing began; null before it began. */
+  /** A key box: the key that stood when this opening's editing began (an empty box and Keep go back to it); null before it began. */
   stood: string | undefined | null;
   /** A certificate box: the value it stands over and cannot show. */
   hidden: string | undefined;
@@ -201,10 +204,15 @@ export function arrive(m: Model, next: string, focused: boolean): void {
     }
     m.leftOut = false;
     m.text = focused || isTaken ? next : masked(next);
-    m.value = isTaken ? taken('key', next) : m.stood;
+    // Rule 3: while text is held, the value is the last accepted one: a reference taken in this box
+    // before the text became unfinished stays (task-14 r3, "The rule for every PEM box", point 3, as
+    // the final wave's M4 reads it). Rule 4: an empty box is the key that stood when editing began.
+    if (isTaken) m.value = taken('key', next);
+    else if (next.trim() === '') m.value = m.stood;
     return;
   }
   m.text = focused || isTaken ? next : masked(next);
+  // Held, the value stays the last accepted one (rule 3); empty, none or the value the box cannot show (rule 4).
   if (isTaken) m.value = taken('cert', next);
   else if (next.trim() === '') m.value = m.hidden;
   // A CA box not opened by Replace CA gives way to the stored CA's details once the field holds it again.
@@ -519,6 +527,8 @@ export class BoxRun {
     this.cov.add(`text:${how}`);
     if (!focused && keyMaterial(text) && !takes(this.m.kind, text)) this.cov.add('unfocused arrival of key material not taken');
     arrive(this.m, text, focused);
+    // Rule 3 where it differs from "the key that stood": held text over a value taken in this box since (final wave M4).
+    if (this.m.kind === 'key' && held(this.m) && this.m.stood !== null && this.m.value !== this.m.stood) this.cov.add('key held over a value taken in the box');
   }
 
   private drop(target: Element, text: string): void {

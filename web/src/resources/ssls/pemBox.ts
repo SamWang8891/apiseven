@@ -10,8 +10,9 @@
 //  2. Text that was not taken is held while it is in the box (heldWhy: the box holds Save, names the
 //     field, turns a dialog's primary action off). Leaving never ends a hold; only an acceptable text
 //     (taken) or an empty box does.
-//  3. While held, the value is what it was before the hold began (valueAfter), and the box says what is
-//     kept (kept).
+//  3. While held, the value is what it was before the hold began: the last value taken, a reference
+//     taken in a key box included, not the key that stood when editing began (valueAfter; final wave
+//     M4); and the box says what is kept (kept).
 //  4. An empty certificate box: no value; over a value it cannot show (one that holds a private key),
 //     that value. An empty key box: the key that stood (or none). The box says which (kept).
 //  5. A file is judged before anything changes (fileRefusal); a refused one changes nothing, and its
@@ -173,7 +174,7 @@ export const shown = (kind: BoxKind, text: string, focused: boolean): string => 
  * The value after the text changes to `text` (rules 3, 4): what it takes (takenValue); for an empty
  * box, none (a certificate box) or what stood (a key box), unless the box stands over a value it
  * cannot show (`hidden`), which an empty certificate box keeps; while held, `held` (what it was
- * before the hold began).
+ * before the hold began: the last value taken).
  */
 export function valueAfter(kind: BoxKind, text: string, a: { held: string | undefined; stood: string | undefined; hidden: string | undefined }): string | undefined {
   if (takes(kind, text)) return takenValue(kind, text);

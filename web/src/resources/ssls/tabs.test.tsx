@@ -746,7 +746,8 @@ describe('fix round 4: what a box takes, what it masks, and when it opens or clo
     }
     for (const text of ['$secret://vault/1/ssl key', '$env://SSL_KEY\nmore', `$secret://vault/1/ssl\n${SEED_KEY}`]) {
       await paste(user, key, text);
-      expect(value()).not.toHaveProperty('key');
+      // While held, the value is the last one taken: the reference taken just before (rule 3; final wave M4).
+      expect(value().key).toBe('$env://ssl_key');
       expect(held()).toEqual(keyHeld(t('ssl.pem.refNotAlone')));
     }
     const cert = screen.getByRole('textbox', { name: t('ssl.pem.cert') });
@@ -755,6 +756,29 @@ describe('fix round 4: what a box takes, what it masks, and when it opens or clo
     await paste(user, cert, `$secret://vault/1/ssl/cert\n${RSA_LEAF}`);
     expect(value().cert).toBe('$secret://vault/1/ssl/cert');
     expect(said(cert)).toBe(t('ssl.pem.refNotAlone'));
+  });
+
+  it('3 (final wave M4): a reference taken, then edited into something unfinished: the reference stays the value while the text is held; emptied, the key that stood', async () => {
+    const { user, value, held } = renderSsl(CertificateTab, { status: 1, cert: SEED_CERT, key: EC_PAIR.key }, { isNew: true });
+    await user.click(screen.getByRole('button', { name: t('ssl.key.replaceKey') }));
+    const key = screen.getByRole('textbox', { name: t('ssl.pem.key') });
+    await paste(user, key, '$env://KEY_A');
+    expect(value().key).toBe('$env://KEY_A');
+    expect(held()).toEqual([]);
+    await user.type(key, ' extra');
+    expect(key).toHaveValue('$env://KEY_A extra');
+    expect(held()).toEqual(keyHeld(t('ssl.pem.refNotAlone')));
+    expect(value().key).toBe('$env://KEY_A');
+    expect(screen.getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    // Taking out only the unfinished part gives the reference back, taken as before.
+    await user.type(key, '{Backspace}'.repeat(' extra'.length));
+    expect(held()).toEqual([]);
+    expect(value().key).toBe('$env://KEY_A');
+    // An empty box means the key that stood when this editing began (rule 4), not the reference.
+    await user.type(key, ' extra');
+    await user.clear(key);
+    expect(value().key).toBe(EC_PAIR.key);
+    expect(held()).toEqual([]);
   });
 
   it('9: Replace key opens a box that stays open when left, until Keep the entered key (or a whole key) closes it', async () => {
