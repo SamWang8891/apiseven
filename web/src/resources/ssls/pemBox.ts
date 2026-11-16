@@ -216,12 +216,17 @@ export function fileRefusal(kind: BoxKind, text: string): FileReason | undefined
 
 /**
  * What the box says the field keeps (rules 3, 4, 8), or nothing: while held, the value kept; for an
- * empty box, what an empty box means here.
+ * empty box, what an empty box means here. A key box names what stays: the key that stood (`stood`),
+ * or a value taken in the box since, which can only be a reference, as a whole key closes the box
+ * (final wave, fix round 1, F1).
  */
-export function kept(kind: BoxKind, text: string, a: { value: string | undefined; hidden: string | undefined }): string | undefined {
+export function kept(kind: BoxKind, text: string, a: { value: string | undefined; hidden: string | undefined; stood?: string }): string | undefined {
   const held = heldWhy(kind, text) !== undefined;
   const empty = text.trim() === '';
-  if (kind === 'key') return held || empty ? t(a.value === undefined ? 'ssl.key.none' : 'ssl.key.stays') : undefined;
+  if (kind === 'key') {
+    if (!held && !empty) return undefined;
+    return t(a.value === undefined ? 'ssl.key.none' : a.value === a.stood ? 'ssl.key.stays' : 'ssl.key.refStays');
+  }
   if (a.hidden !== undefined && a.value === a.hidden && (held || empty)) return t('ssl.box.hiddenStays');
   if (!held) return undefined;
   return t(a.value === undefined ? 'ssl.box.keptNone' : 'ssl.box.keptCert');

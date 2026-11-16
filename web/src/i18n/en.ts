@@ -1443,6 +1443,7 @@ export const en: Record<string, string> = {
   'ssl.key.replaced': 'Will be replaced on save, not shown',
   'ssl.key.entered': 'Private key entered, not shown',
   'ssl.key.stays': 'The private key entered before stays, not shown, until a whole key is entered here.',
+  'ssl.key.refStays': 'The reference entered before stays until a whole key is entered here.',
   'ssl.key.none': 'No private key is entered yet.',
   'ssl.key.replaceKey': 'Replace key',
   'ssl.key.remove': 'Remove the key',

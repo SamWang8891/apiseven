@@ -280,6 +280,8 @@ describe('every PEM box follows one rule (property, seeded, tab level)', () => {
     for (const kind of ['cert', 'key']) expect(cov.get(`the ${kind} box's split names a value and text in the other box`), kind).toBeGreaterThan(3);
     // Final wave M4: a key box holds text over a value taken in it since editing began (a reference), which stays its value.
     expect(cov.get('key held over a value taken in the box')).toBeGreaterThan(5);
+    // Fix round 1, F1: what the page then says (the note names the reference; no Keep) is checked.
+    expect(cov.get('the note names a value taken in the key box')).toBeGreaterThan(5);
     for (const place of PLACES) expect(cov.get(`place ${place.name}`), place.name).toBe(SEEDS);
   }, 300_000);
 });

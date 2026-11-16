@@ -8,7 +8,10 @@
 // - CertBox: a certificate or a CA. It owns its text; `value` and `onValue` are the field's.
 // - KeyBox: a private key. A whole key is taken at once and leaves the page: one line then reads
 //   "Private key entered, not shown", with Replace key and Remove. A box opened over a key stays
-//   open until a whole key is taken or Keep the entered key closes it. A key is taken from its first
+//   open until a whole key is taken or Keep the entered key closes it; Keep is offered while that key
+//   is the value (over a reference taken in the box, emptying it brings Keep back: the final wave's
+//   fix round 1, F1). What the box says stays, and what its split action replaces, are the value
+//   now (while held, the last value taken). A key is taken from its first
 //   -----BEGIN line, and a line says when what came before it was left out. A key taken is handed to
 //   keyMatch.learnKey, which keeps only its public part, for the pair's check.
 // - The two boxes of a pair (`pair`: a new SSL, the pair dialog) offer to split a combined text or
@@ -266,7 +269,7 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
     if (v !== value) onValue(v);
   };
   useImperativeHandle(pair?.keyRef, () => ({ take: set }));
-  // Keep the entered key (rule 9): the box closes over the key that stood, whatever it held.
+  // Keep the entered key (rule 9): the box closes over the key that stood, whatever text it held (offered only while that key is the value).
   const keep = () => {
     if (standing.key !== value) onValue(standing.key);
     close();
@@ -309,7 +312,9 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
       </Field>
     );
   }
-  const note = kept('key', box.text, { value, hidden: undefined });
+  const note = kept('key', box.text, { value, hidden: undefined, stood: standing.key });
+  // Keep goes back to the key that stood: offered only while that key is the value, never over a reference taken here since (F1).
+  const keeps = standing.key !== undefined && value === standing.key;
   return (
     <div className="ssl-main">
       <PemInput
@@ -333,11 +338,12 @@ export function KeyBox({ label, help, error, value, onValue, pair }: BoxProps & 
         onGone={split.inputGone}
         onBlur={box.leave}
       />
-      {split.offered && <SplitAction label={splitLabel('key', { cert: pair?.cert ?? NOTHING, key: { value: standing.key !== undefined, held: false } })} onUse={split.apply} />}
-      {(note || standing.key !== undefined) && (
+      {/* The action replaces the key the field holds now (while held, the last one taken), so its name says so (F1). */}
+      {split.offered && <SplitAction label={splitLabel('key', { cert: pair?.cert ?? NOTHING, key: { value: value !== undefined, held: false } })} onUse={split.apply} />}
+      {(note || keeps) && (
         <p className="ssl-keyline">
           {note && <span className="ssl-muted">{note}</span>}
-          {standing.key !== undefined && (
+          {keeps && (
             <Button size="sm" variant="ghost" onClick={keep}>
               {t('ssl.key.keep')}
             </Button>

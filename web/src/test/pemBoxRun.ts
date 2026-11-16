@@ -301,16 +301,21 @@ function actionName(action: 'ssl.split.toKeyBox' | 'ssl.split.toCertBox', cert: 
 
 /**
  * The split action's name in this box: the certificate box's replaces its certificate (the field has
- * a value) and the key entered and text in the key box; the key box's replaces the key that stands
- * and the certificate entered and text in the certificate box. The other box's value is `other`, its
- * text `otherHeld`; this box's own text is the action's subject and is not named.
+ * a value) and the key entered and text in the key box; the key box's replaces the key the field
+ * holds now (while the box holds text, the last value taken: a reference taken in the box included;
+ * fix round 1 of the final wave, F1) and the certificate entered and text in the certificate box. The
+ * other box's value is `other`, its text `otherHeld`; this box's own text is the action's subject and
+ * is not named.
  */
 export function splitLabel(m: Model): string {
   const other = sideOf(m.other !== undefined, m.otherHeld);
   return m.kind === 'cert'
     ? actionName('ssl.split.toKeyBox', sideOf(m.value !== undefined, false), other)
-    : actionName('ssl.split.toCertBox', other, sideOf(standing(m) !== undefined, false));
+    : actionName('ssl.split.toCertBox', other, sideOf(m.value !== undefined, false));
 }
+
+/** A key box: Keep the entered key (back to the key that stood) is offered only while that key is the value (rule 9; F1). */
+const keepOffered = (m: Model): boolean => present(m) && standing(m) !== undefined && m.value === standing(m);
 
 /** The name of the other box's action (item 145): it replaces this box's value and the text this box holds. */
 export function otherSplitLabel(m: Model): string {
@@ -545,7 +550,7 @@ export class BoxRun {
       case 'leave':
         return m.focused;
       case 'keep':
-        return present(m) && standing(m) !== undefined;
+        return keepOffered(m);
       case 'remove':
         return !present(m);
       case 'split':
@@ -856,15 +861,18 @@ export class BoxRun {
     const scope = within(this.scope());
     const shows = (key: string) => scope.queryByText(t(key)) !== null;
     if (m.kind === 'key') {
-      // Rule 9: Keep the entered key wherever an open box stands over a key.
-      expect(this.button(t('ssl.key.keep')) !== null, `${where}: Keep the entered key`).toBe(present(m) && standing(m) !== undefined);
-      // What the page says of the key (rules 3, 4): entered (closed), or what stays while held or empty.
+      // Rule 9: Keep the entered key wherever an open box stands over a key that is still the value (F1).
+      expect(this.button(t('ssl.key.keep')) !== null, `${where}: Keep the entered key`).toBe(keepOffered(m));
+      // What the page says of the key (rules 3, 4): entered (closed), or what stays while held or empty:
+      // the key that stood, or a value taken in the box since (a reference), named as such (F1).
       const quiet = present(m) && (held(m) || m.text.trim() === '');
       expect(shows('ssl.key.entered'), `${where}: "entered"`).toBe(!present(m));
       // B23: a key taken from its BEGIN line says when what came before it was left out.
       expect(shows('ssl.key.leftOut'), `${where}: the lines before the key were left out`).toBe(!present(m) && m.leftOut);
-      expect(shows('ssl.key.stays'), `${where}: the key that stood stays`).toBe(quiet && m.value !== undefined);
+      expect(shows('ssl.key.stays'), `${where}: the key that stood stays`).toBe(quiet && m.value !== undefined && m.value === standing(m));
+      expect(shows('ssl.key.refStays'), `${where}: the reference taken here stays`).toBe(quiet && m.value !== undefined && m.value !== standing(m));
       expect(shows('ssl.key.none'), `${where}: no key`).toBe(quiet && m.value === undefined);
+      if (quiet && m.value !== undefined && m.value !== standing(m)) this.cov.add('the note names a value taken in the key box');
     } else {
       const empty = m.text.trim() === '';
       const note = !present(m)

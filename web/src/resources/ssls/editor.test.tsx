@@ -633,6 +633,38 @@ describe('a reference taken, then edited into something unfinished (final wave M
   });
 });
 
+describe('the key box speaks of the value that stays (fix round 1, F1)', () => {
+  it('a reference taken, then a combined PEM pasted over it: the split action says it replaces the key entered', async () => {
+    const { user } = await openEditor('#/ssls/~new', { objects: { ssls: [], routes: [], services: [] } });
+    await settled();
+    await user.click(main().getByRole('textbox', { name: t('ssl.pem.key') }));
+    await user.paste('$env://KEY_A');
+    await user.keyboard('{Control>}a{/Control}');
+    await user.paste(EC_PAIR.cert + EC_PAIR.key);
+    expect(main().getByRole('button', { name: t('ssl.split.toCertBoxReplacing', { what: t('ssl.split.what.key') }) })).toBeInTheDocument();
+    expect(main().queryByRole('button', { name: t('ssl.split.toCertBox') })).toBeNull();
+  });
+
+  it('a key entered, Replace key, a reference taken, then text added: the note names the reference, and Keep is not offered until the box is emptied', async () => {
+    const { user, admin } = await openEditor('#/ssls/~new', { objects: { ssls: [], routes: [], services: [] } });
+    await newSsl(user);
+    await user.click(main().getByRole('button', { name: t('ssl.key.replaceKey') }));
+    await user.paste('$env://KEY_A');
+    const key = main().getByRole('textbox', { name: t('ssl.pem.key') });
+    await user.type(key, ' extra');
+    expect(main().getByText(t('ssl.key.refStays'))).toBeInTheDocument();
+    expect(main().queryByText(t('ssl.key.stays'))).toBeNull();
+    expect(main().queryByRole('button', { name: t('ssl.key.keep') })).toBeNull();
+    await user.clear(key);
+    expect(main().getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    await user.click(main().getByRole('button', { name: t('ssl.key.keep') }));
+    expect(main().getByText(t('ssl.key.entered'))).toBeInTheDocument();
+    await user.click(main().getByRole('button', { name: t('editor.create') }));
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.body?.key).toBe(SEED_KEY);
+  });
+});
+
 describe('a CA file read that finishes after another edit (final wave M1)', () => {
   it('upload CA B at depth 1, change the depth to 2, the read finishes: the PATCH carries both', async () => {
     const withCa = { ...STORED, client: { ca: SEED_CERT, depth: 1 } };

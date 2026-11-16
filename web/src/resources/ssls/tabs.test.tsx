@@ -809,7 +809,10 @@ describe('fix round 4: what a box takes, what it masks, and when it opens or clo
     expect(key).toHaveValue('$env://KEY_A extra');
     expect(held()).toEqual(keyHeld(t('ssl.pem.refNotAlone')));
     expect(value().key).toBe('$env://KEY_A');
-    expect(screen.getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    // The note names what stays: the reference, not the key that stood; Keep (back to that key) is not offered (fix round 1, F1).
+    expect(screen.getByText(t('ssl.key.refStays'))).toBeInTheDocument();
+    expect(screen.queryByText(t('ssl.key.stays'))).toBeNull();
+    expect(screen.queryByRole('button', { name: t('ssl.key.keep') })).toBeNull();
     // Taking out only the unfinished part gives the reference back, taken as before.
     await user.type(key, '{Backspace}'.repeat(' extra'.length));
     expect(held()).toEqual([]);
@@ -819,6 +822,8 @@ describe('fix round 4: what a box takes, what it masks, and when it opens or clo
     await user.clear(key);
     expect(value().key).toBe(EC_PAIR.key);
     expect(held()).toEqual([]);
+    expect(screen.getByText(t('ssl.key.stays'))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: t('ssl.key.keep') })).toBeInTheDocument();
   });
 
   it('9: Replace key opens a box that stays open when left, until Keep the entered key (or a whole key) closes it', async () => {
@@ -833,6 +838,10 @@ describe('fix round 4: what a box takes, what it masks, and when it opens or clo
     await user.tab();
     expect(key).toHaveValue('$secret://vault/1/ssl/key');
     expect(value().key).toBe('$secret://vault/1/ssl/key');
+    // Keep goes back to the key that stood, so it is offered only while that key is the value (fix round 1, F1): emptied, the box stands over it again.
+    expect(screen.queryByRole('button', { name: t('ssl.key.keep') })).toBeNull();
+    await user.clear(key);
+    expect(value().key).toBe(EC_PAIR.key);
     await user.click(screen.getByRole('button', { name: t('ssl.key.keep') }));
     expect(screen.queryByRole('textbox', { name: t('ssl.pem.key') })).toBeNull();
     expect(screen.getByText(t('ssl.key.entered'))).toBeInTheDocument();
