@@ -5,7 +5,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import type { Page } from '@playwright/test';
 import { expectMarkBesideName } from './brand';
-import { env, expect, t, test } from './fixtures';
+import { Admin, echoRoute, env, expect, save, t, test, uid, unlock } from './fixtures';
 
 const FILE = fileURLToPath(new URL('../dist-single/apiseven.html', import.meta.url));
 const URL_ = pathToFileURL(FILE).href;
@@ -67,6 +67,30 @@ test.describe('the single file, opened from disk', () => {
     // Remembered: a reload stays connected.
     await page.reload();
     await expect(page.getByRole('main').getByRole('heading', { level: 1, name: 'api-v1' })).toBeVisible();
+  });
+
+  // C6: the exported page writes too: a save from file:// reaches APISIX.
+  test('an edit saved from the file is stored in APISIX', async ({ page }) => {
+    const admin = new Admin();
+    const id = `e2e-single-save-${uid()}`;
+    await admin.put(`routes/${id}`, echoRoute(id, `${id}.e2e.test`));
+    try {
+      const stored = await admin.must(`routes/${id}`);
+      await page.goto(URL_);
+      await connect(page);
+      await expect(page.getByRole('main').getByRole('heading', { level: 1, name: t('kind.routes.plural') })).toBeVisible();
+      await page.getByRole('main').getByRole('link', { name: id, exact: true }).click();
+      const main = page.getByRole('main');
+      await expect(main.getByRole('heading', { level: 1, name: id })).toBeVisible();
+      await unlock(page);
+      await main.getByRole('textbox', { name: t('rt.general.desc') }).fill('saved from the single file');
+      const write = await save(page);
+      expect(write.method).toBe('PUT');
+      expect(page.url().startsWith('file://')).toBe(true);
+      expect(await admin.value(`routes/${id}`)).toEqual({ ...stored, desc: 'saved from the single file' });
+    } finally {
+      await admin.del(`routes/${id}`);
+    }
   });
 
   for (const scheme of ['light', 'dark'] as const) {
