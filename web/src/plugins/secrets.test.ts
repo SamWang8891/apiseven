@@ -264,6 +264,21 @@ describe('veilKeys / unveilKeys: the editing JSON tab never shows an SSL key, an
     expect(unveilKeys('ssls', { type: 'client', keys: [`${'•'.repeat(80)}`] }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
   });
 
+  // Fix round 4, F6: what a whole-key place takes around a note (rules 4 and 5 of schema/keyNotes.ts).
+  it('in a whole-key place, text typed around a note is kept: note + x is sent as the key text + x; note + • is refused', () => {
+    const { value: shown, notes } = veilKeys('ssls', draft, newKeyNotes());
+    const key = shown.key as string;
+    expect(unveilKeys('ssls', { ...shown, key: `${key}x` }, notes)).toEqual({ ok: true, value: { ...draft, key: 'NEW-KEYx' } });
+    expect(unveilKeys('ssls', { ...shown, key: `${key}•` }, notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+    // A client_key, whole by its name, in any kind.
+    const route = { uri: '/', upstream: { tls: { client_cert: 'C', client_key: 'STORED-KEY' } } };
+    const veiled = veilKeys('routes', route, newKeyNotes());
+    const stored = ((veiled.value.upstream as Record<string, Record<string, string>>).tls?.client_key ?? '');
+    const typed = (text: string) => ({ ...route, upstream: { tls: { client_cert: 'C', client_key: text } } });
+    expect(unveilKeys('routes', typed(`${stored}x`), veiled.notes)).toEqual({ ok: true, value: typed('STORED-KEYx') });
+    expect(unveilKeys('routes', typed(`${stored}•`), veiled.notes)).toEqual({ ok: false, problem: t('json.note.unknown') });
+  });
+
   it('a note from another page load (another browser tab, a reload) never resolves to this page\'s keys', async () => {
     // Two module instances, as two page loads have: each starts its sessions afresh.
     vi.resetModules();

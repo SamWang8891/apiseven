@@ -253,7 +253,8 @@ export function unveilValue(
       if (!v.includes(MASK.slice(0, 1)) && !leftOfNote(v, notes.session)) return v;
       const back = v.replace(notePattern(), (note) => resolve(note, path));
       // A note changed by hand no longer matches: what is left of it must not be sent. In a whole-key
-      // place any dot left over is (a key has none).
+      // place where a note was resolved, any dot left over beside it is too (a key has none); a whole-key
+      // place where no note was resolved is judged like any text.
       const damaged = leftOfNote(back, notes.session) || (isWhole(opts.whole, path, key) && back !== v && back.includes(MASK.slice(0, 1)));
       if (damaged && !(back === v && kept.has(v))) problem ??= t('json.note.unknown');
       if (back !== v) changed = true;

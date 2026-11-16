@@ -18,6 +18,15 @@ describe('mayHoldKeys / mayHoldNotes', () => {
     expect(mayHoldKeys(JSON.stringify({ desc: PEM }))).toBe(true);
     expect(mayHoldKeys(JSON.stringify({ tls: { client_key: 'AES-ciphertext' } }))).toBe(true);
   });
+
+  // Fix round 4, F6: rule 6 of keyNotes.ts.
+  it('true for any text with a \\u escape, which can spell a note, a mask run or a BEGIN line the plain checks miss', () => {
+    const escaped = (text: string) => JSON.stringify({ desc: '§' }).replace('"§"', `"${text}"`);
+    for (const text of [escaped('\\u0078'), escaped('\\u2022'.repeat(8)), JSON.stringify({ desc: PEM }).replace(/-/g, '\\u002d')]) {
+      expect(mayHoldNotes(text), text).toBe(true);
+      expect(mayHoldKeys(text), text).toBe(true);
+    }
+  });
 });
 
 // Fix round 4, F4: what makes a view empty its undo history on leaving.
