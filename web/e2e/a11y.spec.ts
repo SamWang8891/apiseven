@@ -9,9 +9,8 @@
 // (aria-describedby). The mismatch is real.
 // The way out is structural and keeps every name: move the summary, the category and the shortcut
 // hint out of the three buttons into siblings, laid out by CSS and still referenced by
-// aria-describedby; then this exclusion goes. That is a recorded follow-up, after Task 16b (which is
-// editing PluginCard and Section). Every other rule, and this rule on every other element, runs
-// everywhere.
+// aria-describedby; then this exclusion goes. That is a recorded follow-up: Task 16b, now merged, left
+// the three as they were. Every other rule, and this rule on every other element, runs everywhere.
 import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import { env, expect, goto, openCard, openEditor, openList, openTab, settled, t, test, unlock } from './fixtures';
@@ -151,7 +150,7 @@ for (const scheme of ['light', 'dark'] as const) {
     });
 
     test('a new route (its required fields still empty)', async ({ page }) => {
-      await goto(page, 'routes/new');
+      await goto(page, 'routes/~new');
       await expect(page.getByRole('main').getByRole('button', { name: t('editor.create'), exact: true })).toBeVisible();
       await scan(page, 'a new route');
     });

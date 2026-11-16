@@ -173,7 +173,7 @@ test.describe('create', () => {
   test('a new route with a host, a URI and an inline upstream answers through the gateway with the upstream’s response', async ({ page, admin }) => {
     const id = `${PREFIX}new-${uid()}`;
     const host = `${id}.e2e.test`;
-    const main = await openNew(page, 'routes/new');
+    const main = await openNew(page, 'routes/~new');
     await idField(page).fill(id);
     await main.getByRole('textbox', { name: t('rt.general.name') }).fill(id);
     let panel = await openTab(page, t('rt.tab.matching'));

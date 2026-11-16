@@ -120,10 +120,10 @@ test.describe('two saved connections', () => {
   });
 });
 
-// Task 16b item 135 changes this: the header's connection menu goes through the leave question.
+// Task 16b item 135: the header's connection menu goes through the leave question.
 test.describe('switching connections from the header with unsaved changes', () => {
   test.use({ connectAs: 'none' });
-  test.fixme('16b-135: the header menu asks before dropping an editor’s unsaved changes', async ({ page, context }) => {
+  test('16b-135: the header menu asks before dropping an editor’s unsaved changes', async ({ page, context }) => {
     await saveConnections(context, [
       { id: 'alpha', name: 'alpha', key: env.adminKey },
       { id: 'beta', name: 'beta', key: env.adminKey },

@@ -31,7 +31,7 @@ test('a service: created in the form → in the list → a route made in it prox
   const host = `${id}.e2e.test`;
   await admin.put(`upstreams/${upstream}`, { name: upstream, ...echoUpstream() });
 
-  const main = await openNew(page, 'services/new');
+  const main = await openNew(page, 'services/~new');
   await idField(page).fill(id);
   await main.getByRole('textbox', { name: t('svc.general.name') }).fill(id);
   const hosts = main.getByRole('textbox', { name: t('svc.general.hosts') });

@@ -52,7 +52,7 @@ test.describe('Create never replaces what is stored', () => {
     const username = `${PREFIX}${uid()}`.replace(/-/g, '_');
     await admin.put('consumers', { username, desc: 'the stored one', plugins: { 'key-auth': { key: `${PREFIX}${uid()}` } } });
     const before = await admin.item(`consumers/${username}`);
-    const main = await goto(page, 'consumers/new');
+    const main = await goto(page, 'consumers/~new');
     await main.getByRole('textbox', { name: USERNAME }).fill(username);
     await main.getByRole('textbox', { name: t('cs.general.desc') }).fill('would replace it');
     const writes = recordWrites(page);
@@ -65,7 +65,7 @@ test.describe('Create never replaces what is stored', () => {
     const id = `${PREFIX}${uid()}`;
     await admin.put(`routes/${id}`, echoRoute(id, `${id}.e2e.test`, { desc: 'the stored one' }));
     const before = await admin.item(`routes/${id}`);
-    const main = await goto(page, 'routes/new');
+    const main = await goto(page, 'routes/~new');
     await main.getByRole('textbox', { name: t('editor.id.label'), exact: true }).fill(id);
     const panel = await openTab(page, t('rt.tab.upstream'));
     await panel.getByRole('textbox', { name: t('up.nodes.new') }).fill(ECHO.host);
@@ -81,7 +81,7 @@ test.describe('Create never replaces what is stored', () => {
     await admin.put('consumers', { username });
     await admin.put(`consumers/${username}/credentials/${credential}`, { plugins: { 'key-auth': { key: `${PREFIX}${uid()}` } } });
     const before = await admin.item(`consumers/${username}/credentials/${credential}`);
-    const main = await goto(page, `consumers/${username}/credentials/new`);
+    const main = await goto(page, `consumers/${username}/credentials/~new`);
     await main.getByRole('textbox', { name: new RegExp(`^${t('editor.id.label')}\\b`) }).fill(credential);
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
@@ -164,10 +164,10 @@ test.describe('a copy of a consumer with three auth plugins', () => {
 // Task 16b item 142: an id of "" in a new object's JSON is the frame's to refuse (no request, the ID named).
 test.describe('an empty id in a new object’s JSON', () => {
   for (const [kind, label, path] of [
-    ['routes', t('kind.routes.singular'), 'routes/new?tab=json'],
-    ['global_rules', t('kind.global_rules.singular'), 'global_rules/new?tab=json'],
+    ['routes', t('kind.routes.singular'), 'routes/~new?tab=json'],
+    ['global_rules', t('kind.global_rules.singular'), 'global_rules/~new?tab=json'],
   ] as const) {
-    test.fixme(`16b-142: a new ${label} with "id": "" is refused before any request, naming the ID`, async ({ page }) => {
+    test(`16b-142: a new ${label} with "id": "" is refused before any request, naming the ID`, async ({ page }) => {
       const main = await goto(page, path);
       const body = kind === 'routes' ? { id: '', uri: ECHO.path, upstream: { nodes: [{ host: ECHO.host, port: ECHO.port, weight: 1 }] } } : { id: '', plugins: { 'request-id': {} } };
       await setCode(page, jsonEditor(page, label), JSON.stringify(body, null, 2));
@@ -175,8 +175,8 @@ test.describe('an empty id in a new object’s JSON', () => {
       // No request at all from Create on: no write, and no read for the id either.
       const sent = recordRequests(page);
       await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
-      // The frame's own refusal of the id (Task 16-2's segment rule; 16b may word the empty case anew).
-      await expect(toast(page, t('editor.id.segment', { id: '' }))).toBeVisible();
+      // The frame's own refusal of the id (16b words the empty case on its own).
+      await expect(toast(page, t('editor.id.empty'))).toBeVisible();
       await expect(main.getByRole('button', { name: t('editor.anyway.action'), exact: true })).toHaveCount(0);
       expect(sent).toEqual([]);
     });
@@ -185,15 +185,15 @@ test.describe('an empty id in a new object’s JSON', () => {
 
 // Task 16b item 154: a new object shows no "required" problems before its first refused Save.
 test.describe('a new object before its first Save', () => {
-  test.fixme('16b-154: a new route and a new SSL show no required-field problems or tab badges until Create is refused', async ({ page }) => {
-    let main = await openNew(page, 'routes/new');
+  test('16b-154: a new route and a new SSL show no required-field problems or tab badges until Create is refused', async ({ page }) => {
+    let main = await openNew(page, 'routes/~new');
     await expect(main.getByRole('tab', { name: TO_FIX })).toHaveCount(0);
     const writes = recordWrites(page);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();
     await expect(main.getByRole('tab', { name: TO_FIX }).first()).toBeVisible();
     expect(sentWrites(writes)).toEqual([]);
 
-    main = await openNew(page, 'ssls/new');
+    main = await openNew(page, 'ssls/~new');
     await expect(main.getByText(t('ssl.issue.certRequired'))).toHaveCount(0);
     await expect(main.getByRole('tab', { name: TO_FIX })).toHaveCount(0);
     await main.getByRole('button', { name: t('editor.create'), exact: true }).click();

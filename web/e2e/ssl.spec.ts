@@ -47,7 +47,7 @@ async function servedFor(sni: string, cn: string): Promise<void> {
 
 test('upload a certificate and its key in the form: stored, served on the HTTPS port, and the key is never in the page', async ({ page, admin }) => {
   const id = `${PREFIX}${uid()}`;
-  const main = await openNew(page, 'ssls/new');
+  const main = await openNew(page, 'ssls/~new');
   await idField(page).fill(id);
   const cert = await openTab(page, t('ssl.tab.certificate'));
   await cert.getByRole('textbox', { name: t('ssl.pem.cert') }).fill(EC_PAIR.cert);

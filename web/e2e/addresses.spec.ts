@@ -6,7 +6,7 @@ import { expect, t, test } from './fixtures';
 const CASES: { hash: string; plural: string; forbidden: RegExp }[] = [
   { hash: '#/routes/a%2Fb', plural: t('kind.routes.plural'), forbidden: /routes\/a(%2F|\/)b/i },
   { hash: '#/routes/..%2Fupstreams%2Fx', plural: t('kind.routes.plural'), forbidden: /\.\.|upstreams(%2F|\/)x/i },
-  // A credential under a crafted consumer: the create page as Task 16b will name it, and as it is now.
+  // A credential under a crafted consumer: the create page at its address (~new), and at the legacy one.
   { hash: '#/consumers/a%2Fcredentials%2Fk0/credentials/~new', plural: t('kind.consumers.plural'), forbidden: /consumers\/a(%2F|\/)|credentials(%2F|\/)k0/i },
   { hash: '#/consumers/a%2Fcredentials%2Fk0/credentials/new', plural: t('kind.consumers.plural'), forbidden: /consumers\/a(%2F|\/)|credentials(%2F|\/)k0/i },
 ];

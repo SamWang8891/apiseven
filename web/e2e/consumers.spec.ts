@@ -31,7 +31,7 @@ test.afterAll(async () => {
 test('a consumer: created in the form → in the list → edited → deleted', async ({ page, admin }) => {
   const username = user(uid());
   expectNoCredentials(page, username);
-  const main = await openNew(page, 'consumers/new');
+  const main = await openNew(page, 'consumers/~new');
   await main.getByRole('textbox', { name: new RegExp(`^${t('cs.general.username')}`) }).fill(username);
   await main.getByRole('textbox', { name: t('cs.general.desc') }).fill('made in the form');
   const write = await create(page);
@@ -97,7 +97,7 @@ test('a credential: made from the consumer’s Credentials tab, signs in at the 
 
 test('a consumer group: created in the form → in the list → a consumer joins it → edited → deleted', async ({ page, admin }) => {
   const id = `${PREFIX}grp-${uid()}`;
-  const main = await openNew(page, 'consumer_groups/new');
+  const main = await openNew(page, 'consumer_groups/~new');
   await idField(page).fill(id);
   await main.getByRole('textbox', { name: t('cg.general.name') }).fill(id);
   await create(page);

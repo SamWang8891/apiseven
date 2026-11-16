@@ -240,15 +240,24 @@ test.describe('an upstream’s TLS client key', () => {
 });
 
 test.describe('search', () => {
+  // Each test's consumer goes when it ends: a consumer left behind is one more whose credentials the
+  // consumers list reads (a 404, as it has none) in the next test.
+  const made: string[] = [];
+  test.afterEach(async () => {
+    const admin = new Admin();
+    for (const username of made.splice(0)) await admin.del(`consumers/${username}`);
+  });
+
   async function consumerWithKey(admin: Admin) {
     const username = `${PREFIX}${uid()}`.replace(/-/g, '_');
     const key = `${PREFIX}search-key-${uid()}`;
     await admin.put('consumers', { username, plugins: { 'key-auth': { key } } });
+    made.push(username);
     return { username, key };
   }
 
-  // Task 16b item 72 (verify-only there): the list's search text leaves out every secret field.
-  test.fixme('16b-72: the consumers list search does not find a consumer by its key', async ({ page, admin }) => {
+  // Task 16b item 72: the list's search text leaves out every secret field.
+  test('16b-72: the consumers list search does not find a consumer by its key', async ({ page, admin }) => {
     const { username, key } = await consumerWithKey(admin);
     expectNoCredentials(page, username);
     const main = await openList(page, 'consumers');
@@ -276,3 +285,4 @@ test.describe('search', () => {
     await expect(palette.getByRole('option', { name: username, exact: true })).toHaveCount(0);
   });
 });
+

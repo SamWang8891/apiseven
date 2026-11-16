@@ -53,7 +53,7 @@ test.describe('global rules', () => {
   test('created in the form with cors, it answers every route’s requests; edited; deleted, it stops', async ({ page, admin }) => {
     const id = `${PREFIX}gr-${uid()}`;
     const origin = `https://${id}.test`;
-    await openNew(page, 'global_rules/new');
+    await openNew(page, 'global_rules/~new');
     await idField(page).fill(id);
     const cors = await addPlugin(page, 'cors');
     await cors.getByRole('textbox', { name: /^allow_origins\b/ }).fill(origin);
@@ -116,7 +116,7 @@ test.describe('global rules', () => {
 test.describe('plugin configs', () => {
   test('created in the form, a route made from its Used by tab runs its plugin at the gateway; edited; deleted', async ({ page, admin }) => {
     const id = `${PREFIX}pc-${uid()}`;
-    const main = await openNew(page, 'plugin_configs/new');
+    const main = await openNew(page, 'plugin_configs/~new');
     await idField(page).fill(id);
     await main.getByRole('textbox', { name: t('pc.general.name') }).fill(id);
     await openTab(page, t('pl.tab'));
@@ -189,7 +189,7 @@ test.describe('protos', () => {
   test('created in the form with its source → listed → edited → deleted', async ({ page, admin }) => {
     const id = `${PREFIX}proto-${uid()}`;
     const source = 'syntax = "proto3";\npackage e2e;\nmessage Ping {\n  string id = 1;\n}\n';
-    const main = await openNew(page, 'protos/new');
+    const main = await openNew(page, 'protos/~new');
     await idField(page).fill(id);
     await main.getByRole('textbox', { name: t('pr.general.name') }).fill(id);
     const content = await openTab(page, t('pr.tab.content'));
@@ -208,7 +208,7 @@ test.describe('secrets', () => {
   test('a Vault secret created in the form: its token is masked once stored; listed; edited; deleted', async ({ page, admin }) => {
     const id = `${PREFIX}sec-${uid()}`;
     const token = `${PREFIX}vault-token-${uid()}`;
-    const main = await openNew(page, 'secrets/new');
+    const main = await openNew(page, 'secrets/~new');
     // An option shows the manager's name and its id.
     await choose(page, main.getByRole('combobox', { name: new RegExp(`^${t('sc.manager.label')}`) }), `${t('sc.manager.vault')} vault`);
     await idField(page).fill(id);
@@ -244,7 +244,7 @@ test.describe('secrets', () => {
 test.describe('stream routes', () => {
   test('created in the form → listed → edited → deleted; the seed’s stream route proxies TCP to etcd', async ({ page, admin }) => {
     const id = `${PREFIX}sr-${uid()}`;
-    const main = await openNew(page, 'stream_routes/new');
+    const main = await openNew(page, 'stream_routes/~new');
     await idField(page).fill(id);
     await main.getByRole('textbox', { name: t('sr.general.name') }).fill(id);
     const matching = await openTab(page, t('sr.tab.matching'));

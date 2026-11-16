@@ -26,7 +26,7 @@ test.afterAll(async () => {
 
 test('an upstream: created in the form → in the list → a route through it answers → one field edited → deleted', async ({ page, admin }) => {
   const id = `${PREFIX}${uid()}`;
-  const main = await openNew(page, 'upstreams/new');
+  const main = await openNew(page, 'upstreams/~new');
   await idField(page).fill(id);
   await main.getByRole('textbox', { name: t('up.general.name') }).fill(id);
   const nodes = await openTab(page, t('up.section.nodes'));
