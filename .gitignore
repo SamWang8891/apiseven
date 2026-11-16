@@ -1,5 +1,6 @@
-# Agent workspace
+# Agent workspace, and the plan and design notes written with it
 .superpowers/
+docs/superpowers/
 
 # Dependencies and build output
 node_modules/
