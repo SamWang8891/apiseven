@@ -10,7 +10,7 @@ import { copiedWithout, copiedWithoutKey, newKeyNotes, redactObject, unveilKeys,
 import { registry, type TabProps } from '../resources/registry';
 import { Button, CodeEditor, toast, useEditingState, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
-import { veilTypedText } from '../schema/keyNotes';
+import { mayHoldKeys, mayHoldNotes, veilTypedText } from '../schema/keyNotes';
 import { deepEqual } from './draft';
 import { parse, pretty } from './json';
 
@@ -115,7 +115,8 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
       setState((s) => ({ ...s, text, notes, error: t('json.inexact', { number: inexact }), held: t('ui.pending.inexact', { field, text: inexact }) }));
       return;
     }
-    const back = unveilKeys(kind, parsed.value, notes, current.synced);
+    // Only text that may hold a note is walked (a keystroke in a large object would walk all of it).
+    const back = mayHoldNotes(text) ? unveilKeys(kind, parsed.value, notes, current.synced) : ({ ok: true, value: parsed.value } as const);
     if (!back.ok) {
       const { problem } = back;
       setState((s) => ({ ...s, text, notes, error: problem, held: t('ui.pending.problem', { field, problem }) }));
@@ -140,8 +141,13 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
   }
 
   const singular = registry[kind].singular;
-  const tidy = veilKeys(kind, draft, current.notes, false);
-  const formatted = current.error === undefined && tidy.complete && current.text === pretty(tidy.value);
+  // Whether Format would change anything: once per draft and text, and without walking a draft whose
+  // text can hold nothing to veil (an SSL's key slots are veiled whatever their text).
+  const formatted = useMemo(() => {
+    if (current.error !== undefined) return false;
+    const tidy = kind === 'ssls' || mayHoldKeys(current.text) ? veilKeys(kind, draft, current.notes, false) : { value: draft, complete: true };
+    return tidy.complete && current.text === pretty(tidy.value);
+  }, [kind, draft, current.notes, current.text, current.error]);
   return (
     <div className="ed-json">
       <div className="ed-json__bar">
@@ -172,7 +178,9 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
           if (locked || e.currentTarget.contains(e.relatedTarget)) return;
           const typed = veilTypedText(current.text, current.notes);
           if (typed.veiled) change(typed.text, typed.notes);
-          else if (current.held === undefined && !veilKeys(kind, draft, current.notes, false).complete) setState(stateOf(kind, draft, current.notes));
+          else if (current.held === undefined && (kind === 'ssls' || mayHoldKeys(current.text)) && !veilKeys(kind, draft, current.notes, false).complete) {
+            setState(stateOf(kind, draft, current.notes));
+          }
         }}
       >
         <CodeEditor

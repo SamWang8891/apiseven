@@ -13,7 +13,7 @@ import { deepEqual } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
-import { newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
+import { mayHoldKeys, mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
 import { hideNeverShown, redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
@@ -103,7 +103,7 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
       return;
     }
     // Each note back to the key it stands for; a note that stands for none (or twice) holds the text.
-    const back = unveilValue(parsed, notes, { before: current.synced });
+    const back = mayHoldNotes(text) ? unveilValue(parsed, notes, { before: current.synced }) : ({ ok: true, value: parsed } as const);
     if (!back.ok) {
       const { problem } = back;
       setState((s) => ({ ...s, text, notes, error: problem, held: t('ui.pending.problem', { field: name, problem }) }));
@@ -122,7 +122,7 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
     if (locked) return;
     const typed = veilTypedText(current.text, current.notes);
     if (typed.veiled) change(typed.text, typed.notes);
-    else if (current.held === undefined && !veilValue(conf, current.notes, { mint: false }).complete) setState(stateOf(conf, current.notes));
+    else if (current.held === undefined && mayHoldKeys(current.text) && !veilValue(conf, current.notes, { mint: false }).complete) setState(stateOf(conf, current.notes));
   }
 
   // Locked: the stored value (never text typed before the lock), its secrets masked until revealed.

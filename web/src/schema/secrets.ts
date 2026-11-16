@@ -21,7 +21,7 @@ export function isSecretName(key: string): boolean {
  * stored, an upstream's `tls.client_key`, also in a plugin's own upstream (traffic-split's, which no
  * encrypt_conf reaches: apisix/upstream.lua 748–753 runs for a route's or service's own upstream only).
  */
-const NEVER_SHOWN = new Set(['client_key']);
+export const NEVER_SHOWN: ReadonlySet<string> = new Set(['client_key']);
 
 /** Whether a property's value is never shown (NEVER_SHOWN). */
 export const isNeverShownName = (key: string): boolean => NEVER_SHOWN.has(key);

@@ -10,7 +10,7 @@
 // never be moved into another field (a header, a description) by moving its note.
 import { t } from '../i18n';
 import { isObj } from './refs';
-import { holdsPrivateKey, isNeverShownName, MASK, withoutPrivateKeys } from './secrets';
+import { holdsPrivateKey, isNeverShownName, MASK, NEVER_SHOWN, withoutPrivateKeys } from './secrets';
 
 export interface KeyNotes {
   /** Random (randomId): a note made on another page load never names this session. */
@@ -62,6 +62,20 @@ function leftOfNote(text: string): boolean {
     noteWords = new RegExp(`${escape(words)} [0-9a-z]{8}\\.\\d+`);
   }
   return noteWords.test(text);
+}
+
+/**
+ * Whether JSON text may say something veilValue would veil: a note, a PEM BEGIN line, a never-shown
+ * name. False lets a view skip the walk over the whole value on a keystroke (fix round 2, R3.3); for
+ * text that says a value exactly (JSON of it), false means the value holds none of these.
+ */
+export function mayHoldKeys(text: string): boolean {
+  return mayHoldNotes(text) || text.includes('-----BEGIN') || [...NEVER_SHOWN].some((name) => text.includes(`"${name}"`));
+}
+
+/** Whether JSON text may hold a note or what is left of one (a dot, a note's words): false lets a view skip unveilValue. */
+export function mayHoldNotes(text: string): boolean {
+  return text.includes(MASK.slice(0, 1)) || leftOfNote(text);
 }
 
 /** Where a text is a key as a whole (an SSL's `key`): `path` from the value's root, `key` the property it is under. */
@@ -155,7 +169,9 @@ export function unveilValue(
   opts: { whole?: WholeKey; group?: PlaceGroup; under?: string; before?: unknown } = {},
 ): { ok: true; value: unknown } | { ok: false; problem: string } {
   const whole = opts.whole ?? byName;
-  const kept = textsOf(opts.before);
+  // What the value held before, built only when a text looks like a damaged note.
+  let keptTexts: Set<string> | undefined;
+  const kept = { has: (text: string) => (keptTexts ??= textsOf(opts.before)).has(text) };
   const seen = new Set<string>();
   let problem: string | undefined;
   let changed = false;
