@@ -543,6 +543,40 @@ describe.each(views)('F1: after leaving $name, no private-key text is in the pag
   });
 });
 
+// Fix round 4, F4: leaving empties the undo history only when private-key material was in the text; a
+// certificate is not.
+describe('F4: leaving keeps the undo history of a text that held no private key', () => {
+  it('a route with a client_cert and no key typed: edit, leave, Ctrl-Z undoes the edit', async () => {
+    const { user } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    await replaceText(user, box, JSON.stringify({ ...shown, name: 'renamed' }));
+    await user.click(main().getByRole('heading', { level: 1 }));
+    await user.click(box);
+    await user.keyboard('{Control>}z{/Control}');
+    await waitFor(() => expect(box.textContent).toContain('"name": "split"'));
+    expect(box.textContent).not.toContain('renamed');
+  });
+
+  it('an SSL: edit, leave, Ctrl-Z undoes the edit', async () => {
+    const { RSA_LEAF } = await import('../test/certs');
+    const SSL: Obj = { id: 's1', snis: ['a.test'], cert: RSA_LEAF, type: 'server' };
+    const { user } = await openEditor('#/ssls/s1?tab=json', { objects: { ssls: [SSL], routes: [], services: [] } });
+    await main().findByRole('heading', { level: 1 });
+    await user.keyboard('e');
+    const box = await screen.findByRole('textbox', { name: t('editor.json.label', { kind: t('kind.ssls.singular') }) });
+    const shown = JSON.parse(box.textContent ?? '{}') as Obj;
+    await replaceText(user, box, JSON.stringify({ ...shown, snis: ['b.test'] }));
+    await user.click(main().getByRole('heading', { level: 1 }));
+    await user.click(box);
+    await user.keyboard('{Control>}z{/Control}');
+    await waitFor(() => expect(box.textContent).toContain('"a.test"'));
+    expect(box.textContent).not.toContain('b.test');
+  });
+});
+
 // Fix round 4, F3: a whole-key place minted on leaving resolves the notes of this session in it, so
 // what was taken while typed is still taken once left, and Save sends what it would have sent before.
 describe('F3: a stored note with a key pasted after it, in a whole-key place', () => {

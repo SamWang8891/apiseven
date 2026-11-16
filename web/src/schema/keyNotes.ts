@@ -114,6 +114,15 @@ export function mayHoldKeys(text: string, session?: string): boolean {
   return mayHoldNotes(text, session) || text.includes('-----BEGIN') || [...NEVER_SHOWN].some((name) => text.includes(`"${name}"`));
 }
 
+/**
+ * Whether raw JSON text holds private-key material (rule 1's BEGIN line), as written or spelled with
+ * `\u` escapes: what makes a view empty its undo history on leaving (fix round 4, F4). A certificate's
+ * BEGIN line is none. Only text with an escape is decoded.
+ */
+export function holdsKeyMaterial(text: string): boolean {
+  return holdsPrivateKey(text) || (text.includes('\\u') && holdsPrivateKey(decode(text)));
+}
+
 /** Whether a note made at `made` (JSON) may stand at `path` for being in the caller's group with it. */
 const sameGroup = (group: PlaceGroup | undefined, made: Path, path: Path): boolean => group !== undefined && group(made) && group(path);
 

@@ -6,7 +6,7 @@ import { CodeEditor, Field, Textarea, useLocked, usePending, useReveal } from '.
 import { inexactNumberIn } from '../../ui/decimal';
 import type { Node } from '../analyze';
 import { useEncryptPaths, useFieldError, useFieldId, useFieldName } from '../context';
-import { mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../../schema/keyNotes';
+import { holdsKeyMaterial, mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../../schema/keyNotes';
 import { hideNeverShown, isNeverShownName, keyPath, redactSecrets } from '../../schema/secrets';
 import { jsonType } from '../node';
 import { FieldLabel } from './chrome';
@@ -130,7 +130,7 @@ export function JsonField({
 
   /** `next` from the editor (`withNotes`: the notes it was written with, new ones on leaving). */
   function edit(next: string, withNotes: KeyNotes = notes) {
-    if (next.includes('-----BEGIN') || next.includes('\\u')) sawKey.current = true;
+    if (!sawKey.current && holdsKeyMaterial(next)) sawKey.current = true;
     setShownText({ text: next, notes: withNotes });
     if (next.trim() === '') {
       setInvalid(undefined);

@@ -13,7 +13,7 @@ import { deepEqual } from '../editor/draft';
 import type { Issue } from '../editor/issues';
 import { t } from '../i18n';
 import { SchemaGapsNote } from '../schema-form/SchemaGapsNote';
-import { mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
+import { holdsKeyMaterial, mayHoldNotes, newKeyNotes, unveilValue, veilTypedText, veilValue, type KeyNotes } from '../schema/keyNotes';
 import { hideNeverShown, redactSecrets } from '../schema/secrets';
 import { Button, CodeEditor, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
@@ -88,7 +88,7 @@ export function ConfigJson({ name, conf, schema, encrypt, issues, onChange, onHe
 
   /** `text` from the editor (`notes`: those it was written with, new ones on leaving). */
   function change(text: string, notes: KeyNotes = current.notes) {
-    if (text.includes('-----BEGIN') || text.includes('\\u')) sawKey.current = true;
+    if (!sawKey.current && holdsKeyMaterial(text)) sawKey.current = true;
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);

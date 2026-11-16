@@ -10,7 +10,7 @@ import { copiedWithout, copiedWithoutKey, newKeyNotes, redactObject, unveilKeys,
 import { registry, type TabProps } from '../resources/registry';
 import { Button, CodeEditor, toast, useEditingState, useLocked, usePending, useReveal } from '../ui';
 import { inexactNumberIn } from '../ui/decimal';
-import { mayHoldKeys, mayHoldNotes } from '../schema/keyNotes';
+import { holdsKeyMaterial, mayHoldKeys, mayHoldNotes } from '../schema/keyNotes';
 import { deepEqual } from './draft';
 import { parse, pretty } from './json';
 
@@ -106,7 +106,7 @@ export function JsonTab({ draft, setDraft, kind, issues, id }: TabProps) {
 
   /** `text` from the editor (`notes`: those it was written with, new ones on leaving); taken when it parses and says a draft. */
   function change(text: string, notes: KeyNotes = current.notes) {
-    if (text.includes('-----BEGIN') || text.includes('\\u')) sawKey.current = true;
+    if (!sawKey.current && holdsKeyMaterial(text)) sawKey.current = true;
     const field = t('editor.json.tab');
     const parsed = parse(text);
     if (!parsed.ok) {

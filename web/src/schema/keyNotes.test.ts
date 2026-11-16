@@ -2,7 +2,7 @@
 // (fix round 2, R3.3): they must never say "nothing" for text that holds a note, a key or a never-shown name.
 import { describe, expect, it } from 'vitest';
 import { t } from '../i18n';
-import { mayHoldKeys, mayHoldNotes, newKeyNotes, veilValue } from './keyNotes';
+import { holdsKeyMaterial, mayHoldKeys, mayHoldNotes, newKeyNotes, veilValue } from './keyNotes';
 
 describe('mayHoldKeys / mayHoldNotes', () => {
   const PEM = '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----';
@@ -17,5 +17,18 @@ describe('mayHoldKeys / mayHoldNotes', () => {
     expect(mayHoldNotes(JSON.stringify({ desc: 'one • dot' }))).toBe(true);
     expect(mayHoldKeys(JSON.stringify({ desc: PEM }))).toBe(true);
     expect(mayHoldKeys(JSON.stringify({ tls: { client_key: 'AES-ciphertext' } }))).toBe(true);
+  });
+});
+
+// Fix round 4, F4: what makes a view empty its undo history on leaving.
+describe('holdsKeyMaterial', () => {
+  const PEM = '-----BEGIN PRIVATE KEY-----\nAAAA\n-----END PRIVATE KEY-----';
+  const CERT = '-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----';
+
+  it('true for a private-key BEGIN line, as written or spelled with \\u escapes; false for a certificate or an escape that spells none', () => {
+    expect(holdsKeyMaterial(JSON.stringify({ desc: PEM }))).toBe(true);
+    expect(holdsKeyMaterial(JSON.stringify({ desc: PEM }).replace(/-/g, '\\u002d'))).toBe(true);
+    expect(holdsKeyMaterial(JSON.stringify({ cert: CERT }))).toBe(false);
+    expect(holdsKeyMaterial(JSON.stringify({ cert: CERT, desc: 'x' }).replace('"x"', '"caf\\u00e9"'))).toBe(false);
   });
 });
