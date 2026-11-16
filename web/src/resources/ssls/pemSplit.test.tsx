@@ -449,6 +449,20 @@ describe('item 147: a file read that finishes after something else happened in t
     await b.release();
     expect((value().client as Obj).ca).toBe(RSA_CA);
   });
+
+  it('the CA box: a file read that finishes after another field changed lands on the draft as it is then (final wave M1)', async () => {
+    const stored = { id: 's1', snis: ['apiseven.test'], cert: SEED_CERT, client: { ca: SEED_CERT, depth: 1 } };
+    const { user, value } = renderTab('ssls', ClientTab, stored, sslIssues, { original: itemOf('s1', stored) });
+    const b = slowFile(RSA_CA, 'b.crt');
+    dropOn(screen.getByRole('textbox', { name: t('ssl.client.ca') }), b.file);
+    const depth = screen.getByRole('spinbutton', { name: t('ssl.client.depth') });
+    await user.clear(depth);
+    await user.type(depth, '2');
+    expect(value().client).toEqual({ ca: SEED_CERT, depth: 2 });
+    await b.release();
+    expect(value().client).toEqual({ ca: RSA_CA, depth: 2 });
+    expect(screen.getByRole('textbox', { name: t('ssl.client.ca') })).toHaveValue(RSA_CA);
+  });
 });
 
 describe('the split in the pair dialog, and where it is not offered', () => {

@@ -616,6 +616,29 @@ describe('a file read that finishes while a save is in flight (Task 16b, item 14
   });
 });
 
+describe('a CA file read that finishes after another edit (final wave M1)', () => {
+  it('upload CA B at depth 1, change the depth to 2, the read finishes: the PATCH carries both', async () => {
+    const withCa = { ...STORED, client: { ca: SEED_CERT, depth: 1 } };
+    const { user, admin } = await openSsl('#/ssls/apiseven-test?tab=client', [withCa]);
+    await user.keyboard('e');
+    const ca = main().getByRole('textbox', { name: t('ssl.client.ca') });
+    const slow = deferredFile(new File([RSA_LEAF], 'b.crt', { type: 'text/plain' }), RSA_LEAF);
+    fireEvent.drop(ca, { dataTransfer: { files: [slow.file], getData: () => '' } });
+    const depth = main().getByRole('spinbutton', { name: t('ssl.client.depth') });
+    await user.clear(depth);
+    await user.type(depth, '2');
+    await act(async () => {
+      slow.release();
+      await slow.file.text();
+    });
+    await waitFor(() => expect(ca).toHaveValue(RSA_LEAF));
+    await save(user);
+    await waitFor(() => expect(writesOf(admin)).toHaveLength(1));
+    expect(writesOf(admin)[0]?.method).toBe('PATCH');
+    expect(writesOf(admin)[0]?.body).toEqual({ client: { ca: RSA_LEAF, depth: 2 } });
+  });
+});
+
 describe('a file dropped while a save is in flight (fix round 2, R1.1)', () => {
   it('is taken by nothing: the locked box declares no drop zone, and the box, the draft and the request agree, also after a late refusal', async () => {
     let answer: (r: Response) => void = () => {};

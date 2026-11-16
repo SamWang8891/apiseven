@@ -10,7 +10,10 @@
 // A file is read asynchronously: a read that finishes after anything later happened in the box (text
 // typed, pasted or dropped, another file, a change the caller made, a lock (a save in flight
 // included), the end of the editing session, the box going away) is stale, and its result is ignored
-// before the caller hears of it (Task 16b, item 147).
+// before the caller hears of it (Task 16b, item 147). A fresh one goes to the caller's handlers as
+// they are when it finishes, never as they were when it began, so it lands on the draft as it is then:
+// an edit made meanwhile elsewhere (the CA's verification depth) stays (final wave M1, as the upstream
+// form's PEM fields do: upstream/fields.tsx).
 import { Upload } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode, type Ref } from 'react';
 import { t } from '../../i18n';
@@ -84,9 +87,12 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
   const [refused, setRefused] = useEditingState<{ why: FileReason; at: number } | undefined>(undefined);
   const changesNow = useRef(changes);
   const goneNow = useRef(onGone);
+  /** The caller's file handlers as of the last render: what a read that finishes later calls (final wave M1). */
+  const handlers = useRef({ onFile, onUnreadable });
   useLayoutEffect(() => {
     changesNow.current = changes;
     goneNow.current = onGone;
+    handlers.current = { onFile, onUnreadable };
   });
   // The input going takes the refused file's reason with it (fix round 2, R1.2): the owner is told.
   useEffect(() => () => goneNow.current?.(), []);
@@ -119,15 +125,15 @@ export function PemInput({ label, value, onChange, problem, help, error, onBlur,
       .then((result) => {
         if (!fresh()) return;
         if ('text' in result) {
-          setFileProblem(onFile(result.text));
+          setFileProblem(handlers.current.onFile(result.text));
           return;
         }
-        onUnreadable?.();
+        handlers.current.onUnreadable?.();
         setFileProblem(result.problem);
       })
       .catch(() => {
         if (!fresh()) return;
-        onUnreadable?.();
+        handlers.current.onUnreadable?.();
         setFileProblem({ full: t('ssl.pem.readFailed'), bare: t('ssl.pem.bare.readFailed') });
         toast.error(t('ssl.pem.readFailed'), { pageBound: true });
       });
