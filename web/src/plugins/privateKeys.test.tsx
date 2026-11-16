@@ -543,6 +543,24 @@ describe.each(views)('F1: after leaving $name, no private-key text is in the pag
   });
 });
 
+// Fix round 4, F5: leaving reads a string as a whole-key place only where its name and colon stand
+// right before it; any other string is ordinary text (its blocks only).
+describe('F5: leaving mints only what the reader read as a whole-key place', () => {
+  it('a comma missing after client_key’s note: the strings after it stay as typed', async () => {
+    const { user } = await open('#/routes/r1?tab=json');
+    await user.keyboard('e');
+    const box = await jsonTab();
+    await waitFor(() => expect(box.textContent).toMatch(note));
+    const text = JSON.stringify(JSON.parse(box.textContent ?? '{}'));
+    const broken = text.replace(/("client_key":"[^"]*")\}/, '$1 "extra": "plainword"}');
+    expect(broken).not.toBe(text);
+    await replaceText(user, box, broken);
+    await user.click(main().getByRole('heading', { level: 1, name: 'split' }));
+    expect(box.textContent).toContain('"extra": "plainword"');
+    expect(box.textContent?.match(new RegExp(note.source, 'g'))).toHaveLength(1);
+  });
+});
+
 describe('R4.1: a whole-key place with text around the key is veiled whole on leaving, and saved exactly as entered', () => {
   const BAG = 'Bag Attributes\n    localKeyID: 01 00 00 00\nKey Attributes: <No Attributes>\n';
 

@@ -11,7 +11,9 @@
 //     whether or not it parses (veilTypedText), with rule 1's detection: string by string first,
 //     property names included, so a block never crosses the end of the string it starts in (one with
 //     no END line ends with its string); then any block still in the raw text (between strings, where
-//     the text is broken) is veiled where it stands, to an END line or to the end of the text.
+//     the text is broken) is veiled where it stands, to an END line or to the end of the text. A string
+//     is read as a whole-key place's text only where a value goes: right after the place's name and
+//     colon, or as an item of its list (F5); any other string is ordinary text, its blocks veiled.
 //  4. Taking text back (unveilValue) resolves every note in every text, in place, to its key text when
 //     it is a note of this session, appears once in the text, and stands where it may: at its own path;
 //     anywhere in the caller's group with it (an SSL's key and certificate slots); or at any path that
@@ -255,7 +257,10 @@ export function unveilValue(
   return { ok: true, value: changed ? out : edited };
 }
 
-/** A string literal of raw JSON text: where it is, its text as written, and the path of the value it is (none for a property name). */
+/**
+ * A string literal of raw JSON text: where it is, its text as written, and the path of the value it is
+ * (none for a property name, or for a string not read where a value goes).
+ */
 interface Literal {
   start: number;
   end: number;
@@ -266,41 +271,60 @@ interface Literal {
 /**
  * The string literals of raw JSON text, read leniently (text being typed: a literal may hold raw line
  * breaks, the text may end inside one, the structure may be broken), each with the path of the value
- * it is, as far as the text says it.
+ * it is, as far as the text says it. A string has a path only where a value goes: right after its
+ * property's name and colon, or as a list's item after `[` or a comma (fix round 4, F5); a string read
+ * anywhere else (a comma missing before it, say) has none.
  */
 function literalsOf(text: string): Literal[] {
-  type Frame = { kind: 'obj'; key?: string; expectKey: boolean } | { kind: 'arr'; index: number };
+  // What each open object or list expects next.
+  type Frame = { kind: 'obj'; key?: string; want: 'name' | 'colon' | 'value' | 'comma' } | { kind: 'arr'; index: number; want: 'value' | 'comma' };
   const stack: Frame[] = [];
+  let topWant: 'value' | 'comma' = 'value';
   const out: Literal[] = [];
   const pathNow = (): (string | number)[] => stack.flatMap((f): (string | number)[] => (f.kind === 'arr' ? [f.index] : f.key !== undefined ? [f.key] : []));
+  const wantsValue = (): boolean => (stack.at(-1)?.want ?? topWant) === 'value';
+  /** A value was read: a comma (or the end) comes next. */
+  const valueRead = () => {
+    const top = stack.at(-1);
+    if (top) top.want = 'comma';
+    else topWant = 'comma';
+  };
   let i = 0;
   while (i < text.length) {
-    const c = text[i];
+    const c = text[i] ?? '';
     if (c === '"') {
       let j = i + 1;
       while (j < text.length && text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
       const end = Math.min(j + 1, text.length);
       const raw = text.slice(i + 1, Math.min(j, text.length));
       const top = stack.at(-1);
-      if (top?.kind === 'obj' && top.expectKey) {
+      if (top?.kind === 'obj' && top.want === 'name') {
         top.key = decode(raw);
-        top.expectKey = false;
+        top.want = 'colon';
         out.push({ start: i, end, raw });
-      } else out.push({ start: i, end, raw, path: pathNow() });
+      } else {
+        out.push(wantsValue() ? { start: i, end, raw, path: pathNow() } : { start: i, end, raw });
+        valueRead();
+      }
       i = end;
       continue;
     }
-    if (c === '{') stack.push({ kind: 'obj', expectKey: true });
-    else if (c === '[') stack.push({ kind: 'arr', index: 0 });
-    else if (c === '}' || c === ']') stack.pop();
+    const top = stack.at(-1);
+    if (c === '{' || c === '[') {
+      valueRead();
+      stack.push(c === '{' ? { kind: 'obj', want: 'name' } : { kind: 'arr', index: 0, want: 'value' });
+    } else if (c === '}' || c === ']') stack.pop();
     else if (c === ',') {
-      const top = stack.at(-1);
-      if (top?.kind === 'arr') top.index += 1;
-      else if (top) {
-        top.expectKey = true;
+      if (top?.kind === 'arr') {
+        top.index += 1;
+        top.want = 'value';
+      } else if (top) {
+        top.want = 'name';
         top.key = undefined;
       }
-    }
+    } else if (c === ':') {
+      if (top?.kind === 'obj') top.want = top.want === 'colon' ? 'value' : 'comma';
+    } else if (!' \t\n\r'.includes(c) && wantsValue()) valueRead(); // a number, true, false, null, or stray text
     i += 1;
   }
   return out;
