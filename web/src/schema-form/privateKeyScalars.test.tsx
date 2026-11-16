@@ -110,3 +110,34 @@ describe('a route with all three, in the editor', () => {
     expect(inPage(BODY)).toBe(false);
   });
 });
+
+// Fix round 1, Y1: a list row's card header sums up the row's first values; never one holding a key.
+describe('a list row’s summary (response-rewrite filters, 3.20)', () => {
+  const FILTERS: Obj = { filters: [{ regex: 'x', replace: pem(BODY) }] };
+
+  it.each([true, false])('locked %s: a stored key in replace is not in the header, nor anywhere on the page', (locked) => {
+    renderSchemaForm(schemaOf('response-rewrite'), FILTERS, { locked, baseline: FILTERS, name: 'response-rewrite' });
+    expect(document.querySelector('.sf-card__summary')?.textContent).toBe('regex=x');
+    expect(inPage(BODY)).toBe(false);
+    cleanup();
+  });
+
+  it('a key typed into replace: in the header neither while typed nor once the field is left', async () => {
+    const value: Obj = { filters: [{ regex: 'x', replace: 'y' }] };
+    const form = renderSchemaForm(schemaOf('response-rewrite'), value, { baseline: value, name: 'response-rewrite' });
+    const replace = screen.getByRole('textbox', { name: /^replace/ });
+    await form.user.clear(replace);
+    await form.user.paste(pem(TYPED).replace(/\n/g, ' '));
+    expect(document.querySelector('.sf-card__summary')?.textContent).toBe('regex=x');
+    await form.user.click(screen.getByRole('textbox', { name: /^regex/ }));
+    await waitFor(() => expect(inPage(TYPED)).toBe(false));
+    expect(document.querySelector('.sf-card__summary')?.textContent).toBe('regex=x');
+    expect(((form.value() as Obj).filters as Obj[])[0]?.replace).toContain(TYPED);
+  });
+
+  it('a never-shown name (client_key) is left out of a summary too, where the item’s schema does not name it', () => {
+    const schema: Obj = { type: 'object', properties: { list: { type: 'array', items: { type: 'object', properties: { host: { type: 'string' } } } } } };
+    renderSchemaForm(schema, { list: [{ client_key: 'plain-text-key', host: 'h' }] }, { locked: true });
+    expect(document.querySelector('.sf-card__summary')?.textContent).toBe('host=h');
+  });
+});

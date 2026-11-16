@@ -5,7 +5,7 @@ import { t } from '../../i18n';
 import { isObj } from '../../schema/refs';
 import { Button, useLocked } from '../../ui';
 import type { ArrayNode, Node, ObjectPart } from '../analyze';
-import { isSecretName } from '../../schema/secrets';
+import { holdsPrivateKey, isNeverShownName, isSecretName } from '../../schema/secrets';
 import { useFieldError, useFieldId, useLatest } from '../context';
 import { blankOf, joinPath, type Key } from '../model';
 import { ErrorLine, FieldLabel, RequiredMark } from './chrome';
@@ -42,11 +42,15 @@ function secretKeys(item: Node): Set<string> {
   return keys;
 }
 
-/** A short "host=127.0.0.1, port=6379" of a row's first scalar values, for its header; never a secret. */
+/**
+ * A short "host=127.0.0.1, port=6379" of a row's first scalar values, for its header; never a secret,
+ * never what is never shown: a never-shown name's value, or text holding a PEM private key, stored or
+ * typed (Codex final pass, fix round 1, Y1).
+ */
 function rowSummary(item: unknown, secret: Set<string>): string {
   if (!isObj(item)) return '';
   return Object.entries(item)
-    .filter(([k, v]) => (v === null || typeof v !== 'object') && !secret.has(k) && !isSecretName(k))
+    .filter(([k, v]) => (v === null || typeof v !== 'object') && !secret.has(k) && !isSecretName(k) && !isNeverShownName(k) && !holdsPrivateKey(v))
     .slice(0, 3)
     .map(([k, v]) => `${k}=${String(v)}`)
     .join(', ');
