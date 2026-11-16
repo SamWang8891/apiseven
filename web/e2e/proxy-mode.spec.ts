@@ -217,11 +217,13 @@ test.describe('proxy mode (the Docker image)', () => {
     });
 
     // C2: the image ships the licence, the notice and the bundled libraries' licences, served as text.
-    test('serves LICENSE.txt, NOTICE.txt and THIRD-PARTY-LICENSES.txt as text, at the root', async () => {
+    test('serves LICENSE.txt, NOTICE.txt, THIRD-PARTY-LICENSES.txt and GO-LICENSE.txt as text, at the root', async () => {
       const files: [string, RegExp][] = [
         ['LICENSE.txt', /Apache License\s+Version 2\.0/],
         ['NOTICE.txt', /This product includes material from Apache APISIX/],
         ['THIRD-PARTY-LICENSES.txt', /^## react - \d/m],
+        // The Go runtime and standard library the server is built with (F10).
+        ['GO-LICENSE.txt', /Copyright \d{4} The Go Authors/],
       ];
       for (const [file, holds] of files) {
         const res = await fetch(`${box!.url}/${file}`);

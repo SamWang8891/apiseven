@@ -15,12 +15,14 @@ FROM golang:1.27.3-alpine3.24 AS server
 WORKDIR /src/server
 COPY server/ ./
 COPY --from=web /src/web/dist ./dist
+# The Go runtime and standard library are linked in: their licence ships beside the others (embedded, served).
+RUN cp "$(go env GOROOT)/LICENSE" ./dist/GO-LICENSE.txt
 RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/apiseven .
 
 FROM gcr.io/distroless/static-debian12:nonroot@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab
 COPY --from=server /out/apiseven /apiseven
-# Also served by the app, at /LICENSE.txt, /NOTICE.txt and /THIRD-PARTY-LICENSES.txt (embedded in dist/).
-COPY --from=web /src/web/dist/LICENSE.txt /src/web/dist/NOTICE.txt /src/web/dist/THIRD-PARTY-LICENSES.txt /licenses/
+# Also served by the app, at /LICENSE.txt, /NOTICE.txt, /THIRD-PARTY-LICENSES.txt and /GO-LICENSE.txt (embedded in dist/).
+COPY --from=server /src/server/dist/LICENSE.txt /src/server/dist/NOTICE.txt /src/server/dist/THIRD-PARTY-LICENSES.txt /src/server/dist/GO-LICENSE.txt /licenses/
 USER nonroot:nonroot
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 CMD ["/apiseven", "-healthcheck"]

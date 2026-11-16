@@ -69,7 +69,7 @@ installs its dependencies first (`cd web && npm ci`).
 ## Quick start: single file
 
 ```sh
-make single          # writes dist/apiseven.html
+make single          # writes dist/apiseven.html (and its licence files)
 ```
 
 Open `dist/apiseven.html` in your browser (double-click it; it works from `file://`, and from any
@@ -84,7 +84,7 @@ browser talks to the Admin API directly, so APISIX must allow it; see
 ## Quick start: static folder
 
 ```sh
-make static          # writes dist/apiseven-static.zip (and dist/apiseven.html)
+make static          # writes dist/apiseven-static.zip (and dist/apiseven.html, and its licence files)
 ```
 
 Unzip `apiseven-static.zip` into any web server's directory, at any path (it uses relative URLs
@@ -487,8 +487,9 @@ Apache APISIX documentation; see [NOTICE](NOTICE).
 Every build ships the licence, the notice and the licences of the libraries it bundles
 (`THIRD-PARTY-LICENSES.txt`, written by Vite):
 
-- **The Docker image and `bin/apiseven`:** served by the app at `/LICENSE.txt`, `/NOTICE.txt` and
-  `/THIRD-PARTY-LICENSES.txt`; the image also holds them under `/licenses/`.
+- **The Docker image and `bin/apiseven`:** served by the app at `/LICENSE.txt`, `/NOTICE.txt`,
+  `/THIRD-PARTY-LICENSES.txt` and `/GO-LICENSE.txt` (the licence of the Go runtime and standard
+  library, which the server is built with); the image also holds them under `/licenses/`.
 - **The static zip** (`dist/apiseven-static.zip`): `LICENSE.txt`, `NOTICE.txt` and
   `THIRD-PARTY-LICENSES.txt` at its root, beside `index.html`.
 - **The single file** (`dist/apiseven.html`): it starts with a comment holding the notice and naming the

@@ -46,6 +46,11 @@ build: | $(WEB_DEPS)
 	cd web && npm run build
 	find server/dist -mindepth 1 ! -name .keep -delete
 	cp -R web/dist/. server/dist/
+	@# The Go runtime and standard library are linked in: their licence ships beside the others. It is
+	@# in GOROOT, or one level up (Homebrew).
+	@root="$$(cd server && go env GOROOT)"; for f in "$$root/LICENSE" "$$root/../LICENSE"; do \
+	  if [ -f "$$f" ]; then cp "$$f" server/dist/GO-LICENSE.txt; break; fi; done; \
+	  [ -f server/dist/GO-LICENSE.txt ] || { echo "Go's LICENSE is neither in $$root nor one level up"; exit 1; }
 	cd server && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../bin/apiseven .
 
 # IMAGE=<tag> builds under another tag (the end-to-end suite reads E2E_IMAGE).
