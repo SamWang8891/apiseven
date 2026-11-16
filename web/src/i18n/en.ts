@@ -927,7 +927,8 @@ export const en: Record<string, string> = {
   'up.warm.graceHelp': 'Seconds after APISIX starts during which a new node counts as warmed up.',
 
   'up.hc.active': 'Active checks',
-  'up.hc.activeHelp': 'APISIX probes every node on a timer and stops sending requests to nodes that fail.',
+  // apisix/balancer.lua 103–105, 120–122 (and 143 for the hash picker): with every node unhealthy, APISIX uses the whole set again.
+  'up.hc.activeHelp': 'APISIX probes every node on a timer and leaves out the nodes that fail while a healthy one remains; when none is healthy, it uses them all again.',
   'up.hc.passive': 'Passive checks',
   'up.hc.passiveHelp': 'APISIX also watches real responses. A node they mark down comes back only through active checks.',
   'up.hc.passiveNeedsActive': 'Needs active checks: they bring a node back once it recovers.',
