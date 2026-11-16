@@ -360,6 +360,23 @@ test.describe('APISIX’s own refusal', () => {
     expect(await admin.value(`routes/${id}`)).toEqual(stored);
   });
 
+  test('Cmd/Ctrl-S from a field, refused by APISIX: focus is back in that field (final wave I1)', async ({ page, admin }) => {
+    const { id, stored } = await storedRoute(admin);
+    await openEditor(page, `routes/${id}?tab=json`);
+    await unlock(page);
+    const editor = jsonEditor(page, ROUTE);
+    // APISIX refuses a key it does not know at the top of a route; the page's own checks let it through.
+    await setCode(page, editor, JSON.stringify({ ...stored, x_unknown: 1 }, null, 2));
+    await editor.focus();
+    const writes = recordWrites(page);
+    await page.keyboard.press('ControlOrMeta+s');
+    await expect(banner(page, t('editor.rejected'))).toContainText('additional properties forbidden, found x_unknown');
+    await afterFrames(page);
+    await expect(editor).toBeFocused();
+    expect(sentWrites(writes)).toEqual([`PUT routes/${id}`]);
+    expect(await admin.value(`routes/${id}`)).toEqual(stored);
+  });
+
   test('Save pressed from the keyboard keeps focus while the save is out and after APISIX refuses it', async ({ page, admin }) => {
     const { id, stored } = await storedRoute(admin);
     await openEditor(page, `routes/${id}?tab=json`);

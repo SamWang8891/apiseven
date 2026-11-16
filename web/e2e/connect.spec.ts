@@ -71,16 +71,29 @@ test.describe('the Connect page', () => {
 test.describe('a viewer (read-only) key', () => {
   test.use({ connectAs: 'viewer', allowConsole: /^40[13] (PUT|PATCH|DELETE) .*\/apisix\/admin\/routes\// });
 
-  test('lists load; a status toggle shows APISIX’s refusal and the read-only banner; Edit is then disabled', async ({ page, admin }) => {
+  test('lists load; a status toggle from the keyboard is refused: the read-only banner, and the switch stays, focused and unavailable with the reason (final wave J2); Edit is then disabled', async ({ page, admin }) => {
     const main = await openList(page, 'routes');
     await expect(main.getByRole('link', { name: 'old-wiki', exact: true })).toBeVisible();
     const before = await admin.value('routes/old-wiki');
-    await main.getByRole('switch', { name: t('table.status.toggle', { name: 'old-wiki' }) }).click();
+    const toggle = main.getByRole('switch', { name: t('table.status.toggle', { name: 'old-wiki' }) });
+    const checked = await toggle.getAttribute('aria-checked');
+    const writes = recordWrites(page);
+    await toggle.focus();
+    await page.keyboard.press('Space');
     await expect(toast(page, /invalid method for role viewer/)).toBeVisible();
     await expect(page.getByRole('status').filter({ hasText: t('readOnly.banner') })).toBeVisible();
-    // Nothing changed in APISIX, and the list no longer offers the switch or New.
+    // The switch stays where it was, at the stored state, unavailable and saying why; focus with it.
+    await expect(toggle).toHaveAttribute('aria-disabled', 'true');
+    await expect(toggle).toHaveAccessibleDescription(t('readOnly.unavailable'));
+    await expect(toggle).toHaveAttribute('aria-checked', checked!);
+    await afterFrames(page);
+    await expect(toggle).toBeFocused();
+    await page.keyboard.press('Space');
+    await afterFrames(page);
+    await expect(toggle).toBeFocused();
+    expect(sentWrites(writes)).toEqual(['PATCH routes/old-wiki']);
+    // Nothing changed in APISIX, and the list offers no New.
     expect(await admin.value('routes/old-wiki')).toEqual(before);
-    await expect(main.getByRole('switch', { name: t('table.status.toggle', { name: 'old-wiki' }) })).toHaveCount(0);
     await expect(main.getByRole('link', { name: t('page.new', { kind: t('kind.routes.singular') }) })).toHaveCount(0);
     // Editors open, but cannot be unlocked.
     const editor = await openEditor(page, 'routes/old-wiki');

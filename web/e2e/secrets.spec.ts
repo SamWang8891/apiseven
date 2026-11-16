@@ -314,6 +314,12 @@ test.describe('a private key in a plugin’s own upstream (traffic-split)', () =
     const card = await openCard(page, 'traffic-split');
     await expect(card).toContainText(t('sf.secret.stored'));
     await expectNotInPage(page, lines, 'the card, locked');
+    // The card's own JSON view (rebase check M3), then back to its form.
+    const cardView = (view: 'pl.card.json' | 'pl.card.form') =>
+      page.getByRole('main').getByRole('group', { name: t('pl.card.view', { name: 'traffic-split' }) }).getByRole('button', { name: t(view) }).click();
+    await cardView('pl.card.json');
+    await expectNotInPage(page, lines, 'the card’s JSON view, locked', { codeEditor: true });
+    await cardView('pl.card.form');
     await openTab(page, t('editor.json.tab'));
     await expectNotInPage(page, lines, 'the JSON tab, locked', { codeEditor: true });
     await main.getByRole('button', { name: t('editor.more') }).click();
@@ -332,6 +338,9 @@ test.describe('a private key in a plugin’s own upstream (traffic-split)', () =
     await openTab(page, t('pl.tab'));
     await openCard(page, 'traffic-split');
     await expectNotInPage(page, lines, 'the card, editing');
+    await cardView('pl.card.json');
+    await expectNotInPage(page, lines, 'the card’s JSON view, editing', { codeEditor: true });
+    await cardView('pl.card.form');
     await openTab(page, t('rt.tab.general'));
     await page.getByRole('main').getByRole('textbox', { name: t('rt.general.desc') }).fill('saved with the key kept');
     await save(page);

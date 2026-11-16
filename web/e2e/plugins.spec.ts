@@ -201,6 +201,7 @@ test('a plugin APISIX runs for the whole instance (inspect): its card reads No e
   await openEditor(page, `routes/${id}?tab=plugins`);
   const card = pluginCard(page, 'inspect');
   await expect(card).toContainText(t('pl.card.instance'));
+  await expect(card.getByRole('switch', { name: t('pl.card.enable', { name: 'inspect' }) })).toHaveCount(0);
   await unlock(page);
   await expect(card).toContainText(t('pl.card.instance'));
   await expect(card.getByRole('switch', { name: t('pl.card.enable', { name: 'inspect' }) })).toHaveCount(0);
