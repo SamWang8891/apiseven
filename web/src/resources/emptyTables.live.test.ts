@@ -66,6 +66,9 @@ const PLUGIN_CASES: Obj[] = [
   // Fix round 1, R4.1: an empty table meets the position's other rules as the expected type.
   { cors: { allow_origins_by_regex: {} } },
   { 'fault-injection': { abort: [] } },
+  // Codex final pass, X4: more empty tables than the 16 places the check once read so; a wrong 17th.
+  { 'traffic-split': { rules: Array.from({ length: 17 }, () => ({ match: {}, weighted_upstreams: [{ weight: 1 }] })) } },
+  { 'traffic-split': { rules: Array.from({ length: 17 }, (_, i) => ({ match: i === 16 ? { a: 1 } : {}, weighted_upstreams: [{ weight: 1 }] })) } },
 ];
 
 const PROTOCOLS: Obj[] = [

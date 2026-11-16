@@ -323,23 +323,37 @@ function replaceAt(value: unknown, keys: string[], next: unknown): unknown {
   return { ...value, [key]: replaceAt(value[key], rest, next) };
 }
 
+/** How many empty tables (`[]`, `{}`) `value` holds, itself included, at any depth. */
+function emptyTables(value: unknown): number {
+  if (!Array.isArray(value) && !isObj(value)) return 0;
+  const items: unknown[] = Array.isArray(value) ? value : Object.values(value);
+  return items.length === 0 ? 1 : items.reduce((n: number, item) => n + emptyTables(item), 0);
+}
+
 /**
  * `value` (defaults applied) with each empty table read as the type its schema position asks for,
  * `[]` as `{}` where an object is wanted and `{}` as `[]` where a list is, as APISIX's validator reads
  * an empty Lua table: then minItems, required and the rest apply to it as APISIX applies them. Each
- * place is turned once (a branch of a combinator may want the other type).
+ * place is turned once (a branch of a combinator may want the other type), by the first error there.
+ * Every round turns each place an error then asks for, however many (Codex final pass, X4: the 16
+ * rounds of one place each stopped at the 17th); a place is an empty table of `value` and turning one
+ * leaves an empty table, so there are no more rounds than empty tables, and one that finds none.
  */
 function asLuaTables(schema: Obj, value: unknown, opts: CheckOptions): unknown {
   let current = withDefaults(schema, value);
   const turned = new Set<string>();
-  for (let round = 0; round < 16; round += 1) {
-    const error = (schemaErrors(schema, current, opts) ?? []).find((e) => !turned.has(e.instancePath) && emptyTableTypeError(e, current));
-    if (!error) break;
-    turned.add(error.instancePath);
-    const wanted = String((error.params as Record<string, unknown>).type).split(',');
-    const at = valueAt(current, error.instancePath);
-    const read = Array.isArray(at) ? (wanted.includes('object') ? {} : at) : wanted.includes('array') ? [] : at;
-    current = replaceAt(current, pointerKeys(error.instancePath), read);
+  const places = emptyTables(current);
+  for (let round = 0; round <= places; round += 1) {
+    const errors = (schemaErrors(schema, current, opts) ?? []).filter((e) => !turned.has(e.instancePath) && emptyTableTypeError(e, current));
+    if (errors.length === 0) break;
+    for (const error of errors) {
+      if (turned.has(error.instancePath)) continue;
+      turned.add(error.instancePath);
+      const wanted = String((error.params as Record<string, unknown>).type).split(',');
+      const at = valueAt(current, error.instancePath);
+      const read = Array.isArray(at) ? (wanted.includes('object') ? {} : at) : wanted.includes('array') ? [] : at;
+      current = replaceAt(current, pointerKeys(error.instancePath), read);
+    }
   }
   return current;
 }

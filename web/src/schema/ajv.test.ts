@@ -281,6 +281,19 @@ describe('fieldErrors with luaTables (as APISIX validates: an empty table is a l
     expect(fieldErrors(schema, { text: {} }, { luaTables: true })?.map((e) => e.path)).toEqual(['text']);
     expect(fieldErrors(schema, [], { luaTables: true })).toEqual([]);
   });
+
+  // Codex final pass, X4: the empty tables were read so for the first 16 places only.
+  it('takes every empty table, however many: traffic-split (3.20) with 17 and with 200 rules of `match: {}`; a wrong value at the 17th still fails with its own message', () => {
+    const schema = schemaOf('traffic-split');
+    const rules = (n: number, wrong?: Obj): Obj => ({ rules: Array.from({ length: n }, (_, i) => (i === 16 && wrong ? wrong : { match: {} })) });
+    expect(fieldErrors(schema, rules(16), { luaTables: true })).toEqual([]);
+    expect(fieldErrors(schema, rules(17), { luaTables: true })).toEqual([]);
+    expect(fieldErrors(schema, rules(200), { luaTables: true })).toEqual([]);
+    for (const n of [17, 200]) {
+      expect(fieldErrors(schema, rules(n, { match: { a: 1 } }), { luaTables: true }), `${n} rules`).toEqual([{ path: 'rules.16.match', message: 'must be array' }]);
+      expect(fieldErrors(schema, rules(n, { match: [{ vars: 'x' }] }), { luaTables: true }), `${n} rules`).toEqual([{ path: 'rules.16.match.0.vars', message: 'must be array' }]);
+    }
+  });
 });
 
 describe('specificErrors', () => {
