@@ -5,13 +5,16 @@
 // refuses stays in the plural key, where it stays shown and flagged (a single key holding it may not
 // be shown at all: readPair skips an empty one).
 import type { Obj } from '../../api/types';
+import { isSecretRef } from '../ssls/validate';
 import { hostProblem, schemaAddress } from './validate';
 
 /**
  * Whether one value may stand in the single key, by the single key's schema (APISIX 3.20
  * schema_def.lua): `uri` a string of 1–4096 characters (642; `uris` items any string, 643–650);
  * `host` host_def (58–61, 659) and `sni` the same pattern (922–925, 1100–1104); `remote_addr`
- * remote_addr_def (91–95, 666). A value it refuses is kept in the plural key.
+ * remote_addr_def (91–95, 666). A value it refuses is kept in the plural key. A `$secret://` or
+ * `$env://` reference fits any of them: APISIX's validator skips a string field holding one
+ * (core/schema.lua 43–45, secret.lua 268–280).
  */
 const FITS_SINGLE: Record<string, (value: string) => boolean> = {
   uri: (value) => value.length >= 1 && value.length <= 4096,
@@ -37,7 +40,7 @@ export function writePair(draft: Obj, single: string, plural: string, values: st
   delete next[single];
   delete next[plural];
   const [only] = values;
-  if (values.length === 1 && only !== undefined && (FITS_SINGLE[single]?.(only) ?? true)) next[single] = only;
+  if (values.length === 1 && only !== undefined && (isSecretRef(only) || (FITS_SINGLE[single]?.(only) ?? true))) next[single] = only;
   else if (values.length > 0) next[plural] = [...values];
   return next;
 }

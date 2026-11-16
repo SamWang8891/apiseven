@@ -80,6 +80,12 @@ describe('one value the single key would refuse stays in the plural key', () => 
     expect(writePair({ snis: ['a.test', 'b.test'] }, 'sni', 'snis', ['b.test'])).toEqual({ sni: 'b.test' });
   });
 
+  // Fix round 2, item 4: APISIX's validator skips a string field holding a reference, so one fits the single key.
+  it('a $secret:// or $env:// reference fits the single key', () => {
+    expect(writePair({ snis: ['$secret://vault/1/sni', 'a.test'] }, 'sni', 'snis', ['$secret://vault/1/sni'])).toEqual({ sni: '$secret://vault/1/sni' });
+    expect(writePair({ hosts: ['$ENV://HOST', 'a.test'] }, 'host', 'hosts', ['$ENV://HOST'])).toEqual({ host: '$ENV://HOST' });
+  });
+
   it("a host kept in hosts that way stays shown and flagged by the route's check", () => {
     const next = writePair({ uri: '/x', hosts: ['a', ''] }, 'host', 'hosts', ['']);
     expect(readPair(next, 'host', 'hosts')).toEqual(['']);
