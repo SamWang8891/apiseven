@@ -265,12 +265,14 @@ test.describe('proxy mode (the Docker image)', () => {
           await expect
             .poll(() => raw.filter((r) => r.status === 403).map((r) => Object.entries(r.headers).find(([k]) => k.toLowerCase() === 'x-apiseven-refusal')?.[1]))
             .toEqual(['origin']);
+          const after = await admin.list('routes');
+          expect(after).toHaveLength(before);
+          expect(after.some((r) => r.value.name === 'e2e-proxy-evil')).toBe(false);
         } finally {
           await evil.close();
+          // Whatever the assertions found: a POST that got through would have made a route; it goes.
+          for (const { value } of await admin.list('routes')) if (value.name === 'e2e-proxy-evil') await admin.del(`routes/${String(value.id)}`);
         }
-        const after = await admin.list('routes');
-        expect(after).toHaveLength(before);
-        expect(after.some((r) => r.value.name === 'e2e-proxy-evil')).toBe(false);
       });
     });
 
